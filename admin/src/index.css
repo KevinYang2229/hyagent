@@ -426,104 +426,62 @@ a {
 
 /* ---- 卡片 ---- */
 .card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-sm);
+  @apply rounded-[var(--radius)] border border-[var(--border-color)] bg-[var(--card-bg)] shadow-[var(--shadow-sm)];
 }
-/* .card + .card {
-  margin-top: 18px;
-} */
 .card-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 18px 22px;
-  border-bottom: 1px solid var(--border);
+  @apply flex items-center justify-between gap-3 border-b border-[var(--border-color)] px-[22px] py-[18px];
 }
 .card-title {
-  font-size: 15px;
-  font-weight: 700;
+  @apply text-[15px] font-bold;
 }
 .card-desc {
-  font-size: 12.5px;
-  color: var(--text-muted);
-  margin-top: 3px;
-  font-weight: 400;
+  @apply mt-[3px] text-[12.5px] font-normal text-[var(--text-secondary)];
 }
 .card-body {
-  padding: 22px;
+  @apply p-[22px];
 }
 
 /* ---- 按鈕 ---- */
 .btn {
-  --bg: var(--surface);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  height: 38px;
-  padding: 0 16px;
-  border-radius: 10px;
-  border: 1px solid var(--border-strong);
-  background: var(--bg);
-  color: var(--text);
+  @apply inline-flex h-[38px] cursor-pointer items-center justify-center gap-[7px] whitespace-nowrap rounded-[10px] border border-[var(--border-color)] bg-[var(--card-bg)] px-4 text-[13.5px] font-semibold text-[var(--text-primary)];
   font-family: inherit;
-  font-size: 13.5px;
-  font-weight: 600;
-  cursor: pointer;
-  white-space: nowrap;
   transition: transform 0.08s, box-shadow 0.15s, background 0.15s, border-color 0.15s,
     opacity 0.15s;
 }
 .btn:hover {
-  box-shadow: var(--shadow-xs);
+  @apply shadow-[var(--shadow-xs)];
 }
 .btn:active {
-  transform: translateY(1px);
+  @apply translate-y-px;
 }
 .btn:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
+  @apply cursor-not-allowed opacity-[0.55];
 }
 .btn svg {
-  width: 16px;
-  height: 16px;
+  @apply h-4 w-4;
 }
 .btn-primary {
-  background: linear-gradient(180deg, #5b53e8, var(--accent));
-  border-color: transparent;
-  color: #fff;
-  box-shadow: 0 1px 2px rgba(79, 70, 229, 0.4), 0 4px 12px rgba(79, 70, 229, 0.22);
+  @apply border-transparent bg-[var(--primary-color)] text-white;
+  box-shadow: 0 1px 2px rgba(var(--primary-color-rgb), 0.4),
+    0 4px 12px rgba(var(--primary-color-rgb), 0.22);
 }
 .btn-primary:hover {
-  background: linear-gradient(180deg, #5048d8, var(--accent-hover));
-  box-shadow: 0 2px 4px rgba(79, 70, 229, 0.45), 0 8px 18px rgba(79, 70, 229, 0.28);
+  @apply opacity-90;
 }
 .btn-ghost {
-  background: transparent;
-  border-color: var(--border);
-  color: var(--text-muted);
+  @apply border-[var(--border-color)] bg-transparent text-[var(--text-secondary)];
 }
 .btn-ghost:hover {
-  background: var(--surface-2);
-  color: var(--text);
+  @apply bg-[var(--bg-secondary)] text-[var(--text-primary)];
 }
 .btn-danger {
-  background: var(--surface);
-  border-color: var(--border-strong);
-  color: var(--danger);
+  @apply border-[var(--border-color)] bg-[var(--card-bg)] text-[var(--status-danger)];
 }
 .btn-danger:hover {
-  background: var(--danger-soft);
-  border-color: #f3b9b9;
+  @apply border-[var(--status-danger)] bg-[var(--badge-danger-bg)];
 }
 .btn-sm {
-  height: 32px;
-  padding: 0 12px;
-  font-size: 12.5px;
-  border-radius: 8px;
+  @apply h-8 rounded-[8px] px-3 text-[12.5px];
 }
 
 /* ---- 表單欄位 ---- */
@@ -727,29 +685,17 @@ a {
 
 /* ---- 徽章 ---- */
 .badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 11.5px;
-  font-weight: 600;
-  padding: 3px 9px;
-  border-radius: 999px;
-  line-height: 1.4;
+  @apply inline-flex items-center gap-[5px] rounded-full px-[9px] py-[3px] text-[11.5px] font-semibold leading-[1.4];
 }
 .badge::before {
   content: "";
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
+  @apply h-[6px] w-[6px] rounded-full bg-current;
 }
 .badge-on {
-  color: var(--success);
-  background: var(--success-soft);
+  @apply bg-[var(--badge-success-bg)] text-[var(--status-positive)];
 }
 .badge-off {
-  color: var(--text-muted);
-  background: #eef1f5;
+  @apply bg-[var(--bg-secondary)] text-[var(--text-secondary)];
 }
 
 /* ---- 統計卡 ---- */
@@ -826,29 +772,16 @@ a {
 
 /* ---- 提示橫幅 ---- */
 .banner {
-  display: flex;
-  align-items: flex-start;
-  gap: 11px;
-  padding: 13px 16px;
-  border-radius: 11px;
-  font-size: 13px;
-  margin-bottom: 18px;
+  @apply mb-[18px] flex items-start gap-[11px] rounded-[11px] px-4 py-[13px] text-[13px];
 }
 .banner-key {
-  background: var(--accent-soft);
-  border: 1px solid #d8dafb;
-  color: #3730a3;
+  @apply border border-[var(--border-color)] bg-[var(--nav-active-bg)] text-[var(--primary-color)];
 }
 .banner-err {
-  background: var(--danger-soft);
-  border: 1px solid #f3c2c2;
-  color: #991b1b;
+  @apply border border-[var(--status-danger)] bg-[var(--badge-danger-bg)] text-[var(--status-danger)];
 }
 .banner svg {
-  width: 18px;
-  height: 18px;
-  flex: none;
-  margin-top: 1px;
+  @apply mt-px h-[18px] w-[18px] flex-none;
 }
 
 .empty {
