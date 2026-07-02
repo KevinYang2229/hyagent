@@ -880,38 +880,26 @@ a {
 
 /* ---- 外觀分頁專屬：預覽 ---- */
 .appearance-grid {
-  display: grid;
-  grid-template-columns: 1fr 380px;
-  gap: 24px;
-  align-items: start;
+  @apply grid grid-cols-[1fr_380px] items-start gap-6;
 }
 @media (max-width: 920px) {
   .appearance-grid {
-    grid-template-columns: 1fr;
+    @apply grid-cols-1;
   }
 }
 .preview-card {
-  position: sticky;
-  top: 88px;
+  @apply sticky top-[88px];
 }
 .preview-frame {
-  width: 100%;
-  height: 540px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface-2);
-  display: block;
+  @apply block h-[540px] w-full rounded-[var(--radius)] border border-[var(--border-color)] bg-[var(--bg-secondary)];
 }
 
 /* 分頁 RWD：小螢幕改為可換行、平均填滿寬度，避免多個分頁溢出 */
 @media (max-width: 640px) {
   .tabs {
-    display: flex;
-    flex-wrap: wrap;
-    width: 100%;
+    @apply flex w-full flex-wrap;
   }
   .tab {
-    flex: 1 0 auto;
-    text-align: center;
+    @apply flex-[1_0_auto] text-center;
   }
 }
