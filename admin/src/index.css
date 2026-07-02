@@ -27,27 +27,6 @@
   --shadow-lg: 0 24px 48px -12px rgba(16, 24, 40, 0.18);
   --font: "Plus Jakarta Sans", "Noto Sans TC", system-ui, -apple-system, sans-serif;
   --sidebar-w: 248px;
-
-  /* set-1 → @oa-agent/ui token 別名：讓現有 class 立即改用 ui token 並支援 dark mode。
-     @apply 改寫時逐步改為直接引用 ui token；全部改完後移除此區。 */
-  --surface: var(--card-bg);
-  --surface-2: var(--bg-secondary);
-  --bg: var(--bg-color);
-  --bg-grad-1: var(--bg-secondary);
-  --text: var(--text-primary);
-  --text-muted: var(--text-secondary);
-  --text-faint: var(--text-secondary);
-  --accent: var(--primary-color);
-  --accent-hover: var(--primary-color);
-  --accent-soft: var(--nav-active-bg);
-  --accent-ring: rgba(var(--primary-color-rgb), 0.25);
-  --success: var(--status-positive);
-  --success-soft: var(--badge-success-bg);
-  --danger: var(--status-danger);
-  --danger-soft: var(--badge-danger-bg);
-  --warn: var(--status-warning);
-  --border: var(--border-color);
-  --border-strong: var(--border-color);
 }
 
 /* OA 設計 token（含 SchemaFormPreview 的 Input/Select/DatePicker 用）
