@@ -64,10 +64,8 @@ body,
 }
 
 body {
-  margin: 0;
+  @apply m-0 bg-[var(--bg-color)] text-[var(--text-primary)];
   font-family: var(--font);
-  color: var(--text);
-  background: var(--bg);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -76,271 +74,131 @@ h1,
 h2,
 h3,
 h4 {
-  margin: 0;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  @apply m-0 font-bold tracking-[-0.02em];
 }
 
 a {
-  color: inherit;
-  text-decoration: none;
+  @apply text-inherit no-underline;
 }
 
 /* ============================================================
    版型：側邊欄 + 主區
    ============================================================ */
 .app {
-  min-height: 100vh;
-  padding-left: var(--sidebar-w);
-  overflow-x: clip;
+  @apply min-h-screen overflow-x-clip pl-[var(--sidebar-w)];
 }
 
 /* ---- 側邊欄 ---- */
 .sidebar {
-  position: fixed;
-  inset: 0 auto 0 0;
-  z-index: 20;
-  width: var(--sidebar-w);
-  height: 100vh;
-  background: var(--sidebar);
-  border-right: 1px solid var(--sidebar-border);
-  display: flex;
-  flex-direction: column;
-  padding: 22px 16px;
-  color: var(--on-sidebar);
-  overflow-y: auto;
+  @apply fixed inset-y-0 left-0 z-20 flex h-screen w-[var(--sidebar-w)] flex-col overflow-y-auto border-r border-[var(--sidebar-border)] bg-[var(--sidebar)] px-4 py-[22px] text-[var(--on-sidebar)];
   box-shadow: 6px 0 18px rgba(16, 24, 40, 0.04);
 }
 
 .brand {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 6px 8px 22px;
+  @apply flex items-center gap-3 px-2 pb-[22px] pt-[6px];
 }
 
 .brand-mark {
-  width: 38px;
-  height: 38px;
-  border-radius: 11px;
-  background: #fff;
+  @apply grid h-[38px] w-[38px] flex-none place-items-center overflow-hidden rounded-[11px] bg-white;
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
-  display: grid;
-  place-items: center;
-  overflow: hidden;
-  flex: none;
 }
 .brand-mark img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  padding: 4px;
+  @apply h-full w-full object-contain p-1;
 }
 
 .brand-name {
-  font-weight: 700;
-  font-size: 15px;
-  color: var(--on-sidebar);
-  line-height: 1.1;
-  letter-spacing: -0.01em;
+  @apply text-[15px] font-bold leading-[1.1] tracking-[-0.01em] text-[var(--on-sidebar)];
 }
 .brand-sub {
-  font-size: 11.5px;
-  color: var(--on-sidebar-dim);
-  margin-top: 2px;
-  letter-spacing: 0.04em;
+  @apply mt-[2px] text-[11.5px] tracking-[0.04em] text-[var(--on-sidebar-dim)];
 }
 
 .nav-label {
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.13em;
-  text-transform: uppercase;
-  color: var(--on-sidebar-dim);
-  padding: 6px 10px;
-  margin-top: 6px;
+  @apply mt-[6px] px-[10px] py-[6px] text-[10.5px] font-bold uppercase tracking-[0.13em] text-[var(--on-sidebar-dim)];
 }
 
 .nav {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
+  @apply flex flex-col gap-[3px];
 }
 
 .nav-item {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  padding: 10px 11px;
-  border-radius: 10px;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--on-sidebar);
-  cursor: pointer;
+  @apply flex cursor-pointer items-center gap-[11px] rounded-[10px] px-[11px] py-[10px] text-sm font-medium text-[var(--on-sidebar)];
   transition: background 0.15s, color 0.15s;
 }
 .nav-item:hover {
-  background: var(--nav-hover);
-  color: var(--text-primary);
+  @apply bg-[var(--nav-hover)] text-[var(--text-primary)];
 }
 .nav-item.active {
-  background: var(--nav-active-bg);
-  color: var(--primary-color);
+  @apply bg-[var(--nav-active-bg)] text-[var(--primary-color)];
   box-shadow: inset 0 0 0 1px rgba(var(--primary-color-rgb), 0.25);
 }
 .nav-item.active .nav-ico {
-  color: var(--primary-color);
+  @apply text-[var(--primary-color)];
 }
 .nav-ico {
-  width: 18px;
-  height: 18px;
-  flex: none;
-  color: var(--on-sidebar-dim);
+  @apply h-[18px] w-[18px] flex-none text-[var(--on-sidebar-dim)];
 }
 
 .theme-toggle {
-  margin-top: auto;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 9px 12px;
-  border: 1px solid var(--sidebar-border);
-  border-radius: 9px;
-  background: transparent;
-  color: var(--on-sidebar);
   font: inherit;
-  font-size: 13px;
-  cursor: pointer;
+  @apply mt-auto flex cursor-pointer items-center gap-2 rounded-[9px] border border-[var(--sidebar-border)] bg-transparent px-3 py-[9px] text-[13px] text-[var(--on-sidebar)];
   transition: background 0.15s;
 }
 .theme-toggle:hover {
-  background: var(--sidebar-2);
+  @apply bg-[var(--sidebar-2)];
 }
 /* 有 theme-toggle 時，footer 不再需要 margin-top:auto（toggle 已把兩者推到底） */
 .sidebar-foot {
-  padding-top: 16px;
-  margin-top: 12px;
-  border-top: 1px solid var(--sidebar-border);
-  font-size: 11.5px;
-  color: var(--on-sidebar-dim);
-  line-height: 1.6;
+  @apply mt-3 border-t border-[var(--sidebar-border)] pt-4 text-[11.5px] leading-[1.6] text-[var(--on-sidebar-dim)];
 }
 .sidebar-foot code {
-  color: #9aa6bd;
+  @apply text-[var(--on-sidebar-dim)];
 }
 
 /* ---- 主區 ---- */
 .main {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 100vh;
-  background: var(--bg);
-  overflow-x: clip;
+  @apply flex min-h-screen min-w-0 flex-col overflow-x-clip bg-[var(--bg-color)];
 }
 
 .topbar {
-  position: sticky;
-  top: 0;
-  z-index: 5;
-  width: 100%;
-  min-width: 0;
-  height: 64px;
-  background: var(--card-bg);
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 30px;
+  @apply sticky top-0 z-[5] flex h-16 w-full min-w-0 items-center justify-between border-b border-[var(--border-color)] bg-[var(--card-bg)] px-[30px];
 }
 .topbar-title {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
+  @apply flex min-w-0 flex-col;
 }
 .topbar-crumb {
-  font-size: 11.5px;
-  color: var(--text-faint);
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  @apply overflow-hidden text-ellipsis whitespace-nowrap text-[11.5px] font-semibold tracking-[0.02em] text-[var(--text-secondary)];
 }
 .topbar-h {
-  font-size: 18px;
-  font-weight: 700;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  @apply overflow-hidden text-ellipsis whitespace-nowrap text-lg font-bold;
 }
 .topbar-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex: 0 1 auto;
-  min-width: 0;
+  @apply flex min-w-0 flex-[0_1_auto] items-center gap-3;
 }
 /* 漢堡鈕與標題群組（漢堡鈕僅手機顯示） */
 .topbar-left {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex: 1 1 auto;
-  min-width: 0;
+  @apply flex min-w-0 flex-[1_1_auto] items-center gap-3;
 }
 .nav-toggle {
-  display: none;
-  align-items: center;
-  justify-content: center;
-  width: 38px;
-  height: 38px;
-  flex: none;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--surface);
-  color: var(--text);
-  font-size: 18px;
-  line-height: 1;
-  cursor: pointer;
+  @apply hidden h-[38px] w-[38px] flex-none cursor-pointer items-center justify-center rounded-[10px] border border-[var(--border-color)] bg-[var(--card-bg)] text-lg leading-none text-[var(--text-primary)];
 }
 .nav-toggle:hover {
-  background: var(--surface-2);
+  @apply bg-[var(--bg-secondary)];
 }
 /* 側邊欄抽屜遮罩：桌機不存在（僅手機 media query 內啟用） */
 .nav-backdrop {
-  display: none;
+  @apply hidden;
 }
 
 .user-chip {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 5px 12px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--surface);
-  font-size: 13px;
-  color: var(--text-muted);
-  font-weight: 500;
+  @apply flex items-center gap-[9px] rounded-full border border-[var(--border-color)] bg-[var(--card-bg)] px-3 py-[5px] text-[13px] font-medium text-[var(--text-secondary)];
 }
 .avatar {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #6366f1, #7c3aed);
-  color: #fff;
-  display: grid;
-  place-items: center;
-  font-size: 12px;
-  font-weight: 700;
+  @apply grid h-7 w-7 place-items-center rounded-full bg-[var(--primary-color)] text-[12px] font-bold text-white;
 }
 
 .content {
-  padding: 30px;
-  max-width: 1120px;
-  width: 100%;
-  margin: 0 auto;
+  @apply mx-auto w-full max-w-[1120px] p-[30px];
   animation: rise 0.4s ease both;
 }
 @keyframes rise {
