@@ -486,73 +486,48 @@ a {
 
 /* ---- 表單欄位 ---- */
 .field {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
+  @apply flex flex-col gap-[7px];
 }
 .field + .field {
-  margin-top: 18px;
+  @apply mt-[18px];
 }
 .field-label {
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--text);
+  @apply text-[12.5px] font-semibold text-[var(--text-primary)];
 }
 .field-hint {
-  font-size: 12px;
-  color: var(--text-muted);
-  font-weight: 400;
+  @apply text-[12px] font-normal text-[var(--text-secondary)];
 }
 .input,
 .textarea,
 .select {
-  width: 100%;
+  @apply w-full rounded-[10px] border border-[var(--border-color)] bg-[var(--card-bg)] px-3 py-[10px] text-sm text-[var(--text-primary)];
   font-family: inherit;
-  font-size: 14px;
-  color: var(--text);
-  background: var(--surface);
-  border: 1px solid var(--border-strong);
-  border-radius: 10px;
-  padding: 10px 12px;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 .input::placeholder,
 .textarea::placeholder {
-  color: var(--text-faint);
+  @apply text-[var(--text-secondary)];
 }
 .input:focus,
 .textarea:focus,
 .select:focus {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 4px var(--accent-ring);
+  @apply border-[var(--primary-color)] outline-none;
+  box-shadow: 0 0 0 4px rgba(var(--primary-color-rgb), 0.25);
 }
 .textarea {
-  resize: vertical;
-  min-height: 90px;
-  line-height: 1.5;
+  @apply min-h-[90px] resize-y leading-normal;
 }
 .select {
-  appearance: none;
+  @apply appearance-none pr-9;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 11px center;
-  padding-right: 36px;
 }
 .color-field {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+  @apply flex items-center gap-3;
 }
 .color-field input[type="color"] {
-  width: 46px;
-  height: 38px;
-  padding: 0;
-  border: 1px solid var(--border-strong);
-  border-radius: 9px;
-  background: var(--surface);
-  cursor: pointer;
-  overflow: hidden;
+  @apply h-[38px] w-[46px] cursor-pointer overflow-hidden rounded-[9px] border border-[var(--border-color)] bg-[var(--card-bg)] p-0;
 }
 /* 讓所選顏色塗滿整個框內（去掉原生 color input 的內距與 swatch 邊框） */
 .color-field input[type="color"]::-webkit-color-swatch-wrapper {
@@ -567,31 +542,24 @@ a {
   border-radius: 8px;
 }
 .color-hex {
+  @apply text-[13px] text-[var(--text-secondary)];
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 13px;
-  color: var(--text-muted);
 }
 
 .form-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px;
+  @apply grid grid-cols-2 gap-[18px];
 }
 .form-grid .field + .field {
-  margin-top: 0;
+  @apply mt-0;
 }
 @media (max-width: 720px) {
   .form-grid {
-    grid-template-columns: 1fr;
+    @apply grid-cols-1;
   }
 }
 
 .form-actions {
-  display: flex;
-  gap: 10px;
-  margin-top: 22px;
-  padding-top: 18px;
-  border-top: 1px solid var(--border);
+  @apply mt-[22px] flex gap-[10px] border-t border-[var(--border-color)] pt-[18px];
 }
 
 /* ---- 分頁（segmented） ---- */
@@ -795,9 +763,7 @@ a {
   color: var(--text-muted);
 }
 .toolbar {
-  display: flex;
-  gap: 10px;
-  align-items: center;
+  @apply flex items-center gap-[10px];
 }
 .spacer {
   flex: 1;
