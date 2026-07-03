@@ -149,6 +149,43 @@ const zhHant = {
 
 const en = {
   common: { confirm: "Confirm", cancel: "Cancel" },
+  // 內建表單的推薦 chip（標題／tooltip 描述／範例）英文；中文模式由 App 以 server 值作 defaultValue 回退。
+  // key 為 formId；租戶自訂表單無此鍵時自動回退 server 標題。
+  forms: {
+    "leave-request": {
+      title: "Leave Request",
+      description:
+        "Employee leave application; needs the applicant, deputy, leave type, start/end date & time, and reason",
+      examples: [
+        "I'd like to take sick leave",
+        "I'll take annual leave next Mon–Tue",
+        "Personal leave tomorrow afternoon",
+        "I'd like three days of bereavement leave",
+      ],
+    },
+    "outing-registration": {
+      title: "Outing Registration",
+      description:
+        "Employee outing registration; needs the person, subject, departure and destination, outing & return date/time, and whether reimbursement is needed",
+      examples: [
+        "I want to register an outing",
+        "I'm visiting a client this afternoon",
+        "Help me fill out an outing form",
+        "I have an off-site meeting tomorrow, please register it",
+      ],
+    },
+    "business-trip-domestic": {
+      title: "Domestic Trip Expense Claim",
+      description:
+        "Domestic business-trip expense reimbursement; needs company, purpose, dates, route, and expenses (taxi, HSR, transit, private car, lodging, meals, parking, carpool) with HSR carbon emissions",
+      examples: [
+        "I want to claim domestic trip expenses",
+        "Help me file a domestic trip reimbursement",
+        "I need to file expenses after my trip",
+        "Claim the fare for last week's Hsinchu trip",
+      ],
+    },
+  },
   datePicker: {
     selectDate: "Select date",
     today: "Today",

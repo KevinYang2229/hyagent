@@ -493,7 +493,13 @@ export default function App() {
   }
   // 開場引導用的範例提示：取目前選取表單的範例語句（純動態，依辦理項目而定）；對話開始後就不再顯示
   const selectedForm = forms.find((f) => f.formId === selectedFormId);
-  const quickPrompts = selectedForm?.examples ?? [];
+  // 範例提示：內建表單依語系取 i18n（forms.<id>.examples），查不到（自訂表單）回退 server 範例
+  const quickPrompts = selectedForm
+    ? (t(`forms.${selectedForm.formId}.examples`, {
+        returnObjects: true,
+        defaultValue: selectedForm.examples ?? [],
+      }) as string[])
+    : [];
   // 知識庫推薦用詞：僅在知識庫服務啟用時顯示（i18n 陣列）
   const kbPromptsRaw = t('app.knowledgePrompts', { returnObjects: true });
   const knowledgePrompts = knowledgeEnabled && Array.isArray(kbPromptsRaw) ? (kbPromptsRaw as string[]) : [];
@@ -739,10 +745,10 @@ export default function App() {
                         type="button"
                         className={`quick-chip${selectedFormId === f.formId ? ' active' : ''}`}
                         onClick={() => setSelectedFormId(f.formId)}
-                        title={f.description}
+                        title={t(`forms.${f.formId}.description`, { defaultValue: f.description })}
                         aria-pressed={selectedFormId === f.formId}
                       >
-                        {f.title}
+                        {t(`forms.${f.formId}.title`, { defaultValue: f.title })}
                       </button>
                     ))}
                   {/* 知識庫推薦用詞：只顯示一個，樣式與表單 chip 一致；點擊直接以該問句發問 */}
