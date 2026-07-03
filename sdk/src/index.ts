@@ -106,9 +106,9 @@ export interface OAAgentClient {
 
 export function createOAAgent(options: OAAgentOptions = {}): OAAgentClient {
   const apiBase = (options.apiBase ?? '').replace(/\/+$/, '');
-  const CONV = `${apiBase}/api/v1/conversations`;
-  const FORMS = `${apiBase}/api/v1/forms`;
-  const AUTH = `${apiBase}/api/v1/auth`;
+  const CONV = `${apiBase}/api/conversations`;
+  const FORMS = `${apiBase}/api/forms`;
+  const AUTH = `${apiBase}/api/auth`;
 
   let tokens: Tokens | null = null;
 

@@ -98,7 +98,7 @@ Zeabur 連上 GitHub repo 後，會 watch 指定分支；**每次 `git push` 到
 ### admin 服務
 | 變數 | 必填 | 說明 |
 |------|------|------|
-| `VITE_API_BASE` | ✅ | server 的對外網址，build 時 bake 進 bundle（admin 的 `api.ts` 走 `${VITE_API_BASE}/api/v1`）|
+| `VITE_API_BASE` | ✅ | server 的對外網址，build 時 bake 進 bundle（admin 的 `api.ts` 走 `${VITE_API_BASE}/api`）|
 | `VITE_WIDGET_ORIGIN` | 建議 | client（widget）的對外網址，build 時 bake 進 bundle，供「外觀」分頁預覽 iframe 使用。不設會 fallback `localhost:5173`，公開後台預覽會被瀏覽器封鎖（連到私有網段）|
 | `VITE_DEMO_SITE_URL` | 選填 | 「外觀」分頁「開啟示範網站」按鈕的外部網址，build 時 bake；不設用程式內建預設（presale demo 網址）|
 | `ZBPACK_DOCKERFILE_NAME` | 視情況 | 僅當服務「名稱」不是 `admin` 時才需要；值是後綴 `admin`（不是 `Dockerfile.admin`） |

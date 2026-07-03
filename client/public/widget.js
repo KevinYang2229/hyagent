@@ -45,6 +45,8 @@
   //   data-locale      介面語言，如 zh-Hant / en
   //   data-theme       外觀 light / dark
   //   data-position    浮動按鈕位置 right（預設）/ left
+  //   data-offset-x    距側邊距離（px，預設 20）
+  //   data-offset-y    距底部距離（px，預設 20；調高可避開頁面既有的 go-to-top 按鈕）
   //   data-user-token  SSO handoff：宿主簽發的終端使用者 token（免內部帳密登入）
   function attr(name) {
     var v = script.getAttribute(name);
@@ -57,6 +59,16 @@
   var explicitTheme = attr('data-theme');
   var explicitPosition = attr('data-position');
   var position = explicitPosition === 'left' ? 'left' : 'right';
+  // 啟動按鈕距邊距（px）：宿主 data-offset-x/y 優先，否則稍後採後端 appearance；預設 20。
+  // offsetY 調高可把按鈕往上抬，避開宿主頁既有的 go-to-top 等按鈕。
+  function clampOffset(v) {
+    var n = parseInt(v, 10);
+    return isNaN(n) ? 20 : Math.max(0, Math.min(200, n));
+  }
+  var explicitOffsetX = attr('data-offset-x');
+  var explicitOffsetY = attr('data-offset-y');
+  var offsetX = explicitOffsetX !== null ? clampOffset(explicitOffsetX) : 20;
+  var offsetY = explicitOffsetY !== null ? clampOffset(explicitOffsetY) : 20;
   // data-launcher="none"：不顯示預設浮動按鈕，由宿主自己的按鈕呼叫 OAAgent.open() 開啟
   var showLauncher = attr('data-launcher') !== 'none';
 
@@ -178,7 +190,7 @@
   // 向後端讀租戶後台外觀：AI 名稱（未設 data-title 時當按鈕文字）＋ 主色（套到啟動按鈕，與面板一致）。
   // 失敗（CORS / 離線 / 未設）則靜默維持預設，不影響啟動。
   if (cfg.key) {
-    fetch(apiBase + '/api/v1/widget/config?key=' + encodeURIComponent(cfg.key))
+    fetch(apiBase + '/api/widget/config?key=' + encodeURIComponent(cfg.key))
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (j) {
         var ap = j && j.data && j.data.appearance;
@@ -189,11 +201,14 @@
           btn.setAttribute('aria-label', title);
         }
         if (ap.primaryColor) applyPrimary(ap.primaryColor);
-        // 位置：宿主未用 data-position 覆寫時，採用後端 appearance.position（bl→左下、br→右下）
+        // 位置與邊距：宿主未用 data-* 覆寫時，採用後端 appearance（bl→左下、br→右下；offset px）
         // theme 不在此處理：面板內 SPA 會自行套用租戶 theme，且尊重使用者在 widget 內的手動切換偏好。
         if (!explicitPosition && ap.position) {
-          applyPosition(ap.position === 'bl' ? 'left' : 'right');
+          position = ap.position === 'bl' ? 'left' : 'right';
         }
+        if (explicitOffsetX === null && ap.offsetX != null) offsetX = clampOffset(ap.offsetX);
+        if (explicitOffsetY === null && ap.offsetY != null) offsetY = clampOffset(ap.offsetY);
+        applyPosition();
       })
       .catch(function () {});
   }
@@ -250,15 +265,20 @@
 
   btn.addEventListener('click', function () { setOpen(!open); });
 
-  // 啟動按鈕／面板定位：left 靠左下、right（預設）靠右下。
-  // 抽成函式以便後端 appearance.position（bl/br）非同步回來時動態套用。
+  // 啟動按鈕／面板定位：left 靠左下、right（預設）靠右下，並依 offsetX/offsetY 邊距擺放。
+  // 抽成函式以便後端 appearance（position/offset）非同步回來時動態重套；pos 省略時沿用目前 position。
   function applyPosition(pos) {
-    position = pos === 'left' ? 'left' : 'right';
+    if (pos) position = pos === 'left' ? 'left' : 'right';
     var left = position === 'left';
-    btn.style.left = left ? '20px' : 'auto';
-    btn.style.right = left ? 'auto' : '20px';
-    panel.style.left = left ? '20px' : 'auto';
-    panel.style.right = left ? 'auto' : '20px';
+    btn.style.left = left ? offsetX + 'px' : 'auto';
+    btn.style.right = left ? 'auto' : offsetX + 'px';
+    btn.style.bottom = offsetY + 'px';
+    // 面板：桌機依邊距定位（底部再往上讓開按鈕）；手機為全螢幕，由 applyMobile 處理、不套邊距
+    if (window.innerWidth > 480) {
+      panel.style.left = left ? offsetX + 'px' : 'auto';
+      panel.style.right = left ? 'auto' : offsetX + 'px';
+      panel.style.bottom = offsetY + 68 + 'px';
+    }
   }
   applyPosition(position);
 

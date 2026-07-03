@@ -68,7 +68,7 @@ export class UnauthorizedError extends Error {}
 
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
   const token = tokenStore.get();
-  const res = await fetch(`${API_ORIGIN}/api/v1${path}`, {
+  const res = await fetch(`${API_ORIGIN}/api${path}`, {
     method,
     headers: {
       'content-type': 'application/json',

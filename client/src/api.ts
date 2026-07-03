@@ -73,8 +73,8 @@ function apiKeyHeader(): Record<string, string> {
   return embedConfig.apiKey ? { 'x-api-key': embedConfig.apiKey } : {};
 }
 
-const BASE = `${API_ORIGIN}/api/v1/conversations`;
-const AUTH = `${API_ORIGIN}/api/v1/auth`;
+const BASE = `${API_ORIGIN}/api/conversations`;
+const AUTH = `${API_ORIGIN}/api/auth`;
 
 /** 帶 HTTP 狀態與後端錯誤碼的 API 錯誤，讓呼叫端能分辨 404 / 401 等情況 */
 export class ApiError extends Error {
@@ -234,7 +234,7 @@ export const api = {
 
   /** 列出可辦理的表單（供前端表單類型選單） */
   listForms(): Promise<FormSummary[]> {
-    return request<FormSummary[]>(`${API_ORIGIN}/api/v1/forms`);
+    return request<FormSummary[]>(`${API_ORIGIN}/api/forms`);
   },
 
   /** 在既有對話送一則訊息，跑一輪 */
@@ -282,12 +282,12 @@ export const api = {
 
   /** 取表單 Definition（schema-driven 渲染表單畫面） */
   getForm(formId: string): Promise<Definition> {
-    return request<Definition>(`${API_ORIGIN}/api/v1/forms/${formId}`);
+    return request<Definition>(`${API_ORIGIN}/api/forms/${formId}`);
   },
 
   /** 取各假別剩餘時數（畫面顯示「今年度剩餘 N 小時」） */
   getLeaveBalances(userId: string): Promise<LeaveBalance[]> {
-    return request<LeaveBalance[]>(`${API_ORIGIN}/api/v1/leave/balances`, {
+    return request<LeaveBalance[]>(`${API_ORIGIN}/api/leave/balances`, {
       headers: headers(userId),
     });
   },

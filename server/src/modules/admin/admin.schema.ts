@@ -15,6 +15,8 @@ export const appearanceSchema = z.object({
   primaryColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   theme: z.enum(['light', 'dark']).optional(),
   position: z.enum(['br', 'bl']).optional(),
+  offsetX: z.coerce.number().int().min(0).max(200).optional(),
+  offsetY: z.coerce.number().int().min(0).max(200).optional(),
   logoUrl: z.string().url().optional().or(z.literal('')),
   welcomeMessage: z.string().max(200).optional(),
   defaultLocale: z.string().max(20).optional(),

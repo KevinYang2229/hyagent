@@ -15,7 +15,7 @@
 - **API Key 中介層**：`x-api-key` / `Authorization: ApiKey` / `?key=pk_` → 解析租戶；未帶 key 落預設租戶。
   - `server/src/middlewares/resolve-tenant.ts`
 - **動態 CORS**：放行來源＝第一方設定 ∪ 任一租戶白名單；預設租戶為 `*` 時維持全放行。
-- **SSO handoff**：每租戶可設 `ssoSecret`，宿主簽發的使用者 token 經 `POST /api/v1/auth/sso/exchange` 換發本系統 token（嵌入免帳密登入）。
+- **SSO handoff**：每租戶可設 `ssoSecret`，宿主簽發的使用者 token 經 `POST /api/auth/sso/exchange` 換發本系統 token（嵌入免帳密登入）。
 - **每租戶 rate limit**：`server/src/middlewares/tenant-rate-limit.ts`。
 
 ### 2. 三種整合方式
@@ -26,7 +26,7 @@
   - `server/src/modules/webhook/`
 
 ### 3. 營運面（cross-cutting）
-- **管理 API**：`/api/v1/admin/*`，受 `x-admin-key` 保護，可建租戶 / 發金鑰 / 登記 webhook / 查用量。
+- **管理 API**：`/api/admin/*`，受 `x-admin-key` 保護，可建租戶 / 發金鑰 / 登記 webhook / 查用量。
   - `server/src/modules/admin/`、`server/src/middlewares/require-admin.ts`
 - **每租戶用量追蹤**：對話 / 訊息 / 送出計數（`server/src/modules/usage/`）。
 - **API 文件**：OpenAPI 規格於 `/api/openapi.json`，Swagger UI 於 `/api/docs`。
@@ -61,7 +61,7 @@ export ADMIN_API_KEY=$(openssl rand -hex 32)
 npm run dev:server
 
 # 2. 建立租戶（回傳一把公開金鑰 pk_…）
-curl -X POST http://localhost:3000/api/v1/admin/tenants \
+curl -X POST http://localhost:3000/api/admin/tenants \
   -H "x-admin-key: $ADMIN_API_KEY" -H 'content-type: application/json' \
   -d '{"name":"Acme","allowedOrigins":["https://acme.com"],"ssoSecret":"<選填>"}'
 
@@ -85,9 +85,9 @@ npm run dev:admin    # 後台 5174
 # 瀏覽器開 http://localhost:5174，以 ADMIN_PASSWORD 登入
 ```
 
-- **登入**：`POST /api/v1/admin/auth/login`（密碼比對 `ADMIN_PASSWORD`）換發 admin JWT；`require-admin` 同時接受 `x-admin-key` 或此 JWT（既有腳本不受影響）。
+- **登入**：`POST /api/admin/auth/login`（密碼比對 `ADMIN_PASSWORD`）換發 admin JWT；`require-admin` 同時接受 `x-admin-key` 或此 JWT（既有腳本不受影響）。
 - **分頁**：
-  - **外觀** — 主色 / 主題 / 按鈕位置 / logo / 歡迎語 / 預設語言，存於租戶，widget 載入時讀 `GET /api/v1/widget/config` 套用（`data-*` 參數仍優先）。
+  - **外觀** — 主色 / 主題 / 按鈕位置 / logo / 歡迎語 / 預設語言，存於租戶，widget 載入時讀 `GET /api/widget/config` 套用（`data-*` 參數仍優先）。
   - **設定** — 名稱、允許嵌入來源、SSO 密鑰、API Keys（產生 pk_/sk_）。
   - **Webhook** — 端點列表 / 新增 / 啟用停用 / 刪除。
   - **用量** — 對話 / 訊息 / 送出計數（唯讀）。

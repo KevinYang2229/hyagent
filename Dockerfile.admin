@@ -18,7 +18,7 @@ RUN npm ci --include=dev
 COPY . .
 
 # Vite 在 build 階段就把 VITE_* bake 進 JS bundle（不是 runtime 讀）。
-# admin 的 api.ts 走 `${VITE_API_BASE}/api/v1`；前後端分開部署時設為後端絕對網址。
+# admin 的 api.ts 走 `${VITE_API_BASE}/api`；前後端分開部署時設為後端絕對網址。
 # VITE_WIDGET_ORIGIN：外觀預覽 iframe 指向的 widget client 網址（不設會 fallback 到 localhost:5173，
 # 公開後台會因連到私有網段被瀏覽器封鎖）。設為 client 服務的對外 Domain。
 # Zeabur 會把 admin 服務的環境變數當成 build arg 傳進來。

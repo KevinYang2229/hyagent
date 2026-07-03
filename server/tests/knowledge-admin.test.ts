@@ -13,7 +13,7 @@ const auth = { 'x-admin-key': 'test-admin-key' };
 describe('admin knowledge API', () => {
   it('PUT source 後 GET 讀回', async () => {
     await request(app)
-      .put('/api/v1/admin/tenants/default/knowledge/source')
+      .put('/api/admin/tenants/default/knowledge/source')
       .set(auth)
       .send({
         startUrl: 'https://x.com',
@@ -24,21 +24,21 @@ describe('admin knowledge API', () => {
       })
       .expect(200);
 
-    const res = await request(app).get('/api/v1/admin/tenants/default/knowledge').set(auth).expect(200);
+    const res = await request(app).get('/api/admin/tenants/default/knowledge').set(auth).expect(200);
     expect(res.body.data.source.startUrl).toBe('https://x.com');
     expect(res.body.data.meta.status).toBeDefined();
   });
 
   it('缺 startUrl 觸發 ingest → 422', async () => {
     await request(app)
-      .post('/api/v1/admin/tenants/no-src-tenant-xyz/knowledge/ingest')
+      .post('/api/admin/tenants/no-src-tenant-xyz/knowledge/ingest')
       .set(auth)
       .send({})
       .expect(422);
   });
 
   it('未帶 admin key → 401/403', async () => {
-    const res = await request(app).get('/api/v1/admin/tenants/default/knowledge');
+    const res = await request(app).get('/api/admin/tenants/default/knowledge');
     expect([401, 403]).toContain(res.status);
   });
 
@@ -53,7 +53,7 @@ describe('admin knowledge API', () => {
       fakeRun as never,
     );
     const res = await request(app)
-      .get(`/api/v1/admin/tenants/job-route-tenant/knowledge/jobs/${job.id}`)
+      .get(`/api/admin/tenants/job-route-tenant/knowledge/jobs/${job.id}`)
       .set(auth)
       .expect(200);
     expect(res.body.data.id).toBe(job.id);

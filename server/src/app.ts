@@ -65,25 +65,34 @@ export function createApp(): Express {
     });
   });
 
+  // 向後相容：舊版路徑帶 /v1 前綴（/api/v1/*）內部改寫為 /api/*。
+  // 用改寫而非 HTTP 轉址，同一次請求即處理完成，保留 method / body / headers。
+  // 掛在根路徑手動改寫 req.url（避免 app.use('/api/v1') 於 next() 還原前綴）。
+  // 待確認外部串接皆已改用無 /v1 的路徑後可移除。
+  app.use((req, _res, next) => {
+    req.url = req.url.replace(/^\/api\/v1(\/|\?|$)/, '/api$1');
+    next();
+  });
+
   // API 文件（互動式）：OpenAPI 規格 + Swagger UI
   app.get('/api/openapi.json', (_req, res) => res.status(200).json(openapiSpec));
   app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(openapiSpec as object));
 
   // 公開：登入 / 換發 token
-  app.use('/api/v1/auth', authRouter);
+  app.use('/api/auth', authRouter);
 
   // 受保護：需帶有效 access token 才能操作
   // resolveTenant 先解析 API Key → 租戶（未帶 key 落到預設租戶，向後相容），
   // tenantRateLimit 依租戶限流，再 requireAuth 驗證使用者身分
-  app.use('/api/v1/conversations', resolveTenant, tenantRateLimit, requireAuth, conversationRouter);
-  app.use('/api/v1/forms', resolveTenant, tenantRateLimit, requireAuth, formRouter);
-  app.use('/api/v1/leave', requireAuth, leaveRouter);
+  app.use('/api/conversations', resolveTenant, tenantRateLimit, requireAuth, conversationRouter);
+  app.use('/api/forms', resolveTenant, tenantRateLimit, requireAuth, formRouter);
+  app.use('/api/leave', requireAuth, leaveRouter);
 
   // 公開 widget 設定：resolveTenant 以 ?key=pk_ 解租戶，無 requireAuth（widget 載入即可讀外觀）
-  app.use('/api/v1/widget', resolveTenant, widgetRouter);
+  app.use('/api/widget', resolveTenant, widgetRouter);
 
   // 管理 API：建立租戶 / 金鑰 / webhook、查用量（自帶 requireAdmin，x-admin-key 保護）
-  app.use('/api/v1/admin', adminRouter);
+  app.use('/api/admin', adminRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

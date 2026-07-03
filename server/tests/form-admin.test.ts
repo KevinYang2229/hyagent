@@ -42,7 +42,7 @@ function validDef(formId = FORM_ID): Definition {
 }
 
 afterAll(async () => {
-  await request(app).delete(`/api/v1/admin/tenants/${TENANT}/forms/${FORM_ID}`).set('x-admin-key', KEY);
+  await request(app).delete(`/api/admin/tenants/${TENANT}/forms/${FORM_ID}`).set('x-admin-key', KEY);
 });
 
 describe('validateDefinition（單元）', () => {
@@ -62,12 +62,12 @@ describe('validateDefinition（單元）', () => {
 
 describe('Form Designer 管理 API', () => {
   it('未帶 admin key → 401（拒絕存取）', async () => {
-    await request(app).get(`/api/v1/admin/tenants/${TENANT}/forms`).expect(401);
+    await request(app).get(`/api/admin/tenants/${TENANT}/forms`).expect(401);
   });
 
   it('POST 建立合法表單 → 201', async () => {
     const res = await request(app)
-      .post(`/api/v1/admin/tenants/${TENANT}/forms`)
+      .post(`/api/admin/tenants/${TENANT}/forms`)
       .set('x-admin-key', KEY)
       .send(validDef());
     expect(res.status).toBe(201);
@@ -76,7 +76,7 @@ describe('Form Designer 管理 API', () => {
 
   it('GET 清單含新表單，source=tenant', async () => {
     const res = await request(app)
-      .get(`/api/v1/admin/tenants/${TENANT}/forms`)
+      .get(`/api/admin/tenants/${TENANT}/forms`)
       .set('x-admin-key', KEY);
     const item = res.body.data.find((d: { formId: string }) => d.formId === FORM_ID);
     expect(item).toBeTruthy();
@@ -85,7 +85,7 @@ describe('Form Designer 管理 API', () => {
 
   it('GET 單一回完整 Definition', async () => {
     const res = await request(app)
-      .get(`/api/v1/admin/tenants/${TENANT}/forms/${FORM_ID}`)
+      .get(`/api/admin/tenants/${TENANT}/forms/${FORM_ID}`)
       .set('x-admin-key', KEY);
     expect(res.status).toBe(200);
     expect(res.body.data.field.category.component).toBe('Select');
@@ -95,7 +95,7 @@ describe('Form Designer 管理 API', () => {
     const bad = validDef(`${FORM_ID}-bad`);
     bad.field.category.options = []; // Select 無 options
     const res = await request(app)
-      .post(`/api/v1/admin/tenants/${TENANT}/forms`)
+      .post(`/api/admin/tenants/${TENANT}/forms`)
       .set('x-admin-key', KEY)
       .send(bad);
     expect(res.status).toBe(422);
@@ -106,7 +106,7 @@ describe('Form Designer 管理 API', () => {
     const next = validDef();
     next.data.title = '更新後標題';
     const res = await request(app)
-      .put(`/api/v1/admin/tenants/${TENANT}/forms/${FORM_ID}`)
+      .put(`/api/admin/tenants/${TENANT}/forms/${FORM_ID}`)
       .set('x-admin-key', KEY)
       .send(next);
     expect(res.status).toBe(200);
@@ -115,7 +115,7 @@ describe('Form Designer 管理 API', () => {
 
   it('export 回多檔 JSON map', async () => {
     const res = await request(app)
-      .get(`/api/v1/admin/tenants/${TENANT}/forms/${FORM_ID}/export`)
+      .get(`/api/admin/tenants/${TENANT}/forms/${FORM_ID}/export`)
       .set('x-admin-key', KEY);
     expect(res.status).toBe(200);
     expect(res.body.data.files['data.schema.json']).toBeTruthy();
@@ -125,11 +125,11 @@ describe('Form Designer 管理 API', () => {
 
   it('DELETE 後查詢回退（無 base 同名則 404）', async () => {
     const del = await request(app)
-      .delete(`/api/v1/admin/tenants/${TENANT}/forms/${FORM_ID}`)
+      .delete(`/api/admin/tenants/${TENANT}/forms/${FORM_ID}`)
       .set('x-admin-key', KEY);
     expect(del.status).toBe(200);
     const res = await request(app)
-      .get(`/api/v1/admin/tenants/${TENANT}/forms/${FORM_ID}`)
+      .get(`/api/admin/tenants/${TENANT}/forms/${FORM_ID}`)
       .set('x-admin-key', KEY);
     expect(res.status).toBe(404);
   });

@@ -90,12 +90,12 @@ npm run typecheck
 
 | Method | Path                                      | 說明                                                        |
 | ------ | ----------------------------------------- | ----------------------------------------------------------- |
-| POST   | `/api/v1/conversations`                   | 建對話，可帶 `{ "message": "..." }` 起首輪                  |
-| POST   | `/api/v1/conversations/:id/messages`      | 送一則訊息，跑一輪                                          |
-| PATCH  | `/api/v1/conversations/:id/fields`        | 確認畫面手動編輯欄位（不經 LLM，走 form.engine 驗證後存回） |
-| GET    | `/api/v1/conversations/:id`               | 取狀態 + 已填值 + 送出結果                                  |
-| POST   | `/api/v1/conversations/:id/cancel`        | 取消                                                        |
-| GET    | `/api/v1/forms` / `/api/v1/forms/:formId` | 列出 / 取得表單 Definition                                  |
+| POST   | `/api/conversations`                   | 建對話，可帶 `{ "message": "..." }` 起首輪                  |
+| POST   | `/api/conversations/:id/messages`      | 送一則訊息，跑一輪                                          |
+| PATCH  | `/api/conversations/:id/fields`        | 確認畫面手動編輯欄位（不經 LLM，走 form.engine 驗證後存回） |
+| GET    | `/api/conversations/:id`               | 取狀態 + 已填值 + 送出結果                                  |
+| POST   | `/api/conversations/:id/cancel`        | 取消                                                        |
+| GET    | `/api/forms` / `/api/forms/:formId` | 列出 / 取得表單 Definition                                  |
 
 > MVP 未接 JWT，使用者身分用 `x-user-id` header（預設 `demo-user`）。
 
@@ -103,12 +103,12 @@ npm run typecheck
 
 ```bash
 # 建立並起首輪
-curl -s -X POST localhost:3000/api/v1/conversations \
+curl -s -X POST localhost:3000/api/conversations \
   -H 'content-type: application/json' -H 'x-user-id: kevin' \
   -d '{"message":"我下週一到週二要請特休，家裡有事"}'
 
 # 後續回答（用回傳的 id）
-curl -s -X POST localhost:3000/api/v1/conversations/<id>/messages \
+curl -s -X POST localhost:3000/api/conversations/<id>/messages \
   -H 'content-type: application/json' -H 'x-user-id: kevin' \
   -d '{"message":"確認"}'
 ```
@@ -159,7 +159,7 @@ schemas/<formId>/*.json         六層表單 Definition（前後端共用單一�
 
 差別只在最後一步：環境變數 `OA_CONNECTOR=stub` 換成 `http`、實作 `lib/oa/http.connector.ts`。**前端、schema、BFF 邏輯皆不動**，三層各自獨立部署。
 
-**共用 schema 不會把前後端綁死**：schema JSON 只住後端（[`form.loader.ts`](server/src/modules/form/form.loader.ts) 以 `fs` 讀 `schemas/`），前端執行時用 `GET /api/v1/forms/:formId` 取得 Definition，**bundle 內零張 schema**。前後端唯一共用的是 `@oa-agent/shared` 的 TypeScript 型別，屬 build 期便利、runtime 會被編譯掉。
+**共用 schema 不會把前後端綁死**：schema JSON 只住後端（[`form.loader.ts`](server/src/modules/form/form.loader.ts) 以 `fs` 讀 `schemas/`），前端執行時用 `GET /api/forms/:formId` 取得 Definition，**bundle 內零張 schema**。前後端唯一共用的是 `@oa-agent/shared` 的 TypeScript 型別，屬 build 期便利、runtime 會被編譯掉。
 
 **gateway 典型該管、目前尚未補的**（上線前處理）：認證（現用 `x-user-id` header，未接 JWT）、限流／配額（對話會按 token 計費）、session 持久化（現為記憶體，重啟即失）。
 

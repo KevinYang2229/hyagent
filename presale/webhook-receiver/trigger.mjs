@@ -47,7 +47,7 @@ async function main() {
     name: USER_NAME,
     secret: SSO_SECRET,
   });
-  const exRes = await fetch(`${OA}/api/v1/auth/sso/exchange`, {
+  const exRes = await fetch(`${OA}/api/auth/sso/exchange`, {
     method: "POST",
     headers: J(),
     body: JSON.stringify({ userToken }),
@@ -58,7 +58,7 @@ async function main() {
 
   // 2) 建對話（不帶 message → 不觸發 LLM）
   const conv = await (
-    await fetch(`${OA}/api/v1/conversations`, {
+    await fetch(`${OA}/api/conversations`, {
       method: "POST",
       headers: auth,
       body: JSON.stringify({ formId: "leave-request" }),
@@ -79,7 +79,7 @@ async function main() {
     deputy: "陳冠廷(HYW042)",
   };
   const upd = await (
-    await fetch(`${OA}/api/v1/conversations/${id}/fields`, {
+    await fetch(`${OA}/api/conversations/${id}/fields`, {
       method: "PATCH",
       headers: auth,
       body: JSON.stringify({ fields }),
@@ -93,7 +93,7 @@ async function main() {
 
   // 4) 送出 → 觸發 webhook
   const sub = await (
-    await fetch(`${OA}/api/v1/conversations/${id}/submit`, {
+    await fetch(`${OA}/api/conversations/${id}/submit`, {
       method: "POST",
       headers: auth,
     })

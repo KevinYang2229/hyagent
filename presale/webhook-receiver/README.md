@@ -48,7 +48,7 @@ res.writeHead(200).end('ok');
 ## 手動登記端點（方式 A 的 curl）
 
 ```bash
-curl -X POST http://localhost:3000/api/v1/admin/tenants/<TENANT_ID>/webhooks \
+curl -X POST http://localhost:3000/api/admin/tenants/<TENANT_ID>/webhooks \
   -H "x-admin-key: $ADMIN_API_KEY" -H 'content-type: application/json' \
   -d '{"url":"http://localhost:4300/webhook"}'
 # 回傳的 data.secret 就是 WEBHOOK_SECRET

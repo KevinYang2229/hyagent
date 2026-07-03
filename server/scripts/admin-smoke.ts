@@ -12,23 +12,23 @@ function check(name: string, cond: boolean): void {
 
 async function main() {
   // 1. 登入：錯誤密碼 401
-  const bad = await request(app).post('/api/v1/admin/auth/login').send({ password: 'wrong' });
+  const bad = await request(app).post('/api/admin/auth/login').send({ password: 'wrong' });
   check('錯誤密碼回 401', bad.status === 401);
 
   // 2. 登入：正確密碼回 token
-  const ok = await request(app).post('/api/v1/admin/auth/login').send({ password: 'test1234' });
+  const ok = await request(app).post('/api/admin/auth/login').send({ password: 'test1234' });
   check('正確密碼回 200', ok.status === 200);
   const token: string = ok.body?.data?.token ?? '';
   check('回傳 admin token', token.length > 0);
   const bearer = `Bearer ${token}`;
 
   // 3. 用 admin JWT 列租戶（驗證 require-admin 接受 JWT）
-  const list = await request(app).get('/api/v1/admin/tenants').set('authorization', bearer);
+  const list = await request(app).get('/api/admin/tenants').set('authorization', bearer);
   check('JWT 可列租戶', list.status === 200 && Array.isArray(list.body?.data));
 
   // 4. 建租戶
   const created = await request(app)
-    .post('/api/v1/admin/tenants')
+    .post('/api/admin/tenants')
     .set('authorization', bearer)
     .send({ name: 'SmokeCo', allowedOrigins: ['https://smoke.test'] });
   check('建租戶 201', created.status === 201);
@@ -37,26 +37,26 @@ async function main() {
 
   // 5. PATCH 外觀
   const patched = await request(app)
-    .patch(`/api/v1/admin/tenants/${tenantId}`)
+    .patch(`/api/admin/tenants/${tenantId}`)
     .set('authorization', bearer)
     .send({ appearance: { primaryColor: '#0057ff', theme: 'dark' } });
   check('PATCH 外觀 200', patched.status === 200);
   check('外觀已寫入', patched.body?.data?.appearance?.primaryColor === '#0057ff');
 
   // 6. 公開 widget config 讀回外觀（帶 pk）
-  const cfg = await request(app).get(`/api/v1/widget/config?key=${pk}`);
+  const cfg = await request(app).get(`/api/widget/config?key=${pk}`);
   check('widget config 200', cfg.status === 200);
   check('config 回 dark theme', cfg.body?.data?.appearance?.theme === 'dark');
 
   // 7. webhook 建立 + 停用
   const wh = await request(app)
-    .post(`/api/v1/admin/tenants/${tenantId}/webhooks`)
+    .post(`/api/admin/tenants/${tenantId}/webhooks`)
     .set('authorization', bearer)
     .send({ url: 'https://smoke.test/hook' });
   check('建 webhook 201', wh.status === 201);
   const whId: string = wh.body?.data?.id ?? '';
   const toggled = await request(app)
-    .patch(`/api/v1/admin/tenants/${tenantId}/webhooks/${whId}`)
+    .patch(`/api/admin/tenants/${tenantId}/webhooks/${whId}`)
     .set('authorization', bearer)
     .send({ disabled: true });
   check('停用 webhook 200', toggled.status === 200 && !!toggled.body?.data?.disabledAt);

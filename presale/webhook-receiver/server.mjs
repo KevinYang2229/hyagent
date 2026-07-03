@@ -47,7 +47,7 @@ async function autoRegister() {
     console.warn('⚠️ 未設 WEBHOOK_SECRET，也未設 ADMIN_API_KEY + TENANT_ID → 將「不驗章」接收（僅供觀察）');
     return;
   }
-  const base = `${OA_ORIGIN}/api/v1/admin/tenants/${tenantId}/webhooks`;
+  const base = `${OA_ORIGIN}/api/admin/tenants/${tenantId}/webhooks`;
   const adminHeaders = { 'content-type': 'application/json', 'x-admin-key': adminKey };
   try {
     // 冪等：先看有沒有指向本服務 URL 的既有端點 → 重用其 secret，並清掉多餘重複（避免重複投遞）

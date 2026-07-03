@@ -125,6 +125,32 @@ export default function AppearanceTab({
             </div>
 
             <div className="field">
+              <label className="field-label">距側邊（px）</label>
+              <input
+                className="input"
+                type="number"
+                min={0}
+                max={200}
+                value={form.offsetX ?? 20}
+                onChange={(e) => set('offsetX', e.target.value === '' ? undefined : Number(e.target.value))}
+              />
+              <span className="field-hint">啟動按鈕距左／右邊緣的距離，預設 20。</span>
+            </div>
+
+            <div className="field">
+              <label className="field-label">距底部（px）</label>
+              <input
+                className="input"
+                type="number"
+                min={0}
+                max={200}
+                value={form.offsetY ?? 20}
+                onChange={(e) => set('offsetY', e.target.value === '' ? undefined : Number(e.target.value))}
+              />
+              <span className="field-hint">距底部距離，預設 20；調高可避開頁面的 go-to-top 按鈕。</span>
+            </div>
+
+            <div className="field">
               <label className="field-label">預設語言</label>
               <select
                 className="select"

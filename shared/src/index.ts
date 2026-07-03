@@ -256,6 +256,10 @@ export interface TenantAppearance {
   theme?: 'light' | 'dark';
   /** 啟動按鈕位置：右下 / 左下 */
   position?: 'br' | 'bl';
+  /** 啟動按鈕距側邊（左或右，依 position）距離（px）；未設用 widget 內建預設 20 */
+  offsetX?: number;
+  /** 啟動按鈕距底部距離（px）；未設用 widget 內建預設 20。可調高避開頁面既有的 go-to-top 等按鈕 */
+  offsetY?: number;
   /** 自訂 logo 圖片 URL */
   logoUrl?: string;
   /** 對話開場歡迎語 */

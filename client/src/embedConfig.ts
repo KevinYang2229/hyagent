@@ -58,7 +58,7 @@ export interface WidgetConfig {
 export async function fetchAppearance(): Promise<WidgetConfig> {
   if (!embedConfig.apiKey) return { appearance: {}, knowledgeEnabled: true };
   try {
-    const url = `${API_ORIGIN}/api/v1/widget/config?key=${encodeURIComponent(embedConfig.apiKey)}`;
+    const url = `${API_ORIGIN}/api/widget/config?key=${encodeURIComponent(embedConfig.apiKey)}`;
     const res = await fetch(url);
     if (!res.ok) return { appearance: {}, knowledgeEnabled: true };
     const json = (await res.json()) as {
