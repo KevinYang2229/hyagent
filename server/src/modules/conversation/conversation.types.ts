@@ -14,6 +14,8 @@ export interface Session {
   status: SessionStatus;
   /** 目前「點黏」的服務 id（form）；未設時 router 視為 'form'（向後相容舊 session） */
   activeServiceId?: string;
+  /** 回覆語系（由前端 UI 語言決定，如 'en' / 'zh-TW'）；未設時 agent 預設繁中 */
+  locale?: string;
   /** 給 LLM 的逐字稿（含 tool_use / tool_result 區塊） */
   messages: LLMMessage[];
   submission?: SubmissionInfo;

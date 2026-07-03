@@ -4,10 +4,14 @@ export const startSchema = z.object({
   message: z.string().trim().min(1).optional(),
   /** 明確指定要辦理的表單；省略時由 server 依首句意圖路由 */
   formId: z.string().trim().min(1).optional(),
+  /** 前端 UI 語系（如 'en' / 'zh-Hant'）；決定 agent 回覆語言，省略時預設繁中 */
+  lang: z.string().trim().min(1).optional(),
 });
 
 export const messageSchema = z.object({
   message: z.string().trim().min(1),
+  /** 前端 UI 語系；每則訊息可帶，支援對話中途切換語言 */
+  lang: z.string().trim().min(1).optional(),
 });
 
 export const idParamSchema = z.object({

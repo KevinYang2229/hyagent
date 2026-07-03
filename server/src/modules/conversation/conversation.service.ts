@@ -4,6 +4,7 @@ import { computeStatus, setField, validateAll } from '@/modules/form/form.engine
 import { getDefinition } from '@/modules/form/form.registry';
 import type { FieldIssue } from '@/modules/form/form.types';
 import { getApplicant } from '@/modules/user/user.directory';
+import { normalizeLocale } from '@/lib/locale';
 import { usageStore } from '@/modules/usage/usage.store';
 import { webhookDispatcher } from '@/modules/webhook/webhook.dispatcher';
 import { AppError } from '@/utils/app-error';
@@ -31,12 +32,15 @@ export const conversationService = {
     userId: string,
     message?: string,
     formId?: string,
+    lang?: string,
   ): Promise<{ session: Session; turn?: TurnResult }> {
     // 表單選擇：明確指定優先，否則依首句意圖路由（皆驗證表單存在）
     const def = getDefinition(tenantId, formId ?? pickFormId(tenantId, message));
     const session = conversationStore.create(tenantId, userId, def.formId);
     // 開場即以 form 為點黏擁有者；後續每輪由 intent-router 決定是否讓知識問答旁路插入
     session.activeServiceId = 'form';
+    // 回覆語系：由前端 UI 語言決定（未帶時預設繁中）
+    session.locale = normalizeLocale(lang);
     usageStore.increment(tenantId, 'conversations');
     // 申請人／外出人＝目前登入者，建立 session 時即帶入（代人申請時使用者可再覆寫）
     if ('applicant' in def.data.properties) {
@@ -56,10 +60,13 @@ export const conversationService = {
     userId: string,
     id: string,
     message: string,
+    lang?: string,
   ): Promise<TurnResult> {
     const session = conversationStore.get(id, tenantId, userId);
     if (session.status === 'submitted') throw AppError.conflict('Conversation already submitted');
     if (session.status === 'cancelled') throw AppError.conflict('Conversation cancelled');
+    // 允許對話中途切換語言：每則訊息帶來的語系覆寫 session
+    if (lang) session.locale = normalizeLocale(lang);
     usageStore.increment(tenantId, 'messages');
     return runTurn(session, message);
   },

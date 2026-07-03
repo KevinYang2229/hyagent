@@ -17,8 +17,14 @@ export const conversationController = {
   async start(req: Request, res: Response): Promise<void> {
     const tenantId = resolveTenantId(req);
     const userId = resolveUserId(req);
-    const { message, formId } = req.body as StartInput;
-    const { session, turn } = await conversationService.start(tenantId, userId, message, formId);
+    const { message, formId, lang } = req.body as StartInput;
+    const { session, turn } = await conversationService.start(
+      tenantId,
+      userId,
+      message,
+      formId,
+      lang,
+    );
     res.status(201).json({
       data: {
         id: session.id,
@@ -34,12 +40,13 @@ export const conversationController = {
   async sendMessage(req: Request, res: Response): Promise<void> {
     const tenantId = resolveTenantId(req);
     const userId = resolveUserId(req);
-    const { message } = req.body as MessageInput;
+    const { message, lang } = req.body as MessageInput;
     const turn = await conversationService.sendMessage(
       tenantId,
       userId,
       String(req.params.id),
       message,
+      lang,
     );
     res.status(200).json({ data: turn });
   },

@@ -61,6 +61,7 @@ interface LoginData {
 }
 
 import { embedConfig } from './embedConfig';
+import i18n from './i18n';
 
 // API 來源網域：dev 留空 → 走相對路徑由 Vite proxy 代理；
 // production 設 VITE_API_BASE=https://<server-domain> 直接打後端（前後端分開部署）。
@@ -223,10 +224,11 @@ export const api = {
 
   /** 建立對話並起首輪；formId 省略時由 server 依首句意圖路由 */
   start(userId: string, message: string, formId?: string): Promise<TurnData> {
+    const lang = i18n.language;
     return request<TurnData>(BASE, {
       method: 'POST',
       headers: headers(userId),
-      body: JSON.stringify(formId ? { message, formId } : { message }),
+      body: JSON.stringify(formId ? { message, formId, lang } : { message, lang }),
     });
   },
 
@@ -240,7 +242,7 @@ export const api = {
     return request<TurnData>(`${BASE}/${convId}/messages`, {
       method: 'POST',
       headers: headers(userId),
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({ message, lang: i18n.language }),
     });
   },
 

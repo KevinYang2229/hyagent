@@ -7,6 +7,7 @@
  */
 import type { LLMProvider } from '@/lib/llm/types';
 import { logger } from '@/lib/logger';
+import { languageDirective } from '@/lib/locale';
 import { computeStatus, setField, validateAll } from '@/modules/form/form.engine';
 import { getDefinition, listDefinitions } from '@/modules/form/form.registry';
 import { buildTools } from '@/modules/form/form.tools';
@@ -51,7 +52,7 @@ function describeFields(def: Definition): string {
     .join('\n');
 }
 
-function buildSystemPrompt(tenantId: string, def: Definition): string {
+function buildSystemPrompt(tenantId: string, def: Definition, locale?: string): string {
   const today = new Date().toISOString().slice(0, 10);
   const hasLeaveType = 'leaveType' in def.data.properties;
   const hasDeputy = 'deputy' in def.data.properties;
@@ -63,16 +64,16 @@ function buildSystemPrompt(tenantId: string, def: Definition): string {
   // 表單呼叫不存在的工具（compute_leave_hours / get_leave_balances / find_deputy_candidates）。
   const steps: string[] = [
     '1. 從使用者訊息擷取可得欄位值，呼叫 fill_fields 一次填入。',
-    '2. 依工具回傳的 missing/invalid，用友善的繁中逐一詢問還缺的必填欄位。',
+    '2. 依工具回傳的 missing/invalid，用友善的語氣逐一詢問還缺的必填欄位。',
   ];
   if (hasHours) {
     steps.push(
-      '3. 必填齊全後，先呼叫 compute_leave_hours 取得本次請假時數，再用繁中摘要整張表單',
-      '   （假別用中文、列出日期時間、事由，並附上「本次請假時數：N 小時」），請使用者回覆「確認」或「送出」。',
+      '3. 必填齊全後，先呼叫 compute_leave_hours 取得本次請假時數，再摘要整張表單',
+      '   （列出假別、日期時間、事由，並附上「本次請假時數：N 小時」），請使用者回覆「確認」或「送出」。',
     );
   } else {
     steps.push(
-      '3. 必填齊全後，用繁中摘要整張表單（逐項列出已填欄位，可參考確認語句範本），請使用者回覆「確認」或「送出」。',
+      '3. 必填齊全後，摘要整張表單（逐項列出已填欄位，可參考確認語句範本），請使用者回覆「確認」或「送出」。',
     );
   }
   steps.push(
@@ -81,7 +82,7 @@ function buildSystemPrompt(tenantId: string, def: Definition): string {
   if (hasLeaveType) {
     steps.push(
       '5. 使用者詢問假別剩餘／可用時數（例如「特休還有幾小時」「所有假別剩多少」）時，',
-      '   呼叫 get_leave_balances 取得真實數字後再回答；以中文假別名稱呈現；',
+      '   呼叫 get_leave_balances 取得真實數字後再回答；以假別名稱呈現；',
       '   查無資料的假別請如實說明（例如「系統查無此假別額度」），切勿捏造時數。',
     );
   }
@@ -104,7 +105,7 @@ function buildSystemPrompt(tenantId: string, def: Definition): string {
   const assistantName = tenantStore.getTenant(tenantId)?.appearance?.assistantName?.trim();
 
   const lines = [
-    `你是公司 OA 系統的「${def.agent.description}」助理，全程使用繁體中文。`,
+    `你是公司 OA 系統的「${def.agent.description}」助理。${languageDirective(locale)}`,
     ...(assistantName ? [`你的名字是「${assistantName}」，使用者稱呼你時即指你。`] : []),
     `今天日期是 ${today}；請把相對日期（明天、下週一等）換算成 YYYY-MM-DD。`,
     '',
@@ -258,7 +259,7 @@ export const formAgentService: AgentService = {
     }
 
     const reply = await runToolLoop(llm, session, {
-      system: buildSystemPrompt(session.tenantId, def),
+      system: buildSystemPrompt(session.tenantId, def, session.locale),
       tools: buildTools(def),
       dispatchTool: (name, inputArgs) =>
         dispatchFormTool({ def, session, canSubmit }, name, inputArgs),

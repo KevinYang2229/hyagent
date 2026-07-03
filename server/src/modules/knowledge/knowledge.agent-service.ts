@@ -7,6 +7,7 @@
  */
 import type { LLMProvider } from '@/lib/llm/types';
 import { logger } from '@/lib/logger';
+import { normalizeLocale } from '@/lib/locale';
 import type {
   AgentService,
   AgentTurnResult,
@@ -39,21 +40,35 @@ const KB_KEYWORDS = [
   '介紹',
 ];
 
-const KB_ANSWER_SYSTEM = [
-  '你是公司知識庫問答助理，全程使用繁體中文。',
-  '規則：',
-  '- 只根據下方「參考資料」回答；資料未提到的部分，明說「資料中未提及」，切勿杜撰。',
-  '- 回答精簡、直接切中問題；必要時條列。',
-  '- 若有幫助，於句末以（來源：標題）標註引用。',
-].join('\n');
+// 依 session locale 產生知識庫作答的 system prompt（英文 UI → 英文作答）。
+function kbAnswerSystem(locale?: string): string {
+  if (normalizeLocale(locale) === 'en') {
+    return [
+      'You are the company knowledge-base assistant. Respond entirely in English.',
+      'Rules:',
+      '- Answer ONLY from the "Reference" material below; for anything not covered, say "Not mentioned in the materials." Never fabricate.',
+      '- Be concise and directly on point; use bullet points when helpful.',
+      '- When helpful, cite the source at the end as (Source: title).',
+    ].join('\n');
+  }
+  return [
+    '你是公司知識庫問答助理，全程使用繁體中文。',
+    '規則：',
+    '- 只根據下方「參考資料」回答；資料未提到的部分，明說「資料中未提及」，切勿杜撰。',
+    '- 回答精簡、直接切中問題；必要時條列。',
+    '- 若有幫助，於句末以（來源：標題）標註引用。',
+  ].join('\n');
+}
 
 function pickRetriever(tenantId: string): KnowledgeRetriever {
   return hasStaticIndex(tenantId) ? staticIndexRetriever : stubRetriever;
 }
 
 /** 片段找到但 LLM 失敗時的降級：直接列出片段（best-effort，不中斷對話） */
-function fallbackReply(chunks: KnowledgeChunk[]): string {
-  return ['依現有資料：', ...chunks.map((c) => `・${c.title}：${c.content}`)].join('\n');
+function fallbackReply(chunks: KnowledgeChunk[], locale?: string): string {
+  const prefix =
+    normalizeLocale(locale) === 'en' ? 'Based on available information:' : '依現有資料：';
+  return [prefix, ...chunks.map((c) => `・${c.title}：${c.content}`)].join('\n');
 }
 
 export const knowledgeAgentService: AgentService = {
@@ -83,7 +98,10 @@ export const knowledgeAgentService: AgentService = {
 
     let reply: string;
     if (chunks.length === 0) {
-      reply = '目前知識庫查無相關資料，建議換個問法或洽詢對應窗口。';
+      reply =
+        normalizeLocale(session.locale) === 'en'
+          ? 'No relevant information found in the knowledge base. Try rephrasing, or contact the relevant desk.'
+          : '目前知識庫查無相關資料，建議換個問法或洽詢對應窗口。';
     } else {
       // 只把 top-k 片段交給 LLM 綜合作答（附來源），整站內容不進 LLM
       const context = chunks
@@ -91,7 +109,7 @@ export const knowledgeAgentService: AgentService = {
         .join('\n\n');
       try {
         const result = await llm.createMessage({
-          system: KB_ANSWER_SYSTEM,
+          system: kbAnswerSystem(session.locale),
           messages: [
             {
               role: 'user',
@@ -103,10 +121,10 @@ export const knowledgeAgentService: AgentService = {
           cache: true,
           maxTokens: 512,
         });
-        reply = result.text || fallbackReply(chunks);
+        reply = result.text || fallbackReply(chunks, session.locale);
       } catch (err) {
         logger.warn({ err, sessionId: session.id }, 'knowledge synthesis failed');
-        reply = fallbackReply(chunks);
+        reply = fallbackReply(chunks, session.locale);
       }
     }
 
