@@ -62,7 +62,7 @@ export default function WebhookTab({ tenantId, onError }: { tenantId: string; on
         </div>
       </div>
 
-      <div className="card-body" style={{ borderBottom: '1px solid var(--border)' }}>
+      <div className="card-body" style={{ borderBottom: '1px solid var(--border-color)' }}>
         <div className="toolbar">
           <input
             className="input"
