@@ -268,6 +268,31 @@
   @apply scale-[1.01] border-solid;
 }
 
+/* 深色主題：虛線拖曳框對應深色（色盤與 FileUploader.css dark 一致） */
+.dark .btn-uploader,
+[data-theme="dark"] .btn-uploader {
+  @apply border-[#33507a] bg-[#142033];
+}
+
+.dark .btn-uploader i,
+[data-theme="dark"] .btn-uploader i {
+  @apply text-[#6ea6dd];
+}
+
+.dark .btn-uploader:hover,
+.dark .btn-uploader.is-dragging,
+[data-theme="dark"] .btn-uploader:hover,
+[data-theme="dark"] .btn-uploader.is-dragging {
+  @apply border-[#3b82c4] bg-[#182740];
+}
+
+.dark .btn-uploader:hover i,
+.dark .btn-uploader.is-dragging i,
+[data-theme="dark"] .btn-uploader:hover i,
+[data-theme="dark"] .btn-uploader.is-dragging i {
+  @apply text-[#7fb2e6];
+}
+
 .btn-nav {
   @apply flex h-8 w-8 cursor-pointer items-center justify-center rounded-[10px] border border-[var(--border-color)] bg-[var(--card-bg)] text-[var(--text-secondary)] transition-all duration-200;
 }
