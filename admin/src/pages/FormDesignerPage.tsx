@@ -13,7 +13,7 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core';
 import type { FieldComponent } from '@oa-agent/shared';
-import { SchemaFormPreview } from '@oa-agent/ui';
+import { Checkbox, SchemaFormPreview } from '@oa-agent/ui';
 import { api, UnauthorizedError } from '../api';
 import { useAuth } from '../auth';
 import AppLayout from '../components/AppLayout';
@@ -674,8 +674,7 @@ function Inspector({
         />
       </label>
       <label className="checkbox-row">
-        <input
-          type="checkbox"
+        <Checkbox
           checked={field.required}
           onChange={(e) => onPatch({ required: e.target.checked })}
         />

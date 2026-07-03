@@ -399,6 +399,12 @@ a {
   @apply mt-[22px] flex gap-[10px] border-t border-[var(--border-color)] pt-[18px];
 }
 
+/* ui Checkbox：admin 皆用於單行置中列，去掉元件預設的 mt-1.5
+   （雙類名提升優先序，確保覆蓋且不依賴 CSS 載入順序 / portal 位置） */
+.form-checkbox-wrap.form-checkbox-wrap {
+  @apply mt-0;
+}
+
 /* ---- 分頁（segmented） ---- */
 .tabs {
   @apply mb-[22px] inline-flex max-w-full flex-wrap gap-[3px] rounded-[12px] border border-[var(--border-color)] bg-[var(--bg-secondary)] p-1;
@@ -717,7 +723,7 @@ a {
 
 /* ---- 外觀分頁專屬：預覽 ---- */
 .appearance-grid {
-  @apply grid grid-cols-[1fr_380px] items-start gap-6;
+  @apply grid grid-cols-[1fr_444px] items-start gap-6;
 }
 @media (max-width: 920px) {
   .appearance-grid {
@@ -728,7 +734,7 @@ a {
   @apply sticky top-[88px];
 }
 .preview-frame {
-  @apply block h-[540px] w-full rounded-[var(--radius)] border border-[var(--border-color)] bg-[var(--bg-secondary)];
+  @apply mx-auto block h-[540px] w-[400px] rounded-[var(--radius)] border border-[var(--border-color)] bg-[var(--bg-secondary)];
 }
 
 /* 分頁 RWD：小螢幕改為可換行、平均填滿寬度，避免多個分頁溢出 */

@@ -1,7 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { api, type IngestJob, type KnowledgeMeta, type KnowledgeSource, type QueryHit } from '../../api';
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Checkbox } from "@oa-agent/ui";
+import {
+  api,
+  type IngestJob,
+  type KnowledgeMeta,
+  type KnowledgeSource,
+  type QueryHit,
+} from "../../api";
 
-const EMBEDDING_MODELS = ['text-embedding-3-large', 'text-embedding-3-small'];
+const EMBEDDING_MODELS = ["text-embedding-3-large", "text-embedding-3-small"];
 
 export default function KnowledgeTab({
   tenantId,
@@ -13,7 +20,7 @@ export default function KnowledgeTab({
   const [src, setSrc] = useState<KnowledgeSource | null>(null);
   const [meta, setMeta] = useState<KnowledgeMeta | null>(null);
   const [job, setJob] = useState<IngestJob | null>(null);
-  const [question, setQuestion] = useState('');
+  const [question, setQuestion] = useState("");
   const [hits, setHits] = useState<QueryHit[]>([]);
   const [saving, setSaving] = useState(false);
   const poll = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -36,7 +43,8 @@ export default function KnowledgeTab({
     };
   }, [load]);
 
-  const update = (patch: Partial<KnowledgeSource>) => setSrc((s) => (s ? { ...s, ...patch } : s));
+  const update = (patch: Partial<KnowledgeSource>) =>
+    setSrc((s) => (s ? { ...s, ...patch } : s));
 
   const save = async () => {
     if (!src) return;
@@ -57,7 +65,7 @@ export default function KnowledgeTab({
       try {
         const j = await api.getKnowledgeJob(tenantId, jobId);
         setJob(j);
-        if (j.status === 'done' || j.status === 'failed') {
+        if (j.status === "done" || j.status === "failed") {
           if (poll.current) clearInterval(poll.current);
           poll.current = null;
           load();
@@ -98,8 +106,14 @@ export default function KnowledgeTab({
     }
   };
 
-  if (!src || !meta) return <div className="card"><div className="card-body">載入中…</div></div>;
-  const running = !!job && ['queued', 'crawling', 'embedding'].includes(job.status);
+  if (!src || !meta)
+    return (
+      <div className="card">
+        <div className="card-body">載入中…</div>
+      </div>
+    );
+  const running =
+    !!job && ["queued", "crawling", "embedding"].includes(job.status);
 
   return (
     <div className="appearance-grid">
@@ -107,7 +121,9 @@ export default function KnowledgeTab({
         <div className="card-head">
           <div>
             <div className="card-title">知識來源</div>
-            <div className="card-desc">輸入網站與參數，解析後建立此租戶專屬的 RAG 索引。</div>
+            <div className="card-desc">
+              輸入網站與參數，解析後建立此租戶專屬的 RAG 索引。
+            </div>
           </div>
         </div>
         <div className="card-body">
@@ -134,8 +150,10 @@ export default function KnowledgeTab({
               <label className="field-label">路徑前綴（選填）</label>
               <input
                 className="input"
-                value={src.pathPrefix ?? ''}
-                onChange={(e) => update({ pathPrefix: e.target.value || undefined })}
+                value={src.pathPrefix ?? ""}
+                onChange={(e) =>
+                  update({ pathPrefix: e.target.value || undefined })
+                }
                 placeholder="/mp"
               />
             </div>
@@ -164,25 +182,38 @@ export default function KnowledgeTab({
             </div>
             <div className="field">
               <label className="field-label">LLM 重排</label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <input
-                  type="checkbox"
+              <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <Checkbox
                   checked={src.rerank}
                   onChange={(e) => update({ rerank: e.target.checked })}
                 />
-                <span className="field-hint">啟用兩階段檢索（精準度↑，每次查詢多一次便宜呼叫）</span>
+                <span className="field-hint">
+                  啟用兩階段檢索（精準度↑，每次查詢多一次呼叫）
+                </span>
               </label>
             </div>
           </div>
 
           <div className="form-actions">
-            <button className="btn btn-primary" onClick={save} disabled={saving || running}>
+            <button
+              className="btn btn-primary"
+              onClick={save}
+              disabled={saving || running}
+            >
               儲存設定
             </button>
-            <button className="btn btn-primary" onClick={ingest} disabled={running || !src.startUrl}>
+            <button
+              className="btn btn-primary"
+              onClick={ingest}
+              disabled={running || !src.startUrl}
+            >
               開始解析
             </button>
-            <button className="btn btn-danger" onClick={clear} disabled={running || meta.status === 'none'}>
+            <button
+              className="btn btn-danger"
+              onClick={clear}
+              disabled={running || meta.status === "none"}
+            >
               清除索引
             </button>
           </div>
@@ -195,23 +226,35 @@ export default function KnowledgeTab({
             <div className="card-title">索引狀態</div>
             <div className="card-desc">解析進度與目前索引摘要。</div>
           </div>
-          <span className={`badge ${meta.status === 'ready' ? 'badge-on' : 'badge-off'}`}>
-            {running ? '解析中' : meta.status === 'ready' ? '已就緒' : meta.status === 'failed' ? '失敗' : '尚未建立'}
+          <span
+            className={`badge ${meta.status === "ready" ? "badge-on" : "badge-off"}`}
+          >
+            {running
+              ? "解析中"
+              : meta.status === "ready"
+                ? "已就緒"
+                : meta.status === "failed"
+                  ? "失敗"
+                  : "尚未建立"}
           </span>
         </div>
         <div className="card-body">
           {running ? (
             <div className="row-sub">
-              階段：{job!.status}｜已爬 {job!.pagesCrawled} 頁｜已 embed {job!.embedded} / {job!.chunks}
+              階段：{job!.status}｜已爬 {job!.pagesCrawled} 頁｜已 embed{" "}
+              {job!.embedded} / {job!.chunks}
             </div>
-          ) : meta.status === 'ready' ? (
+          ) : meta.status === "ready" ? (
             <div className="row-sub">
-              {meta.chunkCount} 片段｜來源 {meta.source ?? '—'}｜{meta.generatedAt ?? ''}
+              {meta.chunkCount} 片段｜來源 {meta.source ?? "—"}｜
+              {meta.generatedAt ?? ""}
             </div>
-          ) : meta.status === 'failed' ? (
-            <div className="row-sub">失敗：{meta.error ?? '未知錯誤'}</div>
+          ) : meta.status === "failed" ? (
+            <div className="row-sub">失敗：{meta.error ?? "未知錯誤"}</div>
           ) : (
-            <div className="row-sub">尚未建立索引，設定來源後按「開始解析」。</div>
+            <div className="row-sub">
+              尚未建立索引，設定來源後按「開始解析」。
+            </div>
           )}
         </div>
       </div>
@@ -220,10 +263,15 @@ export default function KnowledgeTab({
         <div className="card-head">
           <div>
             <div className="card-title">測試查詢</div>
-            <div className="card-desc">輸入問題，檢視索引檢索到的片段（驗證用）。</div>
+            <div className="card-desc">
+              輸入問題，檢視索引檢索到的片段（驗證用）。
+            </div>
           </div>
         </div>
-        <div className="card-body" style={{ borderBottom: '1px solid var(--border)' }}>
+        <div
+          className="card-body"
+          style={{ borderBottom: "1px solid var(--border-color)" }}
+        >
           <div className="toolbar">
             <input
               className="input"
@@ -231,7 +279,11 @@ export default function KnowledgeTab({
               onChange={(e) => setQuestion(e.target.value)}
               placeholder="例：台北分公司電話"
             />
-            <button className="btn btn-primary" onClick={test} disabled={!question}>
+            <button
+              className="btn btn-primary"
+              onClick={test}
+              disabled={!question}
+            >
               查詢
             </button>
           </div>

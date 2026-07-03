@@ -4,6 +4,7 @@ import { api, UnauthorizedError, type Tenant } from '../api';
 import { useAuth } from '../auth';
 import AppLayout from '../components/AppLayout';
 import { IconChevron, IconInfo, IconPlus } from '../components/icons';
+import { Checkbox } from '@oa-agent/ui';
 
 export default function TenantsPage() {
   const { logout } = useAuth();
@@ -111,13 +112,7 @@ export default function TenantsPage() {
         <div className="card-head">
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             {deletable.length > 0 && (
-              <input
-                type="checkbox"
-                checked={allSelected}
-                onChange={toggleAll}
-                aria-label="全選"
-                title="全選"
-              />
+              <Checkbox checked={allSelected} onChange={toggleAll} aria-label="全選" title="全選" />
             )}
             <div>
               <div className="card-title">所有租戶</div>
@@ -132,7 +127,7 @@ export default function TenantsPage() {
         </div>
 
         {creating && (
-          <div className="card-body" style={{ borderBottom: '1px solid var(--border)' }}>
+          <div className="card-body" style={{ borderBottom: '1px solid var(--border-color)' }}>
             <div className="toolbar">
               <input
                 className="input"
@@ -163,10 +158,9 @@ export default function TenantsPage() {
               <div className="row-actions" onClick={(e) => e.stopPropagation()}>
                 {t.id === 'default' ? (
                   // 預設租戶不可刪，但保留 checkbox 佔位讓名稱與其他列對齊
-                  <input type="checkbox" disabled aria-hidden tabIndex={-1} style={{ visibility: 'hidden' }} />
+                  <Checkbox disabled aria-hidden tabIndex={-1} style={{ visibility: 'hidden' }} />
                 ) : (
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={selected.has(t.id)}
                     onChange={() => toggle(t.id)}
                     aria-label={`選取 ${t.name}`}

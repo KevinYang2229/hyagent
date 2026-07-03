@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Checkbox } from '@oa-agent/ui';
 import { api, type TenantServiceCatalog } from '../../api';
 
 export default function ServicesTab({
@@ -74,12 +75,7 @@ export default function ServicesTab({
             <div className="row-main" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <label style={{ cursor: 'pointer' }}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <input
-                    type="checkbox"
-                    checked={s.enabled}
-                    onChange={() => toggleService(s.id)}
-                    style={{ width: 16, height: 16 }}
-                  />
+                  <Checkbox checked={s.enabled} onChange={() => toggleService(s.id)} />
                   <span style={{ fontWeight: 500 }}>{s.label}</span>
                 </span>
                 <span className="row-sub" style={{ display: 'block', marginLeft: 24 }}>
@@ -107,8 +103,7 @@ export default function ServicesTab({
                     key={f.formId}
                     style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}
                   >
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       checked={f.enabled}
                       disabled={!formEnabled}
                       onChange={() => toggleForm(f.formId)}
@@ -127,7 +122,7 @@ export default function ServicesTab({
         ))}
       </ul>
 
-      <div className="card-body" style={{ borderTop: '1px solid var(--border)' }}>
+      <div className="card-body" style={{ borderTop: '1px solid var(--border-color)' }}>
         {noService && (
           <div className="row-sub" style={{ marginBottom: 12 }}>
             ⚠️ 已停用全部服務，此租戶對話將無可用功能。
