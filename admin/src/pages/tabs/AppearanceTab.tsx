@@ -50,7 +50,7 @@ export default function AppearanceTab({
 
   // 即時預覽：嵌入 widget client（5173）。iframe URL 固定不變（避免每次編輯重載閃爍），
   // 改用 postMessage 把目前外觀即時推進去，預覽免重載即時反映。
-  const previewSrc = `${PREVIEW_ORIGIN}/?embed=1`;
+  const previewSrc = `${PREVIEW_ORIGIN}/?embed=1&preview=1`;
   const previewRef = useRef<HTMLIFrameElement>(null);
 
   const pushPreview = useCallback(() => {

@@ -25,6 +25,11 @@ export const embedConfig = {
   /** 是否為嵌入模式（widget iframe 載入） */
   embed: params.get('embed') === '1',
   /**
+   * 純外觀預覽模式（後台 AppearanceTab 的即時預覽以 ?preview=1 載入）。
+   * 跳過登入頁、以合成使用者渲染聊天面板外殼，且不呼叫任何後端（避免 401 被踢回登入）。
+   */
+  preview: params.get('preview') === '1',
+  /**
    * 租戶公開金鑰（pk_…）；帶上後所有 API 請求附 x-api-key 供後端解析租戶。
    * 來源優先序：URL ?key=（widget 嵌入）> VITE_TENANT_KEY（部署預設）> 無（落到預設租戶）。
    */

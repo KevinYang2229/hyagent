@@ -80,6 +80,8 @@ function applyPrimaryColor(hex?: string): void {
 
 // 嵌入模式：以 ?embed=1 載入（widget iframe 用），隱藏整頁頁首讓畫面像純聊天 widget。
 const EMBED = embedConfig.embed;
+// 純外觀預覽：後台 AppearanceTab 以 ?preview=1 載入 iframe，跳過登入、只渲染面板外殼且不打後端。
+const PREVIEW = embedConfig.preview;
 
 // 逐字浮現：Agent 回覆抵達後一字一字顯示，營造「正在回覆」的動態感。
 // 元件以 message id 為 key，狀態隨實例保留 → 既有訊息不會在重繪（如切主題）時重播。
@@ -243,6 +245,16 @@ export default function App() {
     });
     // 嵌入時若帶 data-locale，套用介面語言
     if (embedConfig.locale) changeLanguage(embedConfig.locale, false);
+    // 純外觀預覽：不做任何登入/後端請求，直接以合成使用者渲染面板外殼（外觀由父視窗 postMessage 推入）。
+    if (PREVIEW) {
+      setAuthUser({
+        id: 'preview',
+        name: t('app.previewUserName', { defaultValue: 'Preview' }),
+        department: '',
+      });
+      setAuthReady(true);
+      return;
+    }
     void (async () => {
       try {
         // 嵌入 SSO handoff：帶 userToken 且尚未登入 → 以宿主 token 換發本系統 token（免帳密登入）
@@ -271,7 +283,7 @@ export default function App() {
 
   // AI 連線狀態：登入後探測 /healthz（server 起得來＝LLM key 已通過驗證），並每 30s 重探一次
   useEffect(() => {
-    if (!authUser) return;
+    if (!authUser || PREVIEW) return;
     let alive = true;
     const ping = async () => {
       const ok = await api.health();
@@ -287,7 +299,7 @@ export default function App() {
 
   // 可辦理的表單清單：登入後載入，供表單類型選單；預設選第一個（請假）
   useEffect(() => {
-    if (!authUser) return;
+    if (!authUser || PREVIEW) return;
     let alive = true;
     api
       .listForms()
@@ -304,7 +316,7 @@ export default function App() {
 
   // 假別剩餘時數：登入後依使用者載入，供表單顯示「今年度剩餘 N 小時」
   useEffect(() => {
-    if (!authUser) return;
+    if (!authUser || PREVIEW) return;
     let alive = true;
     api
       .getLeaveBalances(authUser.id)
@@ -390,6 +402,11 @@ export default function App() {
 
   async function send(message: string) {
     if (busy) return;
+    // 純外觀預覽：不連後端，回一則本地示範回覆即可（避免 401 被踢回登入）。
+    if (PREVIEW) {
+      pushMsg('agent', greetingText);
+      return;
+    }
     setBusy(true);
     try {
       // 一個 session 一張表單：上一張已送出／取消後，下一則訊息自動開新對話（而非送進已結束的 session）
