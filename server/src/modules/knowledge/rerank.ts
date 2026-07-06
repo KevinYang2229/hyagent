@@ -7,6 +7,7 @@
 import { env } from '@/config/env';
 import { getLLMProvider } from '@/lib/llm';
 import { logger } from '@/lib/logger';
+import { usageStore } from '@/modules/usage/usage.store';
 import type { KnowledgeChunk } from './retriever.types';
 
 const SNIPPET_CHARS = 160;
@@ -22,6 +23,7 @@ const RERANK_SYSTEM = [
  * 候選數不多於 topK 時直接回傳（無需重排、省一次呼叫）。
  */
 export async function rerankChunks(
+  tenantId: string,
   query: string,
   chunks: KnowledgeChunk[],
   topK: number,
@@ -38,6 +40,7 @@ export async function rerankChunks(
       model: env.LLM_ROUTER_MODEL,
       maxTokens: 128,
     });
+    usageStore.recordLLMUsage(tenantId, result.usage);
     const match = result.text.match(/\[[\s\S]*?\]/);
     if (!match) return chunks.slice(0, topK);
     const order = JSON.parse(match[0]) as unknown[];

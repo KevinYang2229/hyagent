@@ -14,6 +14,7 @@ import type {
   IntentDescriptor,
 } from '@/modules/conversation/agent-service.types';
 import type { Session } from '@/modules/conversation/conversation.types';
+import { usageStore } from '@/modules/usage/usage.store';
 import { rerankChunks } from './rerank';
 import { hasStaticIndex, staticIndexRetriever } from './retriever.staticIndex';
 import { stubRetriever } from './retriever.stub';
@@ -94,7 +95,7 @@ export const knowledgeAgentService: AgentService = {
   ): Promise<AgentTurnResult> {
     // 兩階段檢索：向量取候選池 → LLM（Haiku）重排出最相關前 K 筆
     const pool = await pickRetriever(session.tenantId).search(session.tenantId, userText);
-    const chunks = await rerankChunks(userText, pool, FINAL_K);
+    const chunks = await rerankChunks(session.tenantId, userText, pool, FINAL_K);
 
     let reply: string;
     if (chunks.length === 0) {
@@ -121,6 +122,7 @@ export const knowledgeAgentService: AgentService = {
           cache: true,
           maxTokens: 512,
         });
+        usageStore.recordLLMUsage(session.tenantId, result.usage);
         reply = result.text || fallbackReply(chunks, session.locale);
       } catch (err) {
         logger.warn({ err, sessionId: session.id }, 'knowledge synthesis failed');

@@ -5,6 +5,7 @@
  * AgentService 重用（目前為 FormAgentService）。行為與抽取前一致（含 MAX_ITERATIONS）。
  */
 import type { LLMContentBlock, LLMProvider, LLMTool } from '@/lib/llm/types';
+import { usageStore } from '@/modules/usage/usage.store';
 import { AppError } from '@/utils/app-error';
 import type { Session } from './conversation.types';
 
@@ -35,6 +36,7 @@ export async function runToolLoop(
       const message = err instanceof Error ? err.message : 'LLM request failed';
       throw new AppError(502, 'LLM_ERROR', `LLM 呼叫失敗：${message}`);
     }
+    usageStore.recordLLMUsage(session.tenantId, result.usage);
 
     // 重建 assistant 訊息（text + tool_use），維持對話結構合法
     const assistantContent: LLMContentBlock[] = [];

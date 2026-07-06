@@ -8,6 +8,7 @@ import { getLLMProvider } from '@/lib/llm';
 import type { LLMProvider } from '@/lib/llm/types';
 import { logger } from '@/lib/logger';
 import { normalizeLocale } from '@/lib/locale';
+import { usageStore } from '@/modules/usage/usage.store';
 import { conversationStore } from './conversation.store';
 import type { Session, TurnResult } from './conversation.types';
 import { intentRouter } from './intent-router';
@@ -73,6 +74,7 @@ async function generateSuggestions(
       messages: [{ role: 'user', content: [{ type: 'text', text: userMsg }] }],
       maxTokens: 256,
     });
+    usageStore.recordLLMUsage(session.tenantId, result.usage);
     return parseSuggestions(result.text);
   } catch (err) {
     logger.warn({ err, sessionId: session.id }, 'generate suggestions failed');

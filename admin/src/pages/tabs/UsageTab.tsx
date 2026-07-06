@@ -29,6 +29,7 @@ export default function UsageTab({ tenantId, onError }: { tenantId: string; onEr
     { label: '對話數', value: usage.conversations ?? 0 },
     { label: '訊息數', value: usage.messages ?? 0 },
     { label: '送出數', value: usage.submissions ?? 0 },
+    { label: 'Token 數', value: usage.llmTokens ?? 0 },
   ];
 
   return (

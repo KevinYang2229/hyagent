@@ -9,6 +9,7 @@
 import { env } from '@/config/env';
 import { getLLMProvider } from '@/lib/llm';
 import { logger } from '@/lib/logger';
+import { usageStore } from '@/modules/usage/usage.store';
 import type { RouteResult } from './agent-service.types';
 import type { Session } from './conversation.types';
 import { isSubmitConfirmation, listEnabledForms } from './form.agent-service';
@@ -85,6 +86,7 @@ async function classify(session: Session, text: string): Promise<string | null> 
       model: env.LLM_ROUTER_MODEL,
       maxTokens: 64,
     });
+    usageStore.recordLLMUsage(session.tenantId, result.usage);
     const match = result.text.match(/\{[\s\S]*\}/);
     if (!match) return null;
     const parsed = JSON.parse(match[0]) as { intent?: string; confidence?: number };

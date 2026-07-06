@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { logger } from '@/lib/logger';
+import type { LLMUsage } from '@/lib/llm/types';
 
 const STORE_FILE = path.join(os.tmpdir(), 'oa-agent-usage.json');
 
@@ -49,6 +50,14 @@ export const usageStore = {
     current[metric] += by;
     usage.set(tenantId, current);
     persist();
+  },
+
+  recordLLMUsage(tenantId: string, llmUsage?: LLMUsage): void {
+    if (!llmUsage) return;
+    const total =
+      llmUsage.inputTokens + llmUsage.outputTokens + (llmUsage.cacheReadTokens ?? 0);
+    if (total <= 0) return;
+    this.increment(tenantId, 'llmTokens', total);
   },
 
   get(tenantId: string): TenantUsage {

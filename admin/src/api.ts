@@ -61,6 +61,7 @@ export interface Usage {
   conversations: number;
   messages: number;
   submissions: number;
+  llmTokens: number;
 }
 
 /** 401 時拋出，UI 攔截導回登入 */
