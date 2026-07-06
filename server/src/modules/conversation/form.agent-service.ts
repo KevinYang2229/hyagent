@@ -108,6 +108,7 @@ function buildSystemPrompt(tenantId: string, def: Definition, locale?: string): 
     `你是公司 OA 系統的「${def.agent.description}」助理。${languageDirective(locale)}`,
     ...(assistantName ? [`你的名字是「${assistantName}」，使用者稱呼你時即指你。`] : []),
     `今天日期是 ${today}；請把相對日期（明天、下週一等）換算成 YYYY-MM-DD。`,
+    '你只協助表單填寫與公司相關事項；若使用者問與公司/表單無關的一般問題（常識、算術、閒聊等），請禮貌婉拒並引導回表單或公司問題，切勿回答離題內容。',
     '',
     '本系統目前可申請的表單（使用者詢問「有哪些表單可以申請」時，請完整列出以下全部，',
     `勿只回答目前這張表單）：`,

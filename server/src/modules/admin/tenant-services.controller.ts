@@ -12,7 +12,9 @@ export const tenantServicesController = {
     const disabledF = new Set(t?.disabledForms ?? []);
     const services = serviceRegistry
       .all()
-      .map((s) => ({ id: s.id, label: s.label, enabled: !disabledS.has(s.id) }));
+      // alwaysEnabled 服務（如範圍守門 assistant）不受 disabledServices 影響，
+      // 回報值需反映執行期真相（enabledFor 亦強制開啟），避免 admin 顯示「已停用」的謊言。
+      .map((s) => ({ id: s.id, label: s.label, enabled: s.alwaysEnabled ? true : !disabledS.has(s.id) }));
     const forms = listDefinitions(id).map((d) => ({
       formId: d.formId,
       title: d.data.title ?? d.agent.description,
