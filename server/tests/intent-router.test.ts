@@ -83,7 +83,8 @@ describe('intentRouter.route', () => {
     });
     await intentRouter.route(makeSession(), '圓周率是多少？');
     const sys = mockCreate.mock.calls[0][0].system as string;
-    expect(sys).toContain('off-topic');
+    expect(sys).toContain('與公司/OA 無關');
+    expect(sys).toContain('與公司/OA 相關');
   });
 
   it('填表中離題（含疑問語氣觸發 hint）→ off-topic → 指派 assistant 守門', async () => {
@@ -106,6 +107,7 @@ describe('intentRouter.route', () => {
     });
     const r = await intentRouter.route(makeSession({ status: 'submitted' }), '幫我查一下天氣');
     expect(r.serviceId).toBe('assistant');
+    expect(r.viaLLM).toBe(true);
   });
 
   it('分類信心低於門檻 → 退回目前點黏服務（form）', async () => {
