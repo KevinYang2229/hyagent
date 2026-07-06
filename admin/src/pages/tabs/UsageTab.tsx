@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { api, type Usage } from '../../api';
-import TokenGauge from '../../components/TokenGauge';
+
+const TokenGauge = lazy(() => import('../../components/TokenGauge'));
 
 export default function UsageTab({ tenantId, onError }: { tenantId: string; onError: (e: unknown) => void }) {
   const [usage, setUsage] = useState<Usage | null>(null);
@@ -34,7 +35,9 @@ export default function UsageTab({ tenantId, onError }: { tenantId: string; onEr
 
   return (
     <div style={{ display: 'grid', gap: 16 }}>
-      <TokenGauge tokens={usage.llmTokens ?? 0} />
+      <Suspense fallback={<div className="card"><div className="empty">載入圖表…</div></div>}>
+        <TokenGauge tokens={usage.llmTokens ?? 0} />
+      </Suspense>
       <div className="stats">
         {items.map((it) => (
           <div key={it.label} className="stat">
