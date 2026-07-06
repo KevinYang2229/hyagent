@@ -24,3 +24,4 @@ prisma/migrations/dev.db*
 server/data/knowledge-index.*.json
 server/data/knowledge-eval.json
 server/data/knowledge-config.json
+.gstack/
