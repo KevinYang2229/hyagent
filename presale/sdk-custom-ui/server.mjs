@@ -75,6 +75,11 @@ const server = http.createServer((req, res) => {
     res.end(appJs);
     return;
   }
+  if (req.url === '/hy_logo.png') {
+    res.writeHead(200, { 'content-type': 'image/png' });
+    res.end(fs.readFileSync(path.join(DIR, 'hy_logo.png')));
+    return;
+  }
   if (req.url === '/styles.css') {
     res.writeHead(200, { 'content-type': 'text/css; charset=utf-8' });
     res.end(fs.readFileSync(path.join(DIR, 'styles.css'), 'utf-8'));

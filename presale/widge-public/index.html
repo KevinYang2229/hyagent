@@ -3,14 +3,15 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Acme Corp（widget 純前端嵌入示範 · 免後端）</title>
+    <title>Hyweb Corp（widget 純前端嵌入示範 · 免後端）</title>
+    <link rel="icon" type="image/png" href="/hy_logo.png" />
     <link rel="stylesheet" href="/styles.css" />
     <!--OA_CONFIG-->
   </head>
   <body>
     <!-- ── 網站 header（品牌 + 導覽；注意：這版沒有「已登入」狀態） ── -->
     <header class="site-header">
-      <div class="brand"><span class="logo">A</span> Acme Corp</div>
+      <div class="brand"><img class="logo" src="https://cdn.prod.website-files.com/56161a8e00652b7b5442360d/6113706240a4e03883b974df_logo.avif" alt="Hyweb" /></div>
       <nav class="links">
         <a href="#features">特色</a>
         <a href="#usage">使用方式</a>
@@ -85,7 +86,7 @@
           <li>
             在頁面任意位置貼上這一行就好：<br /><code
               >&lt;script src="https://你的網域/widget.js" data-key="pk_…"
-              data-title="Acme 小幫手"&gt;&lt;/script&gt;</code
+              data-title="Hyweb 小幫手"&gt;&lt;/script&gt;</code
             >
           </li>
         </ol>
@@ -105,7 +106,7 @@
 
            <script src="https://你的網域/widget.js"
                    data-key="pk_…"
-                   data-title="Acme 小幫手"></script>
+                   data-title="Hyweb 小幫手"></script>
 
          下面用 window.__OA__ 只是為了 demo 能讀本機 .env 的 OA_ORIGIN / TENANT_PK，
          省得你改檔；正式環境直接寫死那一行即可。
@@ -116,7 +117,7 @@
         var s = document.createElement("script");
         s.src = cfg.origin + "/widget.js";
         s.setAttribute("data-key", cfg.key);
-        s.setAttribute("data-title", "Acme 小幫手");
+        s.setAttribute("data-title", "Hyweb 小幫手");
         // 注意：刻意「不」設 data-user-token → 不做免登入，由使用者在 widget 內自行登入。
         // 不設 data-launcher → 顯示預設右下浮動按鈕。
         document.body.appendChild(s);

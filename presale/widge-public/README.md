@@ -49,7 +49,7 @@ open http://localhost:4001
 把這一行貼進你現有頁面就好，**不需要任何後端**：
 
 ```html
-<script src="https://你的網域/widget.js" data-key="pk_…" data-title="Acme 小幫手"></script>
+<script src="https://你的網域/widget.js" data-key="pk_…" data-title="Hyweb 小幫手"></script>
 ```
 
 > demo 裡用 `window.__OA__` 注入 origin/key 只是方便讀本機 .env、免改檔；
