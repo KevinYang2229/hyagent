@@ -31,6 +31,8 @@ export interface AgentService {
    * 旁路服務為 false（knowledge），回答後不奪走目前流程。
    */
   readonly sticky: boolean;
+  /** 永遠啟用：不受租戶 disabledServices 影響（範圍守門用，關掉會退回舊漏洞）。 */
+  readonly alwaysEnabled?: boolean;
   intents(session: Session): IntentDescriptor[];
   /** 處理一輪對話。使用者訊息已由上層 runTurn 推入 session.messages。 */
   handleTurn(session: Session, userText: string, llm: LLMProvider): Promise<AgentTurnResult>;

@@ -8,6 +8,7 @@ import { knowledgeAgentService } from '@/modules/knowledge/knowledge.agent-servi
 import { tenantStore } from '@/modules/tenant/tenant.store';
 import type { AgentService } from './agent-service.types';
 import { formAgentService } from './form.agent-service';
+import { assistantAgentService } from './assistant.agent-service';
 
 const registry = new Map<string, AgentService>();
 
@@ -17,6 +18,7 @@ function register(service: AgentService): void {
 
 register(formAgentService);
 register(knowledgeAgentService);
+register(assistantAgentService);
 
 export const serviceRegistry = {
   get(id: string): AgentService {
@@ -33,6 +35,6 @@ export const serviceRegistry = {
   /** 該租戶啟用中的服務（濾掉 disabledServices） */
   enabledFor(tenantId: string): AgentService[] {
     const disabled = new Set(tenantStore.getTenant(tenantId)?.disabledServices ?? []);
-    return [...registry.values()].filter((s) => !disabled.has(s.id));
+    return [...registry.values()].filter((s) => s.alwaysEnabled || !disabled.has(s.id));
   },
 };
