@@ -51,7 +51,7 @@ function staticReply(locale?: string): string {
 
 export const assistantAgentService: AgentService = {
   id: 'assistant',
-  label: '客套與範圍守門',
+  label: '對話護欄',
   sticky: false,
   alwaysEnabled: true,
 
