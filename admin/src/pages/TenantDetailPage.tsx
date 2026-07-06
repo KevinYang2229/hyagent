@@ -15,11 +15,11 @@ import ServicesTab from './tabs/ServicesTab';
 
 type TabKey = 'appearance' | 'forms' | 'knowledge' | 'services' | 'settings' | 'webhook' | 'usage';
 const TABS: { key: TabKey; label: string }[] = [
+  { key: 'settings', label: '設定' },
   { key: 'appearance', label: '外觀' },
+  { key: 'services', label: '服務' },
   { key: 'forms', label: '表單' },
   { key: 'knowledge', label: '知識庫' },
-  { key: 'services', label: '服務' },
-  { key: 'settings', label: '設定' },
   { key: 'webhook', label: 'Webhook' },
   { key: 'usage', label: '用量' },
 ];
@@ -30,7 +30,7 @@ export default function TenantDetailPage() {
   const navigate = useNavigate();
   const toast = useToast();
   const [tenant, setTenant] = useState<Tenant | null>(null);
-  const [tab, setTab] = useState<TabKey>('appearance');
+  const [tab, setTab] = useState<TabKey>('settings');
 
   const handleErr = useCallback(
     (e: unknown) => {
