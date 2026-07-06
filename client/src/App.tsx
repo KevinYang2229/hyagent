@@ -697,6 +697,9 @@ export default function App() {
                 <div key={m.id} className={`msg msg-${m.role}`}>
                   {/* 對象名稱：AI 視窗顯示 AI 名稱，使用者訊息顯示登入者名稱 */}
                   <span className="msg-name">
+                    {m.role === 'agent' && logoUrl && (
+                      <img src={logoUrl} alt="" className="msg-name-logo" />
+                    )}
                     {m.role === 'agent' ? aiName : authUser.name}
                   </span>
                   <div className={`bubble bubble-${m.role}`}>

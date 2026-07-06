@@ -3,18 +3,18 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Acme Corp（widget 嵌入示範）</title>
+    <title>Hyweb Corp（widget 嵌入示範）</title>
     <link rel="stylesheet" href="/styles.css" />
     <!--OA_CONFIG-->
   </head>
   <body>
     <!-- ── 網站 header（品牌 + 導覽 + 已登入狀態） ── -->
     <header class="site-header">
-      <div class="brand"><span class="logo">A</span> Acme Corp</div>
+      <div class="brand"><span class="logo">H</span> Hyweb Corp</div>
       <nav class="links">
         <a href="#features">特色</a>
         <a href="#usage">使用方式</a>
-        <a href="#">關於</a>
+        <a href="https://www.hyweb.com.tw/">關於</a>
       </nav>
       <span class="login-badge">● 已登入：測試員</span>
     </header>
@@ -113,7 +113,7 @@
             s.setAttribute("data-user-token", d.userToken);
             // 不設 data-title → 啟動按鈕沿用租戶後台設定的 AI 名稱（與面板內名稱一致）。
             // 若要在本宿主頁覆寫成自訂文字，再取消下一行註解：
-            // s.setAttribute("data-title", "Acme 小幫手");
+            // s.setAttribute("data-title", "Hyweb 小幫手");
             document.body.appendChild(s); // 不設 data-launcher → 顯示預設右下浮動按鈕
           });
       })();

@@ -31,7 +31,7 @@ node examples/tenant-backend/server.mjs
 open http://localhost:4000
 ```
 
-點右下角「Acme 小幫手」→ 應該**不會看到登入頁**，直接進對話（身分＝SSO 帶入的使用者）。
+點右下角「Hyweb 小幫手」→ 應該**不會看到登入頁**，直接進對話（身分＝SSO 帶入的使用者）。
 
 ## 設定（環境變數覆寫，預設對應本機 test 租戶）
 

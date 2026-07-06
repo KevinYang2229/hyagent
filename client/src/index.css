@@ -165,7 +165,11 @@
     @apply items-start;
   }
   .msg-name {
-    @apply px-1 text-xs font-semibold text-[var(--text-secondary)];
+    @apply inline-flex items-center gap-1.5 px-1 text-xs font-semibold text-[var(--text-secondary)];
+  }
+  /* 名稱左側的租戶 logo（僅 AI 訊息顯示，與標題列 logo 相同比例） */
+  .msg-name-logo {
+    @apply h-7 w-auto max-w-30 shrink-0 object-contain max-sm:h-6;
   }
   .msg-time {
     @apply px-1 text-[11px] tabular-nums text-[var(--text-secondary)];
