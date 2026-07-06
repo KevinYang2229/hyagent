@@ -51,7 +51,7 @@
 
 ## 色帶與主題
 
-- **弧帶三段**（位置性，佔比固定）：低 0–60% 綠、中 60–85% 琥珀、高 85–100% 紅。深/淺主題各一組調校過、色盲友善（藍綠系綠 + 橙琥珀 + 紅，避免純綠紅並置）的常數。
+- **弧帶三段**（位置性，佔比固定）：低 0–60% 綠、中 60–85% 琥珀、高 85–100% 紅。採 dataviz 已驗證的 status 調色盤（good `#0ca30c` / warning `#fab219` / critical `#d03b3b`），**固定不隨主題**（該調色盤在深淺兩面皆通過驗證）。
 - **錶盤外框／刻度文字／指針**：取自設計 token（`--text-primary`、`--text-secondary`、`--border-color`），透過 `getComputedStyle(document.documentElement)` 讀取具體色值餵給 Highcharts。
 - **中央讀數**：大字顯示 `formatTokens(tokens)`，副標「累計 Token」。
 - **主題切換即時反映**：`theme.ts` 新增 `useTheme()` hook，用 `MutationObserver` 監看 `<html>` 的 `data-theme` 屬性變動，回傳目前 `Theme`；TokenGauge 依它重算 options 並 redraw。不改 AppLayout（避免 prop drilling）。
