@@ -26,19 +26,19 @@ function mockRerank(text: string) {
 describe('rerankChunks', () => {
   it('只回傳 reranker 選中的片段，不把剔除片段補回', async () => {
     mockRerank('[0]'); // 3 候選、topK=2，但 reranker 只選 0
-    const out = await rerankChunks('q', chunks, 2);
+    const out = await rerankChunks('t1', 'q', chunks, 2);
     expect(out.map((c) => c.id)).toEqual(['0']); // 不補到 2 筆
   });
 
   it('reranker 判定全數不相關（回空陣列）→ 回空', async () => {
     mockRerank('[]');
-    const out = await rerankChunks('q', chunks, 2);
+    const out = await rerankChunks('t1', 'q', chunks, 2);
     expect(out).toEqual([]);
   });
 
   it('模型輸出無法解析（無陣列）→ 維持既有 fallback：回 top-k', async () => {
     mockRerank('抱歉我不確定');
-    const out = await rerankChunks('q', chunks, 2);
+    const out = await rerankChunks('t1', 'q', chunks, 2);
     expect(out.map((c) => c.id)).toEqual(['0', '1']);
   });
 });
