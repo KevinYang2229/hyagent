@@ -44,10 +44,9 @@ export async function rerankChunks(
     const picked = order
       .filter((n): n is number => typeof n === 'number' && n >= 0 && n < chunks.length)
       .map((n) => chunks[n]);
-    // 模型漏選的補在後面，確保不因重排丟失候選
-    const seen = new Set(picked);
-    const merged = [...picked, ...chunks.filter((c) => !seen.has(c))];
-    return merged.slice(0, topK);
+    // 尊重 reranker 取捨：判為不相關而省略的片段不補回（避免不相關內容硬進作答 LLM）。
+    // reranker 全數剔除 → 回空，交由上層顯示「查無相關資料」。
+    return picked.slice(0, topK);
   } catch (err) {
     logger.warn({ err }, 'knowledge rerank failed — 回退向量排序');
     return chunks.slice(0, topK);
