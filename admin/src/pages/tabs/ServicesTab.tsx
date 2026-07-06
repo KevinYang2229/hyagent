@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Checkbox } from '@oa-agent/ui';
+import { Checkbox, useToast } from '@oa-agent/ui';
 import { api, type TenantServiceCatalog } from '../../api';
 
 export default function ServicesTab({
@@ -9,6 +9,7 @@ export default function ServicesTab({
   tenantId: string;
   onError: (e: unknown) => void;
 }) {
+  const toast = useToast();
   const [cat, setCat] = useState<TenantServiceCatalog | null>(null);
   const [saving, setSaving] = useState(false);
   const [formsOpen, setFormsOpen] = useState(true);
@@ -43,6 +44,7 @@ export default function ServicesTab({
         disabledForms: cat.forms.filter((f) => !f.enabled).map((f) => f.formId),
       });
       await load();
+      toast.success('已儲存變更');
     } catch (e) {
       onError(e);
     } finally {

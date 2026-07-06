@@ -1,0 +1,193 @@
+/**
+ * Toast 通知樣式（純 CSS、不依賴 Tailwind / icon font，可獨立運作）。
+ * 固定右上角堆疊；配色沿用 Alert 的四種語意（success / info / warning / danger）。
+ */
+
+.toast-stack {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  width: 360px;
+  max-width: calc(100vw - 2rem);
+  /* 容器本身不擋點擊，個別 toast 再各自開啟 pointer-events */
+  pointer-events: none;
+}
+
+/* 外層：負責進/離場動畫與「堆疊高度」的絲滑收合（grid-rows 0fr↔1fr），
+   讓一則關閉時其餘 toast 平順地滑動遞補，而非瞬間跳位。 */
+.toast-item {
+  display: grid;
+  grid-template-rows: 1fr;
+  margin-bottom: 0.5rem;
+  animation: toast-in 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  will-change: transform, opacity, grid-template-rows;
+}
+
+.toast-item.is-leaving {
+  animation: toast-out 280ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.toast-item-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid #91d5ff;
+  border-left: 4px solid #1890ff;
+  background: #e6f7ff;
+  color: #0d47a1;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.28);
+}
+
+.toast-icon {
+  flex-shrink: 0;
+  margin-top: 1px;
+  display: inline-flex;
+}
+
+.toast-icon svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+.toast-msg {
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.toast-close {
+  flex-shrink: 0;
+  margin-left: 0.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  opacity: 0.6;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: opacity 150ms ease;
+}
+
+.toast-close:hover {
+  opacity: 1;
+}
+
+.toast-close svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+
+/* ---- 語意變體（淺色）---- */
+.toast-success {
+  background: #f6ffed;
+  border-color: #b7eb8f;
+  border-left-color: #52c41a;
+  color: #388e3c;
+}
+.toast-info {
+  background: #e6f7ff;
+  border-color: #91d5ff;
+  border-left-color: #1890ff;
+  color: #0d47a1;
+}
+.toast-warning {
+  background: #fff7e6;
+  border-color: #ffd591;
+  border-left-color: #fa8c16;
+  color: #e65100;
+}
+.toast-error {
+  background: #fff1f0;
+  border-color: #ffa39e;
+  border-left-color: #f5222d;
+  color: #b71c1c;
+}
+
+/* ---- 深色模式 ---- */
+[data-theme="dark"] .toast {
+  box-shadow: 0 8px 24px -6px rgba(0, 0, 0, 0.6);
+}
+[data-theme="dark"] .toast-success {
+  background: #162312;
+  border-color: #274916;
+  border-left-color: #52c41a;
+  color: #95de64;
+}
+[data-theme="dark"] .toast-info {
+  background: #111d2c;
+  border-color: #153450;
+  border-left-color: #1890ff;
+  color: #69c0ff;
+}
+[data-theme="dark"] .toast-warning {
+  background: #2b2111;
+  border-color: #594214;
+  border-left-color: #fa8c16;
+  color: #ffc069;
+}
+[data-theme="dark"] .toast-error {
+  background: #2a1215;
+  border-color: #58181c;
+  border-left-color: #f5222d;
+  color: #ff7875;
+}
+
+@keyframes toast-in {
+  from {
+    grid-template-rows: 0fr;
+    margin-bottom: 0;
+    opacity: 0;
+    transform: translateX(28px) scale(0.96);
+  }
+  55% {
+    opacity: 1;
+  }
+  to {
+    grid-template-rows: 1fr;
+    margin-bottom: 0.5rem;
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes toast-out {
+  from {
+    grid-template-rows: 1fr;
+    margin-bottom: 0.5rem;
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+  to {
+    grid-template-rows: 0fr;
+    margin-bottom: 0;
+    opacity: 0;
+    transform: translateX(28px) scale(0.96);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast-item,
+  .toast-item.is-leaving {
+    animation-duration: 1ms;
+  }
+}

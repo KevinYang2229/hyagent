@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useToast } from '@oa-agent/ui';
 import { api, UnauthorizedError, type Tenant } from '../api';
 import { useAuth } from '../auth';
 import AppLayout from '../components/AppLayout';
-import { IconBack, IconInfo } from '../components/icons';
+import { IconBack } from '../components/icons';
 import AppearanceTab from './tabs/AppearanceTab';
 import SettingsTab from './tabs/SettingsTab';
 import WebhookTab from './tabs/WebhookTab';
@@ -27,9 +28,9 @@ export default function TenantDetailPage() {
   const { id = '' } = useParams();
   const { logout } = useAuth();
   const navigate = useNavigate();
+  const toast = useToast();
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [tab, setTab] = useState<TabKey>('appearance');
-  const [err, setErr] = useState<string | null>(null);
 
   const handleErr = useCallback(
     (e: unknown) => {
@@ -38,9 +39,9 @@ export default function TenantDetailPage() {
         navigate('/login', { replace: true });
         return;
       }
-      setErr(e instanceof Error ? e.message : '發生錯誤');
+      toast.error(e instanceof Error ? e.message : '發生錯誤');
     },
-    [logout, navigate],
+    [logout, navigate, toast],
   );
 
   const reload = useCallback(async () => {
@@ -51,6 +52,12 @@ export default function TenantDetailPage() {
       handleErr(e);
     }
   }, [id, handleErr]);
+
+  // 儲存成功：跳出成功 toast 並重新載入租戶資料
+  const handleSaved = useCallback(() => {
+    toast.success('已儲存變更');
+    void reload();
+  }, [toast, reload]);
 
   useEffect(() => {
     void reload();
@@ -67,13 +74,6 @@ export default function TenantDetailPage() {
         </button>
       }
     >
-      {err && (
-        <div className="banner banner-err">
-          <IconInfo />
-          {err}
-        </div>
-      )}
-
       {!tenant ? (
         <div className="card">
           <div className="empty">載入中…</div>
@@ -92,11 +92,11 @@ export default function TenantDetailPage() {
             ))}
           </div>
 
-          {tab === 'appearance' && <AppearanceTab tenant={tenant} onSaved={reload} onError={handleErr} />}
+          {tab === 'appearance' && <AppearanceTab tenant={tenant} onSaved={handleSaved} onError={handleErr} />}
           {tab === 'forms' && <FormsTab tenantId={tenant.id} onError={handleErr} />}
           {tab === 'knowledge' && <KnowledgeTab tenantId={tenant.id} onError={handleErr} />}
           {tab === 'services' && <ServicesTab tenantId={tenant.id} onError={handleErr} />}
-          {tab === 'settings' && <SettingsTab tenant={tenant} onSaved={reload} onError={handleErr} />}
+          {tab === 'settings' && <SettingsTab tenant={tenant} onSaved={handleSaved} onError={handleErr} />}
           {tab === 'webhook' && <WebhookTab tenantId={tenant.id} onError={handleErr} />}
           {tab === 'usage' && <UsageTab tenantId={tenant.id} onError={handleErr} />}
         </>

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Checkbox } from "@oa-agent/ui";
+import { Checkbox, useToast } from "@oa-agent/ui";
 import {
   api,
   type IngestJob,
@@ -17,6 +17,7 @@ export default function KnowledgeTab({
   tenantId: string;
   onError: (e: unknown) => void;
 }) {
+  const toast = useToast();
   const [src, setSrc] = useState<KnowledgeSource | null>(null);
   const [meta, setMeta] = useState<KnowledgeMeta | null>(null);
   const [job, setJob] = useState<IngestJob | null>(null);
@@ -52,6 +53,7 @@ export default function KnowledgeTab({
     try {
       await api.saveKnowledgeSource(tenantId, src);
       await load();
+      toast.success('已儲存變更');
     } catch (e) {
       onError(e);
     } finally {

@@ -21,6 +21,7 @@ import { changeLanguage } from './i18n';
 import { embedConfig, fetchAppearance } from './embedConfig';
 import FormView from './FormView';
 import LoginView from './LoginView';
+import AuthErrorView from './AuthErrorView';
 import SettingsMenu, { FONT_MAX, FONT_MIN } from './SettingsMenu';
 
 type Role = 'user' | 'agent' | 'sys';
@@ -124,6 +125,9 @@ export default function App() {
   // 登入者；未登入為 null。userId 由登入者帶出（不再手動輸入）
   const [authUser, setAuthUser] = useState<Applicant | null>(null);
   const [authReady, setAuthReady] = useState(false); // 重整時還原登入狀態的載入旗標
+  // 登入／連線失敗訊息（SSO 換發失敗、或登入後因金鑰(pk)不正確被踢出）。
+  // 有值時顯示整頁錯誤畫面，取代「靜默掉回帳密登入頁」。
+  const [authError, setAuthError] = useState<string | null>(null);
   const userId = authUser?.id ?? '';
   const [convId, setConvId] = useState<string | null>(null);
   const [status, setStatus] = useState<SessionStatus | null>(null);
@@ -239,8 +243,11 @@ export default function App() {
 
   // 啟動：還原登入狀態（有 token 就用 /me 取使用者）；並註冊 401（refresh 失敗）→ 登出
   useEffect(() => {
+    // 登入後才發生的 401（且 refresh 也失敗）：多半是租戶金鑰(pk)不正確或伺服器無法連線。
+    // 顯示整頁錯誤而非靜默掉回登入頁，避免「跳進聊天室又跳回登入頁」的閃爍。
     setUnauthorizedHandler(() => {
       setAuthUser(null);
+      setAuthError(t('auth.sessionError'));
       resetSessionState();
     });
     // 嵌入時若帶 data-locale，套用介面語言
@@ -259,12 +266,19 @@ export default function App() {
       try {
         // 嵌入 SSO handoff：帶 userToken 且尚未登入 → 以宿主 token 換發本系統 token（免帳密登入）
         if (embedConfig.userToken && !auth.isAuthenticated()) {
-          await auth.ssoExchange(embedConfig.userToken);
+          try {
+            await auth.ssoExchange(embedConfig.userToken);
+          } catch {
+            // SSO 換發失敗（pk 或 ssoSecret 不正確 / 後端拒絕）：直接顯示錯誤，不落到帳密登入頁。
+            setAuthError(t('auth.ssoFailed'));
+            return;
+          }
         }
         if (auth.isAuthenticated()) {
           setAuthUser(await auth.me());
         }
       } catch {
+        // 還原登入（me）失敗：401 已由 onUnauthorized 設好 authError；其餘（如伺服器無法連線）退回登入頁。
         setAuthUser(null);
       } finally {
         setAuthReady(true);
@@ -354,6 +368,13 @@ export default function App() {
     setAuthUser(null);
     setBalances([]);
     resetSessionState();
+  }
+
+  // 錯誤畫面「重試」：清掉可能無效的 token，重載頁面重跑一次登入流程（嵌入時會重新嘗試 SSO）。
+  function handleAuthRetry() {
+    auth.logout();
+    setAuthError(null);
+    window.location.reload();
   }
 
   function applyTurn(data: TurnData, sessionId: string | null) {
@@ -554,6 +575,8 @@ export default function App() {
 
   // 還原登入狀態中：先不渲染，避免閃一下登入頁
   if (!authReady) return null;
+  // 登入／連線失敗：整頁錯誤 + 重試（優先於登入頁，避免靜默掉回帳密登入）
+  if (authError) return <AuthErrorView message={authError} onRetry={handleAuthRetry} />;
   // 未登入：擋住整個 App，只顯示登入頁
   if (!authUser) return <LoginView onLogin={handleLogin} assistantName={aiName} />;
 
