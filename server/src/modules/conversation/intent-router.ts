@@ -74,8 +74,9 @@ async function classify(session: Session, text: string): Promise<string | null> 
     '根據使用者訊息，從下列意圖清單挑最貼近的一個：',
     catalog,
     '規則：要「填寫／申請／送出」某張表單 → 對應表單意圖；',
-    '任何「想知道答案」的提問 → kb.query，包含公司規章制度、額度算法、FAQ，以及公司本身資訊（電話、地址、分公司、聯絡方式、產品、服務、方案、簡介）。',
-    '只輸出 {"intent":"<id 或 none>","confidence":0~1}，不要任何其他文字。',
+    '與公司/OA 相關的「想知道答案」提問 → kb.query，包含公司規章制度、額度算法、FAQ，以及公司本身資訊（電話、地址、分公司、聯絡方式、產品、服務、方案、簡介）。',
+    '與公司/OA 無關的一般常識、算術、閒聊、時事，或單純打招呼、道謝、問候、問「你是誰」→ off-topic。',
+    '只輸出 {"intent":"<id、off-topic 或 none>","confidence":0~1}，不要任何其他文字。',
   ].join('\n');
   try {
     const result = await getLLMProvider().createMessage({

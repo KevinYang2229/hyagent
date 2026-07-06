@@ -74,6 +74,40 @@ describe('intentRouter.route', () => {
     expect(r.serviceId).toBe('form');
   });
 
+  it('分類器 system prompt 指示模型對離題/客套輸出 off-topic', async () => {
+    // 全新 session 即 collecting/form（點黏）；「多少」命中 KNOWLEDGE_HINT_RE → 進 classify
+    mockCreate.mockResolvedValue({
+      text: '{"intent":"off-topic","confidence":0.9}',
+      toolCalls: [],
+      stopReason: 'end_turn',
+    });
+    await intentRouter.route(makeSession(), '圓周率是多少？');
+    const sys = mockCreate.mock.calls[0][0].system as string;
+    expect(sys).toContain('off-topic');
+  });
+
+  it('填表中離題（含疑問語氣觸發 hint）→ off-topic → 指派 assistant 守門', async () => {
+    mockCreate.mockResolvedValue({
+      text: '{"intent":"off-topic","confidence":0.95}',
+      toolCalls: [],
+      stopReason: 'end_turn',
+    });
+    const r = await intentRouter.route(makeSession(), '圓周率是多少？');
+    expect(mockCreate).toHaveBeenCalledTimes(1);
+    expect(r.serviceId).toBe('assistant');
+    expect(r.viaLLM).toBe(true);
+  });
+
+  it('非點黏流程離題 → off-topic → 指派 assistant 守門', async () => {
+    mockCreate.mockResolvedValue({
+      text: '{"intent":"off-topic","confidence":0.9}',
+      toolCalls: [],
+      stopReason: 'end_turn',
+    });
+    const r = await intentRouter.route(makeSession({ status: 'submitted' }), '幫我查一下天氣');
+    expect(r.serviceId).toBe('assistant');
+  });
+
   it('分類信心低於門檻 → 退回目前點黏服務（form）', async () => {
     mockCreate.mockResolvedValue({
       text: '{"intent":"kb.query","confidence":0.3}',
