@@ -444,7 +444,7 @@ describe('rerankChunks', () => {
 - [ ] **Step 2: 執行測試確認失敗**
 
 Run: `npm --prefix server test -- tests/knowledge-rerank.test.ts`
-Expected: FAIL（前兩案：目前會把剔除片段補回，`[0]` 會被補成 `['0','2']`；`[]` 會被補成 `['0','1']`）
+Expected: FAIL（前兩案：目前會把剔除片段補回，`[0]` 會被補成 `['0','1']`；`[]` 會被補成 `['0','1']`）
 
 - [ ] **Step 3: 移除補回剔除片段的邏輯**
 
