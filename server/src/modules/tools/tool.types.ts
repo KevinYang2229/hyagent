@@ -21,5 +21,11 @@ export interface ToolDef<I = unknown, O = unknown> {
   readonly inputSchema: Record<string, unknown>;
   /** 需具備的權限，如 ['oa:write']；空陣列＝不需權限 */
   readonly scopes: string[];
+  /**
+   * 是否可暴露給自主 Agent 由 LLM 自選（安全預設：未標＝不暴露）。
+   * 只有唯讀/安全工具應 opt-in；送單等有副作用的工具在明確啟用前一律不暴露，
+   * 避免 LLM 自行執行寫入動作。
+   */
+  readonly agentExposed?: boolean;
   handler(input: I, ctx: ToolContext): Promise<O>;
 }

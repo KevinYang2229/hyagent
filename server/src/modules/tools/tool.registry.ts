@@ -6,6 +6,7 @@
  * 對話控制類工具（如 form 的 slot-filling）不進此表——只有碰外部系統的動作才進來。
  */
 import Ajv, { type ValidateFunction } from 'ajv';
+import type { LLMTool } from '@/lib/llm/types';
 import { logger } from '@/lib/logger';
 import { AppError } from '@/utils/app-error';
 import type { ToolContext, ToolDef } from './tool.types';
@@ -57,5 +58,18 @@ export const toolRegistry = {
     // 稽核/計費鉤子：Phase 2 於此接 usageStore.recordToolCall；目前先記 log。
     logger.debug({ toolId: id, tenantId: ctx.tenantId, userId: ctx.userId }, 'tool.invoke');
     return tool.handler(input, ctx);
+  },
+  /**
+   * Agent 專用：列出「agentExposed 且 ctx.scopes 允許」的工具，映射為 LLMTool 供 LLM 自選。
+   * 未標 agentExposed 的工具（含寫入工具）不會出現，是本層的安全邊界。
+   */
+  availableFor(ctx: ToolContext): LLMTool[] {
+    const tools: LLMTool[] = [];
+    for (const { tool } of registry.values()) {
+      if (!tool.agentExposed) continue;
+      if (!hasScopes(ctx.scopes, tool.scopes)) continue;
+      tools.push({ name: tool.id, description: tool.description, inputSchema: tool.inputSchema });
+    }
+    return tools;
   },
 };

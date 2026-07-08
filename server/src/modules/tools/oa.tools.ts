@@ -34,6 +34,7 @@ registerTool({
     additionalProperties: false,
   },
   scopes: ['oa:read'],
+  agentExposed: true,
   handler: (input: { userId: string }): Promise<LeaveBalance[]> => {
     const oa = getConnector('oa');
     return oa.getLeaveBalance ? oa.getLeaveBalance(input.userId) : Promise.resolve([]);
