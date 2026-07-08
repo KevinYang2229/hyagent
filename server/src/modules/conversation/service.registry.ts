@@ -9,6 +9,7 @@ import { tenantStore } from '@/modules/tenant/tenant.store';
 import type { AgentService } from './agent-service.types';
 import { formAgentService } from './form.agent-service';
 import { assistantAgentService } from './assistant.agent-service';
+import { agentAgentService } from './agent.agent-service';
 
 const registry = new Map<string, AgentService>();
 
@@ -19,6 +20,7 @@ function register(service: AgentService): void {
 register(formAgentService);
 register(knowledgeAgentService);
 register(assistantAgentService);
+register(agentAgentService);
 
 export const serviceRegistry = {
   get(id: string): AgentService {
