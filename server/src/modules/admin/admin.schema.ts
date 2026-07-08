@@ -30,6 +30,7 @@ export const patchTenantSchema = z
     appearance: appearanceSchema.optional(),
     disabledServices: z.array(z.string()).optional(),
     disabledForms: z.array(z.string()).optional(),
+    grantedScopes: z.array(z.string()).optional(),
   })
   .refine((v) => Object.keys(v).length > 0, { message: '至少需提供一個欄位' });
 
@@ -55,6 +56,13 @@ export const webhookParamSchema = z.object({
   id: z.string().min(1),
   webhookId: z.string().min(1),
 });
+
+export const putPolicySchema = z.object({
+  grantedScopes: z.array(z.string()),
+  groups: z.record(z.string(), z.array(z.string())),
+  accounts: z.record(z.string(), z.array(z.string())),
+});
+export type PutPolicyInput = z.infer<typeof putPolicySchema>;
 
 export type AdminLoginInput = z.infer<typeof adminLoginSchema>;
 export type CreateTenantInput = z.infer<typeof createTenantSchema>;

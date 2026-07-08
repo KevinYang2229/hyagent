@@ -7,6 +7,9 @@ import { tenantStore } from '@/modules/tenant/tenant.store';
 import { webhookStore } from '@/modules/webhook/webhook.store';
 import { usageStore } from '@/modules/usage/usage.store';
 import { AppError } from '@/utils/app-error';
+import { SCOPE_CATALOG, assertGrantableScopes } from '@/modules/authz/scope-catalog';
+import { scopePolicy } from '@/modules/authz/scope-policy';
+import { getApplicant, listDepartments, listUserIds } from '@/modules/user/user.directory';
 import type {
   CreateKeyInput,
   CreateTenantInput,
@@ -14,6 +17,7 @@ import type {
   PatchTenantInput,
   ToggleWebhookInput,
 } from './admin.schema';
+import type { PutPolicyInput } from './admin.schema';
 
 function ensureTenant(id: string) {
   const tenant = tenantStore.getTenant(id);
@@ -86,5 +90,46 @@ export const adminController = {
   async getUsage(req: Request, res: Response): Promise<void> {
     const tenant = ensureTenant(String(req.params.id));
     res.status(200).json({ data: usageStore.get(tenant.id) });
+  },
+
+  async listScopes(_req: Request, res: Response): Promise<void> {
+    res.status(200).json({ data: SCOPE_CATALOG });
+  },
+
+  async getPolicy(req: Request, res: Response): Promise<void> {
+    const tenant = ensureTenant(String(req.params.id));
+    const policy = scopePolicy.getPolicy(tenant.id);
+    res.status(200).json({
+      data: {
+        grantedScopes: tenant.grantedScopes ?? [],
+        groups: policy.groups,
+        accounts: policy.accounts,
+        departments: listDepartments(),
+        users: listUserIds().map((id) => ({ id, label: getApplicant(id).name })),
+      },
+    });
+  },
+
+  async setPolicy(req: Request, res: Response): Promise<void> {
+    const tenant = ensureTenant(String(req.params.id));
+    const body = req.body as PutPolicyInput;
+    // 授予範圍一律限 grantable（擋 BASE / '*' / 目錄外）
+    assertGrantableScopes(body.grantedScopes);
+    for (const scopes of Object.values(body.groups)) assertGrantableScopes(scopes);
+    for (const scopes of Object.values(body.accounts)) assertGrantableScopes(scopes);
+
+    tenantStore.updateTenant(tenant.id, { grantedScopes: body.grantedScopes });
+    scopePolicy.setPolicy(tenant.id, { groups: body.groups, accounts: body.accounts });
+
+    const policy = scopePolicy.getPolicy(tenant.id);
+    res.status(200).json({
+      data: {
+        grantedScopes: body.grantedScopes,
+        groups: policy.groups,
+        accounts: policy.accounts,
+        departments: listDepartments(),
+        users: listUserIds().map((id) => ({ id, label: getApplicant(id).name })),
+      },
+    });
   },
 };

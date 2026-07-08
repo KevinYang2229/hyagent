@@ -18,6 +18,7 @@ import {
   createTenantSchema,
   createWebhookSchema,
   patchTenantSchema,
+  putPolicySchema,
   tenantParamSchema,
   toggleWebhookSchema,
   webhookParamSchema,
@@ -84,6 +85,20 @@ router.get(
   '/tenants/:id/services',
   validate({ params: tenantParamSchema }),
   asyncHandler(tenantServicesController.get),
+);
+
+// 權限：scopes 目錄 + 每租戶政策 GET/PUT
+router.get('/scopes', asyncHandler(adminController.listScopes));
+
+router.get(
+  '/tenants/:id/policy',
+  validate({ params: tenantParamSchema }),
+  asyncHandler(adminController.getPolicy),
+);
+router.put(
+  '/tenants/:id/policy',
+  validate({ params: tenantParamSchema, body: putPolicySchema }),
+  asyncHandler(adminController.setPolicy),
 );
 
 // ---- Form Designer：租戶表單 CRUD + 匯出 ----

@@ -49,6 +49,14 @@ export function listUserIds(): string[] {
   return Object.keys(DIRECTORY);
 }
 
+/** 目錄中出現過的部門清單（去重）；admin 權限設定的部門來源。 */
+export function listDepartments(): string[] {
+  const set = new Set<string>();
+  for (const p of Object.values(DIRECTORY)) if (p.department) set.add(p.department);
+  for (const p of PEOPLE) if (p.department) set.add(p.department);
+  return [...set];
+}
+
 /**
  * 查詢可擔任職務代理人的候選名冊。
  *
