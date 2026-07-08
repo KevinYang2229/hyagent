@@ -33,7 +33,10 @@ try {
 }
 
 function clone(p: TenantPolicy): TenantPolicy {
-  return { groups: { ...p.groups }, accounts: { ...p.accounts } };
+  // 深複製內層陣列，避免外部改動污染 store
+  const copyMap = (m: Record<string, string[]>): Record<string, string[]> =>
+    Object.fromEntries(Object.entries(m).map(([k, v]) => [k, [...v]]));
+  return { groups: copyMap(p.groups), accounts: copyMap(p.accounts) };
 }
 
 const EMPTY: TenantPolicy = { groups: {}, accounts: {} };
