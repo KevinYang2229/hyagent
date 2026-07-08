@@ -35,6 +35,7 @@ export const agentAgentService: AgentService = {
   id: 'agent',
   label: '智慧代理',
   sticky: false,
+  serviceScope: 'service:agent',
 
   intents(): IntentDescriptor[] {
     return [

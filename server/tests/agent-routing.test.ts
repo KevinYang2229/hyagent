@@ -14,6 +14,16 @@ import type { Session } from '@/modules/conversation/conversation.types';
 import { listEnabledForms } from '@/modules/conversation/form.agent-service';
 import { intentRouter } from '@/modules/conversation/intent-router';
 import { serviceRegistry } from '@/modules/conversation/service.registry';
+import { tenantStore } from '@/modules/tenant/tenant.store';
+
+// opt-in scope 制下，'default' 租戶預設不再擁有任何 service:* scope；
+// 本檔驗證的是路由邏輯（keywordRoute / sticky）本身，非授權行為，故顯式授予
+// form/knowledge/agent，維持這份回歸測試原本的語意（scope 語意調整，非行為回歸）。
+beforeAll(() => {
+  tenantStore.updateTenant('default', {
+    grantedScopes: ['service:form', 'service:knowledge', 'service:agent'],
+  });
+});
 
 function makeSession(partial: Partial<Session> = {}): Session {
   return {

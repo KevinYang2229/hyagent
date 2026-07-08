@@ -231,6 +231,7 @@ export const formAgentService: AgentService = {
   id: 'form',
   label: '填表申請',
   sticky: true,
+  serviceScope: 'service:form',
 
   intents(session: Session): IntentDescriptor[] {
     return listEnabledForms(session.tenantId).map((d) => ({

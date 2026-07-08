@@ -50,7 +50,7 @@ export function pickFormId(tenantId: string, message?: string): string {
 
 /** 關鍵字先行：掃描每個服務註冊的 intents.keywords，取最高分；唯一贏家才算 confident。 */
 function keywordRoute(session: Session, text: string): { serviceId: string; confident: boolean } {
-  const scores = serviceRegistry.enabledFor(session.tenantId).map((svc) => {
+  const scores = serviceRegistry.enabledFor(session.tenantId, session.userId).map((svc) => {
     const score = svc.intents(session).reduce(
       (acc, intent) =>
         acc + intent.keywords.reduce((n, kw) => (kw && text.includes(kw) ? n + 1 : n), 0),
@@ -66,7 +66,7 @@ function keywordRoute(session: Session, text: string): { serviceId: string; conf
 
 /** Haiku canonical-intent 分類器：服務目錄 → 選一個 intent id → 對應 serviceId。低信心回 null。 */
 async function classify(session: Session, text: string): Promise<string | null> {
-  const services = serviceRegistry.enabledFor(session.tenantId);
+  const services = serviceRegistry.enabledFor(session.tenantId, session.userId);
   const catalog = services
     .flatMap((svc) => svc.intents(session).map((i) => `- ${i.id}（服務=${svc.id}）：${i.description}`))
     .join('\n');
@@ -102,7 +102,7 @@ async function classify(session: Session, text: string): Promise<string | null> 
 
 export const intentRouter = {
   async route(session: Session, text: string): Promise<RouteResult> {
-    const enabled = serviceRegistry.enabledFor(session.tenantId);
+    const enabled = serviceRegistry.enabledFor(session.tenantId, session.userId);
     const enabledIds = new Set(enabled.map((s) => s.id));
     // 保底：無任何啟用服務時退回第一個註冊服務（極端情況，避免 undefined）
     const fallbackId = enabled[0]?.id ?? serviceRegistry.all()[0].id;

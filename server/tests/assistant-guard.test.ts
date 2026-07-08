@@ -72,10 +72,9 @@ describe('assistantAgentService', () => {
 });
 
 describe('serviceRegistry.enabledFor', () => {
-  it('assistant 守門服務永遠啟用，無法被 disabledServices 關閉', () => {
+  it('assistant 守門服務永遠啟用（未授予任何服務 scope 時仍在）', () => {
     const t = tenantStore.createTenant('guard-always-on');
-    tenantStore.updateTenant(t.id, { disabledServices: ['assistant'] });
-    const ids = serviceRegistry.enabledFor(t.id).map((s) => s.id);
+    const ids = serviceRegistry.enabledFor(t.id, 'kevin').map((s) => s.id);
     expect(ids).toContain('assistant');
   });
 });

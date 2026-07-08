@@ -76,6 +76,7 @@ export const knowledgeAgentService: AgentService = {
   id: 'knowledge',
   label: '知識庫問答',
   sticky: false,
+  serviceScope: 'service:knowledge',
 
   intents(): IntentDescriptor[] {
     return [

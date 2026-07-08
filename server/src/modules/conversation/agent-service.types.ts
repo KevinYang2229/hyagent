@@ -33,6 +33,8 @@ export interface AgentService {
   readonly sticky: boolean;
   /** 永遠啟用：不受租戶 disabledServices 影響（範圍守門用，關掉會退回舊漏洞）。 */
   readonly alwaysEnabled?: boolean;
+  /** 使用此服務所需的 scope（如 'service:form'）；未設代表不需 scope（配合 alwaysEnabled 的守門）。 */
+  readonly serviceScope?: string;
   intents(session: Session): IntentDescriptor[];
   /** 處理一輪對話。使用者訊息已由上層 runTurn 推入 session.messages。 */
   handleTurn(session: Session, userText: string, llm: LLMProvider): Promise<AgentTurnResult>;

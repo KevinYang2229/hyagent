@@ -5,7 +5,7 @@
  * 新增服務（未來 Workflow）只要實作 AgentService 並在此 register 即可。
  */
 import { knowledgeAgentService } from '@/modules/knowledge/knowledge.agent-service';
-import { tenantStore } from '@/modules/tenant/tenant.store';
+import { resolveScopes } from '@/modules/authz/resolve-scopes';
 import type { AgentService } from './agent-service.types';
 import { formAgentService } from './form.agent-service';
 import { assistantAgentService } from './assistant.agent-service';
@@ -34,9 +34,11 @@ export const serviceRegistry = {
   all(): AgentService[] {
     return [...registry.values()];
   },
-  /** 該租戶啟用中的服務（濾掉 disabledServices） */
-  enabledFor(tenantId: string): AgentService[] {
-    const disabled = new Set(tenantStore.getTenant(tenantId)?.disabledServices ?? []);
-    return [...registry.values()].filter((s) => s.alwaysEnabled || !disabled.has(s.id));
+  /** 該使用者在該租戶可用的服務：alwaysEnabled 恆在；其餘需 resolveScopes 含其 serviceScope。 */
+  enabledFor(tenantId: string, userId: string): AgentService[] {
+    const scopes = new Set(resolveScopes({ tenantId, userId }));
+    return [...registry.values()].filter(
+      (s) => s.alwaysEnabled || (s.serviceScope !== undefined && scopes.has(s.serviceScope)),
+    );
   },
 };

@@ -14,10 +14,15 @@ import type { Session } from '@/modules/conversation/conversation.types';
 import { intentRouter } from '@/modules/conversation/intent-router';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 
+// opt-in scope 制下，測試租戶需明確授予服務 scope 才會出現在 enabledFor 結果中；
+// 這裡建立一個固定租戶並授予 form/knowledge/agent，讓既有的路由邏輯測試維持原本語意
+// （驗證關鍵字/分類路由本身，而非 scope 授權本身——授權行為由 service-enabled.test.ts 覆蓋）。
+let routerTenantId: string;
+
 function makeSession(partial: Partial<Session> = {}): Session {
   return {
     id: 's1',
-    tenantId: 'router-test',
+    tenantId: routerTenantId,
     userId: 'HYW103',
     formId: 'leave-request',
     values: {},
@@ -30,6 +35,14 @@ function makeSession(partial: Partial<Session> = {}): Session {
 }
 
 let mockCreate: jest.Mock;
+
+beforeAll(() => {
+  const t = tenantStore.createTenant('router-test-tenant');
+  tenantStore.updateTenant(t.id, {
+    grantedScopes: ['service:form', 'service:knowledge', 'service:agent'],
+  });
+  routerTenantId = t.id;
+});
 
 beforeEach(() => {
   mockCreate = jest
