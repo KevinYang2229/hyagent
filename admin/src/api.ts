@@ -35,6 +35,7 @@ export interface Tenant {
   appearance?: TenantAppearance;
   disabledServices?: string[];
   disabledForms?: string[];
+  grantedScopes?: string[];
   createdAt: string;
 }
 export interface TenantServiceCatalog {
@@ -122,6 +123,19 @@ export interface QueryHit {
   score: number;
   snippet: string;
 }
+export interface ScopeDef {
+  id: string;
+  label: string;
+  description: string;
+  base: boolean;
+}
+export interface TenantPolicyView {
+  grantedScopes: string[];
+  groups: Record<string, string[]>;
+  accounts: Record<string, string[]>;
+  departments: string[];
+  users: { id: string; label: string }[];
+}
 
 export const api = {
   login: (password: string) => req<{ token: string }>('POST', '/admin/auth/login', { password }),
@@ -138,6 +152,12 @@ export const api = {
   deleteTenant: (id: string) => req<{ id: string }>('DELETE', `/admin/tenants/${id}`),
   getTenantServices: (id: string) =>
     req<TenantServiceCatalog>('GET', `/admin/tenants/${id}/services`),
+  listScopes: () => req<ScopeDef[]>('GET', '/admin/scopes'),
+  getTenantPolicy: (id: string) => req<TenantPolicyView>('GET', `/admin/tenants/${id}/policy`),
+  putTenantPolicy: (
+    id: string,
+    body: { grantedScopes: string[]; groups: Record<string, string[]>; accounts: Record<string, string[]> },
+  ) => req<TenantPolicyView>('PUT', `/admin/tenants/${id}/policy`, body),
 
   createKey: (id: string, type: 'publishable' | 'secret') =>
     req<ApiKey>('POST', `/admin/tenants/${id}/keys`, { type }),
