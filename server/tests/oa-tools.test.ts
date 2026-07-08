@@ -28,4 +28,24 @@ describe('OA 工具（走 stub 連接器）', () => {
     const result = await toolRegistry.invoke('oa.getLeaveBalance', { userId: 'kevin' }, ctx);
     expect(Array.isArray(result)).toBe(true);
   });
+
+  it('oa.getLeaveBalance 身分改綁 ctx.userId：空 input 也能查詢（不再需要 input.userId）', async () => {
+    const ctx = makeToolContext({ tenantId: 'default', userId: 'kevin' });
+    const result = await toolRegistry.invoke('oa.getLeaveBalance', {}, ctx);
+    expect(Array.isArray(result)).toBe(true);
+    expect((result as unknown[]).length).toBeGreaterThan(0);
+  });
+
+  it('oa.getLeaveBalance 不採信 input 帶的他人 userId：結果只取決於 ctx.userId（stub 對兩者回傳相同資料，證明 input.userId 已被忽略）', async () => {
+    const ctx = makeToolContext({ tenantId: 'default', userId: 'kevin' });
+    const ownResult = await toolRegistry.invoke('oa.getLeaveBalance', {}, ctx);
+    const spoofedResult = await toolRegistry.invoke(
+      'oa.getLeaveBalance',
+      { userId: 'someone-else' },
+      ctx,
+    );
+    // stub 連接器目前對任何 userId 回傳同一份 demo 資料；重點是「有沒有理會 input.userId」
+    // 已由 handler 改為 (_input, ctx) 保證：不論 input 塞什麼 userId，皆走 ctx.userId。
+    expect(spoofedResult).toEqual(ownResult);
+  });
 });

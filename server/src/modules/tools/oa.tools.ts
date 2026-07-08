@@ -26,17 +26,15 @@ registerTool({
 
 registerTool({
   id: 'oa.getLeaveBalance',
-  description: '查詢某使用者各假別的剩餘時數。',
+  description: '查詢你（目前登入使用者）各假別的剩餘時數。',
   inputSchema: {
     type: 'object',
-    properties: { userId: { type: 'string' } },
-    required: ['userId'],
-    additionalProperties: false,
   },
   scopes: ['oa:read'],
   agentExposed: true,
-  handler: (input: { userId: string }): Promise<LeaveBalance[]> => {
+  // 身分一律取自 ctx.userId，不採信 LLM/呼叫端傳入的 input.userId，避免跨使用者查詢他人額度。
+  handler: (_input, ctx): Promise<LeaveBalance[]> => {
     const oa = getConnector('oa');
-    return oa.getLeaveBalance ? oa.getLeaveBalance(input.userId) : Promise.resolve([]);
+    return oa.getLeaveBalance ? oa.getLeaveBalance(ctx.userId) : Promise.resolve([]);
   },
 });

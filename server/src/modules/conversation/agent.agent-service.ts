@@ -5,7 +5,9 @@
  * （toolRegistry.availableFor）交給 LLM 自選，靠共用 tool-loop 多輪往返完成任務。
  * 安全：dispatchTool 只放行 availableFor 清單內的工具；LLM 即使幻想出別的工具名也呼叫不到
  * （送單等寫入動作因此不會被 Agent 觸發）。工具錯誤回傳為 tool_result，讓 LLM 自行修正而非中斷整輪。
- * sticky=true 依藍圖設定；目前 router 的點黏閘以 form 狀態為條件，唯讀 Agent 尚不觸發（見 plan 註）。
+ * sticky=false：v1 Agent 是單輪、唯讀的旁路服務（與 knowledge 相同定位），完成一輪就放手，
+ * 不會把後續對話點黏在自己身上；否則下一句普通填表訊息（如「我要請假」）會被困在沒有表單工具
+ * 的 Agent 裡出不來。等 Agent 具備跨輪的多步驟狀態後，再評估是否需要真正的點黏。
  */
 import type { LLMProvider } from '@/lib/llm/types';
 import { languageDirective } from '@/lib/locale';
@@ -15,11 +17,12 @@ import type { AgentService, AgentTurnResult, IntentDescriptor } from './agent-se
 import type { Session } from './conversation.types';
 import { runToolLoop } from './tool-loop';
 
-function buildSystemPrompt(locale?: string): string {
+function buildSystemPrompt(userId: string, locale?: string): string {
   const today = new Date().toISOString().slice(0, 10);
   return [
     `你是公司 OA 系統的智慧代理，協助使用者完成需要操作公司系統的任務。${languageDirective(locale)}`,
     `今天日期是 ${today}；請把相對日期（明天、下週一等）換算成 YYYY-MM-DD。`,
+    `目前登入使用者的識別碼是 ${userId}；查詢「自己」資料的工具會自動綁定此身分，不需要你提供或詢問使用者 id。`,
     '工作方式：',
     '- 只能使用提供給你的工具；沒有合適工具時，據實說明目前無法完成，不要捏造結果或假裝已完成。',
     '- 需要時可連續呼叫多個工具，依回傳結果決定下一步，完成後用簡潔中文回覆使用者。',
@@ -31,7 +34,7 @@ function buildSystemPrompt(locale?: string): string {
 export const agentAgentService: AgentService = {
   id: 'agent',
   label: '智慧代理',
-  sticky: true,
+  sticky: false,
 
   intents(): IntentDescriptor[] {
     return [
@@ -54,7 +57,7 @@ export const agentAgentService: AgentService = {
     const allowed = new Set(tools.map((t) => t.name));
 
     const reply = await runToolLoop(llm, session, {
-      system: buildSystemPrompt(session.locale),
+      system: buildSystemPrompt(session.userId, session.locale),
       tools,
       dispatchTool: async (name, input) => {
         // 安全邊界：只放行 availableFor 清單內的工具，LLM 幻想出別的名字一律擋下

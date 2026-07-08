@@ -14,7 +14,7 @@ describe('toolRegistry.availableFor', () => {
     expect(names).toContain('oa.getLeaveBalance'); // 唯讀、已暴露
     expect(names).not.toContain('oa.submitForm'); // 寫入、未暴露
     const bal = tools.find((t) => t.name === 'oa.getLeaveBalance');
-    expect(bal?.description).toBe('查詢某使用者各假別的剩餘時數。');
+    expect(bal?.description).toBe('查詢你（目前登入使用者）各假別的剩餘時數。');
     expect(bal?.inputSchema).toMatchObject({ type: 'object' });
   });
 
