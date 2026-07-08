@@ -132,7 +132,13 @@ export const tenantStore = {
     patch: Partial<
       Pick<
         Tenant,
-        'name' | 'allowedOrigins' | 'ssoSecret' | 'appearance' | 'disabledServices' | 'disabledForms'
+        | 'name'
+        | 'allowedOrigins'
+        | 'ssoSecret'
+        | 'appearance'
+        | 'disabledServices'
+        | 'disabledForms'
+        | 'grantedScopes'
       >
     >,
   ): Tenant | undefined {
@@ -148,6 +154,7 @@ export const tenantStore = {
         : {}),
       ...(patch.disabledServices !== undefined ? { disabledServices: patch.disabledServices } : {}),
       ...(patch.disabledForms !== undefined ? { disabledForms: patch.disabledForms } : {}),
+      ...(patch.grantedScopes !== undefined ? { grantedScopes: patch.grantedScopes } : {}),
     };
     tenants.set(id, next);
     persist();

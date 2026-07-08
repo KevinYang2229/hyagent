@@ -40,5 +40,10 @@ export interface Tenant {
   disabledServices?: string[];
   /** 停用的表單 id（如 ['business-trip-domestic']）；空/未設 = 全部啟用（opt-out） */
   disabledForms?: string[];
+  /**
+   * 此租戶已開通（買了）哪些能力 scope，如 ['email:write']。
+   * 與群組/帳號政策一起併入 resolveScopes；未設＝不額外授權（仍有 BASE_SCOPES）。
+   */
+  grantedScopes?: string[];
   createdAt: string;
 }
