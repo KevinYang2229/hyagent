@@ -53,7 +53,6 @@ export default function PermissionsTab({
       </div>
     );
 
-  const baseScopes = scopes.filter((s) => s.base);
   const grantable = scopes.filter((s) => !s.base);
 
   const toggleTenant = (id: string) =>
@@ -97,31 +96,13 @@ export default function PermissionsTab({
         <div>
           <div className="card-title">權限</div>
           <div className="card-desc">
-            設定此租戶開通的能力，以及各部門 / 帳號可用的能力。基礎能力為全員預設、不可調整。
+            設定此租戶開通的能力，以及各部門 / 帳號可用的能力。（表單填寫與送出屬基礎功能，於「服務」分頁控管。）
           </div>
         </div>
       </div>
 
-      {/* ① 全員預設（唯讀） */}
+      {/* ① 此租戶開通的能力 */}
       <div className="card-body">
-        <div style={{ fontWeight: 500, marginBottom: 8 }}>全員預設（不可調整）</div>
-        <ul className="list">
-          {baseScopes.map((s) => (
-            <li key={s.id} className="row" style={{ opacity: 0.6 }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Checkbox checked disabled onChange={() => {}} />
-                <span>{s.label}</span>
-                <span className="row-sub" style={{ marginLeft: 4 }}>
-                  {s.id}
-                </span>
-              </label>
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      {/* ② 此租戶開通的能力 */}
-      <div className="card-body" style={{ borderTop: '1px solid var(--border-color)' }}>
         <div style={{ fontWeight: 500, marginBottom: 8 }}>此租戶開通的能力</div>
         <ul className="list">
           {grantable.map((s) => (
