@@ -21,7 +21,14 @@ import { tenantStore } from '@/modules/tenant/tenant.store';
 // form/knowledge/agent，維持這份回歸測試原本的語意（scope 語意調整，非行為回歸）。
 beforeAll(() => {
   tenantStore.updateTenant('default', {
-    grantedScopes: ['service:form', 'service:knowledge', 'service:agent'],
+    grantedScopes: [
+      'service:form',
+      'service:knowledge',
+      'service:agent',
+      'form:leave-request',
+      'form:business-trip-domestic',
+      'form:outing-registration',
+    ],
   });
 });
 
@@ -52,7 +59,7 @@ describe('agentAgentService 不困住對話（sticky:false）', () => {
     // 其中「出差報銷」不與 knowledge/agent/assistant 的關鍵字重疊（agent/assistant 皆為
     // keywords: []；knowledge 的 KB_KEYWORDS 不含「出差報銷」），故 form 服務會是唯一得分者，
     // keywordRoute 判定 confident=true，全程 0 LLM 呼叫。
-    const forms = listEnabledForms('default');
+    const forms = listEnabledForms('default', 'kevin');
     const withKeywords = forms.find((f) => (f.agent.keywords?.length ?? 0) > 0);
     expect(withKeywords).toBeDefined();
     const keyword = withKeywords!.agent.keywords![0];

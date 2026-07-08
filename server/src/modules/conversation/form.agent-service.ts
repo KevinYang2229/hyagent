@@ -8,6 +8,8 @@
 import type { LLMProvider } from '@/lib/llm/types';
 import { logger } from '@/lib/logger';
 import { languageDirective } from '@/lib/locale';
+import { resolveScopes } from '@/modules/authz/resolve-scopes';
+import { formScopeId } from '@/modules/authz/scope-catalog';
 import { computeStatus, setField, validateAll } from '@/modules/form/form.engine';
 import { getDefinition, listDefinitions } from '@/modules/form/form.registry';
 import { buildTools } from '@/modules/form/form.tools';
@@ -31,10 +33,10 @@ export function isSubmitConfirmation(text: string): boolean {
   return SUBMIT_CONFIRMATION_RE.test(normalized);
 }
 
-/** 該租戶啟用中的表單（濾掉 tenant.disabledForms） */
-export function listEnabledForms(tenantId: string): Definition[] {
-  const disabled = new Set(tenantStore.getTenant(tenantId)?.disabledForms ?? []);
-  return listDefinitions(tenantId).filter((d) => !disabled.has(d.formId));
+/** 該租戶表單中，principal 具 form:<formId> scope 者（opt-in：未授予則不可見）。 */
+export function listEnabledForms(tenantId: string, userId: string): Definition[] {
+  const scopes = new Set(resolveScopes({ tenantId, userId }));
+  return listDefinitions(tenantId).filter((d) => scopes.has(formScopeId(d.formId)));
 }
 
 function describeFields(def: Definition): string {
@@ -52,7 +54,12 @@ function describeFields(def: Definition): string {
     .join('\n');
 }
 
-function buildSystemPrompt(tenantId: string, def: Definition, locale?: string): string {
+function buildSystemPrompt(
+  tenantId: string,
+  userId: string,
+  def: Definition,
+  locale?: string,
+): string {
   const today = new Date().toISOString().slice(0, 10);
   const hasLeaveType = 'leaveType' in def.data.properties;
   const hasDeputy = 'deputy' in def.data.properties;
@@ -97,7 +104,7 @@ function buildSystemPrompt(tenantId: string, def: Definition, locale?: string): 
   // 全系統可申請的表單清單：讓助理在被問到「有哪些表單可以申請」時能完整回答，
   // 而非只知道自己這場對話的表單。
   const currentTitle = def.data.title ?? def.agent.description;
-  const allForms = listEnabledForms(tenantId)
+  const allForms = listEnabledForms(tenantId, userId)
     .map((d) => `- ${d.data.title ?? d.agent.intent}：${d.agent.description}`)
     .join('\n');
 
@@ -234,7 +241,7 @@ export const formAgentService: AgentService = {
   serviceScope: 'service:form',
 
   intents(session: Session): IntentDescriptor[] {
-    return listEnabledForms(session.tenantId).map((d) => ({
+    return listEnabledForms(session.tenantId, session.userId).map((d) => ({
       id: `${d.formId}.apply`,
       keywords: d.agent.keywords ?? [],
       description: `填寫並送出「${d.data.title ?? d.agent.description}」表單`,
@@ -261,7 +268,7 @@ export const formAgentService: AgentService = {
     }
 
     const reply = await runToolLoop(llm, session, {
-      system: buildSystemPrompt(session.tenantId, def, session.locale),
+      system: buildSystemPrompt(session.tenantId, session.userId, def, session.locale),
       tools: buildTools(def),
       dispatchTool: (name, inputArgs) =>
         dispatchFormTool({ def, session, canSubmit }, name, inputArgs),

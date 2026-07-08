@@ -29,8 +29,8 @@ const CLASSIFY_THRESHOLD = 0.6;
  * 開場表單選擇（沿用原 conversation.service.routeIntent）：
  * 以各表單 agent.keywords 命中數挑最高分表單；無命中或無訊息則回預設請假單。
  */
-export function pickFormId(tenantId: string, message?: string): string {
-  const forms = listEnabledForms(tenantId);
+export function pickFormId(tenantId: string, userId: string, message?: string): string {
+  const forms = listEnabledForms(tenantId, userId);
   if (forms.length === 0) return DEFAULT_FORM_ID; // 全停用：退回預設（form 服務退化但不崩）
   const text = message?.trim();
   let best = forms.some((f) => f.formId === DEFAULT_FORM_ID) ? DEFAULT_FORM_ID : forms[0].formId;

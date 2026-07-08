@@ -35,7 +35,7 @@ export const conversationService = {
     lang?: string,
   ): Promise<{ session: Session; turn?: TurnResult }> {
     // 表單選擇：明確指定優先，否則依首句意圖路由（皆驗證表單存在）
-    const def = getDefinition(tenantId, formId ?? pickFormId(tenantId, message));
+    const def = getDefinition(tenantId, formId ?? pickFormId(tenantId, userId, message));
     const session = conversationStore.create(tenantId, userId, def.formId);
     // 開場即以 form 為點黏擁有者；後續每輪由 intent-router 決定是否讓知識問答旁路插入
     session.activeServiceId = 'form';

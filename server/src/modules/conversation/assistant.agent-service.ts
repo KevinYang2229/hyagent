@@ -14,8 +14,8 @@ import type { AgentService, AgentTurnResult, IntentDescriptor } from './agent-se
 import type { Session } from './conversation.types';
 import { listEnabledForms } from './form.agent-service';
 
-function guardSystem(tenantId: string, locale?: string): string {
-  const forms = listEnabledForms(tenantId)
+function guardSystem(tenantId: string, userId: string, locale?: string): string {
+  const forms = listEnabledForms(tenantId, userId)
     .map((d) => d.data.title ?? d.agent.description)
     .filter(Boolean);
   if (normalizeLocale(locale) === 'en') {
@@ -70,7 +70,7 @@ export const assistantAgentService: AgentService = {
     let reply: string;
     try {
       const result = await llm.createMessage({
-        system: guardSystem(session.tenantId, session.locale),
+        system: guardSystem(session.tenantId, session.userId, session.locale),
         messages: [{ role: 'user', content: [{ type: 'text', text: userText }] }],
         maxTokens: 256,
       });
