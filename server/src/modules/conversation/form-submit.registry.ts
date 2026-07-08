@@ -11,7 +11,8 @@
 import { randomUUID } from 'node:crypto';
 import type { ApprovalStep } from '@oa-agent/shared';
 import { businessTripService } from '@/modules/business-trip/business-trip.service';
-import { getOAConnector } from '@/lib/oa';
+import { makeToolContext, toolRegistry } from '@/modules/tools';
+import type { OASubmitResult } from '@/lib/oa/types';
 import { computeApprovals, stepDefs } from '@/modules/form/approvals';
 import { validateAll } from '@/modules/form/form.engine';
 import { getDefinition } from '@/modules/form/form.registry';
@@ -56,11 +57,11 @@ function makeGenericSubmit(formId: string): FormSubmitFn {
     let oaRequestId: string;
     let status: string;
     if (def.oa) {
-      const result = await getOAConnector().submitForm({
-        formId,
-        oa: def.oa,
-        source: { ...values, userId },
-      });
+      const result = (await toolRegistry.invoke(
+        'oa.submitForm',
+        { formId, oa: def.oa, source: { ...values, userId } },
+        makeToolContext({ tenantId, userId }),
+      )) as OASubmitResult;
       oaRequestId = result.oaRequestId;
       status = result.status;
     } else {
