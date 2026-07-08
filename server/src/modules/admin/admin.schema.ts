@@ -30,7 +30,6 @@ export const patchTenantSchema = z
     appearance: appearanceSchema.optional(),
     disabledServices: z.array(z.string()).optional(),
     disabledForms: z.array(z.string()).optional(),
-    grantedScopes: z.array(z.string()).optional(),
   })
   .refine((v) => Object.keys(v).length > 0, { message: '至少需提供一個欄位' });
 

@@ -45,4 +45,16 @@ describe('admin 權限 API', () => {
     const req = { params: { id: t.id }, body: { grantedScopes: ['oa:write'], groups: {}, accounts: {} } };
     await expect(adminController.setPolicy(req as never, mockRes() as never)).rejects.toMatchObject({ statusCode: 400 });
   });
+
+  it('部門授權含非 grantable 被擋 400', async () => {
+    const t = tenantStore.createTenant('admin-policy-bad-group');
+    const req = { params: { id: t.id }, body: { grantedScopes: [], groups: { 行銷部: ['oa:write'] }, accounts: {} } };
+    await expect(adminController.setPolicy(req as never, mockRes() as never)).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it('帳號授權含非 grantable 被擋 400', async () => {
+    const t = tenantStore.createTenant('admin-policy-bad-acct');
+    const req = { params: { id: t.id }, body: { grantedScopes: [], groups: {}, accounts: { kevin: ['nope:read'] } } };
+    await expect(adminController.setPolicy(req as never, mockRes() as never)).rejects.toMatchObject({ statusCode: 400 });
+  });
 });
