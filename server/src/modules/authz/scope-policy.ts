@@ -1,35 +1,63 @@
 /**
- * 權限政策：全員基礎權限 + 群組（部門）/ 帳號授權表。
- *
- * BASE_SCOPES 涵蓋現有工具所需（oa:read 查額度、oa:write 送單），讓權限收緊後現有流程不壞。
- * 群組/帳號政策本階段為 in-memory（預設空，僅 BASE 生效），供 seed / 測試 / 未來 admin 寫入；
- * 磁碟持久化延後（沿用其他 store 之後接 Prisma 的模式）。
+ * 權限政策（每租戶）：部門 / 帳號授權表，in-memory + 磁碟持久化（比照 usage.store）。
+ * BASE 能力見 scope-catalog（全員預設，不在此表）。政策以 tenantId 隔離，跨租戶互不影響。
  */
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { logger } from '@/lib/logger';
 
-/** 全員基礎權限：新能力（email:write 等）不在此，須另行授權。 */
-export const BASE_SCOPES = ['oa:read', 'oa:write'];
+export interface TenantPolicy {
+  groups: Record<string, string[]>; // 部門 → scopes
+  accounts: Record<string, string[]>; // userId → scopes
+}
 
-const groupPolicy = new Map<string, string[]>();
-const accountPolicy = new Map<string, string[]>();
+const STORE_FILE = path.join(os.tmpdir(), 'oa-agent-scope-policy.json');
+const policies = new Map<string, TenantPolicy>();
+
+function persist(): void {
+  try {
+    fs.writeFileSync(STORE_FILE, JSON.stringify([...policies.entries()]));
+  } catch (err) {
+    logger.warn({ err, file: STORE_FILE }, 'failed to persist scope policy');
+  }
+}
+
+try {
+  if (fs.existsSync(STORE_FILE)) {
+    const raw = JSON.parse(fs.readFileSync(STORE_FILE, 'utf-8')) as [string, TenantPolicy][];
+    for (const [k, v] of raw) policies.set(k, v);
+  }
+} catch (err) {
+  logger.warn({ err, file: STORE_FILE }, 'failed to restore scope policy; starting empty');
+}
+
+function clone(p: TenantPolicy): TenantPolicy {
+  return { groups: { ...p.groups }, accounts: { ...p.accounts } };
+}
+
+const EMPTY: TenantPolicy = { groups: {}, accounts: {} };
 
 export const scopePolicy = {
-  /** 部門 → 額外授權 */
-  groupScopes(department?: string): string[] {
-    return department ? (groupPolicy.get(department) ?? []) : [];
+  groupScopes(tenantId: string, department?: string): string[] {
+    if (!department) return [];
+    return policies.get(tenantId)?.groups[department] ?? [];
   },
-  /** 帳號 → 例外授權 */
-  accountScopes(userId: string): string[] {
-    return accountPolicy.get(userId) ?? [];
+  accountScopes(tenantId: string, userId: string): string[] {
+    return policies.get(tenantId)?.accounts[userId] ?? [];
   },
-  setGroupScopes(department: string, scopes: string[]): void {
-    groupPolicy.set(department, scopes);
+  /** 取某租戶政策複本（admin 讀取用）。 */
+  getPolicy(tenantId: string): TenantPolicy {
+    return clone(policies.get(tenantId) ?? EMPTY);
   },
-  setAccountScopes(userId: string, scopes: string[]): void {
-    accountPolicy.set(userId, scopes);
+  /** 整包覆寫某租戶政策（admin 儲存用）。 */
+  setPolicy(tenantId: string, policy: TenantPolicy): void {
+    policies.set(tenantId, clone(policy));
+    persist();
   },
-  /** 清空群組/帳號政策（測試用；不影響 BASE_SCOPES 常數）。 */
+  /** 清空（測試用）。 */
   clear(): void {
-    groupPolicy.clear();
-    accountPolicy.clear();
+    policies.clear();
+    persist();
   },
 };
