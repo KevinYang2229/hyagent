@@ -3,12 +3,12 @@
  * 不 import express（可在 worker 執行）。
  */
 import type { ApprovalStep } from '@oa-agent/shared';
-import { getOAConnector } from '@/lib/oa';
-import type { LeaveBalance } from '@/lib/oa/types';
+import type { LeaveBalance, OASubmitResult } from '@/lib/oa/types';
 import { computeApprovals, stepDefs } from '@/modules/form/approvals';
 import { validateAll } from '@/modules/form/form.engine';
 import { getDefinition } from '@/modules/form/form.registry';
 import type { FormValues } from '@/modules/form/form.types';
+import { makeToolContext, toolRegistry } from '@/modules/tools';
 import { getApplicant } from '@/modules/user/user.directory';
 import { AppError } from '@/utils/app-error';
 import { computeLeaveHours } from './leave.hours';
@@ -40,13 +40,16 @@ export async function submitLeaveApplication(
     : undefined;
 
   if (!def.oa) throw AppError.internal(`${FORM_ID} 缺少 oa.schema.json`);
-  const connector = getOAConnector();
-  const result = await connector.submitForm({
-    formId: FORM_ID,
-    oa: def.oa,
-    // 來源 = 表單值 + 衍生欄位（hours/region）；由 oa.schema fieldMap 決定送出哪些
-    source: { ...values, userId, region, hours },
-  });
+  const result = (await toolRegistry.invoke(
+    'oa.submitForm',
+    {
+      formId: FORM_ID,
+      oa: def.oa,
+      // 來源 = 表單值 + 衍生欄位（hours/region）；由 oa.schema fieldMap 決定送出哪些
+      source: { ...values, userId, region, hours },
+    },
+    makeToolContext({ tenantId, userId }),
+  )) as OASubmitResult;
 
   const submittedAt = new Date().toISOString();
   return {
@@ -62,8 +65,11 @@ export const leaveService = {
 
   /** 取得各假別剩餘時數（供畫面顯示「今年度剩餘 N 小時」） */
   async getBalances(userId: string): Promise<LeaveBalance[]> {
-    const connector = getOAConnector();
-    return connector.getLeaveBalance ? connector.getLeaveBalance(userId) : [];
+    return (await toolRegistry.invoke(
+      'oa.getLeaveBalance',
+      { userId },
+      makeToolContext({ tenantId: 'default', userId }),
+    )) as LeaveBalance[];
   },
 
   /**

@@ -3,11 +3,12 @@
  * 結構比照 leave.service；不 import express（可在 worker 執行）。
  */
 import type { ApprovalStep } from '@oa-agent/shared';
-import { getOAConnector } from '@/lib/oa';
+import type { OASubmitResult } from '@/lib/oa/types';
 import { computeApprovals, stepDefs } from '@/modules/form/approvals';
 import { validateAll } from '@/modules/form/form.engine';
 import { getDefinition } from '@/modules/form/form.registry';
 import type { FormValues } from '@/modules/form/form.types';
+import { makeToolContext, toolRegistry } from '@/modules/tools';
 import { AppError } from '@/utils/app-error';
 
 const FORM_ID = 'outing-registration';
@@ -28,12 +29,15 @@ export const outingService = {
     }
 
     if (!def.oa) throw AppError.internal(`${FORM_ID} 缺少 oa.schema.json`);
-    const connector = getOAConnector();
-    const result = await connector.submitForm({
-      formId: FORM_ID,
-      oa: def.oa,
-      source: { ...values, userId },
-    });
+    const result = (await toolRegistry.invoke(
+      'oa.submitForm',
+      {
+        formId: FORM_ID,
+        oa: def.oa,
+        source: { ...values, userId },
+      },
+      makeToolContext({ tenantId, userId }),
+    )) as OASubmitResult;
 
     const submittedAt = new Date().toISOString();
     return {
