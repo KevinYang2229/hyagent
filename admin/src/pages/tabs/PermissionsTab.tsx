@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type CSSProperties } from 'react';
 import { Checkbox, useToast } from '@oa-agent/ui';
-import { api, type ScopeDef, type TenantPolicyView } from '../../api';
+import { api, type TenantPolicyView } from '../../api';
 
 /** 切換某 scope 是否在清單內（回新陣列）。 */
 function toggle(list: string[], scope: string): string[] {
@@ -28,14 +28,12 @@ export default function PermissionsTab({
   onError: (e: unknown) => void;
 }) {
   const toast = useToast();
-  const [scopes, setScopes] = useState<ScopeDef[] | null>(null);
   const [policy, setPolicy] = useState<TenantPolicyView | null>(null);
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const [cat, pol] = await Promise.all([api.listScopes(), api.getTenantPolicy(tenantId)]);
-      setScopes(cat);
+      const pol = await api.getTenantPolicy(tenantId);
       setPolicy(pol);
     } catch (e) {
       onError(e);
@@ -46,14 +44,26 @@ export default function PermissionsTab({
     void load();
   }, [load]);
 
-  if (!scopes || !policy)
+  if (!policy)
     return (
       <div className="card">
         <div className="card-body">載入中…</div>
       </div>
     );
 
-  const grantable = scopes.filter((s) => !s.base);
+  const grantable = policy.capabilities;
+  const services = grantable.filter((s) => s.id.startsWith('service:'));
+  const forms = grantable.filter((s) => s.id.startsWith('form:'));
+  const external = grantable.filter(
+    (s) => !s.id.startsWith('service:') && !s.id.startsWith('form:'),
+  );
+  const groupedCols: { label: string; items: typeof grantable }[] = [
+    { label: '服務', items: services },
+    { label: '表單', items: forms },
+    { label: '外部', items: external },
+  ].filter((g) => g.items.length > 0);
+  // 表格欄位一律用分組後攤平的順序，確保與上方群組表頭 colSpan 對齊。
+  const cols = groupedCols.flatMap((g) => g.items);
 
   const toggleTenant = (id: string) =>
     setPolicy((p) => (p ? { ...p, grantedScopes: toggle(p.grantedScopes, id) } : p));
@@ -96,30 +106,34 @@ export default function PermissionsTab({
         <div>
           <div className="card-title">權限</div>
           <div className="card-desc">
-            設定此租戶開通的能力，以及各部門 / 帳號可用的能力。（表單填寫與送出屬基礎功能，於「服務」分頁控管。）
+            設定此租戶開通的能力（服務／表單／外部），以及各部門 / 帳號可用的能力。
           </div>
         </div>
       </div>
 
-      {/* ① 此租戶開通的能力 */}
+      {/* ① 此租戶開通的能力：依 服務／表單／外部 分組 */}
       <div className="card-body">
-        <div style={{ fontWeight: 500, marginBottom: 8 }}>此租戶開通的能力</div>
-        <ul className="list">
-          {grantable.map((s) => (
-            <li key={s.id} className="row">
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-                <Checkbox
-                  checked={policy.grantedScopes.includes(s.id)}
-                  onChange={() => toggleTenant(s.id)}
-                />
-                <span>{s.label}</span>
-                <span className="row-sub" style={{ marginLeft: 4 }}>
-                  {s.id}
-                </span>
-              </label>
-            </li>
-          ))}
-        </ul>
+        {groupedCols.map((g) => (
+          <div key={g.label} style={{ marginBottom: 16 }}>
+            <div style={{ fontWeight: 500, marginBottom: 8 }}>此租戶開通的能力 — {g.label}</div>
+            <ul className="list">
+              {g.items.map((s) => (
+                <li key={s.id} className="row">
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                    <Checkbox
+                      checked={policy.grantedScopes.includes(s.id)}
+                      onChange={() => toggleTenant(s.id)}
+                    />
+                    <span>{s.label}</span>
+                    <span className="row-sub" style={{ marginLeft: 4 }}>
+                      {s.id}
+                    </span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
       </div>
 
       {/* ③ 部門授權 */}
@@ -129,8 +143,17 @@ export default function PermissionsTab({
           <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 13.5 }}>
             <thead>
               <tr>
-                <th style={{ ...thStyle, textAlign: 'left' }}>部門</th>
-                {grantable.map((s) => (
+                <th style={{ ...thStyle, textAlign: 'left' }} rowSpan={2}>
+                  部門
+                </th>
+                {groupedCols.map((g) => (
+                  <th key={g.label} style={thStyle} colSpan={g.items.length}>
+                    {g.label}
+                  </th>
+                ))}
+              </tr>
+              <tr>
+                {cols.map((s) => (
                   <th key={s.id} style={thStyle}>
                     {s.label}
                   </th>
@@ -141,7 +164,7 @@ export default function PermissionsTab({
               {policy.departments.map((dep) => (
                 <tr key={dep}>
                   <td style={tdStyle}>{dep}</td>
-                  {grantable.map((s) =>
+                  {cols.map((s) =>
                     cell((policy.groups[dep] ?? []).includes(s.id), () => toggleGroup(dep, s.id)),
                   )}
                 </tr>
@@ -158,8 +181,17 @@ export default function PermissionsTab({
           <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 13.5 }}>
             <thead>
               <tr>
-                <th style={{ ...thStyle, textAlign: 'left' }}>帳號</th>
-                {grantable.map((s) => (
+                <th style={{ ...thStyle, textAlign: 'left' }} rowSpan={2}>
+                  帳號
+                </th>
+                {groupedCols.map((g) => (
+                  <th key={g.label} style={thStyle} colSpan={g.items.length}>
+                    {g.label}
+                  </th>
+                ))}
+              </tr>
+              <tr>
+                {cols.map((s) => (
                   <th key={s.id} style={thStyle}>
                     {s.label}
                   </th>
@@ -175,7 +207,7 @@ export default function PermissionsTab({
                       {u.id}
                     </span>
                   </td>
-                  {grantable.map((s) =>
+                  {cols.map((s) =>
                     cell((policy.accounts[u.id] ?? []).includes(s.id), () => toggleAccount(u.id, s.id)),
                   )}
                 </tr>

@@ -38,10 +38,6 @@ export interface Tenant {
   grantedScopes?: string[];
   createdAt: string;
 }
-export interface TenantServiceCatalog {
-  services: { id: string; label: string; enabled: boolean }[];
-  forms: { formId: string; title: string; enabled: boolean }[];
-}
 export interface ApiKey {
   key: string;
   tenantId: string;
@@ -135,6 +131,7 @@ export interface TenantPolicyView {
   accounts: Record<string, string[]>;
   departments: string[];
   users: { id: string; label: string }[];
+  capabilities: ScopeDef[];
 }
 
 export const api = {
@@ -145,13 +142,9 @@ export const api = {
     req<{ tenant: Tenant; publishableKey: string }>('POST', '/admin/tenants', input),
   updateTenant: (
     id: string,
-    patch: Partial<
-      Pick<Tenant, 'name' | 'allowedOrigins' | 'ssoSecret' | 'appearance' | 'disabledServices' | 'disabledForms'>
-    >,
+    patch: Partial<Pick<Tenant, 'name' | 'allowedOrigins' | 'ssoSecret' | 'appearance'>>,
   ) => req<Tenant>('PATCH', `/admin/tenants/${id}`, patch),
   deleteTenant: (id: string) => req<{ id: string }>('DELETE', `/admin/tenants/${id}`),
-  getTenantServices: (id: string) =>
-    req<TenantServiceCatalog>('GET', `/admin/tenants/${id}/services`),
   listScopes: () => req<ScopeDef[]>('GET', '/admin/scopes'),
   getTenantPolicy: (id: string) => req<TenantPolicyView>('GET', `/admin/tenants/${id}/policy`),
   putTenantPolicy: (
