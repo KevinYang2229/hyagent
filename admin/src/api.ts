@@ -33,8 +33,6 @@ export interface Tenant {
   allowedOrigins: string[];
   ssoSecret?: string;
   appearance?: TenantAppearance;
-  disabledServices?: string[];
-  disabledForms?: string[];
   grantedScopes?: string[];
   createdAt: string;
 }

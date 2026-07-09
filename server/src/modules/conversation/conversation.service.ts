@@ -13,6 +13,7 @@ import { runTurn } from './conversation.agent';
 import { resolveSubmit } from './form-submit.registry';
 import { conversationStore } from './conversation.store';
 import type { Session, TurnResult } from './conversation.types';
+import { listEnabledForms } from './form.agent-service';
 import { pickFormId } from './intent-router';
 
 /** 申請人欄位值格式：姓名(工號)，與真實 OA 畫面一致 */
@@ -34,7 +35,12 @@ export const conversationService = {
     formId?: string,
     lang?: string,
   ): Promise<{ session: Session; turn?: TurnResult }> {
-    // 表單選擇：明確指定優先，否則依首句意圖路由（皆驗證表單存在）
+    // 表單選擇：明確指定優先，否則依首句意圖路由（皆驗證表單存在）。
+    // 明確指定 formId 時另需驗證使用者持有該表單 scope（form:<id>）——
+    // 無指定則走 pickFormId，其已僅回傳 listEnabledForms 授予的表單，無需重複檢查。
+    if (formId && !listEnabledForms(tenantId, userId).some((d) => d.formId === formId)) {
+      throw AppError.forbidden('無權使用此表單');
+    }
     const def = getDefinition(tenantId, formId ?? pickFormId(tenantId, userId, message));
     const session = conversationStore.create(tenantId, userId, def.formId);
     // 開場即以 form 為點黏擁有者；後續每輪由 intent-router 決定是否讓知識問答旁路插入

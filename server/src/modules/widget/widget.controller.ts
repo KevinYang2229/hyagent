@@ -13,7 +13,9 @@ const DEFAULT_APPEARANCE: Required<Pick<TenantAppearance, 'theme' | 'position'>>
 export const widgetController = {
   async getConfig(req: Request, res: Response): Promise<void> {
     const appearance: TenantAppearance = { ...DEFAULT_APPEARANCE, ...(req.tenant?.appearance ?? {}) };
-    // 知識庫服務是否對此租戶啟用（供 widget 決定要不要顯示知識庫推薦用詞）
+    // 已知的殘留缺口（cosmetic）：此路由只掛 resolveTenant、無 requireAuth，widget 載入時尚無終端使用者身分可查
+    // scope，故沿用租戶層 disabledServices 判斷（僅影響提示文案是否顯示，非實際權限守門——
+    // 真正的服務門檻在對話建立後由 serviceRegistry.enabledFor(tenantId, userId) 以 service:knowledge scope 把關）。
     const knowledgeEnabled = !(req.tenant?.disabledServices ?? []).includes('knowledge');
     res.status(200).json({ data: { appearance, knowledgeEnabled } });
   },
