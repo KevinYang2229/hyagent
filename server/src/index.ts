@@ -2,8 +2,13 @@ import http from 'node:http';
 import { createApp } from '@/app';
 import { env } from '@/config/env';
 import { logger } from '@/lib/logger';
+import { migrateTenantScopes } from '@/modules/authz/scope-migration';
 
 const app = createApp();
+
+// 既有租戶的 disabledServices/disabledForms → grantedScopes 一次性遷移；store 已於上方 import 載入完成。
+migrateTenantScopes();
+
 const server = http.createServer(app);
 
 server.listen(env.PORT, () => {

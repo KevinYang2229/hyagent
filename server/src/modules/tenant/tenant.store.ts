@@ -139,6 +139,7 @@ export const tenantStore = {
         | 'disabledServices'
         | 'disabledForms'
         | 'grantedScopes'
+        | 'scopesMigrated'
       >
     >,
   ): Tenant | undefined {
@@ -155,6 +156,7 @@ export const tenantStore = {
       ...(patch.disabledServices !== undefined ? { disabledServices: patch.disabledServices } : {}),
       ...(patch.disabledForms !== undefined ? { disabledForms: patch.disabledForms } : {}),
       ...(patch.grantedScopes !== undefined ? { grantedScopes: patch.grantedScopes } : {}),
+      ...(patch.scopesMigrated !== undefined ? { scopesMigrated: patch.scopesMigrated } : {}),
     };
     tenants.set(id, next);
     persist();

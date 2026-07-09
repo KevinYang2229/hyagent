@@ -3,6 +3,7 @@
  * 全部受 requireAdmin 保護。寫入前以 validateDefinition 把關 8 層自洽性。
  */
 import type { Request, Response } from 'express';
+import { formScopeId } from '@/modules/authz/scope-catalog';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 import { AppError } from '@/utils/app-error';
 import {
@@ -76,6 +77,11 @@ export const formAdminController = {
     }
     assertValid(def);
     const saved = formStore.saveDefinition(tenantId, def);
+    // 新建表單自動授予該租戶對應的 form:<id> scope，Designer 建的表單立即可用
+    const t = tenantStore.getTenant(tenantId);
+    const granted = new Set(t?.grantedScopes ?? []);
+    granted.add(formScopeId(def.formId));
+    tenantStore.updateTenant(tenantId, { grantedScopes: [...granted] });
     res.status(201).json({ data: saved });
   },
 

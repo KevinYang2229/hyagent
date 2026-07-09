@@ -45,5 +45,7 @@ export interface Tenant {
    * 與群組/帳號政策一起併入 resolveScopes；未設＝不額外授權（仍有 BASE_SCOPES）。
    */
   grantedScopes?: string[];
+  /** 是否已完成服務/表單 → scope 的一次性遷移；true 後遷移不再覆寫其授予。 */
+  scopesMigrated?: boolean;
   createdAt: string;
 }

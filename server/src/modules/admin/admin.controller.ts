@@ -8,6 +8,7 @@ import { webhookStore } from '@/modules/webhook/webhook.store';
 import { usageStore } from '@/modules/usage/usage.store';
 import { AppError } from '@/utils/app-error';
 import { SCOPE_CATALOG, assertGrantableScopes } from '@/modules/authz/scope-catalog';
+import { defaultGrantedScopes } from '@/modules/authz/scope-migration';
 import { scopePolicy } from '@/modules/authz/scope-policy';
 import { getApplicant, listDepartments, listUserIds } from '@/modules/user/user.directory';
 import type {
@@ -29,9 +30,14 @@ export const adminController = {
   async createTenant(req: Request, res: Response): Promise<void> {
     const { name, allowedOrigins, ssoSecret } = req.body as CreateTenantInput;
     const tenant = tenantStore.createTenant(name, allowedOrigins ?? [], ssoSecret);
+    // 新租戶自動授予標準服務 + 內建表單，並標記已完成遷移，避免之後被一次性遷移覆寫
+    const withScopes = tenantStore.updateTenant(tenant.id, {
+      grantedScopes: defaultGrantedScopes(tenant.id),
+      scopesMigrated: true,
+    });
     // 一併發一把公開金鑰，方便立即接入
     const publishable = tenantStore.createApiKey(tenant.id, 'publishable');
-    res.status(201).json({ data: { tenant, publishableKey: publishable.key } });
+    res.status(201).json({ data: { tenant: withScopes ?? tenant, publishableKey: publishable.key } });
   },
 
   async listTenants(_req: Request, res: Response): Promise<void> {
