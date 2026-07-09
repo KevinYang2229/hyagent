@@ -11,7 +11,6 @@ import { knowledgeAdminController } from '@/modules/knowledge/knowledge.admin.co
 import { ingestSchema, jobParamSchema, queryTestSchema, sourceSchema } from '@/modules/knowledge/knowledge.admin.schema';
 import { adminController } from './admin.controller';
 import { adminAuthController } from './admin.auth.controller';
-import { tenantServicesController } from './tenant-services.controller';
 import {
   adminLoginSchema,
   createKeySchema,
@@ -78,13 +77,6 @@ router.get(
   '/tenants/:id/usage',
   validate({ params: tenantParamSchema }),
   asyncHandler(adminController.getUsage),
-);
-
-// 服務/表單 catalog（服務開關 UI 用）
-router.get(
-  '/tenants/:id/services',
-  validate({ params: tenantParamSchema }),
-  asyncHandler(tenantServicesController.get),
 );
 
 // 權限：scopes 目錄 + 每租戶政策 GET/PUT
