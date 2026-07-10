@@ -26,7 +26,7 @@ describe('toolRegistry.availableFor', () => {
       scopes: [],
       handler: async () => 'ok',
     });
-    const tools = toolRegistry.availableFor({ tenantId: 't', userId: 'u', scopes: ['*'] });
+    const tools = toolRegistry.availableFor({ tenantId: 't', userId: 'u', scopes: [] });
     expect(tools.map((t) => t.name)).not.toContain('test.hidden');
   });
 
@@ -39,8 +39,8 @@ describe('toolRegistry.availableFor', () => {
       agentExposed: true,
       handler: async () => 'ok',
     });
-    const wild: ToolContext = { tenantId: 't', userId: 'u', scopes: ['*'] };
-    expect(toolRegistry.availableFor(wild).map((t) => t.name)).toContain('test.needsScope');
+    const granted: ToolContext = { tenantId: 't', userId: 'u', scopes: ['special:read'] };
+    expect(toolRegistry.availableFor(granted).map((t) => t.name)).toContain('test.needsScope');
     const limited: ToolContext = { tenantId: 't', userId: 'u', scopes: ['oa:read'] };
     expect(toolRegistry.availableFor(limited).map((t) => t.name)).not.toContain('test.needsScope');
   });

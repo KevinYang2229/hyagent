@@ -22,17 +22,6 @@ describe('toolRegistry', () => {
     expect(handler).toHaveBeenCalledWith({ msg: 'hi' }, ctx(['test:read']));
   });
 
-  it('萬用字元 scope 通過任何工具的權限檢查', async () => {
-    registerTool({
-      id: 'test.wild',
-      description: 'x',
-      inputSchema: { type: 'object' },
-      scopes: ['whatever:write'],
-      handler: async () => 'done',
-    });
-    await expect(toolRegistry.invoke('test.wild', {}, ctx(['*']))).resolves.toBe('done');
-  });
-
   it('scope 不足時丟 403 且不呼叫 handler', async () => {
     const handler = jest.fn();
     registerTool({ id: 'test.guarded', description: 'x', inputSchema: { type: 'object' }, scopes: ['oa:write'], handler });
@@ -49,7 +38,7 @@ describe('toolRegistry', () => {
       scopes: [],
       handler,
     });
-    await expect(toolRegistry.invoke('test.needs-msg', {}, ctx(['*']))).rejects.toMatchObject({ statusCode: 422 });
+    await expect(toolRegistry.invoke('test.needs-msg', {}, ctx([]))).rejects.toMatchObject({ statusCode: 422 });
     expect(handler).not.toHaveBeenCalled();
   });
 

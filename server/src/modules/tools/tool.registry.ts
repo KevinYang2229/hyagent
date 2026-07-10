@@ -27,9 +27,8 @@ export function registerTool(tool: ToolDef): void {
   registry.set(tool.id, { tool, validate });
 }
 
-/** granted 含 '*' 視為萬用字元；否則需涵蓋 required 全部。 */
+/** granted 需涵蓋 required 全部（無萬用字元；scope 一律逐個比對）。 */
 function hasScopes(granted: string[], required: string[]): boolean {
-  if (granted.includes('*')) return true;
   return required.every((s) => granted.includes(s));
 }
 
