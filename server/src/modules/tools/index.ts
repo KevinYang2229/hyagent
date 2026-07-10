@@ -3,6 +3,7 @@
  * 上層一律從 '@/modules/tools' import，確保工具在被 invoke 前已完成註冊。
  */
 import './oa.tools';
+import './email.tools';
 
 export { registerTool, toolRegistry } from './tool.registry';
 export { makeToolContext } from './tool.context';
