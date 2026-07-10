@@ -1,0 +1,29 @@
+/** pendingEmail 存在時，路由強制回 agent（讓確認閘收到確認/取消輪）。 */
+import { intentRouter } from '@/modules/conversation/intent-router';
+import type { Session } from '@/modules/conversation/conversation.types';
+import { tenantStore } from '@/modules/tenant/tenant.store';
+
+function makeSession(tenantId: string, partial: Partial<Session> = {}): Session {
+  return {
+    id: 's', tenantId, userId: 'kevin', formId: 'leave-request', values: {},
+    status: 'collecting', activeServiceId: 'agent', messages: [],
+    createdAt: new Date().toISOString(), ...partial,
+  };
+}
+
+it('有 pendingEmail → 路由回 agent（0 token）', async () => {
+  const t = tenantStore.createTenant('email-route');
+  tenantStore.updateTenant(t.id, { grantedScopes: ['service:agent', 'email:write'] });
+  const session = makeSession(t.id, { pendingEmail: { to: 'a@x.com', subject: 's', html: '<p>x</p>' } });
+  const r = await intentRouter.route(session, '確認');
+  expect(r.serviceId).toBe('agent');
+  expect(r.viaLLM).toBe(false);
+});
+
+it('無 pendingEmail → 不強制 agent（一般路由）', async () => {
+  const t = tenantStore.createTenant('email-route-none');
+  tenantStore.updateTenant(t.id, { grantedScopes: ['service:form', 'service:agent'] });
+  const session = makeSession(t.id, { activeServiceId: undefined });
+  const r = await intentRouter.route(session, '我要請假');
+  expect(r.serviceId).not.toBe('agent'); // 應走 form（關鍵字命中）
+});
