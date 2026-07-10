@@ -7,13 +7,19 @@
  */
 import { getOAConnector } from '@/lib/oa';
 import type { OAConnector } from '@/lib/oa/types';
+import { getEmailConnector } from '@/lib/email';
+import type { EmailConnector } from '@/lib/email/types';
 
-export type ConnectorName = 'oa';
+export type ConnectorName = 'oa' | 'email';
 
-export function getConnector(name: ConnectorName): OAConnector {
+export function getConnector(name: 'oa'): OAConnector;
+export function getConnector(name: 'email'): EmailConnector;
+export function getConnector(name: ConnectorName): OAConnector | EmailConnector {
   switch (name) {
     case 'oa':
       return getOAConnector();
+    case 'email':
+      return getEmailConnector();
     default:
       throw new Error(`unknown connector: ${name as string}`);
   }

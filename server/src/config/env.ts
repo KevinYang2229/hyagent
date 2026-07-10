@@ -59,6 +59,9 @@ const envSchema = z.object({
   SMTP_PASS: z.string().default(''),
   MAIL_FROM: z.string().default('App <noreply@example.com>'),
 
+  // ---- Email 連接器（MVP 預設 stub；smtp 為真 SMTP 連接器）----
+  EMAIL_CONNECTOR: z.enum(['stub', 'smtp']).default('stub'),
+
   // ---- LLM provider（可抽換層；支援 anthropic / openai）----
   LLM_PROVIDER: z.enum(['anthropic', 'openai']).default('anthropic'),
   LLM_MODEL: z.string().default('claude-sonnet-4-5'),
@@ -106,6 +109,14 @@ const envSchema = z.object({
       code: z.ZodIssueCode.custom,
       path: ['OA_BASE_URL'],
       message: 'OA_BASE_URL is required when OA_CONNECTOR=http',
+    });
+  }
+  // EMAIL_CONNECTOR=smtp 時必須提供 SMTP_HOST，boot 時 fail-fast
+  if (val.EMAIL_CONNECTOR === 'smtp' && !val.SMTP_HOST) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['SMTP_HOST'],
+      message: 'SMTP_HOST is required when EMAIL_CONNECTOR=smtp',
     });
   }
   // 依 provider 要求對應的 API key，boot 時 fail-fast
