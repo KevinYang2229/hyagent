@@ -10,6 +10,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import type { ApprovalStep } from '@oa-agent/shared';
+import { logger } from '@/lib/logger';
 import { businessTripService } from '@/modules/business-trip/business-trip.service';
 import { makeToolContext, toolRegistry } from '@/modules/tools';
 import type { OASubmitResult } from '@/lib/oa/types';
@@ -19,6 +20,7 @@ import { getDefinition } from '@/modules/form/form.registry';
 import type { FormValues } from '@/modules/form/form.types';
 import { submitLeaveApplication } from '@/modules/leave/leave.service';
 import { outingService } from '@/modules/outing/outing.service';
+import { getApplicant } from '@/modules/user/user.directory';
 import { AppError } from '@/utils/app-error';
 
 /** 各表單 service.submit 的共同回傳形狀（leave / business-trip / outing 一致） */
@@ -76,8 +78,42 @@ function makeGenericSubmit(formId: string): FormSubmitFn {
 }
 
 /**
+ * 送出後 best-effort 寄通知信：收件人＝申請人 email。
+ * 權限不足（email:write 未授予 → 403）或寄信失敗一律吞掉，絕不影響送出結果。
+ */
+async function notifyOnSubmit(
+  tenantId: string,
+  userId: string,
+  formId: string,
+  submission: FormSubmission,
+): Promise<void> {
+  try {
+    const to = getApplicant(userId).email;
+    if (!to) return; // 無 email → 略過
+    const title = getDefinition(tenantId, formId).data.title ?? formId;
+    await toolRegistry.invoke(
+      'email.send',
+      {
+        to,
+        subject: `【${title}】已送出`,
+        html: `<p>您的「${title}」已送出，單號：${submission.oaRequestId}。</p>`,
+      },
+      makeToolContext({ tenantId, userId }),
+    );
+  } catch (err) {
+    logger.info({ err, formId, userId }, '送出通知信略過（無權限或寄信失敗）');
+  }
+}
+
+/**
  * 取得指定表單的送出 service：有專屬則用之，否則回通用送出（schema 驅動）。
+ * 送出成功後 best-effort 通知申請人（不影響回傳的 FormSubmission）。
  */
 export function resolveSubmit(formId: string): FormSubmitFn {
-  return submitRegistry[formId] ?? makeGenericSubmit(formId);
+  const base = submitRegistry[formId] ?? makeGenericSubmit(formId);
+  return async (tenantId, userId, values) => {
+    const result = await base(tenantId, userId, values);
+    await notifyOnSubmit(tenantId, userId, formId, result);
+    return result;
+  };
 }

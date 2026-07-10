@@ -221,6 +221,8 @@ export interface Applicant {
   title?: string;
   /** 所屬地區（如 台北/新竹）；決定工時政策，缺省用 policy.default */
   region?: string;
+  /** 電子郵件（選填）；送出通知信等 best-effort 動作用 */
+  email?: string;
 }
 
 /** 假別剩餘時數（由 OA 連接器提供） */

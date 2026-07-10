@@ -5,8 +5,8 @@
 import type { Applicant } from "@oa-agent/shared";
 
 const DIRECTORY: Record<string, Omit<Applicant, "id">> = {
-  kevin: { name: "Kevin Yang", department: "行銷部", title: "技術經理", region: "台北" },
-  hyweb: { name: "Eason Hsieh", department: "行銷部", title: "處長", region: "新竹" },
+  kevin: { name: "Kevin Yang", department: "行銷部", title: "技術經理", region: "台北", email: "kevin@example.com" },
+  hyweb: { name: "Eason Hsieh", department: "行銷部", title: "處長", region: "新竹", email: "hyweb@example.com" },
 };
 
 /**
