@@ -105,12 +105,17 @@ export const adminController = {
   async getPolicy(req: Request, res: Response): Promise<void> {
     const tenant = ensureTenant(String(req.params.id));
     const policy = scopePolicy.getPolicy(tenant.id);
+    const capabilities = tenantGrantableScopes(tenant.id);
+    // 濾掉孤兒 scope（如已刪表單殘留的 form:<id>）：確保 GET→PUT 冪等，
+    // 不會被自己回存的舊授予被 setPolicy 的 grantable 驗證擋成 400。
+    const grantableIds = new Set(capabilities.map((s) => s.id));
+    const prune = (ids: string[]): string[] => ids.filter((s) => grantableIds.has(s));
     res.status(200).json({
       data: {
-        capabilities: tenantGrantableScopes(tenant.id),
-        grantedScopes: tenant.grantedScopes ?? [],
-        groups: policy.groups,
-        accounts: policy.accounts,
+        capabilities,
+        grantedScopes: prune(tenant.grantedScopes ?? []),
+        groups: Object.fromEntries(Object.entries(policy.groups).map(([k, v]) => [k, prune(v)])),
+        accounts: Object.fromEntries(Object.entries(policy.accounts).map(([k, v]) => [k, prune(v)])),
         departments: listDepartments(),
         users: listUserIds().map((id) => ({ id, label: getApplicant(id).name })),
       },

@@ -83,6 +83,29 @@ describe('admin 權限 API', () => {
     });
   });
 
+  it('getPolicy 濾掉孤兒 scope（已刪表單的 form:<id>），使 GET→PUT 冪等不再 400', async () => {
+    const t = tenantStore.createTenant('admin-policy-orphan');
+    // 模擬孤兒：租戶授予中殘留一個不存在表單的 form scope（如表單被刪後未撤銷）
+    tenantStore.updateTenant(t.id, {
+      grantedScopes: ['service:form', 'form:leave-request', 'form:ghost-deleted-form'],
+    });
+
+    const getRes = mockRes();
+    await adminController.getPolicy({ params: { id: t.id } } as never, getRes as never);
+    const body = (getRes.body as { data: { grantedScopes: string[] } }).data;
+    expect(body.grantedScopes).toContain('form:leave-request');
+    expect(body.grantedScopes).toContain('service:form');
+    expect(body.grantedScopes).not.toContain('form:ghost-deleted-form'); // 孤兒被濾掉
+
+    // 把 GET 回來的 grantedScopes 原封 PUT（模擬按「儲存」）→ 不再 400
+    const putRes = mockRes();
+    await adminController.setPolicy(
+      { params: { id: t.id }, body: { grantedScopes: body.grantedScopes, groups: {}, accounts: {} } } as never,
+      putRes as never,
+    );
+    expect(putRes.statusCode).toBe(200);
+  });
+
   it('授予非 grantable（BASE/未知）被擋 400', async () => {
     const t = tenantStore.createTenant('admin-policy-bad');
     const req = { params: { id: t.id }, body: { grantedScopes: ['oa:write'], groups: {}, accounts: {} } };

@@ -6,6 +6,7 @@ import request from 'supertest';
 import { createApp } from '@/app';
 import { validateDefinition } from '@/modules/form/form.validator';
 import type { Definition } from '@/modules/form/form.types';
+import { tenantStore } from '@/modules/tenant/tenant.store';
 
 const app = createApp();
 const KEY = 'test-admin-key';
@@ -81,6 +82,24 @@ describe('Form Designer 管理 API', () => {
     const item = res.body.data.find((d: { formId: string }) => d.formId === FORM_ID);
     expect(item).toBeTruthy();
     expect(item.source).toBe('tenant');
+  });
+
+  it('刪除表單會撤銷其 form:<id> 授予（不留孤兒，避免日後編輯權限 400）', async () => {
+    const fid = `revoke-form-${Date.now()}`;
+    await request(app)
+      .post(`/api/admin/tenants/${TENANT}/forms`)
+      .set('x-admin-key', KEY)
+      .send(validDef(fid))
+      .expect(201);
+    // 建立後自動授予該表單 scope
+    expect(tenantStore.getTenant(TENANT)?.grantedScopes).toContain(`form:${fid}`);
+
+    await request(app)
+      .delete(`/api/admin/tenants/${TENANT}/forms/${fid}`)
+      .set('x-admin-key', KEY)
+      .expect(200);
+    // 刪除後授予被撤銷（否則留下孤兒）
+    expect(tenantStore.getTenant(TENANT)?.grantedScopes ?? []).not.toContain(`form:${fid}`);
   });
 
   it('GET 單一回完整 Definition', async () => {

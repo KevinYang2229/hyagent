@@ -101,9 +101,16 @@ export const formAdminController = {
   /** 刪除租戶自有定義；base 不可刪（刪除後若有同名 base 會自動回退顯示 base） */
   async remove(req: Request, res: Response): Promise<void> {
     const tenantId = ensureTenant(String(req.params.id));
-    const ok = formStore.deleteDefinition(tenantId, String(req.params.formId));
+    const formId = String(req.params.formId);
+    const ok = formStore.deleteDefinition(tenantId, formId);
     if (!ok) throw AppError.notFound('租戶無此自建表單');
-    res.status(200).json({ data: { formId: String(req.params.formId) } });
+    // 撤銷該表單的授予，避免留下孤兒 form:<id>（否則日後編輯權限會被自己的舊授予擋 400）
+    const scope = formScopeId(formId);
+    const granted = tenantStore.getTenant(tenantId)?.grantedScopes;
+    if (granted?.includes(scope)) {
+      tenantStore.updateTenant(tenantId, { grantedScopes: granted.filter((s) => s !== scope) });
+    }
+    res.status(200).json({ data: { formId } });
   },
 
   /** 匯出成 schemas/<formId>/ 多檔 JSON（供開發者 commit 進 repo） */
