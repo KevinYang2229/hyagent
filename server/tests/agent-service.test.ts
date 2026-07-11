@@ -62,10 +62,11 @@ describe('agentAgentService', () => {
     expect(res.reply).toBe('抱歉，我無法直接送出表單。');
   });
 
-  it('已註冊為服務且提供 agent.task 意圖（keywords 為空）', () => {
+  it('已註冊為服務且提供 agent.task 意圖（含精準寄信關鍵字）', () => {
     expect(serviceRegistry.get('agent')).toBe(agentAgentService);
     const intents = agentAgentService.intents(makeSession());
     expect(intents.map((i) => i.id)).toContain('agent.task');
-    expect(intents.every((i) => i.keywords.length === 0)).toBe(true);
+    // 用完整片語關鍵字（如「寄信給」）讓明確送信請求 0-token 路由到 agent
+    expect(intents[0].keywords).toContain('寄信給');
   });
 });

@@ -124,6 +124,12 @@ export const intentRouter = {
     if (inStickyFlow) {
       // 送出確認一律留在點黏服務，避免把「可以送嗎」誤判成知識問答
       if (isSubmitConfirmation(text)) return { serviceId: activeId, viaLLM: false };
+      // 明確命中 agent 動作關鍵字（如「寄信給」）即使在填表點黏中也放行轉到 agent，
+      // 否則簡短送信請求（無知識語氣詞）會被困在 form。只放行 agent（知識問句仍走下方 hint→classify）。
+      const kwSticky = keywordRoute(session, text);
+      if (kwSticky.confident && kwSticky.serviceId === 'agent' && enabledIds.has('agent')) {
+        return { serviceId: 'agent', viaLLM: false };
+      }
       // 無知識語氣 → 0 token 續留；有語氣才花一次 Haiku 二次確認（gate 過度觸發也由分類器把關）
       if (!KNOWLEDGE_HINT_RE.test(text)) return { serviceId: activeId, viaLLM: false };
       const classified = await classify(session, text);

@@ -27,3 +27,12 @@ it('無 pendingEmail → 不強制 agent（一般路由）', async () => {
   const r = await intentRouter.route(session, '我要請假');
   expect(r.serviceId).not.toBe('agent'); // 應走 form（關鍵字命中）
 });
+
+it('明確「寄信給X」→ 關鍵字 0-token 路由到 agent（不 fallback 到 form）', async () => {
+  const t = tenantStore.createTenant('email-route-kw');
+  tenantStore.updateTenant(t.id, { grantedScopes: ['service:form', 'service:agent'] });
+  const session = makeSession(t.id, { activeServiceId: undefined });
+  const r = await intentRouter.route(session, '我要寄信給王小明');
+  expect(r.serviceId).toBe('agent');
+  expect(r.viaLLM).toBe(false); // 關鍵字命中，不動用 Haiku
+});

@@ -53,7 +53,9 @@ export const agentAgentService: AgentService = {
     return [
       {
         id: 'agent.task',
-        keywords: [],
+        // 精準的「代寄信」動作片語（0-token 直接路由到 agent）；刻意用完整片語避免誤搶
+        // （如「寄信給」不會命中「寄信的規定」這種問答）。開放式多步驟任務仍靠分類器判斷。
+        keywords: ['寄信給', '幫我寄', '寄封信', '寄一封信', '發信給', '代寄'],
         description:
           '需要操作公司系統/工具的任務，例如查詢並彙整多項資料、代擬並（經確認後）寄送通知信 Email。',
       },
