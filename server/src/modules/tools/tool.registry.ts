@@ -51,15 +51,22 @@ export const toolRegistry = {
     const { tool, validate } = lookup(id);
     const audit = (ok: boolean, extra: { summary?: string; error?: string }): void => {
       if (!tool.audit) return;
-      let summary = extra.summary;
-      if (summary === undefined) {
-        try {
-          summary = tool.auditSummary ? tool.auditSummary(input as never) : tool.id;
-        } catch {
-          summary = tool.id;
+      // 稽核為旁路：整段包 try/catch——摘要或寫入的任何失敗都不得影響工具呼叫的正常回傳/錯誤
+      // （否則成功送出的 email/表單可能被回報成失敗，導致使用者重送）。
+      try {
+        let summary = extra.summary;
+        if (summary === undefined) {
+          // 摘要失敗仍記錄（退回工具 id）；record 本身失敗才由外層 catch 整筆略過
+          try {
+            summary = tool.auditSummary ? tool.auditSummary(input as never) : tool.id;
+          } catch {
+            summary = tool.id;
+          }
         }
+        auditStore.record(ctx.tenantId, { toolId: id, userId: ctx.userId, at: new Date().toISOString(), ok, summary, error: extra.error });
+      } catch (err) {
+        logger.warn({ err, toolId: id }, 'audit record failed (ignored)');
       }
-      auditStore.record(ctx.tenantId, { toolId: id, userId: ctx.userId, at: new Date().toISOString(), ok, summary, error: extra.error });
     };
 
     if (!hasScopes(ctx.scopes, tool.scopes)) {
