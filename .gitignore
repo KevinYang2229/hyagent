@@ -20,6 +20,9 @@ prisma/migrations/dev.db*
 
 *.tsbuildinfo
 
+# Superpowers SDD 工作區（ledger / 任務 brief / review 產物）＝暫存，不進版控
+.superpowers/
+
 # 知識庫 RAG 產物（generated / 本地評測集）
 server/data/knowledge-index.*.json
 server/data/knowledge-eval.json
