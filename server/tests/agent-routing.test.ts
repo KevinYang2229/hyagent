@@ -47,18 +47,16 @@ function makeSession(partial: Partial<Session> = {}): Session {
   };
 }
 
-describe('agentAgentService 不困住對話（sticky:false）', () => {
-  it('agentAgentService.sticky 為 false', () => {
-    expect(agentAgentService.sticky).toBe(false);
+describe('agentAgentService 不困住對話（sticky:true，靠 router 逃逸）', () => {
+  it('agentAgentService.sticky 為 true（多輪任務需點黏；不困住由 router 逃逸保證）', () => {
+    expect(agentAgentService.sticky).toBe(true);
   });
 
-  it('activeServiceId=agent、status=collecting 時，一句普通填表訊息會被路由離開 agent（不是 agent）', async () => {
+  it('activeServiceId=agent、status=collecting 時，一句普通填表訊息仍會被路由離開 agent（sticky 逃逸）', async () => {
     // 從已啟用表單的 agent.keywords 挑一個具辨識度的關鍵字，讓 keywordRoute 0-token 命中 'form'，
-    // 不需要真的呼叫 LLM 分類器（deterministic）。leave-request 本身沒有 keywords 欄位，
-    // 但同租戶下的 business-trip-domestic 定義了 ["出差報銷","差旅費",...]；
-    // 其中「出差報銷」不與 knowledge/agent/assistant 的關鍵字重疊（agent/assistant 皆為
-    // keywords: []；knowledge 的 KB_KEYWORDS 不含「出差報銷」），故 form 服務會是唯一得分者，
-    // keywordRoute 判定 confident=true，全程 0 LLM 呼叫。
+    // 不需要真的呼叫 LLM 分類器（deterministic）。business-trip-domestic 定義了 ["出差報銷",...]；
+    // 「出差報銷」不與 agent 的寄信關鍵字或 knowledge 的 KB_KEYWORDS 重疊，故 form 是唯一得分者，
+    // 即使 agent 為 sticky，router 的點黏逃逸也會把它轉回 form，全程 0 LLM 呼叫。
     const forms = listEnabledForms('default', 'kevin');
     const withKeywords = forms.find((f) => (f.agent.keywords?.length ?? 0) > 0);
     expect(withKeywords).toBeDefined();

@@ -28,6 +28,16 @@ it('無 pendingEmail → 不強制 agent（一般路由）', async () => {
   expect(r.serviceId).not.toBe('agent'); // 應走 form（關鍵字命中）
 });
 
+it('agent 蒐集資訊途中（activeServiceId=agent）的無關鍵字回答留在 agent（多輪不被沖回 form）', async () => {
+  const t = tenantStore.createTenant('email-route-multiturn');
+  tenantStore.updateTenant(t.id, { grantedScopes: ['service:form', 'service:agent'] });
+  // 模擬：agent 已問「主旨？」，使用者回答主旨（無任何服務關鍵字、無知識語氣詞）
+  const session = makeSession(t.id, { activeServiceId: 'agent', status: 'collecting' });
+  const r = await intentRouter.route(session, '主旨：關於合作提案');
+  expect(r.serviceId).toBe('agent'); // 留在 agent 繼續擬稿，不被沖回 form
+  expect(r.viaLLM).toBe(false);
+});
+
 it('明確「寄信給X」→ 關鍵字 0-token 路由到 agent（不 fallback 到 form）', async () => {
   const t = tenantStore.createTenant('email-route-kw');
   tenantStore.updateTenant(t.id, { grantedScopes: ['service:form', 'service:agent'] });

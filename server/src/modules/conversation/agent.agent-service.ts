@@ -5,9 +5,9 @@
  * （toolRegistry.availableFor）交給 LLM 自選，靠共用 tool-loop 多輪往返完成任務。
  * 安全：dispatchTool 只放行 availableFor 清單內的工具；LLM 即使幻想出別的工具名也呼叫不到
  * （送單等寫入動作因此不會被 Agent 觸發）。工具錯誤回傳為 tool_result，讓 LLM 自行修正而非中斷整輪。
- * sticky=false：v1 Agent 是單輪、唯讀的旁路服務（與 knowledge 相同定位），完成一輪就放手，
- * 不會把後續對話點黏在自己身上；否則下一句普通填表訊息（如「我要請假」）會被困在沒有表單工具
- * 的 Agent 裡出不來。等 Agent 具備跨輪的多步驟狀態後，再評估是否需要真正的點黏。
+ * sticky=true：Agent 常是多輪任務（如寄信：問主旨→問內容→擬稿→確認），需點黏才不會在
+ * 蒐集資訊途中被沖回 form。避免「困在沒有表單工具的 Agent」的舊風險，改由 intent-router 的
+ * 點黏逃逸機制處理——使用者只要講出其他服務的關鍵字（如「我要請假」→ form）或知識問句即可轉出。
  */
 import type { LLMProvider } from '@/lib/llm/types';
 import type { EmailSendResult } from '@/lib/email/types';
@@ -46,7 +46,7 @@ function buildSystemPrompt(userId: string, locale?: string): string {
 export const agentAgentService: AgentService = {
   id: 'agent',
   label: '智慧代理',
-  sticky: false,
+  sticky: true,
   serviceScope: 'service:agent',
 
   intents(): IntentDescriptor[] {
