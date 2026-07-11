@@ -41,6 +41,9 @@ export default function PermissionsTab({
   const toast = useToast();
   const [policy, setPolicy] = useState<TenantPolicyView | null>(null);
   const [saving, setSaving] = useState(false);
+  // 使用者明確選了「指定對象」但尚未勾任何人的能力：資料上三處皆無、推導會誤判成「未開通」，
+  // 用此集合讓模式停留在指定對象、展開區得以顯示（勾了人之後自然由資料推導）。
+  const [someOverride, setSomeOverride] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     try {
@@ -72,15 +75,21 @@ export default function PermissionsTab({
     },
   ].filter((g) => g.items.length > 0);
 
-  /** 該能力目前的模式：全租戶 > 指定對象 > 未開通 */
+  /** 該能力目前的模式：全租戶 > 指定對象（含剛切換、尚未勾人）> 未開通 */
   const modeOf = (id: string): Mode => {
     if (policy.grantedScopes.includes(id)) return 'all';
     const inGroups = Object.values(policy.groups).some((v) => v.includes(id));
     const inAccounts = Object.values(policy.accounts).some((v) => v.includes(id));
-    return inGroups || inAccounts ? 'some' : 'off';
+    return inGroups || inAccounts || someOverride.has(id) ? 'some' : 'off';
   };
 
-  const setMode = (id: string, mode: Mode) =>
+  const setMode = (id: string, mode: Mode) => {
+    setSomeOverride((prev) => {
+      const next = new Set(prev);
+      if (mode === 'some') next.add(id);
+      else next.delete(id);
+      return next;
+    });
     setPolicy((p) => {
       if (!p) return p;
       const granted = p.grantedScopes.filter((s) => s !== id);
@@ -99,6 +108,7 @@ export default function PermissionsTab({
       // some：離開 grantedScopes，保留（或開始）部門/帳號勾選
       return { ...p, grantedScopes: granted };
     });
+  };
 
   const toggleDept = (dep: string, id: string) =>
     setPolicy((p) =>
