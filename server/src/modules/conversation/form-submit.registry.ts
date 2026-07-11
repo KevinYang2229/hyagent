@@ -16,11 +16,12 @@ import { makeToolContext, toolRegistry } from '@/modules/tools';
 import type { OASubmitResult } from '@/lib/oa/types';
 import { computeApprovals, stepDefs } from '@/modules/form/approvals';
 import { validateAll } from '@/modules/form/form.engine';
-import { getDefinition } from '@/modules/form/form.registry';
+import { getDefinition, tryGetDefinition } from '@/modules/form/form.registry';
 import type { FormValues } from '@/modules/form/form.types';
 import { submitLeaveApplication } from '@/modules/leave/leave.service';
 import { outingService } from '@/modules/outing/outing.service';
 import { getApplicant } from '@/modules/user/user.directory';
+import { submissionStore } from '@/modules/workflow/submission.store';
 import { AppError } from '@/utils/app-error';
 
 /** 各表單 service.submit 的共同回傳形狀（leave / business-trip / outing 一致） */
@@ -77,6 +78,27 @@ function makeGenericSubmit(formId: string): FormSubmitFn {
   };
 }
 
+/** 送出成功後 best-effort 記入「我的申請」（供跨對話查簽核）；失敗吞掉，不影響送出。 */
+function recordSubmission(
+  tenantId: string,
+  userId: string,
+  formId: string,
+  submission: FormSubmission,
+): void {
+  try {
+    const formTitle = tryGetDefinition(tenantId, formId)?.data.title ?? formId;
+    submissionStore.record(tenantId, {
+      oaRequestId: submission.oaRequestId,
+      formId,
+      formTitle,
+      userId,
+      submittedAt: submission.submittedAt,
+    });
+  } catch (err) {
+    logger.info({ err, formId, userId }, '申請紀錄寫入略過');
+  }
+}
+
 /**
  * 送出後 best-effort 寄通知信：收件人＝申請人 email。
  * 權限不足（email:write 未授予 → 403）或寄信失敗一律吞掉，絕不影響送出結果。
@@ -113,6 +135,7 @@ export function resolveSubmit(formId: string): FormSubmitFn {
   const base = submitRegistry[formId] ?? makeGenericSubmit(formId);
   return async (tenantId, userId, values) => {
     const result = await base(tenantId, userId, values);
+    recordSubmission(tenantId, userId, formId, result);
     await notifyOnSubmit(tenantId, userId, formId, result);
     return result;
   };
