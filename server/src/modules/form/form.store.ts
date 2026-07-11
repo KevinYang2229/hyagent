@@ -8,12 +8,11 @@
  * 解析優先序由 form.registry 決定（租戶覆寫 > base）。
  */
 import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
+import { dataFile } from '@/lib/data-dir';
 import { logger } from '@/lib/logger';
 import type { Definition } from './form.types';
 
-const STORE_FILE = path.join(os.tmpdir(), 'oa-agent-forms.json');
+const STORE_FILE = dataFile('oa-agent-forms.json');
 
 /** 磁碟形狀：tenantId → (formId → Definition) */
 type StoreShape = Record<string, Record<string, Definition>>;

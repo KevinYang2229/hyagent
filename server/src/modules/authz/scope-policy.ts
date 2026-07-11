@@ -3,8 +3,7 @@
  * BASE 能力見 scope-catalog（全員預設，不在此表）。政策以 tenantId 隔離，跨租戶互不影響。
  */
 import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
+import { dataFile } from '@/lib/data-dir';
 import { logger } from '@/lib/logger';
 
 export interface TenantPolicy {
@@ -12,7 +11,7 @@ export interface TenantPolicy {
   accounts: Record<string, string[]>; // userId → scopes
 }
 
-const STORE_FILE = path.join(os.tmpdir(), 'oa-agent-scope-policy.json');
+const STORE_FILE = dataFile('oa-agent-scope-policy.json');
 const policies = new Map<string, TenantPolicy>();
 
 function persist(): void {

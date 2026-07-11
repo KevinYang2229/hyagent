@@ -9,13 +9,12 @@
  */
 import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
+import { dataFile } from '@/lib/data-dir';
 import { env } from '@/config/env';
 import { logger } from '@/lib/logger';
 import type { ApiKey, ApiKeyType, Tenant } from './tenant.types';
 
-const STORE_FILE = path.join(os.tmpdir(), 'oa-agent-tenants.json');
+const STORE_FILE = dataFile('oa-agent-tenants.json');
 
 export const DEFAULT_TENANT_ID = 'default';
 // 預設租戶的固定金鑰：方便 dev / 既有部署沿用；正式租戶請用 createApiKey 另發。

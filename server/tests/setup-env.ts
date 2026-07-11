@@ -4,8 +4,14 @@
  * env.ts 於載入時 safeParse(process.env)，缺 ANTHROPIC_API_KEY 會 process.exit(1)。
  * jest 會自動把 NODE_ENV 設為 'test'，故 production 守門（dev 預設密鑰 fail-fast）不會觸發。
  */
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+
+// 持久化 store 隔離：每個 jest worker 用獨立暫存目錄（見 src/lib/data-dir.ts）。
+// 否則測試與 dev server 共寫 os.tmpdir() 同一批檔，跑一次測試就污染 dev 資料
+// （曾實際覆寫 default 租戶授予、灌入上百個測試租戶）。
+process.env.OA_AGENT_DATA_DIR ??= mkdtempSync(join(tmpdir(), 'oa-agent-test-'));
 
 process.env.ANTHROPIC_API_KEY ??= 'test-anthropic-key';
 // 啟用管理 API（Form Designer 端點測試用）

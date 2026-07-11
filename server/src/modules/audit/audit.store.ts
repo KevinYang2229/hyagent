@@ -3,8 +3,7 @@
  * 只由 toolRegistry.invoke 對 audit 工具寫入；旁路性質——記錄失敗不得影響主流程。
  */
 import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
+import { dataFile } from '@/lib/data-dir';
 import { logger } from '@/lib/logger';
 
 export interface AuditEntry {
@@ -17,7 +16,7 @@ export interface AuditEntry {
 }
 
 const MAX_PER_TENANT = 500;
-const STORE_FILE = path.join(os.tmpdir(), 'oa-agent-audit.json');
+const STORE_FILE = dataFile('oa-agent-audit.json');
 const logs = new Map<string, AuditEntry[]>();
 
 function persist(): void {

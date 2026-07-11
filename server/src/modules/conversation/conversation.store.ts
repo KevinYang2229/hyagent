@@ -10,13 +10,12 @@
  */
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
+import { dataFile } from '@/lib/data-dir';
 import { logger } from '@/lib/logger';
 import { AppError } from '@/utils/app-error';
 import type { Session } from './conversation.types';
 
-const STORE_FILE = path.join(os.tmpdir(), 'oa-agent-sessions.json');
+const STORE_FILE = dataFile('oa-agent-sessions.json');
 
 const sessions = new Map<string, Session>();
 

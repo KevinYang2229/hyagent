@@ -4,12 +4,11 @@
  */
 import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
+import { dataFile } from '@/lib/data-dir';
 import { logger } from '@/lib/logger';
 import type { WebhookEndpoint, WebhookEventType } from './webhook.types';
 
-const STORE_FILE = path.join(os.tmpdir(), 'oa-agent-webhooks.json');
+const STORE_FILE = dataFile('oa-agent-webhooks.json');
 
 const endpoints = new Map<string, WebhookEndpoint>();
 

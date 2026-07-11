@@ -5,12 +5,11 @@
  * 之後接 Prisma / 計費系統時換掉這層即可（介面：increment / get）。
  */
 import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
+import { dataFile } from '@/lib/data-dir';
 import { logger } from '@/lib/logger';
 import type { LLMUsage } from '@/lib/llm/types';
 
-const STORE_FILE = path.join(os.tmpdir(), 'oa-agent-usage.json');
+const STORE_FILE = dataFile('oa-agent-usage.json');
 
 export interface TenantUsage {
   conversations: number;
