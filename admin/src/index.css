@@ -7,7 +7,8 @@
 @import "@oa-agent/ui/index.css";
 
 @theme {
-  --font-sans: "Plus Jakarta Sans", "Noto Sans TC", system-ui, -apple-system, sans-serif;
+  --font-sans:
+    "Plus Jakarta Sans", "Noto Sans TC", system-ui, -apple-system, sans-serif;
 }
 
 :root {
@@ -22,10 +23,13 @@
   --radius-sm: 8px;
   --radius-lg: 16px;
   --shadow-xs: 0 1px 2px rgba(16, 24, 40, 0.05);
-  --shadow-sm: 0 1px 3px rgba(16, 24, 40, 0.08), 0 1px 2px rgba(16, 24, 40, 0.04);
-  --shadow-md: 0 6px 16px rgba(16, 24, 40, 0.08), 0 2px 6px rgba(16, 24, 40, 0.04);
+  --shadow-sm:
+    0 1px 3px rgba(16, 24, 40, 0.08), 0 1px 2px rgba(16, 24, 40, 0.04);
+  --shadow-md:
+    0 6px 16px rgba(16, 24, 40, 0.08), 0 2px 6px rgba(16, 24, 40, 0.04);
   --shadow-lg: 0 24px 48px -12px rgba(16, 24, 40, 0.18);
-  --font: "Plus Jakarta Sans", "Noto Sans TC", system-ui, -apple-system, sans-serif;
+  --font:
+    "Plus Jakarta Sans", "Noto Sans TC", system-ui, -apple-system, sans-serif;
   --sidebar-w: 248px;
 }
 
@@ -102,7 +106,9 @@ a {
 
 .nav-item {
   @apply flex cursor-pointer items-center gap-[11px] rounded-[10px] px-[11px] py-[10px] text-sm font-medium text-[var(--on-sidebar)];
-  transition: background 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s;
 }
 .nav-item:hover {
   @apply bg-[var(--nav-hover)] text-[var(--text-primary)];
@@ -282,7 +288,11 @@ a {
 .btn {
   @apply inline-flex h-[38px] cursor-pointer items-center justify-center gap-[7px] whitespace-nowrap rounded-[10px] border border-[var(--border-color)] bg-[var(--card-bg)] px-4 text-[13.5px] font-semibold text-[var(--text-primary)];
   font-family: inherit;
-  transition: transform 0.08s, box-shadow 0.15s, background 0.15s, border-color 0.15s,
+  transition:
+    transform 0.08s,
+    box-shadow 0.15s,
+    background 0.15s,
+    border-color 0.15s,
     opacity 0.15s;
 }
 .btn:hover {
@@ -299,7 +309,8 @@ a {
 }
 .btn-primary {
   @apply border-transparent bg-[var(--primary-color)] text-white;
-  box-shadow: 0 1px 2px rgba(var(--primary-color-rgb), 0.4),
+  box-shadow:
+    0 1px 2px rgba(var(--primary-color-rgb), 0.4),
     0 4px 12px rgba(var(--primary-color-rgb), 0.22);
 }
 .btn-primary:hover {
@@ -339,7 +350,9 @@ a {
 .select {
   @apply w-full rounded-[10px] border border-[var(--border-color)] bg-[var(--card-bg)] px-3 py-[10px] text-sm text-[var(--text-primary)];
   font-family: inherit;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
 }
 .input::placeholder,
 .textarea::placeholder {
@@ -492,7 +505,11 @@ a {
   inset: 0 0 auto auto;
   width: 80px;
   height: 80px;
-  background: radial-gradient(circle at top right, var(--nav-active-bg), transparent 70%);
+  background: radial-gradient(
+    circle at top right,
+    var(--nav-active-bg),
+    transparent 70%
+  );
 }
 .stat-label {
   @apply text-xs font-semibold text-[var(--text-secondary)];
@@ -554,9 +571,21 @@ a {
   overflow: hidden;
   /* 深色漸層 mesh：品牌靛藍/紫 + 一抹青，斜向暗底 */
   background:
-    radial-gradient(900px 620px at 12% 6%, rgba(99, 102, 241, 0.34), transparent 60%),
-    radial-gradient(820px 600px at 88% 94%, rgba(124, 58, 237, 0.3), transparent 55%),
-    radial-gradient(680px 520px at 78% 8%, rgba(34, 211, 238, 0.12), transparent 52%),
+    radial-gradient(
+      900px 620px at 12% 6%,
+      rgba(99, 102, 241, 0.34),
+      transparent 60%
+    ),
+    radial-gradient(
+      820px 600px at 88% 94%,
+      rgba(124, 58, 237, 0.3),
+      transparent 55%
+    ),
+    radial-gradient(
+      680px 520px at 78% 8%,
+      rgba(34, 211, 238, 0.12),
+      transparent 52%
+    ),
     linear-gradient(160deg, #0b1120 0%, #0e1525 45%, #131c30 100%);
 }
 /* 細點陣 overlay，中心淡出，增添科技感 */
@@ -564,9 +593,16 @@ a {
   content: "";
   position: absolute;
   inset: 0;
-  background-image: radial-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-image: radial-gradient(
+    rgba(255, 255, 255, 0.05) 1px,
+    transparent 1px
+  );
   background-size: 26px 26px;
-  -webkit-mask-image: radial-gradient(circle at 50% 38%, #000 0%, transparent 72%);
+  -webkit-mask-image: radial-gradient(
+    circle at 50% 38%,
+    #000 0%,
+    transparent 72%
+  );
   mask-image: radial-gradient(circle at 50% 38%, #000 0%, transparent 72%);
   pointer-events: none;
 }
@@ -590,7 +626,11 @@ a {
   height: 460px;
   left: -120px;
   top: -130px;
-  background: radial-gradient(circle, rgba(99, 102, 241, 0.85), transparent 66%);
+  background: radial-gradient(
+    circle,
+    rgba(99, 102, 241, 0.85),
+    transparent 66%
+  );
   animation: orbFloat 16s ease-in-out infinite;
 }
 .login-orb.orb-2 {
@@ -734,7 +774,7 @@ a {
   @apply sticky top-[88px];
 }
 .preview-frame {
-  @apply mx-auto block h-[540px] w-[400px] rounded-[var(--radius)] border border-[var(--border-color)] bg-[var(--bg-secondary)];
+  @apply mx-auto block h-[540px] w-full rounded-[var(--radius)] border border-[var(--border-color)] bg-[var(--bg-secondary)];
 }
 
 /* 分頁 RWD：小螢幕改為可換行、平均填滿寬度，避免多個分頁溢出 */
