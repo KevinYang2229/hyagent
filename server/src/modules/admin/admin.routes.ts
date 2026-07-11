@@ -79,6 +79,12 @@ router.get(
   asyncHandler(adminController.getUsage),
 );
 
+router.get(
+  '/tenants/:id/audit',
+  validate({ params: tenantParamSchema }),
+  asyncHandler(adminController.getAudit),
+);
+
 // 權限：scopes 目錄 + 每租戶政策 GET/PUT
 router.get('/scopes', asyncHandler(adminController.listScopes));
 

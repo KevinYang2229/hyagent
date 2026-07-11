@@ -6,6 +6,7 @@ import type { Request, Response } from 'express';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 import { webhookStore } from '@/modules/webhook/webhook.store';
 import { usageStore } from '@/modules/usage/usage.store';
+import { auditStore } from '@/modules/audit/audit.store';
 import { AppError } from '@/utils/app-error';
 import { SCOPE_CATALOG, assertGrantableScopes, tenantGrantableScopes } from '@/modules/authz/scope-catalog';
 import { defaultGrantedScopes } from '@/modules/authz/scope-migration';
@@ -96,6 +97,11 @@ export const adminController = {
   async getUsage(req: Request, res: Response): Promise<void> {
     const tenant = ensureTenant(String(req.params.id));
     res.status(200).json({ data: usageStore.get(tenant.id) });
+  },
+
+  async getAudit(req: Request, res: Response): Promise<void> {
+    const tenant = ensureTenant(String(req.params.id));
+    res.status(200).json({ data: auditStore.list(tenant.id, 200) });
   },
 
   async listScopes(_req: Request, res: Response): Promise<void> {
