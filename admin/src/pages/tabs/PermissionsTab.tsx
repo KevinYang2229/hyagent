@@ -1,23 +1,34 @@
 import { useCallback, useEffect, useState, type CSSProperties } from 'react';
 import { Checkbox, useToast } from '@oa-agent/ui';
-import { api, type TenantPolicyView } from '../../api';
+import { api, type ScopeDef, type TenantPolicyView } from '../../api';
 
-/** 切換某 scope 是否在清單內（回新陣列）。 */
+/**
+ * 權限分頁：以「能力」為中心——每個能力一列，直接選 未開通／全租戶／指定對象。
+ * 對應資料模型（聯集）：全租戶＝grantedScopes；指定對象＝groups/accounts；未開通＝三處皆無。
+ * 切到「全租戶」時清掉該能力的部門/帳號勾選（聯集下已無意義，留著徒增困惑）。
+ */
+
+type Mode = 'off' | 'all' | 'some';
+
+/** 從清單加入/移除某 scope（回新陣列） */
 function toggle(list: string[], scope: string): string[] {
   return list.includes(scope) ? list.filter((s) => s !== scope) : [...list, scope];
 }
 
-// admin 尚無 `.table` CSS class，這裡以 inline style 給表格最小邊框/間距，不影響功能。
-const thStyle: CSSProperties = {
-  textAlign: 'center',
-  padding: '8px 10px',
-  borderBottom: '1px solid var(--border-color)',
-  fontWeight: 500,
-  whiteSpace: 'nowrap',
-};
-const tdStyle: CSSProperties = {
-  padding: '6px 10px',
-  borderBottom: '1px solid var(--border-color)',
+/** 把某 scope 從 groups/accounts 這類對照表的所有值中移除（回新物件） */
+function stripScope(map: Record<string, string[]>, scope: string): Record<string, string[]> {
+  return Object.fromEntries(
+    Object.entries(map).map(([k, v]) => [k, v.filter((s) => s !== scope)]),
+  );
+}
+
+const modeStyle: CSSProperties = {
+  padding: '4px 8px',
+  borderRadius: 6,
+  border: '1px solid var(--border-color)',
+  background: 'transparent',
+  color: 'inherit',
+  fontSize: 13,
 };
 
 export default function PermissionsTab({
@@ -33,8 +44,7 @@ export default function PermissionsTab({
 
   const load = useCallback(async () => {
     try {
-      const pol = await api.getTenantPolicy(tenantId);
-      setPolicy(pol);
+      setPolicy(await api.getTenantPolicy(tenantId));
     } catch (e) {
       onError(e);
     }
@@ -51,23 +61,46 @@ export default function PermissionsTab({
       </div>
     );
 
-  const grantable = policy.capabilities;
-  const services = grantable.filter((s) => s.id.startsWith('service:'));
-  const forms = grantable.filter((s) => s.id.startsWith('form:'));
-  const external = grantable.filter(
-    (s) => !s.id.startsWith('service:') && !s.id.startsWith('form:'),
-  );
-  const groupedCols: { label: string; items: typeof grantable }[] = [
-    { label: '服務', items: services },
-    { label: '表單', items: forms },
-    { label: '外部', items: external },
+  const groups: { label: string; items: ScopeDef[] }[] = [
+    { label: '服務', items: policy.capabilities.filter((s) => s.id.startsWith('service:')) },
+    { label: '表單', items: policy.capabilities.filter((s) => s.id.startsWith('form:')) },
+    {
+      label: '外部能力',
+      items: policy.capabilities.filter(
+        (s) => !s.id.startsWith('service:') && !s.id.startsWith('form:'),
+      ),
+    },
   ].filter((g) => g.items.length > 0);
-  // 表格欄位一律用分組後攤平的順序，確保與上方群組表頭 colSpan 對齊。
-  const cols = groupedCols.flatMap((g) => g.items);
 
-  const toggleTenant = (id: string) =>
-    setPolicy((p) => (p ? { ...p, grantedScopes: toggle(p.grantedScopes, id) } : p));
-  const toggleGroup = (dep: string, id: string) =>
+  /** 該能力目前的模式：全租戶 > 指定對象 > 未開通 */
+  const modeOf = (id: string): Mode => {
+    if (policy.grantedScopes.includes(id)) return 'all';
+    const inGroups = Object.values(policy.groups).some((v) => v.includes(id));
+    const inAccounts = Object.values(policy.accounts).some((v) => v.includes(id));
+    return inGroups || inAccounts ? 'some' : 'off';
+  };
+
+  const setMode = (id: string, mode: Mode) =>
+    setPolicy((p) => {
+      if (!p) return p;
+      const granted = p.grantedScopes.filter((s) => s !== id);
+      if (mode === 'all') {
+        // 全租戶：進 grantedScopes，並清掉部門/帳號的殘留勾選
+        return {
+          ...p,
+          grantedScopes: [...granted, id],
+          groups: stripScope(p.groups, id),
+          accounts: stripScope(p.accounts, id),
+        };
+      }
+      if (mode === 'off') {
+        return { ...p, grantedScopes: granted, groups: stripScope(p.groups, id), accounts: stripScope(p.accounts, id) };
+      }
+      // some：離開 grantedScopes，保留（或開始）部門/帳號勾選
+      return { ...p, grantedScopes: granted };
+    });
+
+  const toggleDept = (dep: string, id: string) =>
     setPolicy((p) =>
       p ? { ...p, groups: { ...p.groups, [dep]: toggle(p.groups[dep] ?? [], id) } } : p,
     );
@@ -94,128 +127,94 @@ export default function PermissionsTab({
     }
   };
 
-  const cell = (checked: boolean, onChange: () => void) => (
-    <td style={{ ...tdStyle, textAlign: 'center' }}>
-      <Checkbox checked={checked} onChange={onChange} />
-    </td>
-  );
-
   return (
     <div className="card">
       <div className="card-head">
         <div>
           <div className="card-title">權限</div>
           <div className="card-desc">
-            設定此租戶開通的能力（服務／表單／外部），以及各部門 / 帳號可用的能力。
+            每個能力可設「未開通／全租戶／指定對象」；選指定對象再勾部門或帳號。（表單填寫與送出屬基礎功能，於此控制各表單可見性。）
           </div>
         </div>
       </div>
 
-      {/* ① 此租戶開通的能力：依 服務／表單／外部 分組 */}
-      <div className="card-body">
-        {groupedCols.map((g) => (
-          <div key={g.label} style={{ marginBottom: 16 }}>
-            <div style={{ fontWeight: 500, marginBottom: 8 }}>此租戶開通的能力 — {g.label}</div>
-            <ul className="list">
-              {g.items.map((s) => (
-                <li key={s.id} className="row">
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-                    <Checkbox
-                      checked={policy.grantedScopes.includes(s.id)}
-                      onChange={() => toggleTenant(s.id)}
-                    />
-                    <span>{s.label}</span>
-                    <span className="row-sub" style={{ marginLeft: 4 }}>
-                      {s.id}
-                    </span>
-                  </label>
+      {groups.map((g, gi) => (
+        <div
+          key={g.label}
+          className="card-body"
+          style={gi > 0 ? { borderTop: '1px solid var(--border-color)' } : undefined}
+        >
+          <div style={{ fontWeight: 500, marginBottom: 8 }}>{g.label}</div>
+          <ul className="list">
+            {g.items.map((s) => {
+              const mode = modeOf(s.id);
+              const pickedDeps = policy.departments.filter((d) =>
+                (policy.groups[d] ?? []).includes(s.id),
+              );
+              const pickedUsers = policy.users.filter((u) =>
+                (policy.accounts[u.id] ?? []).includes(s.id),
+              );
+              return (
+                <li key={s.id} className="row" style={{ display: 'block', padding: '8px 0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ fontWeight: 500 }}>{s.label}</span>
+                      <span className="row-sub" style={{ marginLeft: 8 }}>
+                        {s.id}
+                      </span>
+                    </div>
+                    <select
+                      style={modeStyle}
+                      value={mode}
+                      onChange={(e) => setMode(s.id, e.target.value as Mode)}
+                      aria-label={`${s.label} 的授權模式`}
+                    >
+                      <option value="off">未開通</option>
+                      <option value="all">全租戶</option>
+                      <option value="some">指定對象</option>
+                    </select>
+                  </div>
+
+                  {mode === 'some' && (
+                    <div style={{ marginTop: 8, marginLeft: 2, display: 'grid', gap: 6 }}>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12 }}>
+                        <span className="row-sub" style={{ width: 34 }}>部門</span>
+                        {policy.departments.map((dep) => (
+                          <label key={dep} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                            <Checkbox
+                              checked={(policy.groups[dep] ?? []).includes(s.id)}
+                              onChange={() => toggleDept(dep, s.id)}
+                            />
+                            <span style={{ fontSize: 13.5 }}>{dep}</span>
+                          </label>
+                        ))}
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12 }}>
+                        <span className="row-sub" style={{ width: 34 }}>帳號</span>
+                        {policy.users.map((u) => (
+                          <label key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                            <Checkbox
+                              checked={(policy.accounts[u.id] ?? []).includes(s.id)}
+                              onChange={() => toggleAccount(u.id, s.id)}
+                            />
+                            <span style={{ fontSize: 13.5 }}>
+                              {u.label}
+                              <span className="row-sub" style={{ marginLeft: 4 }}>{u.id}</span>
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                      {pickedDeps.length === 0 && pickedUsers.length === 0 && (
+                        <div className="row-sub">⚠️ 尚未選擇任何對象——目前效果等同「未開通」。</div>
+                      )}
+                    </div>
+                  )}
                 </li>
-              ))}
-            </ul>
-          </div>
-        ))}
-      </div>
-
-      {/* ③ 部門授權 */}
-      <div className="card-body" style={{ borderTop: '1px solid var(--border-color)' }}>
-        <div style={{ fontWeight: 500, marginBottom: 8 }}>部門授權</div>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 13.5 }}>
-            <thead>
-              <tr>
-                <th style={{ ...thStyle, textAlign: 'left' }} rowSpan={2}>
-                  部門
-                </th>
-                {groupedCols.map((g) => (
-                  <th key={g.label} style={thStyle} colSpan={g.items.length}>
-                    {g.label}
-                  </th>
-                ))}
-              </tr>
-              <tr>
-                {cols.map((s) => (
-                  <th key={s.id} style={thStyle}>
-                    {s.label}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {policy.departments.map((dep) => (
-                <tr key={dep}>
-                  <td style={tdStyle}>{dep}</td>
-                  {cols.map((s) =>
-                    cell((policy.groups[dep] ?? []).includes(s.id), () => toggleGroup(dep, s.id)),
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+              );
+            })}
+          </ul>
         </div>
-      </div>
-
-      {/* ④ 帳號例外 */}
-      <div className="card-body" style={{ borderTop: '1px solid var(--border-color)' }}>
-        <div style={{ fontWeight: 500, marginBottom: 8 }}>帳號例外</div>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 13.5 }}>
-            <thead>
-              <tr>
-                <th style={{ ...thStyle, textAlign: 'left' }} rowSpan={2}>
-                  帳號
-                </th>
-                {groupedCols.map((g) => (
-                  <th key={g.label} style={thStyle} colSpan={g.items.length}>
-                    {g.label}
-                  </th>
-                ))}
-              </tr>
-              <tr>
-                {cols.map((s) => (
-                  <th key={s.id} style={thStyle}>
-                    {s.label}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {policy.users.map((u) => (
-                <tr key={u.id}>
-                  <td style={tdStyle}>
-                    {u.label}
-                    <span className="row-sub" style={{ marginLeft: 4 }}>
-                      {u.id}
-                    </span>
-                  </td>
-                  {cols.map((s) =>
-                    cell((policy.accounts[u.id] ?? []).includes(s.id), () => toggleAccount(u.id, s.id)),
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      ))}
 
       <div className="card-body" style={{ borderTop: '1px solid var(--border-color)' }}>
         <button className="btn btn-primary" onClick={save} disabled={saving}>
