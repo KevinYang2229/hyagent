@@ -27,5 +27,9 @@ export interface ToolDef<I = unknown, O = unknown> {
    * 避免 LLM 自行執行寫入動作。
    */
   readonly agentExposed?: boolean;
+  /** 是否寫入稽核軌跡（僅有副作用的動作應開，如 email.send / oa.submitForm）。 */
+  readonly audit?: boolean;
+  /** 稽核安全摘要（不含 PII）；invoke 記錄時呼叫。失敗會被 best-effort 吞掉。 */
+  auditSummary?(input: I, result?: O): string;
   handler(input: I, ctx: ToolContext): Promise<O>;
 }
