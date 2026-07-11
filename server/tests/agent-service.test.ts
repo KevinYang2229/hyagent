@@ -39,7 +39,7 @@ function lastToolResult(session: Session): string | undefined {
 describe('agentAgentService', () => {
   it('LLM 選擇 oa.getLeaveBalance → 實際 invoke → 回覆最終文字', async () => {
     const llm = scriptedLLM([
-      { text: '', toolCalls: [{ id: 't1', name: 'oa.getLeaveBalance', input: { userId: 'kevin' } }], stopReason: 'tool_use', usage },
+      { text: '', toolCalls: [{ id: 't1', name: 'oa_getLeaveBalance', input: { userId: 'kevin' } }], stopReason: 'tool_use', usage },
       { text: '你的特休查詢已完成。', toolCalls: [], stopReason: 'end_turn', usage },
     ]);
     const session = makeSession();

@@ -34,7 +34,7 @@ describe('Agent 寄信確認流程', () => {
     const t = tenantStore.createTenant('agent-email-propose');
     tenantStore.updateTenant(t.id, { grantedScopes: ['service:agent', 'email:write'] });
     const llm = scriptedLLM([
-      { text: '', toolCalls: [{ id: 't1', name: 'email.propose', input: { to: 'boss@x.com', subject: '會議改期', html: '<p>...</p>' } }], stopReason: 'tool_use', usage },
+      { text: '', toolCalls: [{ id: 't1', name: 'email_propose', input: { to: 'boss@x.com', subject: '會議改期', html: '<p>...</p>' } }], stopReason: 'tool_use', usage },
       { text: '我已擬好給 boss@x.com 的信，主旨「會議改期」，確認寄出嗎？', toolCalls: [], stopReason: 'end_turn', usage },
     ]);
     const session = makeSession(t.id);
@@ -135,6 +135,26 @@ describe('Agent 寄信確認流程', () => {
     const res = await agentAgentService.handleTurn(session, '好的，寄出', llm);
     expect(stubSentEmails).toHaveLength(1);
     expect(res.reply).toContain('已寄出');
+  });
+
+  it('Agent 傳給 LLM 的工具名符合 Anthropic 規則（^[a-zA-Z0-9_-]{1,128}$；registry 點命名已轉底線）', async () => {
+    const t = tenantStore.createTenant('agent-toolname');
+    tenantStore.updateTenant(t.id, { grantedScopes: ['service:agent', 'email:write'] });
+    let captured: { name: string }[] = [];
+    const llm: LLMProvider = {
+      name: 'fake',
+      createMessage: async (p) => {
+        captured = (p.tools ?? []) as { name: string }[];
+        return { text: 'ok', toolCalls: [], stopReason: 'end_turn', usage };
+      },
+    };
+    const session = makeSession(t.id);
+    await agentAgentService.handleTurn(session, 'hi', llm);
+    expect(captured.length).toBeGreaterThan(0);
+    for (const tool of captured) {
+      expect(tool.name).toMatch(/^[a-zA-Z0-9_-]{1,128}$/); // 不允許點
+    }
+    expect(captured.map((c) => c.name)).toContain('email_propose'); // email.propose → email_propose
   });
 
   it('LLM 幻想直呼 email.send 被擋（不在 availableFor / allowlist）', async () => {

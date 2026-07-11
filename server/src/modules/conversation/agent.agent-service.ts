@@ -85,21 +85,29 @@ export const agentAgentService: AgentService = {
     // 非確認 → 讓上一份草稿過期（避免殘留被日後無關「確認」誤觸發），再走 tool-loop（可能重新提議）
     session.pendingEmail = undefined;
 
-    const tools = toolRegistry.availableFor(ctx);
-    const allowed = new Set(tools.map((t) => t.name));
+    const registryTools = toolRegistry.availableFor(ctx);
+    // Anthropic 工具名限 ^[a-zA-Z0-9_-]{1,128}$（不允許點）。registry id 用點命名（如 email.propose），
+    // 對外暴露時轉成合法名（點→底線），並以明確 map 於 dispatch 時映回真實 id。
+    const idByLlmName = new Map<string, string>();
+    const tools = registryTools.map((t) => {
+      const llmName = t.name.replace(/\./g, '_');
+      idByLlmName.set(llmName, t.name);
+      return { name: llmName, description: t.description, inputSchema: t.inputSchema };
+    });
 
     const reply = await runToolLoop(llm, session, {
       system: buildSystemPrompt(session.userId, session.locale),
       tools,
       dispatchTool: async (name, input) => {
-        // 安全邊界：只放行 availableFor 清單內的工具，LLM 幻想出別的名字一律擋下
-        if (!allowed.has(name)) {
+        // 安全邊界：只放行 availableFor 清單內的工具（映回真實 id），LLM 幻想出別的名字一律擋下
+        const realId = idByLlmName.get(name);
+        if (!realId) {
           return JSON.stringify({ ok: false, error: `工具不可用：${name}` });
         }
         try {
-          const result = await toolRegistry.invoke(name, input, ctx);
+          const result = await toolRegistry.invoke(realId, input, ctx);
           // 提議寄信：存草稿、指示 LLM 出示並徵求確認，切勿宣稱已寄
-          if (name === 'email.propose') {
+          if (realId === 'email.propose') {
             session.pendingEmail = (result as { draft: { to: string; subject: string; html: string } }).draft;
             return JSON.stringify({
               ok: true,
