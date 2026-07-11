@@ -58,6 +58,14 @@ export interface Usage {
   submissions: number;
   llmTokens: number;
 }
+export interface AuditEntry {
+  toolId: string;
+  userId: string;
+  at: string;
+  ok: boolean;
+  summary: string;
+  error?: string;
+}
 
 /** 401 時拋出，UI 攔截導回登入 */
 export class UnauthorizedError extends Error {}
@@ -162,6 +170,7 @@ export const api = {
     req<{ id: string }>('DELETE', `/admin/tenants/${id}/webhooks/${webhookId}`),
 
   getUsage: (id: string) => req<Usage>('GET', `/admin/tenants/${id}/usage`),
+  getTenantAudit: (id: string) => req<AuditEntry[]>('GET', `/admin/tenants/${id}/audit`),
 
   // ---- Form Designer ----
   listForms: (id: string) => req<FormSummary[]>('GET', `/admin/tenants/${id}/forms`),
