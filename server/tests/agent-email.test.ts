@@ -117,6 +117,26 @@ describe('Agent 寄信確認流程', () => {
     expect(res.reply).toContain('已寄出');
   });
 
+  it('有 pendingEmail + 「幫我寄」→ 伺服器端寄出（放寬用語，仍錨定整句）', async () => {
+    const t = tenantStore.createTenant('agent-email-confirm3');
+    tenantStore.updateTenant(t.id, { grantedScopes: ['service:agent', 'email:write'] });
+    const llm: LLMProvider = { name: 'fake', createMessage: async () => { throw new Error('不該進 LLM'); } };
+    const session = makeSession(t.id, { pendingEmail: { to: 'boss@x.com', subject: 's', html: '<p>x</p>' } });
+    const res = await agentAgentService.handleTurn(session, '幫我寄', llm);
+    expect(stubSentEmails).toHaveLength(1);
+    expect(res.reply).toContain('已寄出');
+  });
+
+  it('有 pendingEmail + 「好的，寄出」→ 伺服器端寄出（放寬用語）', async () => {
+    const t = tenantStore.createTenant('agent-email-confirm4');
+    tenantStore.updateTenant(t.id, { grantedScopes: ['service:agent', 'email:write'] });
+    const llm: LLMProvider = { name: 'fake', createMessage: async () => { throw new Error('不該進 LLM'); } };
+    const session = makeSession(t.id, { pendingEmail: { to: 'boss@x.com', subject: 's', html: '<p>x</p>' } });
+    const res = await agentAgentService.handleTurn(session, '好的，寄出', llm);
+    expect(stubSentEmails).toHaveLength(1);
+    expect(res.reply).toContain('已寄出');
+  });
+
   it('LLM 幻想直呼 email.send 被擋（不在 availableFor / allowlist）', async () => {
     const t = tenantStore.createTenant('agent-email-nosend');
     tenantStore.updateTenant(t.id, { grantedScopes: ['service:agent', 'email:write'] });

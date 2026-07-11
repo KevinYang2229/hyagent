@@ -20,7 +20,7 @@ import { runToolLoop } from './tool-loop';
 
 // 確認/取消語意判斷：取消優先於確認（例如「確認」被「不要，先不要確認」蓋過時，先擋取消詞）。
 // 需「整句就是明確的確認」才送出（避免『OK 謝謝先這樣』這類夾帶確認詞卻非確認意圖的訊息誤送）。
-const EMAIL_CONFIRM_RE = /^(好[，,]?\s*)?(請\s*)?(幫我\s*)?(確認寄出|確定寄出|確認|確定|寄出|送出|同意寄出|可以寄出?|OK|ok)$/;
+const EMAIL_CONFIRM_RE = /^(好的?[，,]?\s*)?(請\s*)?(幫我\s*)?(確認寄出|確定寄出|確認|確定|寄出|送出|同意寄出|可以寄出?|寄|OK|ok)$/;
 const EMAIL_CANCEL_RE = /(不要|先不要|別|取消|不寄|暫停|改)/;
 function isEmailConfirmation(text: string): boolean {
   const s = text.trim().replace(/[。.,，!！~\s]+$/u, '');
