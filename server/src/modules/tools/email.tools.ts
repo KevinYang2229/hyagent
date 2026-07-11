@@ -17,6 +17,8 @@ registerTool({
     additionalProperties: false,
   },
   scopes: ['email:write'],
+  audit: true,
+  auditSummary: (input: EmailSendInput) => `收件人 ${input.to}｜主旨 ${input.subject}`,
   handler: (input: EmailSendInput): Promise<EmailSendResult> => getConnector('email').send(input),
 });
 

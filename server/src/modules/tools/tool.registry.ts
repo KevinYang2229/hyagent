@@ -9,6 +9,7 @@ import Ajv, { type ValidateFunction } from 'ajv';
 import type { LLMTool } from '@/lib/llm/types';
 import { logger } from '@/lib/logger';
 import { AppError } from '@/utils/app-error';
+import { auditStore } from '@/modules/audit/audit.store';
 import type { ToolContext, ToolDef } from './tool.types';
 
 const ajv = new Ajv({ allErrors: true, strict: false });
@@ -48,15 +49,42 @@ export const toolRegistry = {
   },
   async invoke(id: string, input: unknown, ctx: ToolContext): Promise<unknown> {
     const { tool, validate } = lookup(id);
+    const audit = (ok: boolean, extra: { summary?: string; error?: string }): void => {
+      if (!tool.audit) return;
+      let summary = extra.summary;
+      if (summary === undefined) {
+        try {
+          summary = tool.auditSummary ? tool.auditSummary(input as never) : tool.id;
+        } catch {
+          summary = tool.id;
+        }
+      }
+      auditStore.record(ctx.tenantId, { toolId: id, userId: ctx.userId, at: new Date().toISOString(), ok, summary, error: extra.error });
+    };
+
     if (!hasScopes(ctx.scopes, tool.scopes)) {
+      audit(false, { error: '權限不足' });
       throw AppError.forbidden(`缺少呼叫 ${id} 所需權限`);
     }
     if (!validate(input)) {
+      audit(false, { error: '輸入驗證失敗' });
       throw AppError.unprocessable(`工具 ${id} 輸入驗證失敗`, validate.errors);
     }
-    // 稽核/計費鉤子：Phase 2 於此接 usageStore.recordToolCall；目前先記 log。
     logger.debug({ toolId: id, tenantId: ctx.tenantId, userId: ctx.userId }, 'tool.invoke');
-    return tool.handler(input, ctx);
+    try {
+      const result = await tool.handler(input, ctx);
+      let summary: string | undefined;
+      try {
+        summary = tool.auditSummary ? tool.auditSummary(input as never, result as never) : undefined;
+      } catch {
+        summary = undefined;
+      }
+      audit(true, { summary });
+      return result;
+    } catch (err) {
+      audit(false, { error: (err as Error).message });
+      throw err;
+    }
   },
   /**
    * Agent 專用：列出「agentExposed 且 ctx.scopes 允許」的工具，映射為 LLMTool 供 LLM 自選。

@@ -20,6 +20,9 @@ registerTool({
     additionalProperties: true,
   },
   scopes: ['oa:write'],
+  audit: true,
+  auditSummary: (input: OASubmitInput, result?: OASubmitResult) =>
+    `表單 ${input.formId}｜單號 ${result?.oaRequestId ?? '—'}`,
   handler: (input: OASubmitInput): Promise<OASubmitResult> =>
     getConnector('oa').submitForm(input),
 });
