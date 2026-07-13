@@ -86,12 +86,16 @@ export function startIngestJob(
 
       // ingest 完成後：清除快取、更新索引 meta
       invalidateIndexCache(params.tenantId);
+      // setMeta 是整包覆蓋、不會 merge；重爬不得清掉既有的檔案來源清單，
+      // 否則檔案 chunks 雖仍留在索引中（carry-over），卻因 meta.files 消失而變孤兒、無法透過 API 刪除
+      const { files } = knowledgeStore.getMeta(params.tenantId);
       knowledgeStore.setMeta(params.tenantId, {
         status: 'ready',
         chunkCount: idx.chunks.length,
         generatedAt: idx.generatedAt,
         model: idx.model,
         source: idx.source,
+        ...(files ? { files } : {}),
       });
 
       job.status = 'done';
@@ -105,10 +109,13 @@ export function startIngestJob(
       job.error = (err as Error).message;
       job.finishedAt = new Date().toISOString();
 
+      // 失敗路徑同樣不得清掉既有的檔案來源清單（理由同上）
+      const { files: filesOnFail } = knowledgeStore.getMeta(params.tenantId);
       knowledgeStore.setMeta(params.tenantId, {
         status: 'failed',
         chunkCount: 0,
         error: job.error,
+        ...(filesOnFail ? { files: filesOnFail } : {}),
       });
 
       logger.warn({ err, tenantId: params.tenantId }, 'ingest job failed');
