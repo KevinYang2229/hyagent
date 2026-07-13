@@ -171,8 +171,9 @@
   .msg-name-logo {
     @apply h-7 w-auto max-w-30 shrink-0 object-contain max-sm:h-6;
   }
+  /* 時間貼齊容器左緣（不加水平內縮）＝與輸入框、氣泡左緣同一直線 */
   .msg-time {
-    @apply px-1 text-[11px] tabular-nums text-[var(--text-secondary)];
+    @apply text-[11px] tabular-nums text-[var(--text-secondary)];
   }
   /* 時間 + 訊息動作列：動作預設隱藏，hover / 鍵盤聚焦該則訊息時顯示 */
   .msg-meta {
