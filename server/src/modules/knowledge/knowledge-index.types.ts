@@ -8,6 +8,8 @@ export interface IndexedChunk {
   text: string;
   /** 該 chunk 的 embedding 向量 */
   vector: number[];
+  /** 檔案來源的 chunk：來源檔 id（網站爬取的 chunk 無此欄）。刪檔/重爬保留據此篩選 */
+  fileId?: string;
 }
 
 export interface KnowledgeIndexFile {

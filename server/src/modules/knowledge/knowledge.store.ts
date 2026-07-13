@@ -29,6 +29,18 @@ export interface KnowledgeSource {
   updatedAt?: string;
 }
 
+/** 單一上傳檔案的索引紀錄（供 admin 顯示與刪除比對） */
+export interface KnowledgeFileMeta {
+  /** 檔案唯一 id（同時是索引中該檔案 chunks 的 fileId） */
+  fileId: string;
+  /** 原始檔名 */
+  name: string;
+  /** 該檔切出的 chunk 數 */
+  chunks: number;
+  /** ingest 完成時間（ISO 8601） */
+  ingestedAt: string;
+}
+
 /** 每租戶的向量索引狀態 */
 export interface KnowledgeIndexMeta {
   /** 索引狀態：none（未建立）/ ready（可用）/ failed（建立失敗） */
@@ -43,6 +55,8 @@ export interface KnowledgeIndexMeta {
   source?: string;
   /** 失敗原因（status=failed 時） */
   error?: string;
+  /** 已上傳的檔案來源清單（與網站來源並存） */
+  files?: KnowledgeFileMeta[];
 }
 
 /** 回傳預設來源設定（以 env 為基準） */

@@ -1,12 +1,16 @@
 /* 知識庫 ingest 服務：爬取靜態網站→抽正文→切段→embedding→產生每租戶索引。CLI 與 admin API 共用。 */
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import * as cheerio from 'cheerio';
 import { getEmbeddingProvider } from '@/lib/embedding';
 import { logger } from '@/lib/logger';
 import { indexPathFor } from './index-path';
 import type { IndexedChunk, KnowledgeIndexFile } from './knowledge-index.types';
+
+// 注意：carryOverFileChunks 定義於本檔（而非 knowledge-file.service.ts），
+// 是為了維持單向依賴——knowledge-file.service 已經需要 import 本檔的 chunkText/squash，
+// 若反過來讓本檔 import knowledge-file.service 會形成循環引用。
 
 export interface IngestParams {
   tenantId: string;
@@ -28,6 +32,25 @@ export interface IngestProgress {
 const EMBED_BATCH = 64;
 
 export function squash(s: string): string { return s.replace(/\s+/g, ' ').trim(); }
+
+/** 讀取租戶既有索引檔；不存在則回 null（模組內共用，避免與 knowledge-file.service 重複實作）。 */
+function loadExistingIndex(tenantId: string): KnowledgeIndexFile | null {
+  const path = indexPathFor(tenantId);
+  if (!existsSync(path)) return null;
+  return JSON.parse(readFileSync(path, 'utf8')) as KnowledgeIndexFile;
+}
+
+/**
+ * 網站重爬寫索引前呼叫：新的 web chunks + 既有索引中帶 fileId 的檔案來源 chunks。
+ * 檔案來源與網站來源分屬不同管線各自 ingest，重爬只重建網站部分，檔案 chunks 原樣保留。
+ */
+export function carryOverFileChunks(
+  existing: KnowledgeIndexFile | null,
+  webChunks: IndexedChunk[],
+): IndexedChunk[] {
+  const fileChunks = existing?.chunks.filter((c) => c.fileId) ?? [];
+  return [...webChunks, ...fileChunks];
+}
 
 export function normalizeUrl(href: string, base: string, origin: string): string | null {
   try {
@@ -143,11 +166,14 @@ export async function runIngest(
     onProgress?.({ phase: 'embedding', pagesCrawled: pages.length, chunks: pending.length, embedded: chunks.length });
   }
 
+  // 重爬會整批重建網站 chunks；寫回前併入既有索引中帶 fileId 的檔案來源 chunks，避免蓋掉上傳檔內容
+  const existing = loadExistingIndex(params.tenantId);
+  const mergedChunks = carryOverFileChunks(existing, chunks);
   const index: KnowledgeIndexFile = {
     generatedAt: new Date().toISOString(),
     model: params.embeddingModel,
     source: params.startUrl,
-    chunks,
+    chunks: mergedChunks,
   };
   const path = indexPathFor(params.tenantId);
   if (!existsSync(dirname(path))) mkdirSync(dirname(path), { recursive: true });
