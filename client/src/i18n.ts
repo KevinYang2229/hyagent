@@ -66,7 +66,7 @@ const zhHant = {
     typing: "AI 回覆中…",
     copyMsg: "複製",
     copiedMsg: "已複製",
-    resendMsg: "重送",
+    editMsg: "編輯",
     inputPlaceholder: "描述你的需求，例如：我下週一到週二要請特休，家裡有事",
     filledFields: "已填欄位",
     result: "送出結果",
@@ -257,7 +257,7 @@ const en = {
     typing: "AI is replying…",
     copyMsg: "Copy",
     copiedMsg: "Copied",
-    resendMsg: "Resend",
+    editMsg: "Edit",
     inputPlaceholder:
       "Describe your request, e.g. I need annual leave next Mon–Tue for personal reasons",
     filledFields: "Filled fields",

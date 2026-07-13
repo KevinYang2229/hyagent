@@ -345,7 +345,7 @@ export default function App() {
     setMessages((prev) => [...prev, { id: nextId(), role, text, suggestions, at: Date.now() }]);
   }
 
-  // 訊息動作：複製（AI/使用者皆可）與重送（僅使用者訊息，送出失敗時免重打）
+  // 訊息動作：複製（AI/使用者皆可）與編輯（僅使用者訊息：帶回輸入框改完再送）
   const [copiedId, setCopiedId] = useState<string | null>(null);
   async function copyMsg(id: string, text: string) {
     try {
@@ -367,10 +367,10 @@ export default function App() {
     setCopiedId(id);
     window.setTimeout(() => setCopiedId((cur) => (cur === id ? null : cur)), 1500);
   }
-  function resendMsg(text: string) {
-    if (busy) return;
-    pushMsg('user', text);
-    void send(text);
+  /** 編輯：把該則使用者訊息帶入輸入框（改完再送），不直接重送 */
+  function editMsg(text: string) {
+    setInput(text);
+    taRef.current?.focus();
   }
 
   // 對話已不存在（多半是後端重啟導致記憶體 session 遺失）。404 → 視為連線重置
@@ -760,7 +760,7 @@ export default function App() {
                       m.text
                     )}
                   </div>
-                  {/* 送出日期時間 + 訊息動作（hover 顯示 icon：複製；使用者訊息另有重送。tooltip/aria 保留文字語意） */}
+                  {/* 送出日期時間 + 訊息動作（hover 顯示 icon：複製；使用者訊息另有編輯。tooltip/aria 保留文字語意） */}
                   <span className="msg-meta">
                     <span className="msg-time">{formatTime(m.at)}</span>
                     <button
@@ -792,15 +792,13 @@ export default function App() {
                       <button
                         type="button"
                         className="msg-action"
-                        disabled={busy}
-                        title={t('app.resendMsg')}
-                        aria-label={t('app.resendMsg')}
-                        onClick={() => resendMsg(m.text)}
+                        title={t('app.editMsg')}
+                        aria-label={t('app.editMsg')}
+                        onClick={() => editMsg(m.text)}
                       >
-                        {/* 重送：循環箭頭 */}
+                        {/* 編輯：鉛筆（帶入輸入框，改完再送） */}
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                          <polyline points="23 4 23 10 17 10" />
-                          <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+                          <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
                         </svg>
                       </button>
                     )}
