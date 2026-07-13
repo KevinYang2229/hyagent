@@ -345,6 +345,34 @@ export default function App() {
     setMessages((prev) => [...prev, { id: nextId(), role, text, suggestions, at: Date.now() }]);
   }
 
+  // 訊息動作：複製（AI/使用者皆可）與重送（僅使用者訊息，送出失敗時免重打）
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  async function copyMsg(id: string, text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // 非安全環境（如 http iframe）fallback：暫時 textarea + execCommand
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand('copy');
+      } finally {
+        document.body.removeChild(ta);
+      }
+    }
+    setCopiedId(id);
+    window.setTimeout(() => setCopiedId((cur) => (cur === id ? null : cur)), 1500);
+  }
+  function resendMsg(text: string) {
+    if (busy) return;
+    pushMsg('user', text);
+    void send(text);
+  }
+
   // 對話已不存在（多半是後端重啟導致記憶體 session 遺失）。404 → 視為連線重置
   const isSessionGone = (e: unknown) => e instanceof ApiError && e.status === 404;
 
@@ -732,8 +760,32 @@ export default function App() {
                       m.text
                     )}
                   </div>
-                  {/* 送出日期時間 */}
-                  <span className="msg-time">{formatTime(m.at)}</span>
+                  {/* 送出日期時間 + 訊息動作（hover 顯示：複製；使用者訊息另有重送） */}
+                  <span className="msg-meta">
+                    <span className="msg-time">{formatTime(m.at)}</span>
+                    <button
+                      type="button"
+                      className="msg-action"
+                      onClick={() =>
+                        void copyMsg(
+                          String(m.id),
+                          m.role === 'agent' && m.greeting ? greetingText : m.text,
+                        )
+                      }
+                    >
+                      {copiedId === String(m.id) ? t('app.copiedMsg') : t('app.copyMsg')}
+                    </button>
+                    {m.role === 'user' && (
+                      <button
+                        type="button"
+                        className="msg-action"
+                        disabled={busy}
+                        onClick={() => resendMsg(m.text)}
+                      >
+                        {t('app.resendMsg')}
+                      </button>
+                    )}
+                  </span>
                 </div>
               ),
             )}
