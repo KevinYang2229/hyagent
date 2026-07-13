@@ -89,6 +89,25 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
   return json.data as T;
 }
 
+/** 上傳用：body 為 FormData，不可手動設 content-type（讓瀏覽器帶 multipart boundary） */
+async function reqUpload<T>(method: string, path: string, formData: FormData): Promise<T> {
+  const token = tokenStore.get();
+  const res = await fetch(`${API_ORIGIN}/api${path}`, {
+    method,
+    headers: {
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+    },
+    body: formData,
+  });
+  if (res.status === 401) {
+    tokenStore.clear();
+    throw new UnauthorizedError('未授權');
+  }
+  const json = (await res.json().catch(() => ({}))) as { data?: T; error?: { message?: string } };
+  if (!res.ok) throw new Error(json.error?.message ?? `HTTP ${res.status}`);
+  return json.data as T;
+}
+
 export interface KnowledgeSource {
   startUrl: string;
   maxPages: number;
@@ -100,6 +119,12 @@ export interface KnowledgeSource {
   rerank: boolean;
   updatedAt?: string;
 }
+export interface KnowledgeFileMeta {
+  fileId: string;
+  name: string;
+  chunks: number;
+  ingestedAt: string;
+}
 export interface KnowledgeMeta {
   status: 'none' | 'ready' | 'failed';
   chunkCount: number;
@@ -107,6 +132,7 @@ export interface KnowledgeMeta {
   model?: string;
   source?: string;
   error?: string;
+  files?: KnowledgeFileMeta[];
 }
 export interface IngestJob {
   id: string;
@@ -201,4 +227,11 @@ export const api = {
     req<{ hits: QueryHit[] }>('POST', `/admin/tenants/${id}/knowledge/query-test`, { question }),
   deleteKnowledge: (id: string) =>
     req<{ ok: boolean }>('DELETE', `/admin/tenants/${id}/knowledge`),
+  uploadKnowledgeFile: (id: string, file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return reqUpload<KnowledgeFileMeta>('POST', `/admin/tenants/${id}/knowledge/files`, form);
+  },
+  deleteKnowledgeFile: (id: string, fileId: string) =>
+    req<{ fileId: string }>('DELETE', `/admin/tenants/${id}/knowledge/files/${fileId}`),
 };

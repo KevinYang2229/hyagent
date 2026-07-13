@@ -3,6 +3,7 @@ import { Checkbox, useToast } from "@oa-agent/ui";
 import {
   api,
   type IngestJob,
+  type KnowledgeFileMeta,
   type KnowledgeMeta,
   type KnowledgeSource,
   type QueryHit,
@@ -24,7 +25,9 @@ export default function KnowledgeTab({
   const [question, setQuestion] = useState("");
   const [hits, setHits] = useState<QueryHit[]>([]);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const poll = useRef<ReturnType<typeof setInterval> | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     try {
@@ -103,6 +106,29 @@ export default function KnowledgeTab({
       await api.deleteKnowledge(tenantId);
       await load();
       setHits([]);
+    } catch (e) {
+      onError(e);
+    }
+  };
+
+  const uploadFile = async (file: File) => {
+    setUploading(true);
+    try {
+      const meta = await api.uploadKnowledgeFile(tenantId, file);
+      toast.success(`已匯入 ${meta.chunks} 個段落`);
+      await load();
+    } catch (e) {
+      onError(e);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const removeFile = async (f: KnowledgeFileMeta) => {
+    if (!confirm(`確定刪除檔案「${f.name}」？`)) return;
+    try {
+      await api.deleteKnowledgeFile(tenantId, f.fileId);
+      await load();
     } catch (e) {
       onError(e);
     }
@@ -220,6 +246,58 @@ export default function KnowledgeTab({
             </button>
           </div>
         </div>
+      </div>
+
+      <div className="card">
+        <div className="card-head">
+          <div>
+            <div className="card-title">檔案來源</div>
+            <div className="card-desc">
+              上傳 txt / md / PDF / Word 檔案，內容會與網站來源合併建立索引。
+            </div>
+          </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".txt,.md,.pdf,.docx"
+            style={{ display: "none" }}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void uploadFile(file);
+              e.target.value = ""; // 允許再次上傳同一檔
+            }}
+          />
+          <button
+            className="btn btn-primary btn-sm"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+          >
+            {uploading ? "上傳中…" : "＋上傳檔案"}
+          </button>
+        </div>
+        <ul className="list">
+          {(meta.files ?? []).map((f) => (
+            <li key={f.fileId} className="row">
+              <div className="row-main">
+                <div className="row-title">{f.name}</div>
+                <div className="row-sub">
+                  {f.chunks} 片段｜匯入於 {f.ingestedAt}
+                </div>
+              </div>
+              <div className="row-actions">
+                <button
+                  className="btn btn-danger btn-sm"
+                  onClick={() => removeFile(f)}
+                >
+                  刪除
+                </button>
+              </div>
+            </li>
+          ))}
+          {(meta.files ?? []).length === 0 && (
+            <li className="empty">尚未上傳檔案</li>
+          )}
+        </ul>
       </div>
 
       <div className="card">
