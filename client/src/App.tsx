@@ -746,13 +746,13 @@ export default function App() {
                 </div>
               ) : (
                 <div key={m.id} className={`msg msg-${m.role}`}>
-                  {/* 對象名稱：AI 視窗顯示 AI 名稱，使用者訊息顯示登入者名稱 */}
-                  <span className="msg-name">
-                    {m.role === 'agent' && logoUrl && (
-                      <img src={logoUrl} alt="" className="msg-name-logo" />
-                    )}
-                    {m.role === 'agent' ? aiName : authUser.name}
-                  </span>
+                  {/* 對象名稱：只在 AI 訊息顯示（使用者自己的訊息靠右即可辨識，不重複顯示名字） */}
+                  {m.role === 'agent' && (
+                    <span className="msg-name">
+                      {logoUrl && <img src={logoUrl} alt="" className="msg-name-logo" />}
+                      {aiName}
+                    </span>
+                  )}
                   <div className={`bubble bubble-${m.role}`}>
                     {m.role === 'agent' ? (
                       <TypewriterText text={m.greeting ? greetingText : m.text} onTick={scrollToEnd} />

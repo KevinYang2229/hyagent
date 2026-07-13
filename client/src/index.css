@@ -178,6 +178,10 @@
   .msg-meta {
     @apply flex items-center gap-1;
   }
+  /* 使用者訊息的時間列也靠左（與 AI 訊息時間對齊成同一直行） */
+  .msg-user .msg-meta {
+    @apply self-start;
+  }
   .msg-action {
     @apply inline-flex cursor-pointer items-center rounded p-0.5 text-[var(--text-secondary)] opacity-0 transition-opacity hover:text-[var(--text-primary)] disabled:cursor-default disabled:opacity-0;
   }
