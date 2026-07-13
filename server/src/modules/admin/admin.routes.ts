@@ -1,14 +1,23 @@
 import { Router } from 'express';
+import type { NextFunction, Request, Response } from 'express';
+import multer, { MulterError } from 'multer';
 import { validate } from '@/middlewares/validate';
 import { requireAdmin } from '@/middlewares/require-admin';
 import { asyncHandler } from '@/utils/async-handler';
+import { AppError } from '@/utils/app-error';
 import { formAdminController } from '@/modules/form/form.admin.controller';
 import {
   definitionBodySchema,
   tenantFormParamSchema,
 } from '@/modules/form/form.admin.schema';
 import { knowledgeAdminController } from '@/modules/knowledge/knowledge.admin.controller';
-import { ingestSchema, jobParamSchema, queryTestSchema, sourceSchema } from '@/modules/knowledge/knowledge.admin.schema';
+import {
+  fileParamSchema,
+  ingestSchema,
+  jobParamSchema,
+  queryTestSchema,
+  sourceSchema,
+} from '@/modules/knowledge/knowledge.admin.schema';
 import { adminController } from './admin.controller';
 import { adminAuthController } from './admin.auth.controller';
 import {
@@ -24,6 +33,31 @@ import {
 } from './admin.schema';
 
 const router = Router();
+
+/**
+ * 知識庫檔案上傳限制：memoryStorage、單檔 10MB。
+ * 格式白名單（.txt/.md/.pdf/.docx）交由 knowledge-file.service 的 ingestFile 依副檔名把關（400），
+ * 這裡只把關檔案大小/數量，multer 的 MulterError 轉成統一 AppError（超限 413、其他 400）。
+ */
+const KNOWLEDGE_FILE_MAX_MB = 10;
+const knowledgeFileUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: KNOWLEDGE_FILE_MAX_MB * 1024 * 1024, files: 1 },
+});
+
+function uploadKnowledgeFile(req: Request, res: Response, next: NextFunction): void {
+  knowledgeFileUpload.single('file')(req, res, (err: unknown) => {
+    if (err instanceof MulterError) {
+      next(
+        err.code === 'LIMIT_FILE_SIZE' || err.code === 'LIMIT_FILE_COUNT'
+          ? AppError.payloadTooLarge(`檔案超過上限 ${KNOWLEDGE_FILE_MAX_MB}MB`)
+          : AppError.badRequest(`上傳失敗：${err.message}`),
+      );
+      return;
+    }
+    next(err);
+  });
+}
 
 // 公開：後台登入（在 requireAdmin 之前註冊，故不受其保護）
 router.post('/auth/login', validate({ body: adminLoginSchema }), asyncHandler(adminAuthController.login));
@@ -161,6 +195,17 @@ router.delete(
   '/tenants/:id/knowledge',
   validate({ params: tenantParamSchema }),
   asyncHandler(knowledgeAdminController.remove),
+);
+router.post(
+  '/tenants/:id/knowledge/files',
+  validate({ params: tenantParamSchema }),
+  uploadKnowledgeFile,
+  asyncHandler(knowledgeAdminController.uploadFile),
+);
+router.delete(
+  '/tenants/:id/knowledge/files/:fileId',
+  validate({ params: fileParamSchema }),
+  asyncHandler(knowledgeAdminController.deleteFile),
 );
 
 export const adminRouter = router;

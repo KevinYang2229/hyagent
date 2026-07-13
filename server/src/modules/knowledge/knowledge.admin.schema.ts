@@ -24,3 +24,9 @@ export const jobParamSchema = z.object({
   id: z.string().min(1),
   jobId: z.string().min(1),
 });
+
+/** 刪除上傳檔案的 path 參數：需保留 :fileId（z.object 預設會剝除未列出的 key） */
+export const fileParamSchema = z.object({
+  id: z.string().min(1),
+  fileId: z.string().min(1),
+});

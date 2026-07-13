@@ -7,6 +7,7 @@ import type { Request, Response } from 'express';
 import { AppError } from '@/utils/app-error';
 import { indexPathFor } from './index-path';
 import type { IngestParams } from './ingest.service';
+import { ingestFile, removeFile } from './knowledge-file.service';
 import { getJob, getRunningJobForTenant, startIngestJob } from './knowledge.job';
 import { knowledgeStore, type KnowledgeSource } from './knowledge.store';
 import { invalidateIndexCache, staticIndexRetriever } from './retriever.staticIndex';
@@ -88,5 +89,24 @@ export const knowledgeAdminController = {
     invalidateIndexCache(tenantId);
     knowledgeStore.setMeta(tenantId, { status: 'none', chunkCount: 0 });
     res.json({ data: { ok: true } });
+  },
+
+  /** 上傳單一檔案（multipart field: file）：解析→切塊→embed→附加索引 */
+  async uploadFile(req: Request, res: Response): Promise<void> {
+    const tenantId = String(req.params.id);
+    if (!req.file) throw AppError.badRequest('缺少上傳檔案（欄位 file）');
+    // multer/busboy 依 RFC 把 Content-Disposition 的檔名當 latin1 解，UTF-8 檔名（如中文）需轉回來
+    const originalName = Buffer.from(req.file.originalname, 'latin1').toString('utf8');
+    const fileMeta = await ingestFile(tenantId, originalName, req.file.buffer);
+    res.status(201).json({ data: fileMeta });
+  },
+
+  /** 刪除已上傳檔案：索引與 meta 一併移除；查無回 404 */
+  async deleteFile(req: Request, res: Response): Promise<void> {
+    const tenantId = String(req.params.id);
+    const fileId = String(req.params.fileId);
+    const removed = removeFile(tenantId, fileId);
+    if (!removed) throw AppError.notFound('檔案不存在');
+    res.json({ data: { fileId } });
   },
 };

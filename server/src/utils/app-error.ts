@@ -42,6 +42,10 @@ export class AppError extends Error {
     return new AppError(422, 'UNPROCESSABLE_ENTITY', message, details);
   }
 
+  static payloadTooLarge(message = 'Payload too large'): AppError {
+    return new AppError(413, 'PAYLOAD_TOO_LARGE', message);
+  }
+
   static internal(message = 'Internal server error'): AppError {
     return new AppError(500, 'INTERNAL_SERVER_ERROR', message);
   }
