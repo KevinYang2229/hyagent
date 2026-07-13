@@ -179,7 +179,7 @@
     @apply flex items-center gap-1;
   }
   .msg-action {
-    @apply cursor-pointer rounded px-1 text-[11px] text-[var(--text-secondary)] opacity-0 transition-opacity hover:underline disabled:cursor-default disabled:opacity-0;
+    @apply inline-flex cursor-pointer items-center rounded p-0.5 text-[var(--text-secondary)] opacity-0 transition-opacity hover:text-[var(--text-primary)] disabled:cursor-default disabled:opacity-0;
   }
   .msg:hover .msg-action,
   .msg:focus-within .msg-action {

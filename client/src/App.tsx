@@ -760,12 +760,14 @@ export default function App() {
                       m.text
                     )}
                   </div>
-                  {/* 送出日期時間 + 訊息動作（hover 顯示：複製；使用者訊息另有重送） */}
+                  {/* 送出日期時間 + 訊息動作（hover 顯示 icon：複製；使用者訊息另有重送。tooltip/aria 保留文字語意） */}
                   <span className="msg-meta">
                     <span className="msg-time">{formatTime(m.at)}</span>
                     <button
                       type="button"
                       className="msg-action"
+                      title={copiedId === String(m.id) ? t('app.copiedMsg') : t('app.copyMsg')}
+                      aria-label={t('app.copyMsg')}
                       onClick={() =>
                         void copyMsg(
                           String(m.id),
@@ -773,16 +775,33 @@ export default function App() {
                         )
                       }
                     >
-                      {copiedId === String(m.id) ? t('app.copiedMsg') : t('app.copyMsg')}
+                      {copiedId === String(m.id) ? (
+                        /* 已複製：打勾 */
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      ) : (
+                        /* 複製：兩張疊起來的方框 */
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <rect x="9" y="9" width="13" height="13" rx="2" />
+                          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                        </svg>
+                      )}
                     </button>
                     {m.role === 'user' && (
                       <button
                         type="button"
                         className="msg-action"
                         disabled={busy}
+                        title={t('app.resendMsg')}
+                        aria-label={t('app.resendMsg')}
                         onClick={() => resendMsg(m.text)}
                       >
-                        {t('app.resendMsg')}
+                        {/* 重送：循環箭頭 */}
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <polyline points="23 4 23 10 17 10" />
+                          <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+                        </svg>
                       </button>
                     )}
                   </span>
