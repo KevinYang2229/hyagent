@@ -175,13 +175,17 @@
   .msg-time {
     @apply text-[11px] tabular-nums text-[var(--text-secondary)];
   }
+  /* 泡泡＋時間動作列的一組容器：寬度貼合泡泡（上限沿用 72%），
+     內部靠左 → 時間列對齊泡泡左緣（使用者訊息隨泡泡靠右、時間仍貼其左緣） */
+  .msg-body {
+    @apply flex max-w-[72%] flex-col items-start gap-1;
+  }
+  .msg-body .bubble {
+    @apply max-w-full;
+  }
   /* 時間 + 訊息動作列：動作預設隱藏，hover / 鍵盤聚焦該則訊息時顯示 */
   .msg-meta {
     @apply flex items-center gap-1;
-  }
-  /* 使用者訊息的時間列也靠左（與 AI 訊息時間對齊成同一直行） */
-  .msg-user .msg-meta {
-    @apply self-start;
   }
   .msg-action {
     @apply inline-flex cursor-pointer items-center rounded p-0.5 text-[var(--text-secondary)] opacity-0 transition-opacity hover:text-[var(--text-primary)] disabled:cursor-default disabled:opacity-0;

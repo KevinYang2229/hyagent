@@ -753,6 +753,8 @@ export default function App() {
                       {aiName}
                     </span>
                   )}
+                  {/* 泡泡＋時間動作列包成一組：寬度貼合泡泡，時間列因此對齊泡泡左緣（使用者訊息也是） */}
+                  <div className="msg-body">
                   <div className={`bubble bubble-${m.role}`}>
                     {m.role === 'agent' ? (
                       <TypewriterText text={m.greeting ? greetingText : m.text} onTick={scrollToEnd} />
@@ -803,6 +805,7 @@ export default function App() {
                       </button>
                     )}
                   </span>
+                  </div>
                 </div>
               ),
             )}
