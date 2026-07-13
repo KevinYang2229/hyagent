@@ -173,7 +173,7 @@
   }
   /* 時間貼齊容器左緣（不加水平內縮）＝與輸入框、氣泡左緣同一直線 */
   .msg-time {
-    @apply text-[11px] tabular-nums text-[var(--text-secondary)];
+    @apply text-[11px] tabular-nums text-[var(--text-secondary)] ml-2;
   }
   /* 泡泡＋時間動作列的一組容器：寬度貼合泡泡（上限沿用 72%），
      內部靠左 → 時間列對齊泡泡左緣（使用者訊息隨泡泡靠右、時間仍貼其左緣） */
@@ -350,7 +350,8 @@
   .suggest-bar {
     @apply flex flex-wrap items-center gap-2 bg-[var(--bg-secondary)] px-5 py-2.5;
     /* 訊息往上捲動穿過此列時，用一道淺陰影把建議回覆與對話內容分隔開 */
-    box-shadow: 0 -6px 8px -6px color-mix(in srgb, var(--text-primary) 18%, transparent);
+    box-shadow: 0 -6px 8px -6px
+      color-mix(in srgb, var(--text-primary) 18%, transparent);
   }
 
   /* ---- 輸入列 ---- */
