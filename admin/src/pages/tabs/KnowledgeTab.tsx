@@ -26,6 +26,7 @@ export default function KnowledgeTab({
   const [hits, setHits] = useState<QueryHit[]>([]);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [dragOver, setDragOver] = useState(false); // 拖放上傳區的 drag-over 高亮
   const poll = useRef<ReturnType<typeof setInterval> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -144,7 +145,9 @@ export default function KnowledgeTab({
     !!job && ["queued", "crawling", "embedding"].includes(job.status);
 
   return (
-    <div className="appearance-grid">
+    // 兩欄各自直向堆疊：欄內卡片緊密相接，不會像單一 grid 那樣在矮卡旁留出空洞
+    <div className="kb-cols">
+      <div className="kb-col">
       <div className="card">
         <div className="card-head">
           <div>
@@ -247,15 +250,19 @@ export default function KnowledgeTab({
           </div>
         </div>
       </div>
+      </div>
 
+      <div className="kb-col">
       <div className="card">
         <div className="card-head">
           <div>
             <div className="card-title">檔案來源</div>
             <div className="card-desc">
-              上傳 txt / md / PDF / Word 檔案，內容會與網站來源合併建立索引。
+              上傳規章文件，內容與網站來源合併建立索引，供 AI 問答檢索。
             </div>
           </div>
+        </div>
+        <div className="card-body">
           <input
             ref={fileInputRef}
             type="file"
@@ -267,37 +274,113 @@ export default function KnowledgeTab({
               e.target.value = ""; // 允許再次上傳同一檔
             }}
           />
-          <button
-            className="btn btn-primary btn-sm"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
+          {/* 拖放上傳區：點擊/拖曳/鍵盤皆可觸發；上傳中顯示進度並停用 */}
+          <div
+            role="button"
+            tabIndex={0}
+            aria-label="上傳檔案"
+            className={`kdrop${dragOver ? " kdrop--over" : ""}${uploading ? " kdrop--busy" : ""}`}
+            onClick={() => !uploading && fileInputRef.current?.click()}
+            onKeyDown={(e) => {
+              if (!uploading && (e.key === "Enter" || e.key === " ")) {
+                e.preventDefault();
+                fileInputRef.current?.click();
+              }
+            }}
+            onDragOver={(e) => {
+              e.preventDefault();
+              if (!uploading) setDragOver(true);
+            }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragOver(false);
+              if (uploading) return;
+              const file = e.dataTransfer.files?.[0];
+              if (!file) return;
+              const ext = file.name.slice(file.name.lastIndexOf(".") + 1).toLowerCase();
+              if (!["txt", "md", "pdf", "docx"].includes(ext)) {
+                toast.error("僅支援 TXT、MD、PDF、DOCX 檔案");
+                return;
+              }
+              void uploadFile(file);
+            }}
           >
-            {uploading ? "上傳中…" : "＋上傳檔案"}
-          </button>
-        </div>
-        <ul className="list">
-          {(meta.files ?? []).map((f) => (
-            <li key={f.fileId} className="row">
-              <div className="row-main">
-                <div className="row-title">{f.name}</div>
-                <div className="row-sub">
-                  {f.chunks} 片段｜匯入於 {f.ingestedAt}
-                </div>
-              </div>
-              <div className="row-actions">
-                <button
-                  className="btn btn-danger btn-sm"
-                  onClick={() => removeFile(f)}
+            {uploading ? (
+              <>
+                <span className="kdrop-spinner" aria-hidden />
+                <div className="kdrop-title">正在解析並建立索引…</div>
+                <div className="kdrop-sub">大型檔案可能需要數十秒</div>
+              </>
+            ) : (
+              <>
+                <svg
+                  className="kdrop-icon"
+                  width="32"
+                  height="32"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
                 >
-                  刪除
-                </button>
-              </div>
-            </li>
-          ))}
-          {(meta.files ?? []).length === 0 && (
-            <li className="empty">尚未上傳檔案</li>
+                  <path d="M4 14.9A7 7 0 1 1 15.7 8h1.8a4.5 4.5 0 0 1 2.5 8.2" />
+                  <path d="M12 12v9" />
+                  <path d="m8 17 4-4 4 4" />
+                </svg>
+                <div className="kdrop-title">拖曳檔案到這裡，或點擊選擇</div>
+                <div className="kdrop-sub">支援 TXT・MD・PDF・DOCX，單檔上限 10MB</div>
+              </>
+            )}
+          </div>
+
+          {(meta.files ?? []).length > 0 && (
+            <ul className="list kfile-list">
+              {(meta.files ?? []).map((f) => {
+                const ext = f.name.slice(f.name.lastIndexOf(".") + 1).toLowerCase();
+                return (
+                  <li key={f.fileId} className="row">
+                    <span className="kfile-ext" data-ext={ext}>
+                      {ext}
+                    </span>
+                    <div className="row-main">
+                      <div className="row-title">{f.name}</div>
+                      <div className="row-sub">
+                        {f.chunks} 個段落 · {new Date(f.ingestedAt).toLocaleString()}
+                      </div>
+                    </div>
+                    <div className="row-actions">
+                      <button
+                        className="btn btn-ghost btn-sm kfile-del"
+                        title="刪除"
+                        aria-label={`刪除 ${f.name}`}
+                        onClick={() => removeFile(f)}
+                      >
+                        <svg
+                          width="15"
+                          height="15"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <path d="M3 6h18" />
+                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                          <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                        </svg>
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
           )}
-        </ul>
+        </div>
       </div>
 
       <div className="card">
@@ -382,6 +465,7 @@ export default function KnowledgeTab({
           ))}
           {hits.length === 0 && <li className="empty">尚無查詢結果。</li>}
         </ul>
+      </div>
       </div>
     </div>
   );
