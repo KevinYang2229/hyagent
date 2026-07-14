@@ -50,9 +50,26 @@ export interface LLMResult {
   toolCalls: LLMToolCall[];
   stopReason: 'end_turn' | 'tool_use' | 'max_tokens' | 'other';
   usage?: LLMUsage;
+  /** 本次實際使用的模型（計費歸戶用） */
+  model: string;
+  /** 本次用的是平台 key 還是租戶自帶 key（計費歸戶用） */
+  keySource: LLMKeySource;
 }
 
 export interface LLMProvider {
   readonly name: string;
   createMessage(params: LLMCreateParams): Promise<LLMResult>;
+}
+
+export type LLMKeySource = 'platform' | 'tenant';
+
+/**
+ * 租戶層 AI 設定（BYO key）。key 按廠商分欄：對話 provider 選 anthropic 時，
+ * openaiApiKey 仍可供知識庫 embedding 使用（Anthropic 無 embedding API）。
+ */
+export interface TenantLLMConfig {
+  provider?: 'anthropic' | 'openai';
+  model?: string;
+  anthropicApiKey?: string;
+  openaiApiKey?: string;
 }
