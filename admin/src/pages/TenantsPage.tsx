@@ -168,7 +168,15 @@ export default function TenantsPage() {
                 )}
               </div>
               <div className="row-main" style={{ flex: 1 }}>
-                <div className="row-title">{t.name}</div>
+                <div className="row-title">
+                  {t.name}
+                  {/* 未帶 API 金鑰的聊天視窗/widget 一律落在預設租戶——標示出來，避免知識庫等內容傳錯租戶 */}
+                  {t.id === 'default' && (
+                    <span className="badge badge-on" style={{ marginLeft: 8 }}>
+                      未帶金鑰的聊天視窗使用中
+                    </span>
+                  )}
+                </div>
                 <div className="row-sub">{t.id}</div>
               </div>
               <IconChevron className="chev" />
