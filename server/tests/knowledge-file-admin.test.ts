@@ -10,6 +10,7 @@ jest.mock('@/lib/embedding', () => ({
 }));
 
 import request from 'supertest';
+import { startIngestJob } from '@/modules/knowledge/knowledge.job';
 import { createApp } from '@/app';
 
 const app = createApp();
@@ -75,5 +76,28 @@ describe('admin knowledge file API', () => {
       .delete(`/api/admin/tenants/${tenantId}/knowledge/files/not-exist-id`)
       .set(auth)
       .expect(404);
+  });
+});
+
+describe('索引競態守門：爬網 job 進行中', () => {
+  it('上傳/刪除檔案回 409（避免與 runIngest 的 read-modify-write 互蓋）', async () => {
+    const raceTenant = 'kfile-race-tenant';
+    // 注入永不完成的 run，製造「進行中」job（getRunningJobForTenant 命中）
+    const never = () => new Promise<never>(() => {});
+    startIngestJob(
+      { tenantId: raceTenant, startUrl: 'https://x.com', maxPages: 1, chunkChars: 800, embeddingModel: 'm' },
+      never as never,
+    );
+
+    await request(app)
+      .post(`/api/admin/tenants/${raceTenant}/knowledge/files`)
+      .set(auth)
+      .attach('file', Buffer.from('內容'.repeat(50)), 'race.txt')
+      .expect(409);
+
+    await request(app)
+      .delete(`/api/admin/tenants/${raceTenant}/knowledge/files/whatever`)
+      .set(auth)
+      .expect(409);
   });
 });

@@ -94,6 +94,11 @@ export const knowledgeAdminController = {
   /** 上傳單一檔案（multipart field: file）：解析→切塊→embed→附加索引 */
   async uploadFile(req: Request, res: Response): Promise<void> {
     const tenantId = String(req.params.id);
+    // 索引檔無鎖：爬網 job 進行中同時附加會有 read-modify-write 競態（可能默默蓋掉彼此的 chunks），
+    // 比照「重複爬網」守門以 409 擋下，待 job 結束再上傳。
+    if (getRunningJobForTenant(tenantId)) {
+      throw AppError.conflict('解析任務進行中，請待完成後再上傳檔案');
+    }
     if (!req.file) throw AppError.badRequest('缺少上傳檔案（欄位 file）');
     // multer/busboy 依 RFC 把 Content-Disposition 的檔名當 latin1 解，UTF-8 檔名（如中文）需轉回來
     const originalName = Buffer.from(req.file.originalname, 'latin1').toString('utf8');
@@ -104,6 +109,10 @@ export const knowledgeAdminController = {
   /** 刪除已上傳檔案：索引與 meta 一併移除；查無回 404 */
   async deleteFile(req: Request, res: Response): Promise<void> {
     const tenantId = String(req.params.id);
+    // 同上：爬網進行中不允許動索引（競態守門）
+    if (getRunningJobForTenant(tenantId)) {
+      throw AppError.conflict('解析任務進行中，請待完成後再刪除檔案');
+    }
     const fileId = String(req.params.fileId);
     const removed = removeFile(tenantId, fileId);
     if (!removed) throw AppError.notFound('檔案不存在');
