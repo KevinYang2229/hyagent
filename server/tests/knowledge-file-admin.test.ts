@@ -8,6 +8,17 @@ jest.mock('@/lib/embedding', () => ({
     embed: async (texts: string[]) => texts.map(() => [0.1, 0.2, 0.3]),
   }),
 }));
+// 上傳流程會產全文摘要 chunk：mock LLM 避免測試打真實 API
+jest.mock('@/lib/llm', () => ({
+  getLLMProvider: () => ({
+    name: 'mock',
+    createMessage: async () => ({
+      text: '本文件為公司規章摘要，說明特休與請假申請流程。',
+      toolCalls: [],
+      stopReason: 'end_turn',
+    }),
+  }),
+}));
 
 import request from 'supertest';
 import { startIngestJob } from '@/modules/knowledge/knowledge.job';

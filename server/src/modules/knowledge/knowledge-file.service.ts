@@ -9,6 +9,9 @@ import { dirname } from 'node:path';
 import mammoth from 'mammoth';
 import { PDFParse } from 'pdf-parse';
 import { getEmbeddingProvider } from '@/lib/embedding';
+import { getLLMProvider } from '@/lib/llm';
+import { logger } from '@/lib/logger';
+import { env } from '@/config/env';
 import { AppError } from '@/utils/app-error';
 import { indexPathFor } from './index-path';
 // carryOverFileChunks 從 ingest.service 匯入（而非本檔自行定義），維持單向依賴：
@@ -22,6 +25,38 @@ export type { KnowledgeFileMeta };
 export { carryOverFileChunks };
 
 const MIN_TEXT_CHARS = 20;
+
+/** 摘要輸入上限：超長文件截前段即可（摘要只求鳥瞰，兼顧 token 成本） */
+const SUMMARY_MAX_INPUT_CHARS = 24000;
+
+/**
+ * 全文摘要 chunk：入庫時先「消化一次」，讓籠統問題（這份文件在講什麼）有可命中的候選。
+ * 只是多一個檢索候選、不取代原文 chunks；失敗一律回 null，匯入照常進行。
+ */
+async function summarizeText(name: string, text: string): Promise<string | null> {
+  try {
+    const result = await getLLMProvider().createMessage({
+      system: [
+        '你是文件摘要員。將使用者提供的文件濃縮成 150~250 字的繁體中文摘要。',
+        '只能濃縮原文內容，嚴禁補充原文沒有的資訊；專有名詞、代號、網址保留原文寫法。',
+        '直接輸出摘要文字，不要任何前後綴或條列符號。',
+      ].join('\n'),
+      messages: [
+        {
+          role: 'user',
+          content: [{ type: 'text', text: `文件名稱：${name}\n\n${text.slice(0, SUMMARY_MAX_INPUT_CHARS)}` }],
+        },
+      ],
+      maxTokens: 512,
+      model: env.LLM_ROUTER_MODEL, // 摘要屬輔助任務，用便宜模型即可（同意圖分類器）
+    });
+    const summary = squash(result.text ?? '');
+    return summary.length >= MIN_TEXT_CHARS ? summary : null;
+  } catch (err) {
+    logger.warn({ err, name }, 'file summary generation failed; ingest continues without summary');
+    return null;
+  }
+}
 
 /**
  * 依副檔名解析為純文字；不支援的副檔名回 400。
@@ -74,10 +109,14 @@ export async function ingestFile(
   const source = knowledgeStore.getSource(tenantId);
   const pieces = chunkText(text, source.chunkChars);
 
+  // 單一 chunk 就是全文本身，摘要無增益；多 chunk 才值得花一次 LLM 呼叫
+  const summary = pieces.length >= 2 ? await summarizeText(name, text) : null;
+  const toEmbed = summary ? [...pieces, summary] : pieces;
+
   const existing = loadIndexFile(tenantId);
   // 模型一致性：同一份索引只能用同一個 embedding 模型
   const model = existing?.model ?? source.embeddingModel;
-  const vectors = await getEmbeddingProvider().embed(pieces, model);
+  const vectors = await getEmbeddingProvider().embed(toEmbed, model);
 
   const fileId = randomUUID();
   const fileChunks: IndexedChunk[] = pieces.map((t, i) => ({
@@ -88,6 +127,17 @@ export async function ingestFile(
     vector: vectors[i],
     fileId,
   }));
+  if (summary) {
+    // 標明「全文摘要」讓回答模型知道這是衍生內容，細節仍以原文 chunks 為準
+    fileChunks.push({
+      id: `${fileId}-summary`,
+      url: `file://${name}`,
+      title: `${name}（全文摘要）`,
+      text: summary,
+      vector: vectors[pieces.length],
+      fileId,
+    });
+  }
 
   const idx: KnowledgeIndexFile = existing
     ? { ...existing, generatedAt: new Date().toISOString(), chunks: [...existing.chunks, ...fileChunks] }
