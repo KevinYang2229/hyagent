@@ -84,7 +84,7 @@ export const knowledgeAgentService: AgentService = {
         id: 'kb.query',
         keywords: KB_KEYWORDS,
         description:
-          '查詢公司相關資訊：規章制度、產品/方案/服務介紹、公司簡介、聯絡方式（電話/地址/分公司/信箱）、假別/報銷規定、FAQ 等任何「想知道答案」的問題',
+          '查詢公司相關資訊（規章制度、產品/方案/服務介紹、公司簡介、聯絡方式、假別/報銷規定、FAQ），以及知識庫收錄文件的內容（主題不限，如上傳文件的專業知識）——任何「想知道答案」的問題',
       },
     ];
   },

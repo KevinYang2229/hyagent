@@ -39,7 +39,15 @@ let mockCreate: jest.Mock;
 beforeAll(() => {
   const t = tenantStore.createTenant('router-test-tenant');
   tenantStore.updateTenant(t.id, {
-    grantedScopes: ['service:form', 'service:knowledge', 'service:agent'],
+    grantedScopes: [
+      'service:form',
+      'service:knowledge',
+      'service:agent',
+      // 表單 scope（opt-in 制）：keywordRoute 的表單關鍵字來自 listEnabledForms，未授予則清單為空
+      'form:leave-request',
+      'form:business-trip-domestic',
+      'form:outing-registration',
+    ],
   });
   routerTenantId = t.id;
 });
@@ -51,9 +59,46 @@ beforeEach(() => {
   (getLLMProvider as jest.Mock).mockReturnValue({ name: 'mock', createMessage: mockCreate });
 });
 
+// 「對話中」的逐字稿（首問已過）：點黏 0-token 續留只適用於非首問輪
+const MID_CONV_MSGS: Session['messages'] = [
+  { role: 'user', content: [{ type: 'text', text: '我要請假' }] },
+  { role: 'assistant', content: [{ type: 'text', text: '請問起訖日期？' }] },
+  { role: 'user', content: [{ type: 'text', text: '明天下午三點到五點' }] },
+];
+
 describe('intentRouter.route', () => {
-  it('填表點黏：一般續填訊息續留 form，且不動用分類器（0 token）', async () => {
-    const r = await intentRouter.route(makeSession(), '明天下午三點到五點');
+  it('填表點黏：對話中的一般續填訊息續留 form，且不動用分類器（0 token）', async () => {
+    const r = await intentRouter.route(
+      makeSession({ messages: MID_CONV_MSGS }),
+      '明天下午三點到五點',
+    );
+    expect(r.serviceId).toBe('form');
+    expect(r.viaLLM).toBe(false);
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it('對話首問即使無語氣詞（如上傳文件主題）→ 交給分類器 → knowledge', async () => {
+    mockCreate.mockResolvedValue({
+      text: '{"intent":"kb.query","confidence":0.9}',
+      toolCalls: [],
+      stopReason: 'end_turn',
+    });
+    // 首問：本輪使用者訊息剛推入（長度 1）；「中央銀行查詢語法」無任何知識語氣詞
+    const first = makeSession({
+      messages: [{ role: 'user', content: [{ type: 'text', text: '中央銀行查詢語法' }] }],
+    });
+    const r = await intentRouter.route(first, '中央銀行查詢語法');
+    expect(mockCreate).toHaveBeenCalledTimes(1);
+    expect(r.serviceId).toBe('knowledge');
+    expect(r.viaLLM).toBe(true);
+  });
+
+  it('首問命中表單關鍵字（出差報銷）→ 0-token 續留 form，不進分類器', async () => {
+    // business-trip-domestic 定義了「出差報銷」關鍵字（leave-request 無 keywords，該表單首問靠分類器）
+    const first = makeSession({
+      messages: [{ role: 'user', content: [{ type: 'text', text: '我要出差報銷' }] }],
+    });
+    const r = await intentRouter.route(first, '我要出差報銷');
     expect(r.serviceId).toBe('form');
     expect(r.viaLLM).toBe(false);
     expect(mockCreate).not.toHaveBeenCalled();

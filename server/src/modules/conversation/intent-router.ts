@@ -75,9 +75,9 @@ async function classify(session: Session, text: string): Promise<string | null> 
     '根據使用者訊息，從下列意圖清單挑最貼近的一個：',
     catalog,
     '規則：要「填寫／申請／送出」某張表單 → 對應表單意圖；',
-    '與公司/OA 相關的「想知道答案」提問 → kb.query，包含公司規章制度、額度算法、FAQ，以及公司本身資訊（電話、地址、分公司、聯絡方式、產品、服務、方案、簡介）。',
+    '與公司/OA 相關的「想知道答案」提問，以及可能收錄在公司知識庫文件中的內容（主題不限，例如上傳文件的專業知識）→ kb.query，包含公司規章制度、額度算法、FAQ、公司資訊（電話、地址、分公司、聯絡方式、產品、服務、方案、簡介）。',
     '需要系統「代為執行操作」的任務（例如代擬並寄送 Email／通知信、或需跨多個系統/工具、多步驟才能完成）→ 選對應的 agent 意圖（如 agent.task）；這類是「請你做一件事」而非「填表」或「問答」。',
-    '與公司/OA 無關的一般常識、算術、閒聊、時事，或單純打招呼、道謝、問候、問「你是誰」→ off-topic。',
+    '與公司/OA 無關、且知識庫文件也不太可能收錄的一般常識、算術、閒聊、時事，或單純打招呼、道謝、問候、問「你是誰」→ off-topic；拿不準時優先 kb.query（查無資料時知識庫會如實說明）。',
     '只輸出 {"intent":"<id、off-topic 或 none>","confidence":0~1}，不要任何其他文字。',
   ].join('\n');
   try {
@@ -129,16 +129,19 @@ export const intentRouter = {
       //  - 在 agent 點黏中：「我要請假」等 form 關鍵字 → 轉回 form（避免被困在無表單工具的 agent）。
       // 知識問句刻意不走關鍵字（易誤搶），改由下方 hint→classify 判斷。
       const kwSticky = keywordRoute(session, text);
-      if (
-        kwSticky.confident &&
-        kwSticky.serviceId !== activeId &&
-        kwSticky.serviceId !== 'knowledge' &&
-        enabledIds.has(kwSticky.serviceId)
-      ) {
-        return { serviceId: kwSticky.serviceId, viaLLM: false };
+      if (kwSticky.confident && enabledIds.has(kwSticky.serviceId)) {
+        if (kwSticky.serviceId !== activeId && kwSticky.serviceId !== 'knowledge') {
+          return { serviceId: kwSticky.serviceId, viaLLM: false };
+        }
+        // 明確命中點黏服務自己的關鍵字（如首句「我要請假」）→ 0 token 續留，不進下方首問分類
+        if (kwSticky.serviceId === activeId) return { serviceId: activeId, viaLLM: false };
       }
-      // 無知識語氣 → 0 token 續留；有語氣才花一次 Haiku 二次確認（gate 過度觸發也由分類器把關）
-      if (!KNOWLEDGE_HINT_RE.test(text)) return { serviceId: activeId, viaLLM: false };
+      // 對話首問不硬黏：新對話預設黏 form，但第一句常是任意主題的知識提問
+      // （如上傳文件的內容「中央銀行查詢語法」），沒有語氣詞就會被困在 form 而遭婉拒。
+      // 首問（本輪使用者訊息剛推入 → 長度 <=1）交給分類器判斷；之後各輪維持 0-token 點黏。
+      const isFirstTurn = session.messages.length <= 1;
+      // 無知識語氣且非首問 → 0 token 續留；否則花一次 Haiku 判斷（gate 過度觸發也由分類器把關）
+      if (!isFirstTurn && !KNOWLEDGE_HINT_RE.test(text)) return { serviceId: activeId, viaLLM: false };
       const classified = await classify(session, text);
       return { serviceId: classified ?? activeId, viaLLM: true };
     }

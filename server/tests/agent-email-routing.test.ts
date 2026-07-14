@@ -31,8 +31,17 @@ it('無 pendingEmail → 不強制 agent（一般路由）', async () => {
 it('agent 蒐集資訊途中（activeServiceId=agent）的無關鍵字回答留在 agent（多輪不被沖回 form）', async () => {
   const t = tenantStore.createTenant('email-route-multiturn');
   tenantStore.updateTenant(t.id, { grantedScopes: ['service:form', 'service:agent'] });
-  // 模擬：agent 已問「主旨？」，使用者回答主旨（無任何服務關鍵字、無知識語氣詞）
-  const session = makeSession(t.id, { activeServiceId: 'agent', status: 'collecting' });
+  // 模擬：agent 已問「主旨？」，使用者回答主旨（無任何服務關鍵字、無知識語氣詞）。
+  // 逐字稿為「對話中」（非首問）——首問輪會交給分類器（見 intent-router 首問邏輯）。
+  const session = makeSession(t.id, {
+    activeServiceId: 'agent',
+    status: 'collecting',
+    messages: [
+      { role: 'user', content: [{ type: 'text', text: '幫我寄信給主管' }] },
+      { role: 'assistant', content: [{ type: 'text', text: '請問主旨與內容？' }] },
+      { role: 'user', content: [{ type: 'text', text: '主旨：關於合作提案' }] },
+    ],
+  });
   const r = await intentRouter.route(session, '主旨：關於合作提案');
   expect(r.serviceId).toBe('agent'); // 留在 agent 繼續擬稿，不被沖回 form
   expect(r.viaLLM).toBe(false);

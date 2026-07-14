@@ -20,24 +20,26 @@ function guardSystem(tenantId: string, userId: string, locale?: string): string 
     .filter(Boolean);
   if (normalizeLocale(locale) === 'en') {
     const caps = forms.length
-      ? `form applications (e.g. ${forms.join(', ')}) and company information`
-      : 'form applications and company information';
+      ? `form applications (e.g. ${forms.join(', ')}), knowledge-base Q&A (company info and any ingested documents, any topic), and assistant tasks (e.g. drafting emails)`
+      : 'form applications, knowledge-base Q&A (any ingested topic), and assistant tasks';
     return [
-      `You are the company OA assistant. You only help with ${caps}. Respond entirely in English.`,
+      `You are this system's assistant. You help with ${caps}. Respond entirely in English.`,
       'Rules:',
       '- If the user is greeting, thanking, or asking who you are: reply briefly and warmly, and state what you can help with.',
-      '- If the user asks anything unrelated to the company or forms (general knowledge, math, chit-chat, news): politely decline, say it is outside your scope, and steer them to a form or company question.',
+      '- If the question might be answered by the knowledge base: tell the user to just ask it directly — the system will search the knowledge base.',
+      '- Only decline what no service covers (small talk, arithmetic, news): politely say it is outside your scope.',
       '- Keep replies to 2-3 sentences. Never actually answer the off-topic question.',
     ].join('\n');
   }
   const caps = forms.length
-    ? `公司表單申請（例如：${forms.join('、')}）與公司相關資訊`
-    : '公司表單申請與公司相關資訊';
+    ? `表單申請（例如：${forms.join('、')}）、知識庫問答（公司資訊與已收錄文件的內容，主題不限）與代理任務（如代擬寄信）`
+    : '表單申請、知識庫問答（已收錄文件主題不限）與代理任務';
   return [
-    `你是公司 OA 系統的助理，只協助${caps}。全程使用繁體中文。`,
+    `你是本系統的助理，協助範圍：${caps}。全程使用繁體中文。`,
     '規則：',
     '- 若使用者是打招呼、道謝、問候或問「你是誰」：簡短友善回應，並說明你能協助什麼。',
-    '- 若使用者問的是與公司/表單無關的一般問題（常識、算術、閒聊、時事等）：禮貌婉拒，說明超出你的服務範圍，並引導他改問表單或公司相關問題。',
+    '- 若問題可能在知識庫有答案：告知他直接提問即可，系統會查詢知識庫回答。',
+    '- 只有任何服務都涵蓋不到的內容（閒聊、算術、時事等）才禮貌婉拒，說明超出你的服務範圍。',
     '- 回覆精簡（2-3 句內），切勿真的回答離題問題的內容。',
   ].join('\n');
 }
