@@ -10,6 +10,7 @@ import {
 } from "../../api";
 
 const EMBEDDING_MODELS = ["text-embedding-3-large", "text-embedding-3-small"];
+type SourceKind = "website" | "file";
 
 export default function KnowledgeTab({
   tenantId,
@@ -20,23 +21,26 @@ export default function KnowledgeTab({
 }) {
   const toast = useToast();
   const [src, setSrc] = useState<KnowledgeSource | null>(null);
-  // 後端實際生效的來源設定（上傳檔案沿用它切塊/embed）；src 是表單編輯值，可能尚未儲存
-  const [savedSrc, setSavedSrc] = useState<KnowledgeSource | null>(null);
   const [meta, setMeta] = useState<KnowledgeMeta | null>(null);
   const [job, setJob] = useState<IngestJob | null>(null);
   const [question, setQuestion] = useState("");
   const [hits, setHits] = useState<QueryHit[]>([]);
-  const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false); // 拖放上傳區的 drag-over 高亮
+  // 來源設定：先選網站或檔案，再填完參數，最後由同一顆「開始解析」依類型處理。
+  const [sourceKind, setSourceKind] = useState<SourceKind>("website");
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
   const poll = useRef<ReturnType<typeof setInterval> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     try {
       const d = await api.getKnowledge(tenantId);
-      setSrc(d.source);
-      setSavedSrc(d.source);
+      const effectiveSource = {
+        ...d.source,
+        embeddingModel: d.meta.model ?? d.source.embeddingModel,
+      };
+      setSrc(effectiveSource);
       setMeta(d.meta);
       setJob(d.runningJob);
     } catch (e) {
@@ -53,20 +57,6 @@ export default function KnowledgeTab({
 
   const update = (patch: Partial<KnowledgeSource>) =>
     setSrc((s) => (s ? { ...s, ...patch } : s));
-
-  const save = async () => {
-    if (!src) return;
-    setSaving(true);
-    try {
-      await api.saveKnowledgeSource(tenantId, src);
-      await load();
-      toast.success("已儲存變更");
-    } catch (e) {
-      onError(e);
-    } finally {
-      setSaving(false);
-    }
-  };
 
   const startPoll = (jobId: string) => {
     if (poll.current) clearInterval(poll.current);
@@ -85,14 +75,37 @@ export default function KnowledgeTab({
     }, 2000);
   };
 
-  const ingest = async () => {
+  const parseSource = async () => {
     if (!src) return;
+    if (sourceKind === "file" && !pendingFile) {
+      toast.error("請先選擇要解析的檔案");
+      return;
+    }
+    setUploading(sourceKind === "file");
     try {
       await api.saveKnowledgeSource(tenantId, src);
-      const { jobId } = await api.startKnowledgeIngest(tenantId);
-      startPoll(jobId);
+      if (sourceKind === "website") {
+        const { jobId, status } = await api.startKnowledgeIngest(tenantId);
+        setJob({
+          id: jobId,
+          tenantId,
+          status: status as IngestJob["status"],
+          pagesCrawled: 0,
+          chunks: 0,
+          embedded: 0,
+          startedAt: new Date().toISOString(),
+        });
+        startPoll(jobId);
+      } else if (pendingFile) {
+        const m = await api.uploadKnowledgeFile(tenantId, pendingFile);
+        toast.success(`已匯入 ${m.chunks} 個段落`);
+        setPendingFile(null);
+        await load();
+      }
     } catch (e) {
       onError(e);
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -115,17 +128,10 @@ export default function KnowledgeTab({
     }
   };
 
-  const uploadFile = async (file: File) => {
-    setUploading(true);
-    try {
-      const meta = await api.uploadKnowledgeFile(tenantId, file);
-      toast.success(`已匯入 ${meta.chunks} 個段落`);
-      await load();
-    } catch (e) {
-      onError(e);
-    } finally {
-      setUploading(false);
-    }
+  /** 選檔只帶入來源；chunk/model 等參數在同一區塊確認後，再按「開始解析」。 */
+  const pickFile = (file: File) => {
+    setSourceKind("file");
+    setPendingFile(file);
   };
 
   const removeFile = async (f: KnowledgeFileMeta) => {
@@ -146,6 +152,12 @@ export default function KnowledgeTab({
     );
   const running =
     !!job && ["queued", "crawling", "embedding"].includes(job.status);
+  const parsing = running || uploading;
+  const lockedModel = meta.model;
+  const canParse =
+    !parsing &&
+    src.chunkChars > 0 &&
+    (sourceKind === "website" ? !!src.startUrl : !!pendingFile);
 
   return (
     // 兩欄各自直向堆疊：欄內卡片緊密相接，不會像單一 grid 那樣在矮卡旁留出空洞
@@ -154,103 +166,219 @@ export default function KnowledgeTab({
         <div className="card">
           <div className="card-head">
             <div>
-              <div className="card-title">知識來源</div>
+              <div className="card-title">建立知識來源</div>
               <div className="card-desc">
-                輸入網站與參數，解析後建立此租戶專屬的 RAG 索引。
+                選擇網站或檔案，設定參數後解析成此租戶專屬的 RAG 索引。
               </div>
             </div>
           </div>
           <div className="card-body">
-            <div className="form-grid">
-              <div className="field">
-                <label className="field-label">起始網址</label>
-                <input
-                  className="input"
-                  value={src.startUrl}
-                  onChange={(e) => update({ startUrl: e.target.value })}
-                  placeholder="https://www.example.com/"
-                />
-              </div>
-              <div className="field">
-                <label className="field-label">最大頁數</label>
-                <input
-                  className="input"
-                  type="number"
-                  value={src.maxPages}
-                  onChange={(e) => update({ maxPages: Number(e.target.value) })}
-                />
-              </div>
-              <div className="field">
-                <label className="field-label">路徑前綴（選填）</label>
-                <input
-                  className="input"
-                  value={src.pathPrefix ?? ""}
-                  onChange={(e) =>
-                    update({ pathPrefix: e.target.value || undefined })
-                  }
-                  placeholder="/mp"
-                />
-              </div>
-              <div className="field">
-                <label className="field-label">chunk 大小（字元）</label>
-                <input
-                  className="input"
-                  type="number"
-                  value={src.chunkChars}
-                  onChange={(e) =>
-                    update({ chunkChars: Number(e.target.value) })
-                  }
-                />
-              </div>
-              <div className="field">
-                <label className="field-label">embedding 模型</label>
-                <select
-                  className="select"
-                  value={src.embeddingModel}
-                  onChange={(e) => update({ embeddingModel: e.target.value })}
-                >
-                  {EMBEDDING_MODELS.map((m) => (
-                    <option key={m} value={m}>
-                      {m}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="field">
-                <label className="field-label">LLM 重排</label>
-                <label
-                  style={{ display: "flex", alignItems: "center", gap: 8 }}
-                >
-                  <Checkbox
-                    checked={src.rerank}
-                    onChange={(e) => update({ rerank: e.target.checked })}
+            <div className="tabs kb-source-tabs" role="tablist" aria-label="知識來源類型">
+              <button
+                type="button"
+                className={`tab ${sourceKind === "website" ? "active" : ""}`}
+                onClick={() => setSourceKind("website")}
+                disabled={parsing}
+              >
+                網站
+              </button>
+              <button
+                type="button"
+                className={`tab ${sourceKind === "file" ? "active" : ""}`}
+                onClick={() => setSourceKind("file")}
+                disabled={parsing}
+              >
+                檔案
+              </button>
+            </div>
+
+            {sourceKind === "website" ? (
+              <div className="form-grid">
+                <div className="field">
+                  <label className="field-label">起始網址</label>
+                  <input
+                    className="input"
+                    value={src.startUrl}
+                    onChange={(e) => update({ startUrl: e.target.value })}
+                    placeholder="https://www.example.com/"
+                    disabled={parsing}
                   />
-                  <span className="field-hint">
-                    啟用兩階段檢索（精準度↑，每次查詢多一次呼叫）
-                  </span>
-                </label>
+                </div>
+                <div className="field">
+                  <label className="field-label">最大頁數</label>
+                  <input
+                    className="input"
+                    type="number"
+                    value={src.maxPages}
+                    onChange={(e) => update({ maxPages: Number(e.target.value) })}
+                    disabled={parsing}
+                  />
+                </div>
+                <div className="field">
+                  <label className="field-label">路徑前綴（選填）</label>
+                  <input
+                    className="input"
+                    value={src.pathPrefix ?? ""}
+                    onChange={(e) =>
+                      update({ pathPrefix: e.target.value || undefined })
+                    }
+                    placeholder="/mp"
+                    disabled={parsing}
+                  />
+                </div>
+              </div>
+            ) : (
+              <>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".txt,.md,.pdf,.docx"
+                  style={{ display: "none" }}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) pickFile(file);
+                    e.target.value = ""; // 允許再次上傳同一檔
+                  }}
+                />
+                <div
+                  role="button"
+                  tabIndex={0}
+                  aria-label="上傳檔案"
+                  className={`kdrop${dragOver ? " kdrop--over" : ""}${uploading ? " kdrop--busy" : ""}`}
+                  onClick={() => !parsing && fileInputRef.current?.click()}
+                  onKeyDown={(e) => {
+                    if (!parsing && (e.key === "Enter" || e.key === " ")) {
+                      e.preventDefault();
+                      fileInputRef.current?.click();
+                    }
+                  }}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    if (!parsing) setDragOver(true);
+                  }}
+                  onDragLeave={() => setDragOver(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setDragOver(false);
+                    if (parsing) return;
+                    const file = e.dataTransfer.files?.[0];
+                    if (!file) return;
+                    const ext = file.name
+                      .slice(file.name.lastIndexOf(".") + 1)
+                      .toLowerCase();
+                    if (!["txt", "md", "pdf", "docx"].includes(ext)) {
+                      toast.error("僅支援 TXT、MD、PDF、DOCX 檔案");
+                      return;
+                    }
+                    pickFile(file);
+                  }}
+                >
+                  {uploading ? (
+                    <>
+                      <span className="kdrop-spinner" aria-hidden />
+                      <div className="kdrop-title">正在解析並建立索引…</div>
+                      <div className="kdrop-sub">大型檔案可能需要數十秒</div>
+                    </>
+                  ) : (
+                    <>
+                      <svg
+                        className="kdrop-icon"
+                        width="32"
+                        height="32"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.6"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                      >
+                        <path d="M4 14.9A7 7 0 1 1 15.7 8h1.8a4.5 4.5 0 0 1 2.5 8.2" />
+                        <path d="M12 12v9" />
+                        <path d="m8 17 4-4 4 4" />
+                      </svg>
+                      <div className="kdrop-title">
+                        {pendingFile ? pendingFile.name : "拖曳檔案到這裡，或點擊選擇"}
+                      </div>
+                      <div className="kdrop-sub">
+                        {pendingFile
+                          ? `${Math.max(1, Math.round(pendingFile.size / 1024))} KB，支援重新點擊更換檔案`
+                          : "支援 TXT・MD・PDF・DOCX，單檔上限 10MB"}
+                      </div>
+                    </>
+                  )}
+                </div>
+              </>
+            )}
+
+            <div className="kb-param-block">
+              <div className="form-grid">
+                <div className="field">
+                  <label className="field-label">chunk 大小（字元）</label>
+                  <input
+                    className="input"
+                    type="number"
+                    value={src.chunkChars}
+                    onChange={(e) =>
+                      update({ chunkChars: Number(e.target.value) })
+                    }
+                    disabled={parsing}
+                  />
+                </div>
+                <div className="field">
+                  <label className="field-label">embedding 模型</label>
+                  {lockedModel ? (
+                    <>
+                      <input className="input" value={lockedModel} disabled />
+                      <span className="field-hint">
+                        同一索引須沿用既有模型；要換模型請先清除索引
+                      </span>
+                    </>
+                  ) : (
+                    <select
+                      className="select"
+                      value={src.embeddingModel}
+                      onChange={(e) => update({ embeddingModel: e.target.value })}
+                      disabled={parsing}
+                    >
+                      {EMBEDDING_MODELS.map((m) => (
+                        <option key={m} value={m}>
+                          {m}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+                <div className="field">
+                  <label className="field-label">LLM 重排</label>
+                  <label
+                    style={{ display: "flex", alignItems: "center", gap: 8 }}
+                  >
+                    <Checkbox
+                      checked={src.rerank}
+                      onChange={(e) => update({ rerank: e.target.checked })}
+                      disabled={parsing}
+                    />
+                    <span className="field-hint">
+                      啟用兩階段檢索（精準度↑，每次查詢多一次呼叫）
+                    </span>
+                  </label>
+                </div>
               </div>
             </div>
 
             <div className="form-actions">
               <button
                 className="btn btn-primary"
-                onClick={save}
-                disabled={saving || running}
+                onClick={parseSource}
+                disabled={!canParse}
               >
-                儲存設定
-              </button>
-              <button
-                className="btn btn-primary"
-                onClick={ingest}
-                disabled={running || !src.startUrl}
-              >
-                開始解析
+                {parsing ? "解析中…" : "開始解析"}
               </button>
               <button
                 className="btn btn-danger"
                 onClick={clear}
-                disabled={running || meta.status === "none"}
+                disabled={parsing || meta.status === "none"}
               >
                 清除索引
               </button>
@@ -260,106 +388,16 @@ export default function KnowledgeTab({
       </div>
 
       <div className="kb-col">
-        <div className="card">
-          <div className="card-head">
-            <div>
-              <div className="card-title">檔案來源</div>
-              <div className="card-desc">
-                上傳規章文件，內容與網站來源合併建立索引，供 AI 問答檢索。
+        {(meta.files ?? []).length > 0 && (
+          <div className="card">
+            <div className="card-head">
+              <div>
+                <div className="card-title">已匯入檔案</div>
+                <div className="card-desc">
+                  檔案內容會與網站來源合併進同一份索引。
+                </div>
               </div>
             </div>
-          </div>
-          <div className="card-body">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".txt,.md,.pdf,.docx"
-              style={{ display: "none" }}
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) void uploadFile(file);
-                e.target.value = ""; // 允許再次上傳同一檔
-              }}
-            />
-            {/* 拖放上傳區：點擊/拖曳/鍵盤皆可觸發；上傳中顯示進度並停用 */}
-            <div
-              role="button"
-              tabIndex={0}
-              aria-label="上傳檔案"
-              className={`kdrop${dragOver ? " kdrop--over" : ""}${uploading ? " kdrop--busy" : ""}`}
-              onClick={() => !uploading && fileInputRef.current?.click()}
-              onKeyDown={(e) => {
-                if (!uploading && (e.key === "Enter" || e.key === " ")) {
-                  e.preventDefault();
-                  fileInputRef.current?.click();
-                }
-              }}
-              onDragOver={(e) => {
-                e.preventDefault();
-                if (!uploading) setDragOver(true);
-              }}
-              onDragLeave={() => setDragOver(false)}
-              onDrop={(e) => {
-                e.preventDefault();
-                setDragOver(false);
-                if (uploading) return;
-                const file = e.dataTransfer.files?.[0];
-                if (!file) return;
-                const ext = file.name
-                  .slice(file.name.lastIndexOf(".") + 1)
-                  .toLowerCase();
-                if (!["txt", "md", "pdf", "docx"].includes(ext)) {
-                  toast.error("僅支援 TXT、MD、PDF、DOCX 檔案");
-                  return;
-                }
-                void uploadFile(file);
-              }}
-            >
-              {uploading ? (
-                <>
-                  <span className="kdrop-spinner" aria-hidden />
-                  <div className="kdrop-title">正在解析並建立索引…</div>
-                  <div className="kdrop-sub">大型檔案可能需要數十秒</div>
-                </>
-              ) : (
-                <>
-                  <svg
-                    className="kdrop-icon"
-                    width="32"
-                    height="32"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden="true"
-                  >
-                    <path d="M4 14.9A7 7 0 1 1 15.7 8h1.8a4.5 4.5 0 0 1 2.5 8.2" />
-                    <path d="M12 12v9" />
-                    <path d="m8 17 4-4 4 4" />
-                  </svg>
-                  <div className="kdrop-title">拖曳檔案到這裡，或點擊選擇</div>
-                  <div className="kdrop-sub">
-                    支援 TXT・MD・PDF・DOCX，單檔上限 10MB
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* 上傳即解析：把實際套用的參數攤在檯面上，避免使用者不知道用了哪組設定 */}
-            {savedSrc && (
-              <div className="field-hint" style={{ marginTop: 8 }}>
-                上傳後立即以「知識來源」的已儲存設定建立索引：每段約{" "}
-                {savedSrc.chunkChars} 字、embedding 模型{" "}
-                {meta.model ?? savedSrc.embeddingModel}
-                {meta.model && meta.model !== savedSrc.embeddingModel
-                  ? "（同一索引須沿用既有模型）"
-                  : ""}
-                。要調整請先修改左側設定並儲存，再重新上傳檔案。
-              </div>
-            )}
-
             {(meta.files ?? []).length > 0 && (
               <ul className="list kfile-list">
                 {(meta.files ?? []).map((f) => {
@@ -408,7 +446,7 @@ export default function KnowledgeTab({
               </ul>
             )}
           </div>
-        </div>
+        )}
 
         <div className="card">
           <div className="card-head">
