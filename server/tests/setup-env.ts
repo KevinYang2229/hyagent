@@ -18,3 +18,7 @@ process.env.ANTHROPIC_API_KEY ??= 'test-anthropic-key';
 process.env.ADMIN_API_KEY ??= 'test-admin-key';
 // 知識庫索引/設定寫檔隔離到暫存目錄，避免污染 repo 的 server/data
 process.env.KNOWLEDGE_INDEX_DIR ??= join(tmpdir(), 'oa-agent-test-knowledge');
+
+// LLM 設定測試與本機 server/.env 脫鉤：setupFiles 先佔住的值 dotenv 不會覆蓋
+process.env.LLM_PROVIDER ??= 'anthropic';
+process.env.LLM_MODEL ??= 'claude-sonnet-4-5';
