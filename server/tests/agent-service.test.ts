@@ -39,8 +39,8 @@ function lastToolResult(session: Session): string | undefined {
 describe('agentAgentService', () => {
   it('LLM 選擇 oa.getLeaveBalance → 實際 invoke → 回覆最終文字', async () => {
     const llm = scriptedLLM([
-      { text: '', toolCalls: [{ id: 't1', name: 'oa_getLeaveBalance', input: { userId: 'kevin' } }], stopReason: 'tool_use', usage },
-      { text: '你的特休查詢已完成。', toolCalls: [], stopReason: 'end_turn', usage },
+      { text: '', toolCalls: [{ id: 't1', name: 'oa_getLeaveBalance', input: { userId: 'kevin' } }], stopReason: 'tool_use', usage, model: 'test-model', keySource: 'platform' },
+      { text: '你的特休查詢已完成。', toolCalls: [], stopReason: 'end_turn', usage, model: 'test-model', keySource: 'platform' },
     ]);
     const session = makeSession();
     const res = await agentAgentService.handleTurn(session, '幫我查特休還剩多少', llm);
@@ -51,8 +51,8 @@ describe('agentAgentService', () => {
 
   it('LLM 呼叫未暴露的寫入工具（oa.submitForm）被允許清單擋下，不會真的送出', async () => {
     const llm = scriptedLLM([
-      { text: '', toolCalls: [{ id: 't1', name: 'oa.submitForm', input: { formId: 'x', oa: {}, source: {} } }], stopReason: 'tool_use', usage },
-      { text: '抱歉，我無法直接送出表單。', toolCalls: [], stopReason: 'end_turn', usage },
+      { text: '', toolCalls: [{ id: 't1', name: 'oa.submitForm', input: { formId: 'x', oa: {}, source: {} } }], stopReason: 'tool_use', usage, model: 'test-model', keySource: 'platform' },
+      { text: '抱歉，我無法直接送出表單。', toolCalls: [], stopReason: 'end_turn', usage, model: 'test-model', keySource: 'platform' },
     ]);
     const session = makeSession();
     const res = await agentAgentService.handleTurn(session, '直接幫我送假單', llm);

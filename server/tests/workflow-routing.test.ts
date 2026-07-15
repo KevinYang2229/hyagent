@@ -37,8 +37,8 @@ it('e2e：LLM 呼 oa_listMyRequests → tool_result 含本人單號', async () =
     name: 'fake',
     createMessage: async () =>
       i++ === 0
-        ? { text: '', toolCalls: [{ id: 't1', name: 'oa_listMyRequests', input: {} }], stopReason: 'tool_use', usage }
-        : { text: '你有 1 筆申請：R-E2E。', toolCalls: [], stopReason: 'end_turn', usage },
+        ? { text: '', toolCalls: [{ id: 't1', name: 'oa_listMyRequests', input: {} }], stopReason: 'tool_use', usage, model: 'test-model', keySource: 'platform' }
+        : { text: '你有 1 筆申請：R-E2E。', toolCalls: [], stopReason: 'end_turn', usage, model: 'test-model', keySource: 'platform' },
   };
   const session = makeSession(t.id, {
     activeServiceId: 'agent',

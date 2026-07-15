@@ -34,8 +34,8 @@ describe('Agent 寄信確認流程', () => {
     const t = tenantStore.createTenant('agent-email-propose');
     tenantStore.updateTenant(t.id, { grantedScopes: ['service:agent', 'email:write'] });
     const llm = scriptedLLM([
-      { text: '', toolCalls: [{ id: 't1', name: 'email_propose', input: { to: 'boss@x.com', subject: '會議改期', html: '<p>...</p>' } }], stopReason: 'tool_use', usage },
-      { text: '我已擬好給 boss@x.com 的信，主旨「會議改期」，確認寄出嗎？', toolCalls: [], stopReason: 'end_turn', usage },
+      { text: '', toolCalls: [{ id: 't1', name: 'email_propose', input: { to: 'boss@x.com', subject: '會議改期', html: '<p>...</p>' } }], stopReason: 'tool_use', usage, model: 'test-model', keySource: 'platform' },
+      { text: '我已擬好給 boss@x.com 的信，主旨「會議改期」，確認寄出嗎？', toolCalls: [], stopReason: 'end_turn', usage, model: 'test-model', keySource: 'platform' },
     ]);
     const session = makeSession(t.id);
     await agentAgentService.handleTurn(session, '幫我寄信給王經理', llm);
@@ -61,7 +61,7 @@ describe('Agent 寄信確認流程', () => {
   it('有 pendingEmail + 使用者取消 → 不寄、清草稿', async () => {
     const t = tenantStore.createTenant('agent-email-cancel');
     tenantStore.updateTenant(t.id, { grantedScopes: ['service:agent', 'email:write'] });
-    const llm = scriptedLLM([{ text: '好的，已取消。', toolCalls: [], stopReason: 'end_turn', usage }]);
+    const llm = scriptedLLM([{ text: '好的，已取消。', toolCalls: [], stopReason: 'end_turn', usage, model: 'test-model', keySource: 'platform' }]);
     const session = makeSession(t.id, { pendingEmail: { to: 'boss@x.com', subject: 's', html: '<p>x</p>' } });
     await agentAgentService.handleTurn(session, '不要，取消', llm);
 
@@ -72,7 +72,7 @@ describe('Agent 寄信確認流程', () => {
   it('有 pendingEmail + 「OK 謝謝先這樣」（夾帶確認詞但非確認）→ 不寄、清草稿', async () => {
     const t = tenantStore.createTenant('agent-email-substr1');
     tenantStore.updateTenant(t.id, { grantedScopes: ['service:agent', 'email:write'] });
-    const llm = scriptedLLM([{ text: '好的，有其他需要再說。', toolCalls: [], stopReason: 'end_turn', usage }]);
+    const llm = scriptedLLM([{ text: '好的，有其他需要再說。', toolCalls: [], stopReason: 'end_turn', usage, model: 'test-model', keySource: 'platform' }]);
     const session = makeSession(t.id, { pendingEmail: { to: 'boss@x.com', subject: 's', html: '<p>x</p>' } });
     await agentAgentService.handleTurn(session, 'OK 謝謝先這樣', llm);
 
@@ -83,7 +83,7 @@ describe('Agent 寄信確認流程', () => {
   it('有 pendingEmail + 「確認一下我的假還有幾天」（夾帶確認詞但非確認）→ 不寄、清草稿', async () => {
     const t = tenantStore.createTenant('agent-email-substr2');
     tenantStore.updateTenant(t.id, { grantedScopes: ['service:agent', 'email:write'] });
-    const llm = scriptedLLM([{ text: '你目前剩餘特休 5 天。', toolCalls: [], stopReason: 'end_turn', usage }]);
+    const llm = scriptedLLM([{ text: '你目前剩餘特休 5 天。', toolCalls: [], stopReason: 'end_turn', usage, model: 'test-model', keySource: 'platform' }]);
     const session = makeSession(t.id, { pendingEmail: { to: 'boss@x.com', subject: 's', html: '<p>x</p>' } });
     await agentAgentService.handleTurn(session, '確認一下我的假還有幾天', llm);
 
@@ -145,7 +145,7 @@ describe('Agent 寄信確認流程', () => {
       name: 'fake',
       createMessage: async (p) => {
         captured = (p.tools ?? []) as { name: string }[];
-        return { text: 'ok', toolCalls: [], stopReason: 'end_turn', usage };
+        return { text: 'ok', toolCalls: [], stopReason: 'end_turn', usage, model: 'test-model', keySource: 'platform' };
       },
     };
     const session = makeSession(t.id);
@@ -161,8 +161,8 @@ describe('Agent 寄信確認流程', () => {
     const t = tenantStore.createTenant('agent-email-nosend');
     tenantStore.updateTenant(t.id, { grantedScopes: ['service:agent', 'email:write'] });
     const llm = scriptedLLM([
-      { text: '', toolCalls: [{ id: 't1', name: 'email.send', input: { to: 'x@x.com', subject: 's', html: '<p>x</p>' } }], stopReason: 'tool_use', usage },
-      { text: '抱歉，我無法直接寄出。', toolCalls: [], stopReason: 'end_turn', usage },
+      { text: '', toolCalls: [{ id: 't1', name: 'email.send', input: { to: 'x@x.com', subject: 's', html: '<p>x</p>' } }], stopReason: 'tool_use', usage, model: 'test-model', keySource: 'platform' },
+      { text: '抱歉，我無法直接寄出。', toolCalls: [], stopReason: 'end_turn', usage, model: 'test-model', keySource: 'platform' },
     ]);
     const session = makeSession(t.id);
     await agentAgentService.handleTurn(session, '直接幫我寄', llm);
