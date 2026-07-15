@@ -1,7 +1,10 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState, type CSSProperties } from 'react';
 import { api, type Usage } from '../../api';
 
 const TokenGauge = lazy(() => import('../../components/TokenGauge'));
+
+const th: CSSProperties = { textAlign: 'left', padding: '8px 10px', borderBottom: '1px solid var(--border-color)', fontWeight: 500, whiteSpace: 'nowrap' };
+const td: CSSProperties = { padding: '6px 10px', borderBottom: '1px solid var(--border-color)', verticalAlign: 'top' };
 
 export default function UsageTab({ tenantId, onError }: { tenantId: string; onError: (e: unknown) => void }) {
   const [usage, setUsage] = useState<Usage | null>(null);
@@ -46,6 +49,46 @@ export default function UsageTab({ tenantId, onError }: { tenantId: string; onEr
           </div>
         ))}
       </div>
+
+      {usage.cost && usage.cost.byModel.length > 0 && (
+        <div className="card">
+          <div className="card-head">
+            <div>
+              <div className="card-title">Token 用量與預估成本</div>
+              <div className="card-desc">
+                平台金鑰 ${usage.cost.platformUsd.toFixed(4)}（應收） ／ 自帶金鑰 $
+                {usage.cost.tenantUsd.toFixed(4)}（參考） ／ 合計 ${usage.cost.totalUsd.toFixed(4)} USD
+              </div>
+            </div>
+          </div>
+          <div className="card-body" style={{ overflowX: 'auto' }}>
+            <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 13.5 }}>
+              <thead>
+                <tr>
+                  <th style={th}>模型</th>
+                  <th style={th}>金鑰</th>
+                  <th style={th}>Input</th>
+                  <th style={th}>Output</th>
+                  <th style={th}>Cache 讀</th>
+                  <th style={th}>預估成本</th>
+                </tr>
+              </thead>
+              <tbody>
+                {usage.cost.byModel.map((m) => (
+                  <tr key={`${m.keySource}|${m.model}`}>
+                    <td style={td}>{m.model}</td>
+                    <td style={td}>{m.keySource === 'tenant' ? '自帶' : '平台'}</td>
+                    <td style={td}>{m.inputTokens.toLocaleString()}</td>
+                    <td style={td}>{m.outputTokens.toLocaleString()}</td>
+                    <td style={td}>{m.cacheReadTokens.toLocaleString()}</td>
+                    <td style={td}>{m.usd === null ? '無單價資料' : `$${m.usd.toFixed(4)}`}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

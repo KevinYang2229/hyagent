@@ -52,11 +52,44 @@ export interface WebhookEndpoint {
   createdAt: string;
   disabledAt?: string;
 }
+export interface ModelTokenUsage {
+  model: string;
+  keySource: 'platform' | 'tenant';
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+}
+
+export interface UsageCost {
+  totalUsd: number;
+  platformUsd: number;
+  tenantUsd: number;
+  byModel: Array<ModelTokenUsage & { usd: number | null }>;
+}
+
 export interface Usage {
   conversations: number;
   messages: number;
   submissions: number;
   llmTokens: number;
+  embeddingTokens?: number;
+  llmByModel?: Record<string, ModelTokenUsage>;
+  cost?: UsageCost;
+}
+
+export interface LLMConfigView {
+  provider: 'anthropic' | 'openai' | null;
+  model: string | null;
+  anthropicApiKey: string | null; // 遮罩字串
+  openaiApiKey: string | null;
+}
+
+/** PUT patch：省略=不變、null=清除 */
+export interface LLMConfigPatch {
+  provider?: 'anthropic' | 'openai' | null;
+  model?: string | null;
+  anthropicApiKey?: string | null;
+  openaiApiKey?: string | null;
 }
 export interface AuditEntry {
   toolId: string;
@@ -197,6 +230,10 @@ export const api = {
 
   getUsage: (id: string) => req<Usage>('GET', `/admin/tenants/${id}/usage`),
   getTenantAudit: (id: string) => req<AuditEntry[]>('GET', `/admin/tenants/${id}/audit`),
+
+  getLlmConfig: (id: string) => req<LLMConfigView>('GET', `/admin/tenants/${id}/llm-config`),
+  putLlmConfig: (id: string, patch: LLMConfigPatch) =>
+    req<LLMConfigView>('PUT', `/admin/tenants/${id}/llm-config`, patch),
 
   // ---- Form Designer ----
   listForms: (id: string) => req<FormSummary[]>('GET', `/admin/tenants/${id}/forms`),
