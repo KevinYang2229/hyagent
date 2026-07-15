@@ -1,20 +1,19 @@
 /**
- * LLM provider 工廠：依 env.LLM_PROVIDER 選擇實作（singleton）。
+ * LLM provider 工廠：依「租戶 llmConfig → resolveLLMSettings」選擇實作與金鑰。
+ * 未帶 config（或租戶未設定）＝現行 env 行為，預設租戶零改變。
  */
-import { env } from '@/config/env';
-import { anthropicProvider } from './anthropic.provider';
-import { openaiProvider } from './openai.provider';
-import type { LLMProvider } from './types';
+import { createAnthropicProvider } from './anthropic.provider';
+import { createOpenAIProvider } from './openai.provider';
+import { resolveLLMSettings } from './resolve-settings';
+import type { LLMProvider, TenantLLMConfig } from './types';
 
-export function getLLMProvider(): LLMProvider {
-  switch (env.LLM_PROVIDER) {
-    case 'anthropic':
-      return anthropicProvider;
-    case 'openai':
-      return openaiProvider;
-    default:
-      throw new Error(`Unsupported LLM provider: ${env.LLM_PROVIDER as string}`);
-  }
+export function getLLMProvider(config?: TenantLLMConfig): LLMProvider {
+  const settings = resolveLLMSettings(config);
+  return settings.provider === 'anthropic'
+    ? createAnthropicProvider(settings)
+    : createOpenAIProvider(settings);
 }
 
 export * from './types';
+export { resolveLLMSettings, pickModel } from './resolve-settings';
+export type { ResolvedLLMSettings, LLMProviderName } from './resolve-settings';

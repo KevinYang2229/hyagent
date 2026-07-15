@@ -6,6 +6,8 @@
  */
 import Anthropic from '@anthropic-ai/sdk';
 import { env } from '@/config/env';
+import { mapProviderError } from './provider-error';
+import { pickModel, type ResolvedLLMSettings } from './resolve-settings';
 import type {
   LLMContentBlock,
   LLMCreateParams,
@@ -15,7 +17,16 @@ import type {
   LLMToolCall,
 } from './types';
 
-const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
+// SDK client 以 apiKey 快取：同 key 重用連線，不每請求重建
+const clients = new Map<string, Anthropic>();
+function getClient(apiKey: string): Anthropic {
+  let c = clients.get(apiKey);
+  if (!c) {
+    c = new Anthropic({ apiKey });
+    clients.set(apiKey, c);
+  }
+  return c;
+}
 
 function toContentParam(block: LLMContentBlock): unknown {
   switch (block.type) {
@@ -46,60 +57,70 @@ const STOP_MAP: Record<string, LLMResult['stopReason']> = {
   max_tokens: 'max_tokens',
 };
 
-export const anthropicProvider: LLMProvider = {
-  name: 'anthropic',
+export function createAnthropicProvider(settings: ResolvedLLMSettings): LLMProvider {
+  return {
+    name: 'anthropic',
 
-  async createMessage(params: LLMCreateParams): Promise<LLMResult> {
-    const toolList = params.tools ?? [];
-    const tools = toolList.map((t, i) => ({
-      name: t.name,
-      description: t.description,
-      input_schema: t.inputSchema,
-      // 在最後一個工具標 cache breakpoint，快取整個 tools 區塊
-      ...(params.cache && i === toolList.length - 1
-        ? { cache_control: { type: 'ephemeral' } }
-        : {}),
-    })) as unknown as Anthropic.Tool[];
+    async createMessage(params: LLMCreateParams): Promise<LLMResult> {
+      const toolList = params.tools ?? [];
+      const tools = toolList.map((t, i) => ({
+        name: t.name,
+        description: t.description,
+        input_schema: t.inputSchema,
+        // 在最後一個工具標 cache breakpoint，快取整個 tools 區塊
+        ...(params.cache && i === toolList.length - 1
+          ? { cache_control: { type: 'ephemeral' } }
+          : {}),
+      })) as unknown as Anthropic.Tool[];
 
-    const system = (
-      params.cache
-        ? [{ type: 'text', text: params.system, cache_control: { type: 'ephemeral' } }]
-        : params.system
-    ) as unknown as Anthropic.MessageCreateParams['system'];
+      const system = (
+        params.cache
+          ? [{ type: 'text', text: params.system, cache_control: { type: 'ephemeral' } }]
+          : params.system
+      ) as unknown as Anthropic.MessageCreateParams['system'];
 
-    const resp = await client.messages.create({
-      model: params.model ?? env.LLM_MODEL,
-      max_tokens: params.maxTokens ?? env.LLM_MAX_TOKENS,
-      system,
-      tools: tools.length > 0 ? tools : undefined,
-      messages: toMessageParams(params.messages),
-    });
-
-    let text = '';
-    const toolCalls: LLMToolCall[] = [];
-    for (const block of resp.content) {
-      if (block.type === 'text') {
-        text += block.text;
-      } else if (block.type === 'tool_use') {
-        toolCalls.push({
-          id: block.id,
-          name: block.name,
-          input: (block.input ?? {}) as Record<string, unknown>,
+      const model = pickModel(settings, params.model);
+      let resp: Anthropic.Message;
+      try {
+        resp = await getClient(settings.apiKey).messages.create({
+          model,
+          max_tokens: params.maxTokens ?? env.LLM_MAX_TOKENS,
+          system,
+          tools: tools.length > 0 ? tools : undefined,
+          messages: toMessageParams(params.messages),
         });
+      } catch (err) {
+        throw mapProviderError(err, settings);
       }
-    }
 
-    const usage = resp.usage as { input_tokens: number; output_tokens: number; cache_read_input_tokens?: number | null };
+      let text = '';
+      const toolCalls: LLMToolCall[] = [];
+      for (const block of resp.content) {
+        if (block.type === 'text') {
+          text += block.text;
+        } else if (block.type === 'tool_use') {
+          toolCalls.push({
+            id: block.id,
+            name: block.name,
+            input: (block.input ?? {}) as Record<string, unknown>,
+          });
+        }
+      }
 
-    return {
-      text,
-      toolCalls,
-      stopReason: STOP_MAP[resp.stop_reason ?? ''] ?? 'other',
-      usage: {
-        inputTokens: usage.input_tokens,
-        outputTokens: usage.output_tokens,
-        cacheReadTokens: usage.cache_read_input_tokens ?? undefined,
-      },
-    };
-  },
-};
+      const usage = resp.usage as { input_tokens: number; output_tokens: number; cache_read_input_tokens?: number | null };
+
+      return {
+        text,
+        toolCalls,
+        stopReason: STOP_MAP[resp.stop_reason ?? ''] ?? 'other',
+        model,
+        keySource: settings.keySource,
+        usage: {
+          inputTokens: usage.input_tokens,
+          outputTokens: usage.output_tokens,
+          cacheReadTokens: usage.cache_read_input_tokens ?? undefined,
+        },
+      };
+    },
+  };
+}

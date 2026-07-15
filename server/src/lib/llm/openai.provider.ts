@@ -11,6 +11,8 @@ import type {
   ChatCompletionTool,
 } from 'openai/resources/chat/completions';
 import { env } from '@/config/env';
+import { mapProviderError } from './provider-error';
+import { pickModel, type ResolvedLLMSettings } from './resolve-settings';
 import type {
   LLMCreateParams,
   LLMMessage,
@@ -19,12 +21,15 @@ import type {
   LLMToolCall,
 } from './types';
 
-// 延遲建立：OpenAI SDK 在無 key 時建構就拋錯，故不可在模組載入時 new
-// （否則即使 provider=anthropic，靜態 import 也會因空 key 讓伺服器啟動失敗）。
-let client: OpenAI | null = null;
-function getClient(): OpenAI {
-  if (!client) client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
-  return client;
+// SDK client 以 apiKey 快取：同 key 重用連線，不每請求重建
+const clients = new Map<string, OpenAI>();
+function getClient(apiKey: string): OpenAI {
+  let c = clients.get(apiKey);
+  if (!c) {
+    c = new OpenAI({ apiKey });
+    clients.set(apiKey, c);
+  }
+  return c;
 }
 
 /** 寬鬆解析工具參數（OpenAI 以 JSON 字串回傳 arguments） */
@@ -85,47 +90,57 @@ const STOP_MAP: Record<string, LLMResult['stopReason']> = {
   length: 'max_tokens',
 };
 
-export const openaiProvider: LLMProvider = {
-  name: 'openai',
+export function createOpenAIProvider(settings: ResolvedLLMSettings): LLMProvider {
+  return {
+    name: 'openai',
 
-  async createMessage(params: LLMCreateParams): Promise<LLMResult> {
-    const tools: ChatCompletionTool[] = (params.tools ?? []).map((t) => ({
-      type: 'function',
-      function: {
-        name: t.name,
-        description: t.description,
-        parameters: t.inputSchema,
-      },
-    }));
-
-    const resp = await getClient().chat.completions.create({
-      model: params.model ?? env.LLM_MODEL,
-      max_tokens: params.maxTokens ?? env.LLM_MAX_TOKENS,
-      messages: toOpenAIMessages(params.system, params.messages),
-      tools: tools.length > 0 ? tools : undefined,
-    });
-
-    const choice = resp.choices[0];
-    const message = choice?.message;
-    const text = message?.content ?? '';
-
-    const toolCalls: LLMToolCall[] = (message?.tool_calls ?? [])
-      .filter((tc) => tc.type === 'function')
-      .map((tc) => ({
-        id: tc.id,
-        name: tc.function.name,
-        input: parseArgs(tc.function.arguments),
+    async createMessage(params: LLMCreateParams): Promise<LLMResult> {
+      const tools: ChatCompletionTool[] = (params.tools ?? []).map((t) => ({
+        type: 'function',
+        function: {
+          name: t.name,
+          description: t.description,
+          parameters: t.inputSchema,
+        },
       }));
 
-    return {
-      text,
-      toolCalls,
-      stopReason: STOP_MAP[choice?.finish_reason ?? ''] ?? 'other',
-      usage: {
-        inputTokens: resp.usage?.prompt_tokens ?? 0,
-        outputTokens: resp.usage?.completion_tokens ?? 0,
-        cacheReadTokens: resp.usage?.prompt_tokens_details?.cached_tokens ?? undefined,
-      },
-    };
-  },
-};
+      const model = pickModel(settings, params.model);
+      let resp: OpenAI.Chat.Completions.ChatCompletion;
+      try {
+        resp = await getClient(settings.apiKey).chat.completions.create({
+          model,
+          max_tokens: params.maxTokens ?? env.LLM_MAX_TOKENS,
+          messages: toOpenAIMessages(params.system, params.messages),
+          tools: tools.length > 0 ? tools : undefined,
+        });
+      } catch (err) {
+        throw mapProviderError(err, settings);
+      }
+
+      const choice = resp.choices[0];
+      const message = choice?.message;
+      const text = message?.content ?? '';
+
+      const toolCalls: LLMToolCall[] = (message?.tool_calls ?? [])
+        .filter((tc) => tc.type === 'function')
+        .map((tc) => ({
+          id: tc.id,
+          name: tc.function.name,
+          input: parseArgs(tc.function.arguments),
+        }));
+
+      return {
+        text,
+        toolCalls,
+        stopReason: STOP_MAP[choice?.finish_reason ?? ''] ?? 'other',
+        model,
+        keySource: settings.keySource,
+        usage: {
+          inputTokens: resp.usage?.prompt_tokens ?? 0,
+          outputTokens: resp.usage?.completion_tokens ?? 0,
+          cacheReadTokens: resp.usage?.prompt_tokens_details?.cached_tokens ?? undefined,
+        },
+      };
+    },
+  };
+}
