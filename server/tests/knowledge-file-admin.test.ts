@@ -5,7 +5,8 @@
 jest.mock('@/lib/embedding', () => ({
   getEmbeddingProvider: () => ({
     model: 'test-embed',
-    embed: async (texts: string[]) => texts.map(() => [0.1, 0.2, 0.3]),
+    keySource: 'platform',
+    embed: async (texts: string[]) => ({ vectors: texts.map(() => [0.1, 0.2, 0.3]), tokens: texts.length * 10 }),
   }),
 }));
 // 上傳流程會產全文摘要 chunk：mock LLM 避免測試打真實 API

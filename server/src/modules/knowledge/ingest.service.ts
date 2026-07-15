@@ -5,6 +5,8 @@ import { dirname } from 'node:path';
 import * as cheerio from 'cheerio';
 import { getEmbeddingProvider } from '@/lib/embedding';
 import { logger } from '@/lib/logger';
+import { tenantStore } from '@/modules/tenant/tenant.store';
+import { usageStore } from '@/modules/usage/usage.store';
 import { indexPathFor } from './index-path';
 import type { IndexedChunk, KnowledgeIndexFile } from './knowledge-index.types';
 
@@ -157,11 +159,12 @@ export async function runIngest(
     }
   }
 
-  const embedder = getEmbeddingProvider();
+  const embedder = getEmbeddingProvider(tenantStore.getTenant(params.tenantId)?.llmConfig);
   const chunks: IndexedChunk[] = [];
   for (let i = 0; i < pending.length; i += EMBED_BATCH) {
     const batch = pending.slice(i, i + EMBED_BATCH);
-    const vectors = await embedder.embed(batch.map((c) => c.text), params.embeddingModel);
+    const { vectors, tokens } = await embedder.embed(batch.map((c) => c.text), params.embeddingModel);
+    usageStore.recordEmbeddingUsage(params.tenantId, tokens, params.embeddingModel, embedder.keySource);
     batch.forEach((c, j) => chunks.push({ ...c, vector: vectors[j] }));
     onProgress?.({ phase: 'embedding', pagesCrawled: pages.length, chunks: pending.length, embedded: chunks.length });
   }

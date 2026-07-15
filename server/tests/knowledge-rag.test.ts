@@ -7,7 +7,11 @@
 const QUERY_VEC = [1, 0, 0];
 jest.mock('@/lib/embedding', () => ({
   __esModule: true,
-  getEmbeddingProvider: () => ({ model: 'test', embed: async (texts: string[]) => texts.map(() => QUERY_VEC) }),
+  getEmbeddingProvider: () => ({
+    model: 'test',
+    keySource: 'platform',
+    embed: async (texts: string[]) => ({ vectors: texts.map(() => QUERY_VEC), tokens: texts.length * 10 }),
+  }),
 }));
 
 import type { Session } from '@/modules/conversation/conversation.types';

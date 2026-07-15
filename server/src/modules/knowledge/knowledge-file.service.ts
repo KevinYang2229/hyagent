@@ -119,7 +119,9 @@ export async function ingestFile(
   const existing = loadIndexFile(tenantId);
   // 模型一致性：同一份索引只能用同一個 embedding 模型
   const model = existing?.model ?? source.embeddingModel;
-  const vectors = await getEmbeddingProvider().embed(toEmbed, model);
+  const embedder = getEmbeddingProvider(tenantStore.getTenant(tenantId)?.llmConfig);
+  const { vectors, tokens } = await embedder.embed(toEmbed, model);
+  usageStore.recordEmbeddingUsage(tenantId, tokens, model, embedder.keySource);
 
   const fileId = randomUUID();
   const fileChunks: IndexedChunk[] = pieces.map((t, i) => ({

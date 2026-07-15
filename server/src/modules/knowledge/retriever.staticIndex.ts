@@ -8,6 +8,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { getEmbeddingProvider } from '@/lib/embedding';
 import { logger } from '@/lib/logger';
+import { tenantStore } from '@/modules/tenant/tenant.store';
+import { usageStore } from '@/modules/usage/usage.store';
 import { indexPathFor } from './index-path';
 import type { KnowledgeIndexFile } from './knowledge-index.types';
 import type { KnowledgeChunk, KnowledgeRetriever } from './retriever.types';
@@ -85,7 +87,9 @@ export const staticIndexRetriever: KnowledgeRetriever = {
     const q = query.trim();
     if (!idx || idx.chunks.length === 0 || !q) return [];
     // 查詢向量必須用「索引建立時的模型」，避免維度/語意不一致
-    const [queryVec] = await getEmbeddingProvider().embed([q], idx.model);
+    const embedder = getEmbeddingProvider(tenantStore.getTenant(tenantId)?.llmConfig);
+    const { vectors: [queryVec], tokens } = await embedder.embed([q], idx.model);
+    usageStore.recordEmbeddingUsage(tenantId, tokens, idx.model, embedder.keySource);
     if (!queryVec) return [];
     // 混合檢索：語意相似度（dense）+ 專有名詞精確命中（lexical）融合
     const terms = asciiTerms(q);

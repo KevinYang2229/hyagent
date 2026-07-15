@@ -2,7 +2,8 @@
 jest.mock('@/lib/embedding', () => ({
   getEmbeddingProvider: () => ({
     model: 'test-embed',
-    embed: async (texts: string[]) => texts.map(() => [0.1, 0.2, 0.3]),
+    keySource: 'platform',
+    embed: async (texts: string[]) => ({ vectors: texts.map(() => [0.1, 0.2, 0.3]), tokens: texts.length * 10 }),
   }),
 }));
 // 全文摘要用的 LLM：預設回一段合法摘要；個別測試可改為 reject 驗證「摘要失敗不影響匯入」
