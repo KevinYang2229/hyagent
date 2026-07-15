@@ -25,6 +25,19 @@
 - **Surface 3 — 表單結果 webhook 回拋**：每租戶可登記端點，送出成功後以 **HMAC 簽章 + 行內非同步投遞 + 指數退避重試** 推送 `form.submitted`。
   - `server/src/modules/webhook/`
 
+### 租戶自帶 AI 金鑰（BYO key）
+
+整合方可用 **sk_ 秘密金鑰**（伺服器對伺服器）自行設定 AI 供應商與金鑰：
+
+| Method | Path | 說明 |
+|--------|------|------|
+| GET | `/api/tenant/llm-config` | 讀取目前設定（金鑰遮罩，只露頭 7 尾 4） |
+| PUT | `/api/tenant/llm-config` | 更新設定；省略欄位=不變、`null`=清除；新金鑰存前會打該廠商 `/v1/models` 驗證 |
+
+Body 欄位：`provider`（`anthropic`/`openai`）、`model`、`anthropicApiKey`、`openaiApiKey`。
+規則：`model` 需搭配 `provider`；設定 `provider` 後該租戶所有 AI 呼叫（含意圖路由）鎖定該供應商與模型；
+金鑰失效時回 502 明確錯誤，**不會** fallback 平台金鑰。pk_ 公開金鑰一律 403。
+
 ### 3. 營運面（cross-cutting）
 - **管理 API**：`/api/admin/*`，受 `x-admin-key` 保護，可建租戶 / 發金鑰 / 登記 webhook / 查用量。
   - `server/src/modules/admin/`、`server/src/middlewares/require-admin.ts`
