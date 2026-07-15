@@ -437,9 +437,11 @@ export default function App() {
   async function loadAndShowForm(sessionId: string | null) {
     if (!sessionId) return;
     try {
+      // 一律以伺服器 session 的 formId 為準。formDef 可能殘留前一張表單（例如先辦過外出登記、
+      // 再開請假對話），只用 if(!formDef) 會沿用舊 def，導致請假對話卻在確認畫面顯示外出表單。
+      const conv = await api.getConversation(userId, sessionId);
       let def = formDef;
-      if (!def) {
-        const conv = await api.getConversation(userId, sessionId);
+      if (!def || def.formId !== conv.formId) {
         def = await api.getForm(conv.formId);
         setFormDef(def);
       }
@@ -575,11 +577,9 @@ export default function App() {
   const replySuggestions = lastMsg?.role === 'agent' ? (lastMsg.suggestions ?? []) : [];
 
   function reset() {
-    setConvId(null);
-    setStatus(null);
-    setValues({});
-    setSubmission(null);
-    setShowForm(false);
+    // 復用 resetSessionState 清全部 session 狀態（含 formDef）——先前此處是它的複製版但漏了
+    // setFormDef(null)，導致「重新開始」後殘留前一張表單、下一張表單確認畫面顯示錯表單。
+    resetSessionState();
     setMessages([
       { id: nextId(), role: 'agent', text: greetingText, greeting: true, at: Date.now() },
       { id: nextId(), role: 'sys', text: t('app.restarted'), at: Date.now() },
