@@ -12,6 +12,8 @@ import { getEmbeddingProvider } from '@/lib/embedding';
 import { getLLMProvider } from '@/lib/llm';
 import { logger } from '@/lib/logger';
 import { env } from '@/config/env';
+import { tenantStore } from '@/modules/tenant/tenant.store';
+import { usageStore } from '@/modules/usage/usage.store';
 import { AppError } from '@/utils/app-error';
 import { indexPathFor } from './index-path';
 // carryOverFileChunks 從 ingest.service 匯入（而非本檔自行定義），維持單向依賴：
@@ -33,9 +35,9 @@ const SUMMARY_MAX_INPUT_CHARS = 24000;
  * 全文摘要 chunk：入庫時先「消化一次」，讓籠統問題（這份文件在講什麼）有可命中的候選。
  * 只是多一個檢索候選、不取代原文 chunks；失敗一律回 null，匯入照常進行。
  */
-async function summarizeText(name: string, text: string): Promise<string | null> {
+async function summarizeText(tenantId: string, name: string, text: string): Promise<string | null> {
   try {
-    const result = await getLLMProvider().createMessage({
+    const result = await getLLMProvider(tenantStore.getTenant(tenantId)?.llmConfig).createMessage({
       system: [
         '你是文件摘要員。將使用者提供的文件濃縮成 150~250 字的繁體中文摘要。',
         '只能濃縮原文內容，嚴禁補充原文沒有的資訊；專有名詞、代號、網址保留原文寫法。',
@@ -50,6 +52,7 @@ async function summarizeText(name: string, text: string): Promise<string | null>
       maxTokens: 512,
       model: env.LLM_ROUTER_MODEL, // 摘要屬輔助任務，用便宜模型即可（同意圖分類器）
     });
+    usageStore.recordLLMUsage(tenantId, result); // 摘要呼叫此前漏記用量，一併補上
     const summary = squash(result.text ?? '');
     return summary.length >= MIN_TEXT_CHARS ? summary : null;
   } catch (err) {
@@ -110,7 +113,7 @@ export async function ingestFile(
   const pieces = chunkText(text, source.chunkChars);
 
   // 單一 chunk 就是全文本身，摘要無增益；多 chunk 才值得花一次 LLM 呼叫
-  const summary = pieces.length >= 2 ? await summarizeText(name, text) : null;
+  const summary = pieces.length >= 2 ? await summarizeText(tenantId, name, text) : null;
   const toEmbed = summary ? [...pieces, summary] : pieces;
 
   const existing = loadIndexFile(tenantId);

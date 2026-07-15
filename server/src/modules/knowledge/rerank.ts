@@ -7,6 +7,7 @@
 import { env } from '@/config/env';
 import { getLLMProvider } from '@/lib/llm';
 import { logger } from '@/lib/logger';
+import { tenantStore } from '@/modules/tenant/tenant.store';
 import { usageStore } from '@/modules/usage/usage.store';
 import type { KnowledgeChunk } from './retriever.types';
 
@@ -34,7 +35,7 @@ export async function rerankChunks(
     .map((c, i) => `[${i}] ${c.title}：${c.content.slice(0, SNIPPET_CHARS)}`)
     .join('\n');
   try {
-    const result = await getLLMProvider().createMessage({
+    const result = await getLLMProvider(tenantStore.getTenant(tenantId)?.llmConfig).createMessage({
       system: RERANK_SYSTEM,
       messages: [{ role: 'user', content: [{ type: 'text', text: `問題：${query}\n\n候選：\n${list}` }] }],
       model: env.LLM_ROUTER_MODEL,

@@ -9,6 +9,7 @@
 import { env } from '@/config/env';
 import { getLLMProvider } from '@/lib/llm';
 import { logger } from '@/lib/logger';
+import { tenantStore } from '@/modules/tenant/tenant.store';
 import { usageStore } from '@/modules/usage/usage.store';
 import type { RouteResult } from './agent-service.types';
 import type { Session } from './conversation.types';
@@ -81,7 +82,7 @@ async function classify(session: Session, text: string): Promise<string | null> 
     '只輸出 {"intent":"<id、off-topic 或 none>","confidence":0~1}，不要任何其他文字。',
   ].join('\n');
   try {
-    const result = await getLLMProvider().createMessage({
+    const result = await getLLMProvider(tenantStore.getTenant(session.tenantId)?.llmConfig).createMessage({
       system,
       messages: [{ role: 'user', content: [{ type: 'text', text }] }],
       model: env.LLM_ROUTER_MODEL,

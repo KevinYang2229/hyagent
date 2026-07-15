@@ -8,6 +8,7 @@ import { getLLMProvider } from '@/lib/llm';
 import type { LLMProvider } from '@/lib/llm/types';
 import { logger } from '@/lib/logger';
 import { normalizeLocale } from '@/lib/locale';
+import { tenantStore } from '@/modules/tenant/tenant.store';
 import { usageStore } from '@/modules/usage/usage.store';
 import { conversationStore } from './conversation.store';
 import type { Session, TurnResult } from './conversation.types';
@@ -83,7 +84,7 @@ async function generateSuggestions(
 }
 
 export async function runTurn(session: Session, userText: string): Promise<TurnResult> {
-  const llm = getLLMProvider();
+  const llm = getLLMProvider(tenantStore.getTenant(session.tenantId)?.llmConfig);
   session.messages.push({ role: 'user', content: [{ type: 'text', text: userText }] });
 
   // 路由：判斷本輪指派哪個服務（填表點黏、知識可旁路插入）

@@ -6,6 +6,7 @@
  * 行為與改造前相同（見 resolve-tenant middleware 與 tenant.store 的種子資料）。
  */
 import type { TenantAppearance } from '@oa-agent/shared';
+import type { TenantLLMConfig } from '@/lib/llm/types';
 
 /** 公開金鑰（pk_）可放瀏覽器；秘密金鑰（sk_）只在伺服器端用。 */
 export type ApiKeyType = 'publishable' | 'secret';
@@ -47,5 +48,10 @@ export interface Tenant {
   grantedScopes?: string[];
   /** 是否已完成服務/表單 → scope 的一次性遷移；true 後遷移不再覆寫其授予。 */
   scopesMigrated?: boolean;
+  /**
+   * 租戶自帶 AI 設定（BYO key，spec 2026-07-14）：provider/model/兩家 key。
+   * 未設＝平台 env 設定；讀寫一律走 llmConfigService（合併/驗證/遮罩/稽核）。
+   */
+  llmConfig?: TenantLLMConfig;
   createdAt: string;
 }
