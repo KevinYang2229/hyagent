@@ -18,6 +18,7 @@ import {
   queryTestSchema,
   sourceSchema,
 } from '@/modules/knowledge/knowledge.admin.schema';
+import { putLlmConfigSchema } from '@/modules/tenant/llm-config.schema';
 import { adminController } from './admin.controller';
 import { adminAuthController } from './admin.auth.controller';
 import {
@@ -117,6 +118,18 @@ router.get(
   '/tenants/:id/audit',
   validate({ params: tenantParamSchema }),
   asyncHandler(adminController.getAudit),
+);
+
+// AI 模型設定（BYO key）：admin 代租戶讀寫，與 sk_ 自助端點共用 llmConfigService
+router.get(
+  '/tenants/:id/llm-config',
+  validate({ params: tenantParamSchema }),
+  asyncHandler(adminController.getLlmConfig),
+);
+router.put(
+  '/tenants/:id/llm-config',
+  validate({ params: tenantParamSchema, body: putLlmConfigSchema }),
+  asyncHandler(adminController.putLlmConfig),
 );
 
 // 權限：scopes 目錄 + 每租戶政策 GET/PUT

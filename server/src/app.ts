@@ -16,6 +16,7 @@ import { formRouter } from '@/modules/form/form.routes';
 import { leaveRouter } from '@/modules/leave/leave.routes';
 import { adminRouter } from '@/modules/admin/admin.routes';
 import { widgetRouter } from '@/modules/widget/widget.routes';
+import { tenantSelfRouter } from '@/modules/tenant/tenant.routes';
 
 /**
  * MVP app：只掛對話與表單路由，不連 DB / Redis / Socket。
@@ -90,6 +91,9 @@ export function createApp(): Express {
 
   // 公開 widget 設定：resolveTenant 以 ?key=pk_ 解租戶，無 requireAuth（widget 載入即可讀外觀）
   app.use('/api/widget', resolveTenant, widgetRouter);
+
+  // 租戶自助設定：resolveTenant 解析 sk_（controller 內強制 secret）；無 requireAuth（整合方伺服器對伺服器）
+  app.use('/api/tenant', resolveTenant, tenantRateLimit, tenantSelfRouter);
 
   // 管理 API：建立租戶 / 金鑰 / webhook、查用量（自帶 requireAdmin，x-admin-key 保護）
   app.use('/api/admin', adminRouter);

@@ -12,6 +12,9 @@ import { SCOPE_CATALOG, assertGrantableScopes, tenantGrantableScopes } from '@/m
 import { defaultGrantedScopes } from '@/modules/authz/scope-migration';
 import { scopePolicy } from '@/modules/authz/scope-policy';
 import { getApplicant, listDepartments, listUserIds } from '@/modules/user/user.directory';
+import { llmConfigService } from '@/modules/tenant/llm-config.service';
+import type { PutLLMConfigInput } from '@/modules/tenant/llm-config.schema';
+import { computeUsageCost } from '@/modules/usage/usage.cost';
 import type {
   CreateKeyInput,
   CreateTenantInput,
@@ -96,7 +99,19 @@ export const adminController = {
 
   async getUsage(req: Request, res: Response): Promise<void> {
     const tenant = ensureTenant(String(req.params.id));
-    res.status(200).json({ data: usageStore.get(tenant.id) });
+    const usage = usageStore.get(tenant.id);
+    res.status(200).json({ data: { ...usage, cost: computeUsageCost(usage) } });
+  },
+
+  async getLlmConfig(req: Request, res: Response): Promise<void> {
+    const tenant = ensureTenant(String(req.params.id));
+    res.status(200).json({ data: llmConfigService.get(tenant.id) });
+  },
+
+  async putLlmConfig(req: Request, res: Response): Promise<void> {
+    const tenant = ensureTenant(String(req.params.id));
+    const view = await llmConfigService.update(tenant.id, req.body as PutLLMConfigInput, 'admin');
+    res.status(200).json({ data: view });
   },
 
   async getAudit(req: Request, res: Response): Promise<void> {
