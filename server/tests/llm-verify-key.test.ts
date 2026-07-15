@@ -30,4 +30,22 @@ describe('verifyLLMKey', () => {
     global.fetch = jest.fn().mockRejectedValue(new Error('ECONNREFUSED')) as unknown as typeof fetch;
     await expect(verifyLLMKey('openai', 'sk-x')).rejects.toBeInstanceOf(AppError);
   });
+
+  it('403 → false（金鑰被拒，等同無效）', async () => {
+    const mock = jest.fn().mockResolvedValue({ ok: false, status: 403 });
+    global.fetch = mock as unknown as typeof fetch;
+    await expect(verifyLLMKey('openai', 'sk-forbidden')).resolves.toBe(false);
+  });
+
+  it('503（供應商暫時無法回應）→ 拋 AppError，不能誤判成壞 key（不是 false）', async () => {
+    const mock = jest.fn().mockResolvedValue({ ok: false, status: 503 });
+    global.fetch = mock as unknown as typeof fetch;
+    await expect(verifyLLMKey('openai', 'sk-x')).rejects.toBeInstanceOf(AppError);
+  });
+
+  it('429（被限流）→ 拋 AppError，不能誤判成壞 key（不是 false）', async () => {
+    const mock = jest.fn().mockResolvedValue({ ok: false, status: 429 });
+    global.fetch = mock as unknown as typeof fetch;
+    await expect(verifyLLMKey('anthropic', 'sk-ant-x')).rejects.toBeInstanceOf(AppError);
+  });
 });

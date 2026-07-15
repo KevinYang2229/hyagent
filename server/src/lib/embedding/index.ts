@@ -7,6 +7,7 @@
  */
 import OpenAI from 'openai';
 import { env } from '@/config/env';
+import { mapProviderError } from '@/lib/llm/provider-error';
 import type { LLMKeySource, TenantLLMConfig } from '@/lib/llm/types';
 
 export interface EmbedResult {
@@ -39,10 +40,16 @@ function createProvider(apiKey: string, keySource: LLMKeySource): EmbeddingProvi
     keySource,
     async embed(texts: string[], model?: string): Promise<EmbedResult> {
       if (texts.length === 0) return { vectors: [], tokens: 0 };
-      const resp = await getClient(apiKey).embeddings.create({
-        model: model ?? env.EMBEDDING_MODEL,
-        input: texts,
-      });
+      let resp: OpenAI.Embeddings.CreateEmbeddingResponse;
+      try {
+        resp = await getClient(apiKey).embeddings.create({
+          model: model ?? env.EMBEDDING_MODEL,
+          input: texts,
+        });
+      } catch (err) {
+        // 租戶 key 失效比照 D6 明確歸因 502；平台 key 原樣拋出（現行行為）
+        throw mapProviderError(err, { keySource });
+      }
       return { vectors: resp.data.map((d) => d.embedding), tokens: resp.usage?.total_tokens ?? 0 };
     },
   };
