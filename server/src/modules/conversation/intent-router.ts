@@ -87,7 +87,7 @@ async function classify(session: Session, text: string): Promise<string | null> 
       model: env.LLM_ROUTER_MODEL,
       maxTokens: 64,
     });
-    usageStore.recordLLMUsage(session.tenantId, result.usage);
+    usageStore.recordLLMUsage(session.tenantId, result);
     const match = result.text.match(/\{[\s\S]*\}/);
     if (!match) return null;
     const parsed = JSON.parse(match[0]) as { intent?: string; confidence?: number };

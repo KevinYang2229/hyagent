@@ -36,7 +36,7 @@ export async function runToolLoop(
       const message = err instanceof Error ? err.message : 'LLM request failed';
       throw new AppError(502, 'LLM_ERROR', `LLM 呼叫失敗：${message}`);
     }
-    usageStore.recordLLMUsage(session.tenantId, result.usage);
+    usageStore.recordLLMUsage(session.tenantId, result);
 
     // 重建 assistant 訊息（text + tool_use），維持對話結構合法
     const assistantContent: LLMContentBlock[] = [];

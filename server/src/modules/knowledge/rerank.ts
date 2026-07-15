@@ -40,7 +40,7 @@ export async function rerankChunks(
       model: env.LLM_ROUTER_MODEL,
       maxTokens: 128,
     });
-    usageStore.recordLLMUsage(tenantId, result.usage);
+    usageStore.recordLLMUsage(tenantId, result);
     const match = result.text.match(/\[[\s\S]*?\]/);
     if (!match) return chunks.slice(0, topK);
     const order = JSON.parse(match[0]) as unknown[];

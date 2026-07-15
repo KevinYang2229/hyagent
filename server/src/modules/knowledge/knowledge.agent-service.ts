@@ -123,7 +123,7 @@ export const knowledgeAgentService: AgentService = {
           cache: true,
           maxTokens: 512,
         });
-        usageStore.recordLLMUsage(session.tenantId, result.usage);
+        usageStore.recordLLMUsage(session.tenantId, result);
         reply = result.text || fallbackReply(chunks, session.locale);
       } catch (err) {
         logger.warn({ err, sessionId: session.id }, 'knowledge synthesis failed');

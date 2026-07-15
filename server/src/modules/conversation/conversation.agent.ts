@@ -74,7 +74,7 @@ async function generateSuggestions(
       messages: [{ role: 'user', content: [{ type: 'text', text: userMsg }] }],
       maxTokens: 256,
     });
-    usageStore.recordLLMUsage(session.tenantId, result.usage);
+    usageStore.recordLLMUsage(session.tenantId, result);
     return parseSuggestions(result.text);
   } catch (err) {
     logger.warn({ err, sessionId: session.id }, 'generate suggestions failed');
