@@ -78,4 +78,22 @@ describe('computeUsageCost', () => {
     expect(u.llmTokens).toBe(15);
     expect(Object.keys(u.llmByModel)).toHaveLength(0);
   });
+
+  it('日期快照與別名同價：claude-haiku-4-5 與 claude-haiku-4-5-20251001 都算得出成本', () => {
+    const alias = `usage-cost-alias-${Date.now()}`;
+    const snapshot = `usage-cost-snapshot-${Date.now()}`;
+    const usage = { inputTokens: 1000, outputTokens: 1000 };
+    usageStore.recordLLMUsage(alias, { usage, model: 'claude-haiku-4-5', keySource: 'platform' });
+    usageStore.recordLLMUsage(snapshot, {
+      usage,
+      model: 'claude-haiku-4-5-20251001',
+      keySource: 'platform',
+    });
+    const aliasCost = computeUsageCost(usageStore.get(alias));
+    const snapshotCost = computeUsageCost(usageStore.get(snapshot));
+    // 別名此前查無單價（顯示「無單價資料」）的迴歸：現在兩者都有價且相等
+    expect(aliasCost.byModel[0].usd).not.toBeNull();
+    expect(aliasCost.byModel[0].usd).toBe(snapshotCost.byModel[0].usd);
+    expect(aliasCost.totalUsd).toBe(snapshotCost.totalUsd);
+  });
 });
