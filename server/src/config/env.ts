@@ -6,7 +6,7 @@ const DEV_JWT_ACCESS_SECRET = 'dev-access-secret-please-change-32chars';
 const DEV_JWT_REFRESH_SECRET = 'dev-refresh-secret-please-change-32char';
 const DEV_AUTH_PASSWORD = 'oa1234';
 
-const envSchema = z.object({
+export const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(3000),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
@@ -63,15 +63,24 @@ const envSchema = z.object({
   EMAIL_CONNECTOR: z.enum(['stub', 'smtp']).default('stub'),
 
   // ---- LLM provider（可抽換層；支援 anthropic / openai）----
-  LLM_PROVIDER: z.enum(['anthropic', 'openai']).default('anthropic'),
+  LLM_PROVIDER: z.enum(['anthropic', 'openai', 'local']).default('anthropic'),
   LLM_MODEL: z.string().default('claude-sonnet-4-5'),
   // 意圖分類器（intent-router）專用的便宜/快模型；用 openai 時請改為對應的便宜模型
   LLM_ROUTER_MODEL: z.string().default('claude-haiku-4-5-20251001'),
   LLM_MAX_TOKENS: z.coerce.number().int().positive().default(1024),
   ANTHROPIC_API_KEY: z.string().default(''),
   OPENAI_API_KEY: z.string().default(''),
+  // ---- 地端 LLM（provider=local；OpenAI 相容端點，如 vLLM / Ollama）----
+  // 地端 chat 端點根路徑（含 /v1）；LLM_PROVIDER=local 時必填（見 superRefine）
+  LLM_BASE_URL: z.string().optional(),
+  // 地端端點通常不驗 key；OpenAI SDK 不接受空 apiKey，故給非空 dummy
+  LLM_API_KEY: z.string().default('not-needed'),
 
   // ---- 知識庫 RAG（靜態網站預先索引）----
+  // embedding 供應商：openai=雲端；local=地端 OpenAI 相容 /v1/embeddings
+  EMBEDDING_PROVIDER: z.enum(['openai', 'local']).default('openai'),
+  // 地端 embedding 端點根路徑（含 /v1）；EMBEDDING_PROVIDER=local 時必填
+  EMBEDDING_BASE_URL: z.string().optional(),
   // embedding 用 OpenAI（Claude 無原生 embedding），需 OPENAI_API_KEY；索引與查詢共用此模型
   // 精準度優先 → 預設 text-embedding-3-large（3072 維）；要省成本可改 text-embedding-3-small
   EMBEDDING_MODEL: z.string().default('text-embedding-3-large'),
@@ -109,6 +118,22 @@ const envSchema = z.object({
       code: z.ZodIssueCode.custom,
       path: ['OA_BASE_URL'],
       message: 'OA_BASE_URL is required when OA_CONNECTOR=http',
+    });
+  }
+  // LLM_PROVIDER=local 時必須提供 LLM_BASE_URL，boot 時 fail-fast
+  if (val.LLM_PROVIDER === 'local' && !val.LLM_BASE_URL) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['LLM_BASE_URL'],
+      message: 'LLM_BASE_URL is required when LLM_PROVIDER=local',
+    });
+  }
+  // EMBEDDING_PROVIDER=local 時必須提供 EMBEDDING_BASE_URL，boot 時 fail-fast
+  if (val.EMBEDDING_PROVIDER === 'local' && !val.EMBEDDING_BASE_URL) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['EMBEDDING_BASE_URL'],
+      message: 'EMBEDDING_BASE_URL is required when EMBEDDING_PROVIDER=local',
     });
   }
   // EMAIL_CONNECTOR=smtp 時必須提供 SMTP_HOST，boot 時 fail-fast

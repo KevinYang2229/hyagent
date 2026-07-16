@@ -8,12 +8,13 @@
 import { env } from '@/config/env';
 import type { LLMKeySource, TenantLLMConfig } from './types';
 
-export type LLMProviderName = 'anthropic' | 'openai';
+export type LLMProviderName = 'anthropic' | 'openai' | 'local';
 
 /** 租戶自訂 provider 但未指定 model 時的各廠商預設（env.LLM_MODEL 可能是別家的模型名） */
 const DEFAULT_MODELS: Record<LLMProviderName, string> = {
   anthropic: 'claude-sonnet-4-5',
   openai: 'gpt-4o-mini',
+  local: 'local-llm',
 };
 
 export interface ResolvedLLMSettings {
@@ -26,10 +27,13 @@ export interface ResolvedLLMSettings {
 }
 
 function envKeyFor(provider: LLMProviderName): string {
-  return provider === 'anthropic' ? env.ANTHROPIC_API_KEY : env.OPENAI_API_KEY;
+  if (provider === 'anthropic') return env.ANTHROPIC_API_KEY;
+  if (provider === 'openai') return env.OPENAI_API_KEY;
+  return env.LLM_API_KEY; // local
 }
 
 function tenantKeyFor(provider: LLMProviderName, config?: TenantLLMConfig): string | undefined {
+  if (provider === 'local') return undefined; // local 不支援租戶自訂 key
   const key = provider === 'anthropic' ? config?.anthropicApiKey : config?.openaiApiKey;
   return key && key.trim() ? key : undefined;
 }
