@@ -23,18 +23,19 @@ export interface EmbeddingProvider {
   embed(texts: string[], model?: string): Promise<EmbedResult>;
 }
 
-// SDK client 以 apiKey 快取（同 lib/llm 手法）；延遲建立避免無 key 時啟動失敗
+// SDK client 以 apiKey|baseURL 快取（同 lib/llm 手法）；延遲建立避免無 key 時啟動失敗
 const clients = new Map<string, OpenAI>();
-function getClient(apiKey: string): OpenAI {
-  let c = clients.get(apiKey);
+function getClient(apiKey: string, baseURL?: string): OpenAI {
+  const cacheKey = `${apiKey}|${baseURL ?? ''}`;
+  let c = clients.get(cacheKey);
   if (!c) {
-    c = new OpenAI({ apiKey });
-    clients.set(apiKey, c);
+    c = new OpenAI({ apiKey, baseURL });
+    clients.set(cacheKey, c);
   }
   return c;
 }
 
-function createProvider(apiKey: string, keySource: LLMKeySource): EmbeddingProvider {
+function createProvider(apiKey: string, keySource: LLMKeySource, baseURL?: string): EmbeddingProvider {
   return {
     model: env.EMBEDDING_MODEL,
     keySource,
@@ -42,7 +43,7 @@ function createProvider(apiKey: string, keySource: LLMKeySource): EmbeddingProvi
       if (texts.length === 0) return { vectors: [], tokens: 0 };
       let resp: OpenAI.Embeddings.CreateEmbeddingResponse;
       try {
-        resp = await getClient(apiKey).embeddings.create({
+        resp = await getClient(apiKey, baseURL).embeddings.create({
           model: model ?? env.EMBEDDING_MODEL,
           input: texts,
         });
@@ -56,6 +57,12 @@ function createProvider(apiKey: string, keySource: LLMKeySource): EmbeddingProvi
 }
 
 export function getEmbeddingProvider(config?: TenantLLMConfig): EmbeddingProvider {
+  // 地端：走部署層 embedding 端點，不涉租戶 key
+  if (env.EMBEDDING_PROVIDER === 'local') {
+    return createProvider(env.LLM_API_KEY, 'platform', env.EMBEDDING_BASE_URL);
+  }
   const tenantKey = config?.openaiApiKey?.trim();
-  return tenantKey ? createProvider(tenantKey, 'tenant') : createProvider(env.OPENAI_API_KEY, 'platform');
+  return tenantKey
+    ? createProvider(tenantKey, 'tenant')
+    : createProvider(env.OPENAI_API_KEY, 'platform');
 }
