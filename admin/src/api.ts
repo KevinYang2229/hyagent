@@ -78,7 +78,7 @@ export interface Usage {
 }
 
 export interface LLMConfigView {
-  provider: 'anthropic' | 'openai' | null;
+  provider: 'anthropic' | 'openai' | 'local' | null;
   model: string | null;
   anthropicApiKey: string | null; // 遮罩字串
   openaiApiKey: string | null;
@@ -86,7 +86,7 @@ export interface LLMConfigView {
 
 /** PUT patch：省略=不變、null=清除 */
 export interface LLMConfigPatch {
-  provider?: 'anthropic' | 'openai' | null;
+  provider?: 'anthropic' | 'openai' | 'local' | null;
   model?: string | null;
   anthropicApiKey?: string | null;
   openaiApiKey?: string | null;

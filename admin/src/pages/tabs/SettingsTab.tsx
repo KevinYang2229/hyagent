@@ -18,7 +18,7 @@ export default function SettingsTab({
   const [newKeys, setNewKeys] = useState<ApiKey[]>([]);
 
   const [llmCfg, setLlmCfg] = useState<LLMConfigView | null>(null);
-  const [llmProvider, setLlmProvider] = useState<'' | 'anthropic' | 'openai'>('');
+  const [llmProvider, setLlmProvider] = useState<'' | 'anthropic' | 'openai' | 'local'>('');
   const [llmModel, setLlmModel] = useState('');
   const [anthropicKey, setAnthropicKey] = useState('');
   const [openaiKey, setOpenaiKey] = useState('');
@@ -157,11 +157,12 @@ export default function SettingsTab({
             <select
               className="select"
               value={llmProvider}
-              onChange={(e) => setLlmProvider(e.target.value as '' | 'anthropic' | 'openai')}
+              onChange={(e) => setLlmProvider(e.target.value as '' | 'anthropic' | 'openai' | 'local')}
             >
               <option value="">平台預設</option>
               <option value="anthropic">Anthropic (Claude)</option>
               <option value="openai">OpenAI</option>
+              <option value="local">地端（自架模型）</option>
             </select>
           </div>
 
@@ -172,53 +173,57 @@ export default function SettingsTab({
               value={llmModel}
               onChange={(e) => setLlmModel(e.target.value)}
               disabled={llmProvider === ''}
-              placeholder="未填用供應商預設（如 gpt-4o-mini / claude-sonnet-4-5）"
+              placeholder="未填用供應商預設（如 gpt-4o-mini / claude-sonnet-4-5 / Qwen2.5-32B-Instruct）"
             />
           </div>
 
-          <div className="field">
-            <label className="field-label">Anthropic 金鑰</label>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <input
-                className="input"
-                type="password"
-                value={anthropicKey}
-                onChange={(e) => setAnthropicKey(e.target.value)}
-                placeholder={llmCfg?.anthropicApiKey ?? '未設定'}
-              />
-              {llmCfg?.anthropicApiKey != null && (
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => void clearKey('anthropicApiKey')}
-                >
-                  清除
-                </button>
-              )}
+          {llmProvider !== 'local' && (
+            <div className="field">
+              <label className="field-label">Anthropic 金鑰</label>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input
+                  className="input"
+                  type="password"
+                  value={anthropicKey}
+                  onChange={(e) => setAnthropicKey(e.target.value)}
+                  placeholder={llmCfg?.anthropicApiKey ?? '未設定'}
+                />
+                {llmCfg?.anthropicApiKey != null && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => void clearKey('anthropicApiKey')}
+                  >
+                    清除
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
+          )}
 
-          <div className="field">
-            <label className="field-label">OpenAI 金鑰</label>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <input
-                className="input"
-                type="password"
-                value={openaiKey}
-                onChange={(e) => setOpenaiKey(e.target.value)}
-                placeholder={llmCfg?.openaiApiKey ?? '未設定'}
-              />
-              {llmCfg?.openaiApiKey != null && (
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => void clearKey('openaiApiKey')}
-                >
-                  清除
-                </button>
-              )}
+          {llmProvider !== 'local' && (
+            <div className="field">
+              <label className="field-label">OpenAI 金鑰</label>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input
+                  className="input"
+                  type="password"
+                  value={openaiKey}
+                  onChange={(e) => setOpenaiKey(e.target.value)}
+                  placeholder={llmCfg?.openaiApiKey ?? '未設定'}
+                />
+                {llmCfg?.openaiApiKey != null && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => void clearKey('openaiApiKey')}
+                  >
+                    清除
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="form-actions">
             <button className="btn btn-primary" onClick={() => void saveLlm()} disabled={llmBusy}>
