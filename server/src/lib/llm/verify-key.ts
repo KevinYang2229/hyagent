@@ -5,6 +5,8 @@
  * 且驗證只需一個 GET，不值得為此升級/繞道 SDK。
  * 語意：401/403 = 金鑰無效（false）；其餘非 2xx（429/500/503…等暫時性狀態）與網路層失敗
  * 一律視為「無法驗證」（502），避免把限流/暫時性錯誤誤判成壞 key 而拒存一把有效的金鑰。
+ *
+ * 地端：`provider === 'local'` 改做 GET `${env.LLM_BASE_URL}/models` 端點可達性探測，非 2xx 或連線失敗返回 false（永不拋例外），不接觸雲端。
  */
 import { env } from '@/config/env';
 import { AppError } from '@/utils/app-error';
