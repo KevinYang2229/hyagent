@@ -11,8 +11,8 @@ import type { PutLLMConfigInput } from './llm-config.schema';
 import { tenantStore } from './tenant.store';
 
 export interface LLMConfigView {
-  // 型別涵蓋 'local' 只為與 TenantLLMConfig 結構相容；putLlmConfigSchema 不收 'local'，
-  // 租戶 llmConfig 實際不會出現 'local'（地端只由部署層 env 決定，見 resolve-settings.ts）
+  // 'local'：租戶可選地端模型，免雲端 key；實際端點只由部署層 env.LLM_BASE_URL 決定
+  // （見 resolve-settings.ts），租戶端不攜帶任何 URL。
   provider: 'anthropic' | 'openai' | 'local' | null;
   model: string | null;
   anthropicApiKey: string | null;
@@ -68,13 +68,17 @@ export const llmConfigService = {
     if (merged.model && !merged.provider) {
       throw AppError.badRequest('model 需搭配 provider 一併設定');
     }
-    // provider 指定後，該廠商必須有可用金鑰（租戶自帶或平台 env），否則 runtime 必炸
-    if (merged.provider) {
+    // 雲端 provider 指定後，該廠商必須有可用金鑰（租戶自帶或平台 env），否則 runtime 必炸
+    if (merged.provider && merged.provider !== 'local') {
       const tenantKey = merged.provider === 'anthropic' ? merged.anthropicApiKey : merged.openaiApiKey;
       const envKey = merged.provider === 'anthropic' ? env.ANTHROPIC_API_KEY : env.OPENAI_API_KEY;
       if (!tenantKey && !envKey) {
         throw AppError.badRequest(`供應商 ${merged.provider} 沒有可用金鑰，請一併提供 key`);
       }
+    }
+    // 地端 provider：需部署層已設 endpoint，否則 runtime 會誤打雲端（違反不外流原則）
+    if (merged.provider === 'local' && !env.LLM_BASE_URL) {
+      throw AppError.badRequest('平台未設定地端模型端點，無法選用地端模型');
     }
     // 只驗證「本次新提供」的 key（既存 key 已驗過；清除不需驗）
     if (patch.anthropicApiKey) {

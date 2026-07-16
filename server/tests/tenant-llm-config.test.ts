@@ -68,6 +68,15 @@ describe('llmConfigService', () => {
     });
   });
 
+  it('provider=local → 不需雲端 key 即可設定（走部署層地端端點）', async () => {
+    const t = tenantStore.createTenant('byo-local');
+    const view = await llmConfigService.update(t.id, { provider: 'local' }, 'tester');
+    expect(view.provider).toBe('local');
+    // local 不設任何雲端 key
+    expect(view.anthropicApiKey).toBeNull();
+    expect(view.openaiApiKey).toBeNull();
+  });
+
   it('查無租戶 → 404；get 未設定 → 全 null 視圖', async () => {
     await expect(llmConfigService.update('nope', { model: null }, 'admin')).rejects.toBeInstanceOf(AppError);
     const t = tenantStore.createTenant('byo-empty');
