@@ -11,7 +11,9 @@ import type { PutLLMConfigInput } from './llm-config.schema';
 import { tenantStore } from './tenant.store';
 
 export interface LLMConfigView {
-  provider: 'anthropic' | 'openai' | null;
+  // 型別涵蓋 'local' 只為與 TenantLLMConfig 結構相容；putLlmConfigSchema 不收 'local'，
+  // 租戶 llmConfig 實際不會出現 'local'（地端只由部署層 env 決定，見 resolve-settings.ts）
+  provider: 'anthropic' | 'openai' | 'local' | null;
   model: string | null;
   anthropicApiKey: string | null;
   openaiApiKey: string | null;

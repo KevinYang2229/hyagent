@@ -68,7 +68,7 @@ export type LLMKeySource = 'platform' | 'tenant';
  * openaiApiKey 仍可供知識庫 embedding 使用（Anthropic 無 embedding API）。
  */
 export interface TenantLLMConfig {
-  provider?: 'anthropic' | 'openai';
+  provider?: 'anthropic' | 'openai' | 'local';
   model?: string;
   anthropicApiKey?: string;
   openaiApiKey?: string;

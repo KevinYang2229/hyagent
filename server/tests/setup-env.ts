@@ -22,3 +22,7 @@ process.env.KNOWLEDGE_INDEX_DIR ??= join(tmpdir(), 'oa-agent-test-knowledge');
 // LLM 設定測試與本機 server/.env 脫鉤：setupFiles 先佔住的值 dotenv 不會覆蓋
 process.env.LLM_PROVIDER ??= 'anthropic';
 process.env.LLM_MODEL ??= 'claude-sonnet-4-5';
+
+// 地端 LLM 測試：resolve/embedding 的 local 路徑需要端點；僅在 provider=local 時生效，
+// 不影響預設 anthropic 的雲端測試
+process.env.LLM_BASE_URL ??= 'http://localhost:8000/v1';
