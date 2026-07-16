@@ -21,13 +21,14 @@ import type {
   LLMToolCall,
 } from './types';
 
-// SDK client 以 apiKey 快取：同 key 重用連線，不每請求重建
+// SDK client 以 apiKey|baseURL 快取：同 key+端點重用連線，不每請求重建
 const clients = new Map<string, OpenAI>();
-function getClient(apiKey: string): OpenAI {
-  let c = clients.get(apiKey);
+function getClient(apiKey: string, baseURL?: string): OpenAI {
+  const cacheKey = `${apiKey}|${baseURL ?? ''}`;
+  let c = clients.get(cacheKey);
   if (!c) {
-    c = new OpenAI({ apiKey });
-    clients.set(apiKey, c);
+    c = new OpenAI({ apiKey, baseURL });
+    clients.set(cacheKey, c);
   }
   return c;
 }
@@ -107,7 +108,7 @@ export function createOpenAIProvider(settings: ResolvedLLMSettings): LLMProvider
       const model = pickModel(settings, params.model);
       let resp: OpenAI.Chat.Completions.ChatCompletion;
       try {
-        resp = await getClient(settings.apiKey).chat.completions.create({
+        resp = await getClient(settings.apiKey, settings.baseURL).chat.completions.create({
           model,
           max_tokens: params.maxTokens ?? env.LLM_MAX_TOKENS,
           messages: toOpenAIMessages(params.system, params.messages),

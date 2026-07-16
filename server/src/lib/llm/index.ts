@@ -9,6 +9,7 @@ import type { LLMProvider, TenantLLMConfig } from './types';
 
 export function getLLMProvider(config?: TenantLLMConfig): LLMProvider {
   const settings = resolveLLMSettings(config);
+  // local 為 OpenAI 相容端點，重用 openai provider（差別僅在 settings.baseURL）
   return settings.provider === 'anthropic'
     ? createAnthropicProvider(settings)
     : createOpenAIProvider(settings);
