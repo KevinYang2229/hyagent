@@ -77,6 +77,23 @@ describe('llmConfigService', () => {
     expect(view.openaiApiKey).toBeNull();
   });
 
+  it('平台未設 LLM_BASE_URL → 租戶不得選 local（寫入擋下 400）', async () => {
+    const saved = process.env.LLM_BASE_URL;
+    jest.resetModules();
+    delete process.env.LLM_BASE_URL;
+    try {
+      const { tenantStore } = require('@/modules/tenant/tenant.store') as typeof import('@/modules/tenant/tenant.store');
+      const { llmConfigService } = require('@/modules/tenant/llm-config.service') as typeof import('@/modules/tenant/llm-config.service');
+      const t = tenantStore.createTenant('byo-no-local-endpoint');
+      await expect(
+        llmConfigService.update(t.id, { provider: 'local' }, 'tester'),
+      ).rejects.toMatchObject({ statusCode: 400 });
+    } finally {
+      process.env.LLM_BASE_URL = saved;
+      jest.resetModules();
+    }
+  });
+
   it('查無租戶 → 404；get 未設定 → 全 null 視圖', async () => {
     await expect(llmConfigService.update('nope', { model: null }, 'admin')).rejects.toBeInstanceOf(AppError);
     const t = tenantStore.createTenant('byo-empty');
