@@ -6,12 +6,26 @@
  * 語意：401/403 = 金鑰無效（false）；其餘非 2xx（429/500/503…等暫時性狀態）與網路層失敗
  * 一律視為「無法驗證」（502），避免把限流/暫時性錯誤誤判成壞 key 而拒存一把有效的金鑰。
  */
+import { env } from '@/config/env';
 import { AppError } from '@/utils/app-error';
 import type { LLMProviderName } from './resolve-settings';
 
 const VERIFY_TIMEOUT_MS = 10_000;
 
 export async function verifyLLMKey(provider: LLMProviderName, apiKey: string): Promise<boolean> {
+  // 地端：無雲端金鑰可驗，改做端點可達性探測（GET /models）
+  if (provider === 'local') {
+    if (!env.LLM_BASE_URL) return false;
+    try {
+      const res = await fetch(`${env.LLM_BASE_URL}/models`, {
+        signal: AbortSignal.timeout(VERIFY_TIMEOUT_MS),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
+
   const { url, headers } =
     provider === 'anthropic'
       ? {
