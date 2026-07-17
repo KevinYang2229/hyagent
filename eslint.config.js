@@ -43,10 +43,9 @@ module.exports = [
       '**/*.config.js',
       '**/*.config.cjs',
       '**/*.config.ts',
-      // 非主應用程式碼：示範專案、文件、根層級散落入口
+      // 非主應用程式碼：示範專案、文件
       'presale/**',
       'docs/**',
-      'src/**',
     ],
   },
 
