@@ -8,6 +8,7 @@
 import OpenAI from 'openai';
 import { env } from '@/config/env';
 import { mapProviderError } from '@/lib/llm/provider-error';
+import { AppError } from '@/utils/app-error';
 import type { LLMKeySource, TenantLLMConfig } from '@/lib/llm/types';
 
 export interface EmbedResult {
@@ -57,8 +58,12 @@ function createProvider(apiKey: string, keySource: LLMKeySource, baseURL?: strin
 }
 
 export function getEmbeddingProvider(config?: TenantLLMConfig): EmbeddingProvider {
-  // 地端：走部署層 embedding 端點，不涉租戶 key
+  // 地端：走部署層 embedding 端點，不涉租戶 key。
+  // 端點缺失即丟錯（防禦性第二層；boot superRefine 已擋，比照 resolve-settings 不靜默改打雲端）
   if (env.EMBEDDING_PROVIDER === 'local') {
+    if (!env.EMBEDDING_BASE_URL) {
+      throw AppError.badGateway('平台未設定地端 embedding 端點（EMBEDDING_BASE_URL），無法使用地端 embedding');
+    }
     return createProvider(env.LLM_API_KEY, 'platform', env.EMBEDDING_BASE_URL);
   }
   const tenantKey = config?.openaiApiKey?.trim();

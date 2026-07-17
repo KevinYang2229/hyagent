@@ -35,4 +35,33 @@ describe('embedding 地端', () => {
     await getEmbeddingProvider().embed(['hi']);
     expect(ctorArgs.some((a) => a.baseURL === 'http://localhost:8000/v1')).toBe(true);
   });
+
+  // 防禦性第二層：EMBEDDING_PROVIDER=local 但 EMBEDDING_BASE_URL 缺失時應丟 502，而非靜默改打雲端 OpenAI。
+  // boot-time superRefine 已擋這個組合（env.ts safeParse 失敗會 process.exit(1)），
+  // 所以這裡不能單靠 process.env 重新 require '@/config/env'；改用 jest.doMock 直接把 env 換成不合法組合的假物件，
+  // 繞過 superRefine 去驗證 getEmbeddingProvider 本身的第二層防禦。
+  it('EMBEDDING_PROVIDER=local 但缺 EMBEDDING_BASE_URL → 丟 502，不靜默改打雲端', () => {
+    jest.isolateModules(() => {
+      jest.doMock('@/config/env', () => ({
+        env: {
+          NODE_ENV: 'test',
+          EMBEDDING_PROVIDER: 'local',
+          EMBEDDING_BASE_URL: undefined,
+          EMBEDDING_MODEL: 'text-embedding-3-large',
+          LLM_API_KEY: 'not-needed',
+          OPENAI_API_KEY: 'test-openai-key',
+        },
+      }));
+      const { getEmbeddingProvider } = require('@/lib/embedding') as typeof import('@/lib/embedding');
+      let caught: unknown;
+      try {
+        getEmbeddingProvider();
+      } catch (err) {
+        caught = err;
+      }
+      expect(caught).toBeInstanceOf(Error);
+      expect((caught as { statusCode?: number }).statusCode).toBe(502);
+      jest.dontMock('@/config/env');
+    });
+  });
 });
