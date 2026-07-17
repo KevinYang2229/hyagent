@@ -23,6 +23,9 @@ const tsBaseRules = {
   ...tsPlugin.configs.recommended.rules,
   // no-undef 由 TS 編譯器負責，避免對型別/全域誤報
   'no-undef': 'off',
+  // 基礎版看不懂 TS function overload，換用認得 overload 的 TS 版
+  'no-redeclare': 'off',
+  '@typescript-eslint/no-redeclare': 'error',
   // 允許以 _ 前綴標示刻意未使用的參數/變數
   '@typescript-eslint/no-unused-vars': [
     'error',
@@ -58,6 +61,14 @@ module.exports = [
     },
     plugins: { '@typescript-eslint': tsPlugin },
     rules: tsBaseRules,
+  },
+
+  // ---- 後端測試：允許 jest.resetModules() + require() 重載模組的寫法 ----
+  {
+    files: ['server/tests/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-require-imports': 'off',
+    },
   },
 
   // ---- 前端：Browser + React（client / ui / admin）----
