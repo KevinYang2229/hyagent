@@ -15,6 +15,8 @@ function bootStoreIsolated(envPatch: Record<string, string>): {
   dataDir: string;
 } {
   const dataDir = envPatch.OA_AGENT_DATA_DIR;
+  // 未明說加密金鑰時固定 ''（未設定）：避免 isolateModules 重載 dotenv 撿回本機 .env 的金鑰
+  envPatch = { DATA_ENCRYPTION_KEY: '', ...envPatch };
   const saved: Record<string, string | undefined> = {};
   for (const [k, v] of Object.entries(envPatch)) {
     saved[k] = process.env[k];
@@ -44,7 +46,9 @@ describe('crypto 原語', () => {
     jest.isolateModules(() => {
       enc = require('@/lib/crypto') as typeof import('@/lib/crypto');
     });
-    delete process.env.DATA_ENCRYPTION_KEY;
+    // 還原為 ''（schema 視為未設定）而非 delete：delete 後 dotenv 會在下次 isolateModules
+    // 重新載入 .env，把本機真實金鑰撿回來，污染後續「未設金鑰」的測試
+    process.env.DATA_ENCRYPTION_KEY = '';
     const sealed = enc.encryptSecret('sk-ant-secret-00001');
     expect(enc.isEncrypted(sealed)).toBe(true);
     expect(sealed).not.toContain('sk-ant-secret');

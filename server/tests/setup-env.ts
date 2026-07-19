@@ -17,6 +17,10 @@ process.env.OA_AGENT_DATA_DIR ??= mkdtempSync(join(tmpdir(), 'oa-agent-test-'));
 // 測試絕不能打到真 DB；db 模式的種子要等 initTenantStore()，測試不跑 boot 流程會缺預設租戶。
 process.env.DATA_BACKEND ??= 'file';
 
+// 靜態加密固定關閉（'' 在 env schema 視為未設定）：本機 .env 可能有 DATA_ENCRYPTION_KEY，
+// 測試需確定性的明文預設；要驗證加密的測試自行以 isolateModules 注入金鑰。
+process.env.DATA_ENCRYPTION_KEY ??= '';
+
 process.env.ANTHROPIC_API_KEY ??= 'test-anthropic-key';
 // 啟用管理 API（Form Designer 端點測試用）
 process.env.ADMIN_API_KEY ??= 'test-admin-key';
