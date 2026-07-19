@@ -36,6 +36,9 @@ RUN npm ci --omit=dev
 
 COPY --from=build /app/server/dist ./server/dist
 COPY --from=build /app/schemas ./schemas
+# Prisma client 於 build stage 由 `npm run build -w server` 的 prisma generate 產出；
+# runtime 無 prisma CLI（devDep），直接帶生成物（DATA_BACKEND=db 時 @prisma/client 才會被載入）
+COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
 
 EXPOSE 3000
 CMD ["node", "server/dist/index.js"]

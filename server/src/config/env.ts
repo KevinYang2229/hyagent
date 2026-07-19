@@ -11,8 +11,11 @@ export const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
 
-  // MVP：以 in-memory session 運作，DB/JWT 先給預設值（之後接 Prisma 再收緊）
-  DATABASE_URL: z.string().default('postgresql://localhost:5432/oa_agent'),
+  // store 持久化後端：file＝記憶體 Map + JSON 檔（沿用既有行為）；db＝記憶體 Map + Postgres write-through
+  // （第一階段僅 tenant store 支援 db，其餘 store 仍走檔案；見 tenant.store.ts）
+  DATA_BACKEND: z.enum(['file', 'db']).default('file'),
+  // DATA_BACKEND=db 時必填（Supabase 建議用 session pooler；transaction pooler 需加 ?pgbouncer=true）
+  DATABASE_URL: z.string().optional(),
 
   JWT_ACCESS_SECRET: z.string().min(32).default(DEV_JWT_ACCESS_SECRET),
   JWT_REFRESH_SECRET: z.string().min(32).default(DEV_JWT_REFRESH_SECRET),
@@ -112,6 +115,14 @@ export const envSchema = z.object({
     }
   }
 
+  // DATA_BACKEND=db 時必須提供 DATABASE_URL，boot 時 fail-fast
+  if (val.DATA_BACKEND === 'db' && !val.DATABASE_URL) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['DATABASE_URL'],
+      message: 'DATABASE_URL is required when DATA_BACKEND=db',
+    });
+  }
   // OA_CONNECTOR=http 時必須提供 OA_BASE_URL，boot 時 fail-fast
   if (val.OA_CONNECTOR === 'http' && !val.OA_BASE_URL) {
     ctx.addIssue({

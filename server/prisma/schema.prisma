@@ -1,0 +1,124 @@
+// oa-agent 持久化層（DATA_BACKEND=db 時啟用；Supabase Postgres）。
+//
+// 第一階段只搬 tenant store：資料表是「記憶體 Map 的 write-through 落地」，
+// service / store 介面不變（見 tenant.store.ts 檔頭說明）。
+// 穩定欄位開實體 column（dashboard 可讀、可查詢），其餘選填設定收進 config jsonb，
+// Tenant 型別加欄位時不需跟著改 DDL。
+//
+// DDL 以 SQL migration 管理（server/db/migrations/，經 Supabase 套用），
+// 本檔僅作 client 型別來源；改 schema 時兩邊要同步。
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model TenantRow {
+  id        String      @id
+  name      String
+  /// Tenant 型別中除 id/name/createdAt 外的所有選填欄位（allowedOrigins、llmConfig…）
+  config    Json        @default("{}")
+  createdAt DateTime    @map("created_at")
+  updatedAt DateTime    @updatedAt @map("updated_at")
+  apiKeys   ApiKeyRow[]
+
+  @@map("tenants")
+}
+
+model SessionRow {
+  id        String   @id
+  tenantId  String   @map("tenant_id")
+  userId    String   @map("user_id")
+  formId    String   @map("form_id")
+  /// 整個 Session 物件（values / messages / status…）；single source，實體欄位僅供查詢
+  data      Json
+  createdAt DateTime @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId, userId])
+  @@map("sessions")
+}
+
+model SubmissionRow {
+  tenantId    String   @map("tenant_id")
+  oaRequestId String   @map("oa_request_id")
+  formId      String   @map("form_id")
+  formTitle   String   @map("form_title")
+  userId      String   @map("user_id")
+  submittedAt DateTime @map("submitted_at")
+
+  @@id([tenantId, oaRequestId])
+  @@index([tenantId, userId, submittedAt])
+  @@map("submissions")
+}
+
+model TenantUsageRow {
+  tenantId  String   @id @map("tenant_id")
+  /// 整個 TenantUsage 聚合計數（counters + llmByModel buckets）
+  data      Json
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("tenant_usage")
+}
+
+model AuditLogRow {
+  id       BigInt   @id @default(autoincrement())
+  tenantId String   @map("tenant_id")
+  toolId   String   @map("tool_id")
+  userId   String   @map("user_id")
+  at       DateTime
+  ok       Boolean
+  summary  String
+  error    String?
+
+  @@index([tenantId, at])
+  @@map("audit_logs")
+}
+
+model TenantFormRow {
+  tenantId   String   @map("tenant_id")
+  formId     String   @map("form_id")
+  /// 六層 Definition 整包
+  definition Json
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@id([tenantId, formId])
+  @@map("tenant_forms")
+}
+
+model ScopePolicyRow {
+  tenantId  String   @id @map("tenant_id")
+  /// TenantPolicy（groups / accounts）
+  data      Json
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("scope_policies")
+}
+
+model WebhookRow {
+  id        String   @id
+  tenantId  String   @map("tenant_id")
+  /// 整個 WebhookEndpoint（url / secret / events / disabledAt…）
+  data      Json
+  createdAt DateTime @map("created_at")
+
+  @@index([tenantId])
+  @@map("webhooks")
+}
+
+model ApiKeyRow {
+  /// 完整金鑰字串（pk_/sk_）。MVP 沿用明文（與檔案 store 相同）；改存雜湊為後續事項
+  key       String    @id
+  tenantId  String    @map("tenant_id")
+  type      String
+  createdAt DateTime  @map("created_at")
+  revokedAt DateTime? @map("revoked_at")
+  tenant    TenantRow @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("api_keys")
+}
