@@ -1,14 +1,18 @@
 /**
- * 租戶表單 Definition store（MVP）：記憶體 Map ＋ 磁碟持久化。
+ * 租戶表單 Definition store：記憶體 Map ＋ 可切換持久化後端（env.DATA_BACKEND）。
  *
- * 與 tenant.store / conversation.store 同款：放 os.tmpdir() 的 JSON，跨 dev 重啟留得住；
- * 之後接 Prisma FormDefinition 表只要換掉這層，registry / service 介面不變。
+ * - file（預設）：整包 JSON 檔（沿用既有行為）。
+ * - db：每份定義一列（tenant_id, form_id）定向 upsert / delete。
+ *   開機由 initFormStore() 載回（index.ts 於 listen 前呼叫）。
  *
  * 此 store 只放「租戶自建／覆寫」的表單；內建共用表單仍由 schemas/ 目錄（base）提供，
  * 解析優先序由 form.registry 決定（租戶覆寫 > base）。
  */
 import fs from 'node:fs';
+import type { Prisma } from '@prisma/client';
 import { dataFile } from '@/lib/data-dir';
+import { connectDb, DbWriteQueue } from '@/lib/db';
+import { env } from '@/config/env';
 import { logger } from '@/lib/logger';
 import type { Definition } from './form.types';
 
@@ -20,7 +24,9 @@ type StoreShape = Record<string, Record<string, Definition>>;
 // tenantId → (formId → Definition)
 const byTenant = new Map<string, Map<string, Definition>>();
 
-function persist(): void {
+const writeQueue = new DbWriteQueue('forms');
+
+function persistFile(): void {
   try {
     const data: StoreShape = {};
     for (const [tenantId, forms] of byTenant) {
@@ -32,17 +38,38 @@ function persist(): void {
   }
 }
 
-// 啟動時載入既有資料（壞檔則略過）
-try {
-  if (fs.existsSync(STORE_FILE)) {
-    const raw = JSON.parse(fs.readFileSync(STORE_FILE, 'utf-8')) as StoreShape;
-    for (const [tenantId, forms] of Object.entries(raw ?? {})) {
-      byTenant.set(tenantId, new Map(Object.entries(forms)));
+// file 後端：模組載入即同步還原（沿用既有行為）
+if (env.DATA_BACKEND !== 'db') {
+  try {
+    if (fs.existsSync(STORE_FILE)) {
+      const raw = JSON.parse(fs.readFileSync(STORE_FILE, 'utf-8')) as StoreShape;
+      for (const [tenantId, forms] of Object.entries(raw ?? {})) {
+        byTenant.set(tenantId, new Map(Object.entries(forms)));
+      }
+      logger.info({ tenants: byTenant.size }, 'tenant forms restored from disk');
     }
-    logger.info({ tenants: byTenant.size }, 'tenant forms restored from disk');
+  } catch (err) {
+    logger.warn({ err, file: STORE_FILE }, 'failed to restore forms; starting empty');
   }
-} catch (err) {
-  logger.warn({ err, file: STORE_FILE }, 'failed to restore forms; starting empty');
+}
+
+/**
+ * db 後端的開機載入：連 DB、還原兩層 Map。
+ * 必須在開始服務請求前 await（index.ts listen 前）；file 後端為 no-op。
+ */
+export async function initFormStore(): Promise<void> {
+  if (env.DATA_BACKEND !== 'db') return;
+  const db = await connectDb();
+  const rows = await db.tenantFormRow.findMany();
+  for (const r of rows) {
+    let forms = byTenant.get(r.tenantId);
+    if (!forms) {
+      forms = new Map();
+      byTenant.set(r.tenantId, forms);
+    }
+    forms.set(r.formId, r.definition as unknown as Definition);
+  }
+  logger.info({ tenants: byTenant.size, forms: rows.length }, 'tenant forms restored from db');
 }
 
 export const formStore = {
@@ -64,14 +91,35 @@ export const formStore = {
       byTenant.set(tenantId, forms);
     }
     forms.set(def.formId, def);
-    persist();
+    if (env.DATA_BACKEND === 'db') {
+      const formId = def.formId;
+      // 與 file 後端同語意：undefined 欄位序列化時剔除
+      const definition = JSON.parse(JSON.stringify(def)) as Prisma.InputJsonValue;
+      writeQueue.enqueue(async (db) => {
+        await db.tenantFormRow.upsert({
+          where: { tenantId_formId: { tenantId, formId } },
+          create: { tenantId, formId, definition },
+          update: { definition },
+        });
+      });
+    } else {
+      persistFile();
+    }
     return def;
   },
 
   /** 刪除一份定義；回傳是否確有刪除 */
   deleteDefinition(tenantId: string, formId: string): boolean {
     const removed = byTenant.get(tenantId)?.delete(formId) ?? false;
-    if (removed) persist();
+    if (removed) {
+      if (env.DATA_BACKEND === 'db') {
+        writeQueue.enqueue(async (db) => {
+          await db.tenantFormRow.deleteMany({ where: { tenantId, formId } });
+        });
+      } else {
+        persistFile();
+      }
+    }
     return removed;
   },
 };

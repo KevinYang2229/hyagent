@@ -1,10 +1,14 @@
 /**
- * Webhook 端點 store（MVP）：記憶體 Map ＋ 磁碟持久化，與 conversation/tenant store 同款。
- * 之後接 Prisma 只要換掉這層。
+ * Webhook 端點 store：記憶體 Map ＋ 可切換持久化後端（env.DATA_BACKEND）。
+ * db 後端：每端點一列（data jsonb 整包），register / setDisabled 定向 upsert、remove 定向刪除。
+ * 開機由 initWebhookStore() 載回（index.ts 於 listen 前呼叫）。
  */
 import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
+import type { Prisma } from '@prisma/client';
 import { dataFile } from '@/lib/data-dir';
+import { connectDb, DbWriteQueue } from '@/lib/db';
+import { env } from '@/config/env';
 import { logger } from '@/lib/logger';
 import type { WebhookEndpoint, WebhookEventType } from './webhook.types';
 
@@ -12,7 +16,9 @@ const STORE_FILE = dataFile('oa-agent-webhooks.json');
 
 const endpoints = new Map<string, WebhookEndpoint>();
 
-function persist(): void {
+const writeQueue = new DbWriteQueue('webhooks');
+
+function persistFile(): void {
   try {
     fs.writeFileSync(STORE_FILE, JSON.stringify([...endpoints.values()]));
   } catch (err) {
@@ -20,14 +26,40 @@ function persist(): void {
   }
 }
 
-try {
-  if (fs.existsSync(STORE_FILE)) {
-    const raw = JSON.parse(fs.readFileSync(STORE_FILE, 'utf-8')) as WebhookEndpoint[];
-    for (const e of raw) endpoints.set(e.id, e);
-    logger.info({ count: endpoints.size }, 'webhooks restored from disk');
+/** db 後端：upsert 單一端點（與 file 後端同語意：undefined 欄位序列化剔除） */
+function upsertEndpointToDb(e: WebhookEndpoint): void {
+  const data = JSON.parse(JSON.stringify(e)) as Prisma.InputJsonValue;
+  const row = { id: e.id, tenantId: e.tenantId, data, createdAt: new Date(e.createdAt) };
+  writeQueue.enqueue(async (db) => {
+    await db.webhookRow.upsert({ where: { id: row.id }, create: row, update: { data } });
+  });
+}
+
+// file 後端：模組載入即同步還原（沿用既有行為）
+if (env.DATA_BACKEND !== 'db') {
+  try {
+    if (fs.existsSync(STORE_FILE)) {
+      const raw = JSON.parse(fs.readFileSync(STORE_FILE, 'utf-8')) as WebhookEndpoint[];
+      for (const e of raw) endpoints.set(e.id, e);
+      logger.info({ count: endpoints.size }, 'webhooks restored from disk');
+    }
+  } catch (err) {
+    logger.warn({ err, file: STORE_FILE }, 'failed to restore webhooks; starting empty');
   }
-} catch (err) {
-  logger.warn({ err, file: STORE_FILE }, 'failed to restore webhooks; starting empty');
+}
+
+/**
+ * db 後端的開機載入。必須在開始服務請求前 await（index.ts listen 前）；file 後端為 no-op。
+ */
+export async function initWebhookStore(): Promise<void> {
+  if (env.DATA_BACKEND !== 'db') return;
+  const db = await connectDb();
+  const rows = await db.webhookRow.findMany();
+  for (const r of rows) {
+    const e = r.data as unknown as WebhookEndpoint;
+    endpoints.set(e.id, e);
+  }
+  logger.info({ count: endpoints.size }, 'webhooks restored from db');
 }
 
 export const webhookStore = {
@@ -47,7 +79,8 @@ export const webhookStore = {
       createdAt: new Date().toISOString(),
     };
     endpoints.set(endpoint.id, endpoint);
-    persist();
+    if (env.DATA_BACKEND === 'db') upsertEndpointToDb(endpoint);
+    else persistFile();
     return endpoint;
   },
 
@@ -59,7 +92,13 @@ export const webhookStore = {
     const e = endpoints.get(id);
     if (!e || e.tenantId !== tenantId) return false;
     endpoints.delete(id);
-    persist();
+    if (env.DATA_BACKEND === 'db') {
+      writeQueue.enqueue(async (db) => {
+        await db.webhookRow.deleteMany({ where: { id } });
+      });
+    } else {
+      persistFile();
+    }
     return true;
   },
 
@@ -71,7 +110,8 @@ export const webhookStore = {
     if (disabled) next.disabledAt = new Date().toISOString();
     else delete next.disabledAt;
     endpoints.set(id, next);
-    persist();
+    if (env.DATA_BACKEND === 'db') upsertEndpointToDb(next);
+    else persistFile();
     return next;
   },
 };

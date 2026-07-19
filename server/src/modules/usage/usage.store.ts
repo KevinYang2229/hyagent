@@ -1,11 +1,15 @@
 /**
- * 每租戶用量計數（MVP）：記憶體 Map ＋ 磁碟持久化，與其他 store 同款。
+ * 每租戶用量計數：記憶體 Map ＋ 可切換持久化後端（env.DATA_BACKEND）。
  *
  * 計數面向：對話建立數、訊息輪數、表單送出數、LLM/embedding token 數（按模型 × key 來源聚合）。
- * 之後接 Prisma / 計費系統時換掉這層即可（介面：increment / get）。
+ * 本質是聚合計數器（非事件流水），db 後端做「每租戶單列 upsert」：只重寫變動租戶那一列。
+ * 開機由 initUsageStore() 載回（index.ts 於 listen 前呼叫）。
  */
 import fs from 'node:fs';
+import type { Prisma } from '@prisma/client';
 import { dataFile } from '@/lib/data-dir';
+import { connectDb, DbWriteQueue } from '@/lib/db';
+import { env } from '@/config/env';
 import { logger } from '@/lib/logger';
 import type { LLMKeySource, LLMUsage } from '@/lib/llm/types';
 
@@ -33,7 +37,24 @@ export type UsageMetric = 'conversations' | 'messages' | 'submissions' | 'llmTok
 
 const usage = new Map<string, TenantUsage>();
 
-function persist(): void {
+const writeQueue = new DbWriteQueue('usage');
+
+/** 變更後呼叫：file 整包重寫；db 只 upsert 該租戶一列（計數器聚合，非事件流水） */
+function persist(tenantId: string): void {
+  if (env.DATA_BACKEND === 'db') {
+    const current = usage.get(tenantId);
+    if (!current) return;
+    // 快照於呼叫當下取定（與其他 store 同語意）
+    const data = JSON.parse(JSON.stringify(current)) as Prisma.InputJsonValue;
+    writeQueue.enqueue(async (db) => {
+      await db.tenantUsageRow.upsert({
+        where: { tenantId },
+        create: { tenantId, data },
+        update: { data },
+      });
+    });
+    return;
+  }
   try {
     fs.writeFileSync(STORE_FILE, JSON.stringify([...usage.entries()]));
   } catch (err) {
@@ -45,14 +66,29 @@ function empty(): TenantUsage {
   return { conversations: 0, messages: 0, submissions: 0, llmTokens: 0, embeddingTokens: 0, llmByModel: {} };
 }
 
-try {
-  if (fs.existsSync(STORE_FILE)) {
-    const raw = JSON.parse(fs.readFileSync(STORE_FILE, 'utf-8')) as [string, Partial<TenantUsage>][];
-    // 磁碟上的舊紀錄沒有新欄位（embeddingTokens / llmByModel），用 empty() 補齊正規化
-    for (const [k, v] of raw) usage.set(k, { ...empty(), ...v });
+// file 後端：模組載入即同步還原（沿用既有行為）
+if (env.DATA_BACKEND !== 'db') {
+  try {
+    if (fs.existsSync(STORE_FILE)) {
+      const raw = JSON.parse(fs.readFileSync(STORE_FILE, 'utf-8')) as [string, Partial<TenantUsage>][];
+      // 磁碟上的舊紀錄沒有新欄位（embeddingTokens / llmByModel），用 empty() 補齊正規化
+      for (const [k, v] of raw) usage.set(k, { ...empty(), ...v });
+    }
+  } catch (err) {
+    logger.warn({ err, file: STORE_FILE }, 'failed to restore usage; starting empty');
   }
-} catch (err) {
-  logger.warn({ err, file: STORE_FILE }, 'failed to restore usage; starting empty');
+}
+
+/**
+ * db 後端的開機載入：連 DB、還原各租戶計數（舊列缺新欄位同樣以 empty() 補齊）。
+ * 必須在開始服務請求前 await（index.ts listen 前）；file 後端為 no-op。
+ */
+export async function initUsageStore(): Promise<void> {
+  if (env.DATA_BACKEND !== 'db') return;
+  const db = await connectDb();
+  const rows = await db.tenantUsageRow.findMany();
+  for (const r of rows) usage.set(r.tenantId, { ...empty(), ...(r.data as Partial<TenantUsage>) });
+  logger.info({ tenants: usage.size }, 'usage restored from db');
 }
 
 function bucket(u: TenantUsage, model: string, keySource: LLMKeySource): ModelTokenUsage {
@@ -65,7 +101,7 @@ export const usageStore = {
     const current = usage.get(tenantId) ?? empty();
     current[metric] += by;
     usage.set(tenantId, current);
-    persist();
+    persist(tenantId);
   },
 
   /** result 直接餵 LLMResult 即可（provider 已蓋 model/keySource 戳記） */
@@ -86,7 +122,7 @@ export const usageStore = {
       b.cacheReadTokens += llmUsage.cacheReadTokens ?? 0;
     }
     usage.set(tenantId, current);
-    persist();
+    persist(tenantId);
   },
 
   recordEmbeddingUsage(tenantId: string, tokens: number, model: string, keySource: LLMKeySource): void {
@@ -95,7 +131,7 @@ export const usageStore = {
     current.embeddingTokens += tokens;
     bucket(current, model, keySource).inputTokens += tokens;
     usage.set(tenantId, current);
-    persist();
+    persist(tenantId);
   },
 
   get(tenantId: string): TenantUsage {
