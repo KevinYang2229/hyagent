@@ -180,33 +180,55 @@ export default function BundlesSection({
               onChange={(e) => setDraft((d) => (d ? { ...d, description: e.target.value } : d))}
             />
           </div>
-          {scopeGroups.map((g) => (
-            <div key={g.label}>
-              <div className="row-sub" style={{ marginBottom: 4 }}>{g.label}</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-                {g.items.map((s) => (
-                  <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                    <Checkbox
-                      checked={draft.scopes.includes(s.id)}
-                      onChange={() =>
-                        setDraft((d) =>
-                          d
-                            ? {
-                                ...d,
-                                scopes: d.scopes.includes(s.id)
-                                  ? d.scopes.filter((x) => x !== s.id)
-                                  : [...d.scopes, s.id],
-                              }
-                            : d,
-                        )
-                      }
-                    />
-                    <span style={{ fontSize: 13.5 }}>{s.label}</span>
-                  </label>
-                ))}
+          {scopeGroups.map((g) => {
+            // 表單掛在「填表申請」skill 底下：service:form 沒勾時 form:* 是死授權，鎖住避免誤設
+            const isFormGroup = g.label === '表單';
+            const hasFormService = draft.scopes.includes('service:form');
+            const groupDisabled = isFormGroup && !hasFormService;
+            return (
+              <div key={g.label}>
+                <div className="row-sub" style={{ marginBottom: 4 }}>
+                  {g.label}
+                  {groupDisabled && (
+                    <span style={{ marginLeft: 6 }}>（需先勾選「填表申請」服務）</span>
+                  )}
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, opacity: groupDisabled ? 0.45 : 1 }}>
+                  {g.items.map((s) => (
+                    <label
+                      key={s.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        cursor: groupDisabled ? 'not-allowed' : 'pointer',
+                      }}
+                    >
+                      <Checkbox
+                        checked={draft.scopes.includes(s.id)}
+                        disabled={groupDisabled}
+                        onChange={() =>
+                          setDraft((d) => {
+                            if (!d) return d;
+                            const checked = d.scopes.includes(s.id);
+                            let scopes = checked
+                              ? d.scopes.filter((x) => x !== s.id)
+                              : [...d.scopes, s.id];
+                            // 取消「填表申請」時連動清掉已勾的表單（不留死授權）
+                            if (s.id === 'service:form' && checked) {
+                              scopes = scopes.filter((x) => !x.startsWith('form:'));
+                            }
+                            return { ...d, scopes };
+                          })
+                        }
+                      />
+                      <span style={{ fontSize: 13.5 }}>{s.label}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
           <div style={{ display: 'flex', gap: 8 }}>
             <button className="btn btn-primary btn-sm" onClick={saveDraft} disabled={!draft.name.trim()}>
               完成
