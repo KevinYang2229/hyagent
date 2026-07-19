@@ -1090,8 +1090,10 @@ textarea::placeholder {
   }
 }
 
-@layer base {
-  :root[data-theme="light"] {
+/* 手動主題（<html data-theme>）必須「未分層」：上方系統偏好（@media prefers-color-scheme）
+   的覆寫是未分層樣式，若把這兩塊包進 @layer base 會永遠輸給未分層規則，
+   造成「系統淺色時手動切深色無效」。 */
+:root[data-theme="light"] {
     --bg-color: #e7edf2;
     --bg-color-rgb: 241, 245, 249;
     --sidebar-bg: #ffffff;
@@ -1196,7 +1198,6 @@ textarea::placeholder {
     --color-bg: var(--bg-color);
     --color-text: var(--text-primary);
   }
-}
 
 body {
   /* 原為 dashboard 置中（flex h-screen items-center justify-center overflow-hidden），
