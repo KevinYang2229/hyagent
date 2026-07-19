@@ -108,7 +108,7 @@ export default function TenantDetailPage() {
           {tab === 'permissions' && <PermissionsTab tenantId={tenant.id} onError={handleErr} />}
           {tab === 'settings' && <SettingsTab tenant={tenant} onSaved={handleSaved} onError={handleErr} />}
           {tab === 'webhook' && <WebhookTab tenantId={tenant.id} onError={handleErr} />}
-          {tab === 'usage' && <UsageTab tenantId={tenant.id} onError={handleErr} />}
+          {tab === 'usage' && <UsageTab tenant={tenant} onError={handleErr} />}
           {tab === 'audit' && <AuditTab tenantId={tenant.id} onError={handleErr} />}
         </>
       )}

@@ -1,13 +1,14 @@
 import { lazy, Suspense, useEffect, useState, type CSSProperties } from 'react';
-import { api, type Usage } from '../../api';
+import { api, type Tenant, type Usage } from '../../api';
 
 const TokenGauge = lazy(() => import('../../components/TokenGauge'));
 
 const th: CSSProperties = { textAlign: 'left', padding: '8px 10px', borderBottom: '1px solid var(--border-color)', fontWeight: 500, whiteSpace: 'nowrap' };
 const td: CSSProperties = { padding: '6px 10px', borderBottom: '1px solid var(--border-color)', verticalAlign: 'top' };
 
-export default function UsageTab({ tenantId, onError }: { tenantId: string; onError: (e: unknown) => void }) {
+export default function UsageTab({ tenant, onError }: { tenant: Tenant; onError: (e: unknown) => void }) {
   const [usage, setUsage] = useState<Usage | null>(null);
+  const tenantId = tenant.id;
 
   useEffect(() => {
     let cancelled = false;
@@ -36,8 +37,49 @@ export default function UsageTab({ tenantId, onError }: { tenantId: string; onEr
     { label: '送出數', value: usage.submissions ?? 0 },
   ];
 
+  // 本月用量 vs 配額（配額守門對照的是月度分桶，不是 lifetime 累計）
+  const month = new Date().toISOString().slice(0, 7);
+  const monthUsed = usage.monthlyLlmTokens?.[month] ?? 0;
+  const quota = tenant.quotaMonthlyLlmTokens ?? 0;
+  const quotaPct = quota > 0 ? Math.min(100, (monthUsed / quota) * 100) : 0;
+
   return (
     <div style={{ display: 'grid', gap: 16 }}>
+      <div className="card">
+        <div className="card-head">
+          <div>
+            <div className="card-title">本月 AI 用量（{month}）</div>
+            <div className="card-desc">
+              {quota > 0
+                ? `${monthUsed.toLocaleString()} / ${quota.toLocaleString()} tokens（${quotaPct.toFixed(1)}%）；達上限時對話 API 回 429`
+                : `${monthUsed.toLocaleString()} tokens；未設配額（不限），可於「設定」頁設定月度上限`}
+            </div>
+          </div>
+        </div>
+        {quota > 0 && (
+          <div className="card-body">
+            <div
+              style={{
+                height: 8,
+                borderRadius: 4,
+                background: 'var(--border-color)',
+                overflow: 'hidden',
+              }}
+            >
+              <div
+                style={{
+                  width: `${quotaPct}%`,
+                  height: '100%',
+                  borderRadius: 4,
+                  background: quotaPct >= 90 ? '#dc2626' : quotaPct >= 70 ? '#d97706' : 'var(--primary-color, #2563eb)',
+                  transition: 'width .3s',
+                }}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+
       <Suspense fallback={<div className="card"><div className="empty">載入圖表…</div></div>}>
         <TokenGauge tokens={usage.llmTokens ?? 0} />
       </Suspense>

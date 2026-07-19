@@ -76,6 +76,8 @@ export interface Usage {
   llmTokens: number;
   embeddingTokens?: number;
   llmByModel?: Record<string, ModelTokenUsage>;
+  /** 月度分桶：key = 'YYYY-MM'（LLM+embedding 合計；配額對照這個值） */
+  monthlyLlmTokens?: Record<string, number>;
   cost?: UsageCost;
 }
 
