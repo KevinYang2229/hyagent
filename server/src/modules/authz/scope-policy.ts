@@ -10,9 +10,23 @@ import { connectDb, DbWriteQueue } from '@/lib/db';
 import { env } from '@/config/env';
 import { logger } from '@/lib/logger';
 
+/** 能力套餐：具名的 scope 集合，可指派給部門/帳號（定義一次、指派多處、改一次全生效） */
+export interface SkillBundle {
+  id: string;
+  name: string;
+  description?: string;
+  scopes: string[];
+}
+
 export interface TenantPolicy {
-  groups: Record<string, string[]>; // 部門 → scopes
-  accounts: Record<string, string[]>; // userId → scopes
+  groups: Record<string, string[]>; // 部門 → 零散 scopes
+  accounts: Record<string, string[]>; // userId → 零散 scopes
+  /** 套餐定義（每租戶一組）；選填＝舊資料相容 */
+  bundles?: SkillBundle[];
+  /** 部門 → 套餐 ids */
+  groupBundles?: Record<string, string[]>;
+  /** userId → 套餐 ids */
+  accountBundles?: Record<string, string[]>;
 }
 
 const STORE_FILE = dataFile('oa-agent-scope-policy.json');
@@ -55,7 +69,20 @@ function clone(p: TenantPolicy): TenantPolicy {
   // 深複製內層陣列，避免外部改動污染 store
   const copyMap = (m: Record<string, string[]>): Record<string, string[]> =>
     Object.fromEntries(Object.entries(m).map(([k, v]) => [k, [...v]]));
-  return { groups: copyMap(p.groups), accounts: copyMap(p.accounts) };
+  return {
+    groups: copyMap(p.groups),
+    accounts: copyMap(p.accounts),
+    ...(p.bundles ? { bundles: p.bundles.map((b) => ({ ...b, scopes: [...b.scopes] })) } : {}),
+    ...(p.groupBundles ? { groupBundles: copyMap(p.groupBundles) } : {}),
+    ...(p.accountBundles ? { accountBundles: copyMap(p.accountBundles) } : {}),
+  };
+}
+
+/** 展開套餐 ids → scopes（未知 id 靜默忽略，防呆） */
+function expandBundles(p: TenantPolicy | undefined, bundleIds: string[]): string[] {
+  if (!p?.bundles || bundleIds.length === 0) return [];
+  const byId = new Map(p.bundles.map((b) => [b.id, b.scopes]));
+  return bundleIds.flatMap((id) => byId.get(id) ?? []);
 }
 
 const EMPTY: TenantPolicy = { groups: {}, accounts: {} };
@@ -67,6 +94,17 @@ export const scopePolicy = {
   },
   accountScopes(tenantId: string, userId: string): string[] {
     return policies.get(tenantId)?.accounts[userId] ?? [];
+  },
+  /** 部門被指派套餐的展開 scopes */
+  groupBundleScopes(tenantId: string, department?: string): string[] {
+    if (!department) return [];
+    const p = policies.get(tenantId);
+    return expandBundles(p, p?.groupBundles?.[department] ?? []);
+  },
+  /** 帳號被指派套餐的展開 scopes */
+  accountBundleScopes(tenantId: string, userId: string): string[] {
+    const p = policies.get(tenantId);
+    return expandBundles(p, p?.accountBundles?.[userId] ?? []);
   },
   /** 取某租戶政策複本（admin 讀取用）。 */
   getPolicy(tenantId: string): TenantPolicy {

@@ -60,6 +60,19 @@ export const putPolicySchema = z.object({
   grantedScopes: z.array(z.string()),
   groups: z.record(z.string(), z.array(z.string())),
   accounts: z.record(z.string(), z.array(z.string())),
+  // 能力套餐：定義 + 部門/帳號指派；default 讓舊版 admin 的 PUT body 向後相容
+  bundles: z
+    .array(
+      z.object({
+        id: z.string().trim().min(1),
+        name: z.string().trim().min(1),
+        description: z.string().optional(),
+        scopes: z.array(z.string()),
+      }),
+    )
+    .default([]),
+  groupBundles: z.record(z.string(), z.array(z.string())).default({}),
+  accountBundles: z.record(z.string(), z.array(z.string())).default({}),
 });
 export type PutPolicyInput = z.infer<typeof putPolicySchema>;
 

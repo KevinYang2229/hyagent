@@ -19,5 +19,17 @@ export function resolveScopes(principal: ScopePrincipal): string[] {
   const department = getApplicant(userId).department;
   const groupScopes = scopePolicy.groupScopes(tenantId, department);
   const accountScopes = scopePolicy.accountScopes(tenantId, userId);
-  return [...new Set([...BASE_SCOPE_IDS, ...tenantScopes, ...groupScopes, ...accountScopes])];
+  // 套餐（bundle）展開：部門/帳號被指派的具名 scope 集合，與零散 scope 聯集
+  const groupBundleScopes = scopePolicy.groupBundleScopes(tenantId, department);
+  const accountBundleScopes = scopePolicy.accountBundleScopes(tenantId, userId);
+  return [
+    ...new Set([
+      ...BASE_SCOPE_IDS,
+      ...tenantScopes,
+      ...groupScopes,
+      ...accountScopes,
+      ...groupBundleScopes,
+      ...accountBundleScopes,
+    ]),
+  ];
 }

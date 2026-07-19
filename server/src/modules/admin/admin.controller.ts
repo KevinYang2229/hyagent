@@ -154,6 +154,9 @@ export const adminController = {
         grantedScopes: prune(tenant.grantedScopes ?? []),
         groups: Object.fromEntries(Object.entries(policy.groups).map(([k, v]) => [k, prune(v)])),
         accounts: Object.fromEntries(Object.entries(policy.accounts).map(([k, v]) => [k, prune(v)])),
+        bundles: (policy.bundles ?? []).map((b) => ({ ...b, scopes: prune(b.scopes) })),
+        groupBundles: policy.groupBundles ?? {},
+        accountBundles: policy.accountBundles ?? {},
         departments: listDepartments(),
         users: listUserIds().map((id) => ({ id, label: getApplicant(id).name })),
       },
@@ -167,9 +170,30 @@ export const adminController = {
     assertGrantableScopes(body.grantedScopes, tenant.id);
     for (const scopes of Object.values(body.groups)) assertGrantableScopes(scopes, tenant.id);
     for (const scopes of Object.values(body.accounts)) assertGrantableScopes(scopes, tenant.id);
+    // 套餐守門：內容物同樣限 grantable；id 不可重複；指派只能引用已定義的套餐
+    // （fallback：zod default 只在走 validate middleware 時生效，直呼端防禦性補齊）
+    const bundles = body.bundles ?? [];
+    const groupBundles = body.groupBundles ?? {};
+    const accountBundles = body.accountBundles ?? {};
+    for (const b of bundles) assertGrantableScopes(b.scopes, tenant.id);
+    const bundleIds = new Set(bundles.map((b) => b.id));
+    if (bundleIds.size !== bundles.length) {
+      throw AppError.badRequest('套餐 id 不可重複');
+    }
+    for (const ids of [...Object.values(groupBundles), ...Object.values(accountBundles)]) {
+      for (const id of ids) {
+        if (!bundleIds.has(id)) throw AppError.badRequest(`指派了未定義的套餐：${id}`);
+      }
+    }
 
     tenantStore.updateTenant(tenant.id, { grantedScopes: body.grantedScopes });
-    scopePolicy.setPolicy(tenant.id, { groups: body.groups, accounts: body.accounts });
+    scopePolicy.setPolicy(tenant.id, {
+      groups: body.groups,
+      accounts: body.accounts,
+      bundles,
+      groupBundles,
+      accountBundles,
+    });
 
     const policy = scopePolicy.getPolicy(tenant.id);
     res.status(200).json({
@@ -178,6 +202,9 @@ export const adminController = {
         grantedScopes: body.grantedScopes,
         groups: policy.groups,
         accounts: policy.accounts,
+        bundles: policy.bundles ?? [],
+        groupBundles: policy.groupBundles ?? {},
+        accountBundles: policy.accountBundles ?? {},
         departments: listDepartments(),
         users: listUserIds().map((id) => ({ id, label: getApplicant(id).name })),
       },
