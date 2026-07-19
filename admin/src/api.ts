@@ -34,6 +34,8 @@ export interface Tenant {
   ssoSecret?: string;
   appearance?: TenantAppearance;
   grantedScopes?: string[];
+  /** 月度 LLM token 配額；0 或未設＝不限 */
+  quotaMonthlyLlmTokens?: number;
   createdAt: string;
 }
 export interface ApiKey {
@@ -207,7 +209,7 @@ export const api = {
     req<{ tenant: Tenant; publishableKey: string }>('POST', '/admin/tenants', input),
   updateTenant: (
     id: string,
-    patch: Partial<Pick<Tenant, 'name' | 'allowedOrigins' | 'ssoSecret' | 'appearance'>>,
+    patch: Partial<Pick<Tenant, 'name' | 'allowedOrigins' | 'ssoSecret' | 'appearance' | 'quotaMonthlyLlmTokens'>>,
   ) => req<Tenant>('PATCH', `/admin/tenants/${id}`, patch),
   deleteTenant: (id: string) => req<{ id: string }>('DELETE', `/admin/tenants/${id}`),
   listScopes: () => req<ScopeDef[]>('GET', '/admin/scopes'),

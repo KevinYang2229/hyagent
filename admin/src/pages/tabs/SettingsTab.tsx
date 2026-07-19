@@ -14,6 +14,9 @@ export default function SettingsTab({
   const [name, setName] = useState(tenant.name);
   const [origins, setOrigins] = useState((tenant.allowedOrigins ?? []).join('\n'));
   const [ssoSecret, setSsoSecret] = useState('');
+  const [quota, setQuota] = useState(
+    tenant.quotaMonthlyLlmTokens ? String(tenant.quotaMonthlyLlmTokens) : '',
+  );
   const [busy, setBusy] = useState(false);
   const [newKeys, setNewKeys] = useState<ApiKey[]>([]);
 
@@ -76,6 +79,8 @@ export default function SettingsTab({
       const allowedOrigins = origins.split('\n').map((s) => s.trim()).filter(Boolean);
       const patch: Parameters<typeof api.updateTenant>[1] = { name: name.trim(), allowedOrigins };
       if (ssoSecret.trim().length >= 16) patch.ssoSecret = ssoSecret.trim();
+      // 空字串或 0 = 不限（送 0 以清除既有配額）
+      patch.quotaMonthlyLlmTokens = quota.trim() === '' ? 0 : Math.max(0, Number(quota) || 0);
       await api.updateTenant(tenant.id, patch);
       setSsoSecret('');
       onSaved();
@@ -131,6 +136,21 @@ export default function SettingsTab({
               value={ssoSecret}
               onChange={(e) => setSsoSecret(e.target.value)}
               placeholder={tenant.ssoSecret ? '已設定，輸入以覆蓋' : '未設定'}
+            />
+          </div>
+
+          <div className="field">
+            <label className="field-label">月度 AI Token 配額</label>
+            <span className="field-hint">
+              LLM＋embedding 合計；留空或 0＝不限。超過當月配額時對話 API 回 429。
+            </span>
+            <input
+              className="input"
+              type="number"
+              min={0}
+              value={quota}
+              onChange={(e) => setQuota(e.target.value)}
+              placeholder="例：1000000（100 萬 tokens／月）"
             />
           </div>
 
