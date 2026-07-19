@@ -8,8 +8,10 @@
 - `Dockerfile.admin` → **admin 服務**（管理後台，Vite 靜態網站，nginx 提供）
 - `Dockerfile.presale-tenant` →（選用）**presale demo 服務**（模擬租戶網站 + SSO 免登入，展示用）
 
-> 目前 MVP 的 server runtime 只用到 Anthropic SDK / Express 那批套件，**還沒接 Postgres / Redis**，
-> 所以這版不需要建立資料庫服務。等程式碼真的接 DB / 佇列時，再到同一個 Project 一鍵加 PostgreSQL / Redis。
+> server 支援 `DATA_BACKEND=db`（Postgres write-through，涵蓋全部 8 個 runtime store）。
+> **正式環境建議開啟**：容器檔案系統重新部署即歸零，`file` 後端的租戶 / 金鑰資料會跟著消失。
+> 在 server 服務的環境變數設 `DATA_BACKEND=db` 與 `DATABASE_URL`（外部 Supabase 連線字串，
+> 或同 Project 一鍵加的 PostgreSQL）。不設則沿用 `file`，行為與先前版本相同。Redis 仍未使用。
 
 ---
 

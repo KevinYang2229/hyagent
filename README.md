@@ -168,11 +168,13 @@ schemas/<formId>/*.json         六層表單 Definition（前後端共用單一�
 - ✅ schema-driven 引擎、對話 slot-filling、Claude 抽象、OA stub、確認送出、REST
 - ✅ React 前端：對話畫面 + schema-driven 表單（依 `field.component` 渲染、依 `layout` 分組／多步驟、送出前可編輯）
 - ✅ 多表單（請假／國內出差／外出登記）、workflow 簽核關卡狀態（Demo 以時間自動推進）
-- 🔜 延後（架構留 seam）：表單 Designer、真 OA HTTP 連接器（含真實簽核狀態查詢）、Prisma 持久化、OpenAI provider、報告產出
+- ✅ 持久化後端切換：`DATA_BACKEND=db`（Prisma + Postgres/Supabase）涵蓋全部 8 個 runtime store（tenant / sessions / submissions / usage / audit / forms / scope-policy / webhooks）
+- 🔜 延後（架構留 seam）：表單 Designer、真 OA HTTP 連接器（含真實簽核狀態查詢）、知識庫索引上 pgvector、OpenAI provider、報告產出
 
 ## 可抽換層
 
 - LLM：`LLM_PROVIDER`（目前 `anthropic`）— 換廠商只要新增 `lib/llm/<x>.provider.ts`
 - 地端模型：`LLM_PROVIDER=local` + `LLM_BASE_URL` 指向自架 OpenAI 相容端點（vLLM / Ollama），資料不出機房；embedding 另以 `EMBEDDING_PROVIDER=local` + `EMBEDDING_BASE_URL` 地端化。選地端時絕不 fallback 回雲端。租戶亦可於後台「AI 模型」選「地端」（沿用部署層端點，租戶不自帶 URL）。
 - 租戶 BYO key：每租戶可自帶 OpenAI / Anthropic API key 與 provider/model（`llmConfig`），未設定 fallback 平台 env 金鑰；用量按「模型 × key 來源」歸戶（`/api/admin/tenants/:id/usage` 含預估成本）。設定入口：sk_ 自助 `PUT /api/tenant/llm-config` 或 admin 後台「AI 模型」卡片。
+- 持久化：`DATA_BACKEND`（`file` / `db`）— `file` 為記憶體 + JSON 檔（dev 預設）；`db` 為記憶體 + Postgres write-through（Prisma，`DATABASE_URL` 必填、boot fail-fast），涵蓋全部 8 個 runtime store（audit 於 DB 留全史、其餘與 file 同語意），store 介面不變；知識庫索引（pgvector）另案。DDL 見 `server/db/migrations/`。
 - OA：`OA_CONNECTOR`（`stub` / `http`）— `http` 連接器骨架已就緒（[`lib/oa/http.connector.ts`](server/src/lib/oa/http.connector.ts)）；切到 `http` 需設 `OA_BASE_URL`（boot 時 fail-fast 檢查）。真 OA 規格到位後只需調整檔內三個「對接點」（端點路徑 / request body 映射 / 回應映射）
