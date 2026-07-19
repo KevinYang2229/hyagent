@@ -36,7 +36,7 @@ export function createApp(): Express {
     env.CORS_ORIGIN === '*'
       ? '*'
       : env.CORS_ORIGIN.split(',')
-          .map((s) => s.trim())
+          .map((s) => s.trim().replace(/\/+$/, ''))
           .filter(Boolean);
   app.use(
     cors((req, callback) => {
