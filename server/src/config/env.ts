@@ -16,6 +16,12 @@ export const envSchema = z.object({
   DATA_BACKEND: z.enum(['file', 'db']).default('file'),
   // DATA_BACKEND=db 時必填（Supabase 建議用 session pooler；transaction pooler 需加 ?pgbouncer=true）
   DATABASE_URL: z.string().optional(),
+  // 敏感欄位靜態加密金鑰（BYO LLM key / ssoSecret）：64 hex（openssl rand -hex 32）。
+  // 未設＝明文落地（dev 便利）；設定後新寫入即加密，舊明文資料開機自動補加密。
+  DATA_ENCRYPTION_KEY: z
+    .string()
+    .regex(/^[0-9a-f]{64}$/i, 'DATA_ENCRYPTION_KEY must be 64 hex chars (openssl rand -hex 32)')
+    .optional(),
 
   JWT_ACCESS_SECRET: z.string().min(32).default(DEV_JWT_ACCESS_SECRET),
   JWT_REFRESH_SECRET: z.string().min(32).default(DEV_JWT_REFRESH_SECRET),

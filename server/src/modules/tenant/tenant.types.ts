@@ -12,7 +12,10 @@ import type { TenantLLMConfig } from '@/lib/llm/types';
 export type ApiKeyType = 'publishable' | 'secret';
 
 export interface ApiKey {
-  /** 完整金鑰字串：pk_... 或 sk_...（MVP 以明文比對；接 DB 後改存雜湊） */
+  /**
+   * 金鑰的 sha256 雜湊（hex）；原始 pk_/sk_ 字串只在 createApiKey 回傳值出現一次，不落地。
+   * 驗證走 tenantStore.getApiKey(raw)（內部雜湊後比對）。
+   */
   key: string;
   tenantId: string;
   type: ApiKeyType;
