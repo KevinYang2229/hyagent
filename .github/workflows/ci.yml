@@ -1,0 +1,35 @@
+# CI：push / PR 到 main 時跑 typecheck + 全部測試 + lint。
+# 注意：Zeabur 的 CD 不看 CI 結果（push 即部署），CI 紅了代表線上很可能也是壞的，請立即處理。
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: 安裝依賴（monorepo 全 workspace）
+        run: npm ci
+
+      - name: Prisma client 生成（server typecheck 依賴生成型別）
+        run: npm run db:generate -w server
+
+      - name: Typecheck（ui / sdk / server / client / admin）
+        run: npm run typecheck
+
+      - name: 測試（server jest + admin/client vitest）
+        run: npm test
+
+      - name: Lint
+        run: npm run lint
