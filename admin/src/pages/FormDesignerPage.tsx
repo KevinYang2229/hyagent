@@ -300,7 +300,7 @@ export default function FormDesignerPage() {
       const def = toDefinition(draft);
       if (isNew) await api.createForm(id, def);
       else await api.updateForm(id, formId, def);
-      navigate(`/tenants/${id}`);
+      navigate(`/tenants/${id}?tab=forms`);
     } catch (e) {
       setErr((e as { message?: string }).message ?? '儲存失敗');
       const maybe = e as { details?: { field: string; message: string }[] };
@@ -368,7 +368,7 @@ export default function FormDesignerPage() {
       title={isNew ? '新增表單' : `編輯：${draft.title || formId}`}
       actions={
         <div className="designer-actions">
-          <button className="btn btn-ghost btn-sm" onClick={() => navigate(`/tenants/${id}`)}>
+          <button className="btn btn-ghost btn-sm" onClick={() => navigate(`/tenants/${id}?tab=forms`)}>
             返回
           </button>
           <input

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useToast } from '@oa-agent/ui';
 import { api, UnauthorizedError, type Tenant } from '../api';
 import { useAuth } from '../auth';
@@ -40,7 +40,11 @@ export default function TenantDetailPage() {
   const navigate = useNavigate();
   const toast = useToast();
   const [tenant, setTenant] = useState<Tenant | null>(null);
-  const [tab, setTab] = useState<TabKey>('settings');
+  // 分頁狀態同步到網址（?tab=...）：重整/分享連結停留在原分頁，不再重置回第一頁
+  const [searchParams, setSearchParams] = useSearchParams();
+  const rawTab = searchParams.get('tab');
+  const tab: TabKey = TABS.some((t) => t.key === rawTab) ? (rawTab as TabKey) : 'settings';
+  const setTab = (next: TabKey) => setSearchParams({ tab: next }, { replace: true });
 
   const handleErr = useCallback(
     (e: unknown) => {
