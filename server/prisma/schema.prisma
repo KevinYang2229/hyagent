@@ -56,6 +56,22 @@ model SubmissionRow {
   @@map("submissions")
 }
 
+model AttachmentRow {
+  id        String   @id
+  sessionId String   @map("session_id")
+  name      String
+  mime      String
+  size      Int
+  /// 檔案二進位內容。表單附件單檔上限 10MB；量大時改接 S3/R2（attachment.store 為唯一接縫）
+  content   Bytes
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // 不設 FK 到 sessions：insert 與 session upsert 分屬不同寫入佇列、順序無保證；
+  // 孤兒列由 session 清理作業一併回收
+  @@index([sessionId])
+  @@map("attachments")
+}
+
 model TenantUsageRow {
   tenantId  String   @id @map("tenant_id")
   /// 整個 TenantUsage 聚合計數（counters + llmByModel buckets）

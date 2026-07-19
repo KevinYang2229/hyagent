@@ -1,14 +1,20 @@
 /**
- * 附件儲存區（MVP）：記憶體 Map，保管上傳檔案的「二進位內容」。
+ * 附件儲存區：記憶體 Map（metadata + 二進位內容）＋ db 模式 write-through。
  *
  * 設計取捨：
- * - 表單值（session.values.attachments）只存輕量 metadata（id/name/mime/size），會隨
- *   conversation.store 持久化到磁碟 JSON；檔案 bytes 不該進那份 JSON，故獨立放這裡。
- * - 純記憶體：dev 重啟會清空（與真實 OA 串接時改為磁碟／S3／物件儲存只換這層即可）。
+ * - 表單值（session.values.attachments）只存輕量 metadata（id/name/mime/size），隨
+ *   conversation.store 持久化；檔案 bytes 不該進那份 JSON，獨立放這裡。
+ * - db 模式：bytes 同步寫入 Postgres attachments 表（write-through），重啟/重佈後檔案
+ *   仍在——供將來真 OA 送出時取用。單檔上限 10MB（upload middleware 守），量大改接
+ *   S3/R2 時只換這層。孤兒列（session 已清）由 conversation.store 的清理作業回收。
+ * - 讀取（get）維持記憶體：目前無任何呼叫端讀 bytes；真 OA 串接需要跨重啟讀檔時，
+ *   把 get 改成 async 從 DB 撈即可（介面接縫已留）。
  * - 以 sessionId 分群，方便對話取消／送出後一次清掉該對話的所有暫存附件。
  */
 import { randomUUID } from 'node:crypto';
 import type { Attachment } from '@oa-agent/shared';
+import { DbWriteQueue } from '@/lib/db';
+import { env } from '@/config/env';
 
 export type { Attachment };
 
@@ -19,6 +25,8 @@ interface StoredAttachment extends Attachment {
 }
 
 const files = new Map<string, StoredAttachment>();
+
+const writeQueue = new DbWriteQueue('attachments');
 
 export const attachmentStore = {
   /** 存入一個檔案，回傳對外的 metadata（不含 buffer） */
@@ -36,6 +44,20 @@ export const attachmentStore = {
       buffer: input.buffer,
     };
     files.set(id, stored);
+    if (env.DATA_BACKEND === 'db') {
+      writeQueue.enqueue(async (db) => {
+        await db.attachmentRow.create({
+          data: {
+            id,
+            sessionId,
+            name: stored.name,
+            mime: stored.mime,
+            size: stored.size,
+            content: stored.buffer,
+          },
+        });
+      });
+    }
     return toMeta(stored);
   },
 
@@ -50,6 +72,11 @@ export const attachmentStore = {
   remove(sessionId: string, id: string): boolean {
     const item = files.get(id);
     if (!item || item.sessionId !== sessionId) return false;
+    if (env.DATA_BACKEND === 'db') {
+      writeQueue.enqueue(async (db) => {
+        await db.attachmentRow.deleteMany({ where: { id, sessionId } });
+      });
+    }
     return files.delete(id);
   },
 
@@ -57,6 +84,11 @@ export const attachmentStore = {
   clearSession(sessionId: string): void {
     for (const [id, item] of files) {
       if (item.sessionId === sessionId) files.delete(id);
+    }
+    if (env.DATA_BACKEND === 'db') {
+      writeQueue.enqueue(async (db) => {
+        await db.attachmentRow.deleteMany({ where: { sessionId } });
+      });
     }
   },
 };
