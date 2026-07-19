@@ -22,7 +22,8 @@ export default function AppLayout({
   const { logout } = useAuth();
   const navigate = useNavigate();
   const loc = useLocation();
-  const onTenants = loc.pathname === '/' || loc.pathname.startsWith('/tenants');
+  const onTenants =
+    (loc.pathname === '/' || loc.pathname.startsWith('/tenants')) && loc.pathname !== '/skills';
   const [navOpen, setNavOpen] = useState(false);
   const [theme, setTheme] = useState<Theme>(getTheme());
 
@@ -63,6 +64,19 @@ export default function AppLayout({
           >
             <IconTenants className="nav-ico" />
             租戶
+          </div>
+        </nav>
+
+        <div className="nav-label">平台</div>
+        <nav className="nav">
+          <div
+            className={`nav-item${loc.pathname === '/skills' ? ' active' : ''}`}
+            onClick={() => go('/skills')}
+            role="button"
+            tabIndex={0}
+          >
+            <IconTenants className="nav-ico" />
+            Skill Library
           </div>
         </nav>
 

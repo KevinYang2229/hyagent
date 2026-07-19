@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from './auth';
 import LoginPage from './pages/LoginPage';
 import TenantsPage from './pages/TenantsPage';
 import TenantDetailPage from './pages/TenantDetailPage';
+import SkillsPage from './pages/SkillsPage';
 import FormDesignerPage from './pages/FormDesignerPage';
 
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -42,6 +43,14 @@ export default function App() {
             element={
               <RequireAuth>
                 <FormDesignerPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/skills"
+            element={
+              <RequireAuth>
+                <SkillsPage />
               </RequireAuth>
             }
           />

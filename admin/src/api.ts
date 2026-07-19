@@ -203,6 +203,25 @@ export interface TenantPolicyView {
   capabilities: ScopeDef[];
 }
 
+export interface SkillIntentSummary {
+  id: string;
+  description: string;
+  keywords: string[];
+}
+export interface SkillDescriptor {
+  id: string;
+  label: string;
+  description: string;
+  sticky: boolean;
+  alwaysEnabled: boolean;
+  requiredScope?: string;
+  intents: SkillIntentSummary[];
+}
+export interface SkillLibraryView {
+  skills: SkillDescriptor[];
+  tenants: { id: string; name: string; disabledServices: string[] }[];
+}
+
 export const api = {
   login: (password: string) => req<{ token: string }>('POST', '/admin/auth/login', { password }),
 
@@ -215,6 +234,7 @@ export const api = {
   ) => req<Tenant>('PATCH', `/admin/tenants/${id}`, patch),
   deleteTenant: (id: string) => req<{ id: string }>('DELETE', `/admin/tenants/${id}`),
   listScopes: () => req<ScopeDef[]>('GET', '/admin/scopes'),
+  listSkills: () => req<SkillLibraryView>('GET', '/admin/skills'),
   getTenantPolicy: (id: string) => req<TenantPolicyView>('GET', `/admin/tenants/${id}/policy`),
   putTenantPolicy: (
     id: string,
