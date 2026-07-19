@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth';
 import { applyTheme, getTheme, type Theme } from '../theme';
 import { IconLogout, IconTenants } from './icons';
+import pkg from '../../package.json';
 
 /**
  * 控制台外殼：深色側邊欄 + 頂部列 + 內容區。
@@ -88,7 +89,7 @@ export default function AppLayout({
         <div className="sidebar-foot">
           OA Agent 多租戶控制台
           <br />
-          <code>v0.1.0</code>
+          <code>v{pkg.version}</code>
         </div>
       </aside>
 

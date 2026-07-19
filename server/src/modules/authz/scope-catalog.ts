@@ -17,7 +17,7 @@ export const SCOPE_CATALOG: ScopeDef[] = [
   { id: 'oa:read', label: '查詢額度', description: '查詢假別剩餘時數等唯讀資料', base: true },
   { id: 'oa:write', label: '送出表單', description: '將表單送至 OA 系統', base: true },
   { id: 'service:form', label: '填表申請', description: '使用填寫並送出表單的對話服務', base: false },
-  { id: 'service:knowledge', label: '知識問答', description: '使用公司規章 / FAQ 問答服務', base: false },
+  { id: 'service:knowledge', label: '知識庫問答', description: '使用公司規章 / FAQ 問答服務', base: false },
   { id: 'service:agent', label: '智慧代理', description: '使用跨工具多步驟的智慧代理服務', base: false },
   { id: 'email:write', label: '寄送 Email', description: '代寄通知信 / 邀請信', base: false },
   { id: 'calendar:read', label: '讀取行事曆', description: '查詢空檔 / 會議', base: false },

@@ -116,7 +116,7 @@ export default function TenantsPage() {
             )}
             <div>
               <div className="card-title">所有租戶</div>
-              <div className="card-desc">{tenants.length} 個整合方</div>
+              <div className="card-desc">{tenants.length} 個租戶</div>
             </div>
           </div>
           {selected.size > 0 && (

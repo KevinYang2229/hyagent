@@ -84,6 +84,36 @@ export default function PermissionsTab({
     return inGroups || inAccounts || someOverride.has(id) ? 'some' : 'off';
   };
 
+  /**
+   * 套餐授予對照：scope → 「套餐名（被指派對象…）」。
+   * 聯集模型下權限區的模式推導只看零散資料，看不到套餐授予——不補提示會出現
+   * 「顯示未開通、實際卻有權限」與「取消勾選卻關不掉」的認知落差。
+   */
+  const bundleGrants = (id: string): string[] =>
+    policy.bundles
+      .filter((b) => b.scopes.includes(id))
+      .map((b) => {
+        const deps = policy.departments.filter((d) => (policy.groupBundles[d] ?? []).includes(b.id));
+        const users = policy.users
+          .filter((u) => (policy.accountBundles[u.id] ?? []).includes(b.id))
+          .map((u) => u.label);
+        const targets = [...deps, ...users];
+        return targets.length ? `${b.name}（${targets.join('、')}）` : '';
+      })
+      .filter(Boolean);
+
+  // 「填表申請」是否有任何來源授予（零散或已被指派的套餐）；form:* 缺它時為死授權，給軟警告
+  const formServiceGranted =
+    policy.grantedScopes.includes('service:form') ||
+    Object.values(policy.groups).some((v) => v.includes('service:form')) ||
+    Object.values(policy.accounts).some((v) => v.includes('service:form')) ||
+    policy.bundles.some(
+      (b) =>
+        b.scopes.includes('service:form') &&
+        (Object.values(policy.groupBundles).some((ids) => ids.includes(b.id)) ||
+          Object.values(policy.accountBundles).some((ids) => ids.includes(b.id))),
+    );
+
   const setMode = (id: string, mode: Mode) => {
     setSomeOverride((prev) => {
       const next = new Set(prev);
@@ -195,6 +225,18 @@ export default function PermissionsTab({
                     </select>
                   </div>
 
+                  {bundleGrants(s.id).length > 0 && (
+                    <div className="row-sub" style={{ marginTop: 4 }}>
+                      另由套餐授予：{bundleGrants(s.id).join('；')}
+                    </div>
+                  )}
+                  {s.id.startsWith('form:') &&
+                    (mode !== 'off' || bundleGrants(s.id).length > 0) &&
+                    !formServiceGranted && (
+                      <div className="row-sub" style={{ marginTop: 4 }}>
+                        ⚠️ 「填表申請」服務未開通，此表單的授權實際不可用。
+                      </div>
+                    )}
                   {mode === 'some' && (
                     <div style={{ marginTop: 8, marginLeft: 2, display: 'grid', gap: 6 }}>
                       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12 }}>
