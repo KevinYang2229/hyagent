@@ -18,7 +18,7 @@
     "build": "npm run build -w server && npm run build -w client && npm run build -w admin",
     "typecheck": "npm run typecheck -w ui && npm run typecheck -w sdk && npm run typecheck -w server && npm run typecheck -w client && npm run typecheck -w admin",
     "smoke": "npm run smoke -w server",
-    "test": "npm run test -w server && npm run test -w admin",
+    "test": "npm run test -w server && npm run test -w admin && npm run test -w client",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix"
   },
