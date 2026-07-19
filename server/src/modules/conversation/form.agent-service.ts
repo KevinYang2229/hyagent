@@ -237,6 +237,7 @@ async function dispatchFormTool(
 export const formAgentService: AgentService = {
   id: 'form',
   label: '填表申請',
+  description: '以對話引導填寫並送出 OA 表單（請假、出差報銷、外出登記…）；表單由 schema 定義，新增表單不需改程式',
   sticky: true,
   serviceScope: 'service:form',
 

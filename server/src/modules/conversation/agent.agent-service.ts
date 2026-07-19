@@ -47,6 +47,7 @@ function buildSystemPrompt(userId: string, locale?: string): string {
 export const agentAgentService: AgentService = {
   id: 'agent',
   label: '智慧代理',
+  description: '多步驟任務代理：跨工具規劃與執行（查詢、寄信等），寄送前經使用者確認',
   sticky: true,
   serviceScope: 'service:agent',
 

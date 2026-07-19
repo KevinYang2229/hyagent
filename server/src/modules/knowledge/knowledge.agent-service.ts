@@ -75,6 +75,7 @@ function fallbackReply(chunks: KnowledgeChunk[], locale?: string): string {
 export const knowledgeAgentService: AgentService = {
   id: 'knowledge',
   label: '知識庫問答',
+  description: '依租戶知識庫（RAG 檢索 + 重排）回答規章制度與常見問題，附來源出處',
   sticky: false,
   serviceScope: 'service:knowledge',
 

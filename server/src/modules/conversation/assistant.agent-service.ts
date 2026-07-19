@@ -54,6 +54,7 @@ function staticReply(locale?: string): string {
 export const assistantAgentService: AgentService = {
   id: 'assistant',
   label: '對話護欄',
+  description: '兜底與守門：離題引導回可用功能、說明平台能力；恆啟用，不可停用',
   sticky: false,
   alwaysEnabled: true,
 

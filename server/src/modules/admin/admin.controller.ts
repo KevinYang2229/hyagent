@@ -3,7 +3,8 @@
  * 全部受 requireAdmin 保護（x-admin-key）。
  */
 import type { Request, Response } from 'express';
-import { tenantStore } from '@/modules/tenant/tenant.store';
+import { DEFAULT_TENANT_ID, tenantStore } from '@/modules/tenant/tenant.store';
+import { serviceRegistry } from '@/modules/conversation/service.registry';
 import { webhookStore } from '@/modules/webhook/webhook.store';
 import { usageStore } from '@/modules/usage/usage.store';
 import { auditStore } from '@/modules/audit/audit.store';
@@ -61,6 +62,22 @@ export const adminController = {
     // 不存在已由 ensureTenant 擋下；deleteTenant 回 false 僅剩「預設租戶」情形
     if (!tenantStore.deleteTenant(id)) throw AppError.unprocessable('預設租戶不可刪除');
     res.status(200).json({ data: { id } });
+  },
+
+  /**
+   * Skill Library（唯讀）：serviceRegistry.describe 的正式 Skill 清單 +
+   * 各租戶停用狀態（disabledServices）。intents 依 ?tenantId= 視角（預設 default 租戶）。
+   */
+  async listSkills(req: Request, res: Response): Promise<void> {
+    const tenantId = String(req.query.tenantId ?? DEFAULT_TENANT_ID);
+    ensureTenant(tenantId);
+    const skills = serviceRegistry.describe(tenantId, 'admin-preview');
+    const tenants = tenantStore.listTenants().map((t) => ({
+      id: t.id,
+      name: t.name,
+      disabledServices: t.disabledServices ?? [],
+    }));
+    res.status(200).json({ data: { skills, tenants } });
   },
 
   async createKey(req: Request, res: Response): Promise<void> {

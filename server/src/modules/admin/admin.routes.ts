@@ -66,6 +66,9 @@ router.post('/auth/login', validate({ body: adminLoginSchema }), asyncHandler(ad
 // 以下全部管理端點都需 x-admin-key 或 admin JWT
 router.use(requireAdmin);
 
+// Skill Library（唯讀）：平台所有 skill 的正式描述 + 各租戶啟用狀態
+router.get('/skills', asyncHandler(adminController.listSkills));
+
 router.post('/tenants', validate({ body: createTenantSchema }), asyncHandler(adminController.createTenant));
 router.get('/tenants', asyncHandler(adminController.listTenants));
 

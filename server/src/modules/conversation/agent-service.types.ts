@@ -26,6 +26,8 @@ export interface AgentService {
   readonly id: string;
   /** 顯示名稱（admin 服務開關 UI 用） */
   readonly label: string;
+  /** Skill 層級一句話描述（admin Skill Library 頁與對外展示用） */
+  readonly description: string;
   /**
    * 是否為「點黏」擁有者：進入後續留（form=true），確保填表流程不被沖掉；
    * 旁路服務為 false（knowledge），回答後不奪走目前流程。
@@ -38,6 +40,31 @@ export interface AgentService {
   intents(session: Session): IntentDescriptor[];
   /** 處理一輪對話。使用者訊息已由上層 runTurn 推入 session.messages。 */
   handleTurn(session: Session, userText: string, llm: LLMProvider): Promise<AgentTurnResult>;
+}
+
+/** 意圖靜態摘要（SkillDescriptor 用；不含 runtime 欄位） */
+export interface SkillIntentSummary {
+  id: string;
+  description: string;
+  keywords: string[];
+}
+
+/**
+ * 對外可序列化的 Skill 描述——Skill 契約的正式形狀。
+ * admin Skill Library 頁的資料來源；未來 Bundle（角色 → skill 集合）掛載於此。
+ */
+export interface SkillDescriptor {
+  id: string;
+  label: string;
+  description: string;
+  /** 是否為流程擁有者（進入後點黏，如填表） */
+  sticky: boolean;
+  /** 恆啟用（守門類，不受租戶停用影響） */
+  alwaysEnabled: boolean;
+  /** 使用所需 scope；未設＝不需（配合 alwaysEnabled） */
+  requiredScope?: string;
+  /** 意圖清單（form 類依租戶啟用表單而異，故 describe 需帶租戶視角） */
+  intents: SkillIntentSummary[];
 }
 
 export interface RouteResult {
