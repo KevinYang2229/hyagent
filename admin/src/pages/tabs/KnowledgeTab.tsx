@@ -418,7 +418,7 @@ export default function KnowledgeTab({
                       </div>
                       <div className="row-actions">
                         <button
-                          className="btn btn-ghost btn-sm kfile-del"
+                          className="btn btn-danger btn-sm kfile-del"
                           title="刪除"
                           aria-label={`刪除 ${f.name}`}
                           onClick={() => removeFile(f)}

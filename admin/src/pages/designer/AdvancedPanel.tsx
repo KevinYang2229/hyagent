@@ -178,7 +178,7 @@ function OAEditor({
           <input className="input" value={oa.response.statusField ?? ''} onChange={(e) => patchOA({ response: { ...oa.response, statusField: e.target.value } })} />
         </label>
       </div>
-      <button className="btn btn-ghost btn-sm" onClick={() => setDraft((d) => ({ ...d, oa: undefined }))}>
+      <button className="btn btn-danger btn-sm" onClick={() => setDraft((d) => ({ ...d, oa: undefined }))}>
         移除 OA 設定
       </button>
     </div>

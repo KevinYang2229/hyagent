@@ -99,12 +99,14 @@ export default function BundlesSection({
                   {b.scopes.length === 0 ? '（空套餐）' : b.scopes.map(scopeLabel).join('、')}
                 </div>
               </div>
-              <button className="btn btn-ghost btn-sm" onClick={() => setDraft({ ...b, scopes: [...b.scopes] })}>
-                編輯
-              </button>
-              <button className="btn btn-ghost btn-sm" onClick={() => removeBundle(b.id)}>
-                刪除
-              </button>
+              <div className="toolbar" style={{ display: 'flex', gap: 8 }}>
+                <button className="btn btn-ghost btn-sm" onClick={() => setDraft({ ...b, scopes: [...b.scopes] })}>
+                  編輯
+                </button>
+                <button className="btn btn-danger btn-sm" onClick={() => removeBundle(b.id)}>
+                  刪除
+                </button>
+              </div>
             </li>
           ))}
         </ul>
