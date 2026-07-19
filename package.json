@@ -1,6 +1,6 @@
 {
   "name": "oa-agent",
-  "version": "0.1.0",
+  "version": "0.8.0",
   "private": true,
   "description": "Agent-Native OA — 對話式表單填寫 Agent（monorepo：server + client + shared）",
   "workspaces": [
