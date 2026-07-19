@@ -1,6 +1,52 @@
-import { useState } from 'react';
+import { useState, type CSSProperties } from 'react';
 import { Checkbox } from '@oa-agent/ui';
 import type { ScopeDef, SkillBundle, TenantPolicyView } from '../../api';
+
+const thStyle: CSSProperties = {
+  textAlign: 'left',
+  padding: '8px 10px',
+  borderBottom: '1px solid var(--border-color)',
+  fontWeight: 500,
+  whiteSpace: 'nowrap',
+};
+const tdStyle: CSSProperties = {
+  padding: '6px 10px',
+  borderBottom: '1px solid var(--border-color)',
+  verticalAlign: 'middle',
+};
+
+/** 指派矩陣的一列：對象名稱 + 各套餐勾選 + 已指派摘要 */
+function AssignRow({
+  label,
+  sub,
+  assigned,
+  bundles,
+  onToggle,
+}: {
+  label: string;
+  sub?: string;
+  assigned: string[];
+  bundles: SkillBundle[];
+  onToggle: (bundleId: string) => void;
+}) {
+  const names = bundles.filter((b) => assigned.includes(b.id)).map((b) => b.name);
+  return (
+    <tr>
+      <td style={tdStyle}>
+        {label}
+        {sub && <span className="row-sub" style={{ marginLeft: 6 }}>{sub}</span>}
+      </td>
+      {bundles.map((b) => (
+        <td key={b.id} style={{ ...tdStyle, textAlign: 'center' }}>
+          <Checkbox checked={assigned.includes(b.id)} onChange={() => onToggle(b.id)} />
+        </td>
+      ))}
+      <td style={{ ...tdStyle, opacity: names.length ? 1 : 0.45 }}>
+        {names.length ? names.join('、') : '未指派'}
+      </td>
+    </tr>
+  );
+}
 
 /**
  * 能力套餐區（權限分頁上半部）：定義套餐（名稱＋勾選能力）並指派給部門/帳號。
@@ -171,40 +217,55 @@ export default function BundlesSection({
 
       {policy.bundles.length > 0 && (
         <div className="card-body" style={{ borderTop: '1px solid var(--border-color)', display: 'grid', gap: 8 }}>
-          <div style={{ fontWeight: 500 }}>指派</div>
-          <div style={{ display: 'grid', gap: 6 }}>
-            {policy.departments.map((dep) => (
-              <div key={dep} style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12 }}>
-                <span className="row-sub" style={{ width: 64 }}>{dep}</span>
-                {policy.bundles.map((b) => (
-                  <label key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                    <Checkbox
-                      checked={(policy.groupBundles[dep] ?? []).includes(b.id)}
-                      onChange={() => toggleAssign('groupBundles', dep, b.id)}
-                    />
-                    <span style={{ fontSize: 13.5 }}>{b.name}</span>
-                  </label>
-                ))}
-              </div>
-            ))}
+          <div>
+            <div style={{ fontWeight: 500 }}>指派</div>
+            <div className="row-sub">列＝對象、欄＝套餐；勾選即指派，與下方零散授權為聯集。</div>
           </div>
-          <div style={{ display: 'grid', gap: 6, marginTop: 4 }}>
-            {policy.users.map((u) => (
-              <div key={u.id} style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12 }}>
-                <span className="row-sub" style={{ width: 64 }}>
-                  {u.label}
-                </span>
-                {policy.bundles.map((b) => (
-                  <label key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                    <Checkbox
-                      checked={(policy.accountBundles[u.id] ?? []).includes(b.id)}
-                      onChange={() => toggleAssign('accountBundles', u.id, b.id)}
-                    />
-                    <span style={{ fontSize: 13.5 }}>{b.name}</span>
-                  </label>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 13.5 }}>
+              <thead>
+                <tr>
+                  <th style={thStyle}>對象</th>
+                  {policy.bundles.map((b) => (
+                    <th key={b.id} style={{ ...thStyle, textAlign: 'center' }} title={b.scopes.map(scopeLabel).join('、')}>
+                      {b.name}
+                    </th>
+                  ))}
+                  <th style={thStyle}>已指派</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td colSpan={policy.bundles.length + 2} style={{ ...tdStyle, fontWeight: 500, background: 'var(--badge-bg, transparent)' }}>
+                    部門
+                  </td>
+                </tr>
+                {policy.departments.map((dep) => (
+                  <AssignRow
+                    key={`g-${dep}`}
+                    label={dep}
+                    assigned={policy.groupBundles[dep] ?? []}
+                    bundles={policy.bundles}
+                    onToggle={(id) => toggleAssign('groupBundles', dep, id)}
+                  />
                 ))}
-              </div>
-            ))}
+                <tr>
+                  <td colSpan={policy.bundles.length + 2} style={{ ...tdStyle, fontWeight: 500, background: 'var(--badge-bg, transparent)' }}>
+                    帳號
+                  </td>
+                </tr>
+                {policy.users.map((u) => (
+                  <AssignRow
+                    key={`a-${u.id}`}
+                    label={u.label}
+                    sub={u.id}
+                    assigned={policy.accountBundles[u.id] ?? []}
+                    bundles={policy.bundles}
+                    onToggle={(id) => toggleAssign('accountBundles', u.id, id)}
+                  />
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
