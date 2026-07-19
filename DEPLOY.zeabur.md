@@ -149,6 +149,7 @@ docker run --rm -v "$PWD:/backup" -e DB_URL postgres:17-alpine \
 - 開 client Domain → 應正常載入頁面。
 - 用帳號 + `AUTH_DEV_PASSWORD` 登入 → 對話功能能打到 server（瀏覽器 Network 面板看到請求送往 `VITE_API_BASE`，回 200）。
 - 若 client 或 admin 出現 CORS 錯誤 → 確認 server 的 `CORS_ORIGIN` 同時包含 client 與 admin 的 Domain，逗號分隔（例：`https://oa-agent.zeabur.app,https://oa-agent-admin.zeabur.app`，含 `https://`、結尾不要多斜線），更新後重啟 / redeploy server。
+- 若 server log 出現 `Prisma failed to detect the libssl/openssl version` → 確認使用新版 `Dockerfile.server` 重新部署；server image 需要安裝 `openssl` 供 Prisma generate/runtime 偵測。
 
 ## 六、本機驗證（可選，需裝 Docker）
 ```bash
