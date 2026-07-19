@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type CSSProperties } from 'react';
 import { Checkbox, useToast } from '@oa-agent/ui';
 import { api, type ScopeDef, type TenantPolicyView } from '../../api';
+import BundlesSection from './BundlesSection';
 
 /**
  * 權限分頁：以「能力」為中心——每個能力一列，直接選 未開通／全租戶／指定對象。
@@ -127,6 +128,9 @@ export default function PermissionsTab({
         grantedScopes: policy.grantedScopes,
         groups: policy.groups,
         accounts: policy.accounts,
+        bundles: policy.bundles,
+        groupBundles: policy.groupBundles,
+        accountBundles: policy.accountBundles,
       });
       setPolicy(updated);
       toast.success('已儲存變更');
@@ -138,6 +142,12 @@ export default function PermissionsTab({
   };
 
   return (
+    <div style={{ display: 'grid', gap: 16 }}>
+      <BundlesSection
+        policy={policy}
+        onChange={(updater) => setPolicy((p) => (p ? updater(p) : p))}
+      />
+
     <div className="card">
       <div className="card-head">
         <div>
@@ -231,6 +241,7 @@ export default function PermissionsTab({
           儲存
         </button>
       </div>
+    </div>
     </div>
   );
 }

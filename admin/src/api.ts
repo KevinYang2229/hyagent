@@ -194,10 +194,20 @@ export interface ScopeDef {
   description: string;
   base: boolean;
 }
+export interface SkillBundle {
+  id: string;
+  name: string;
+  description?: string;
+  scopes: string[];
+}
 export interface TenantPolicyView {
   grantedScopes: string[];
   groups: Record<string, string[]>;
   accounts: Record<string, string[]>;
+  /** 能力套餐：定義 + 部門/帳號指派 */
+  bundles: SkillBundle[];
+  groupBundles: Record<string, string[]>;
+  accountBundles: Record<string, string[]>;
   departments: string[];
   users: { id: string; label: string }[];
   capabilities: ScopeDef[];
@@ -238,7 +248,14 @@ export const api = {
   getTenantPolicy: (id: string) => req<TenantPolicyView>('GET', `/admin/tenants/${id}/policy`),
   putTenantPolicy: (
     id: string,
-    body: { grantedScopes: string[]; groups: Record<string, string[]>; accounts: Record<string, string[]> },
+    body: {
+      grantedScopes: string[];
+      groups: Record<string, string[]>;
+      accounts: Record<string, string[]>;
+      bundles: SkillBundle[];
+      groupBundles: Record<string, string[]>;
+      accountBundles: Record<string, string[]>;
+    },
   ) => req<TenantPolicyView>('PUT', `/admin/tenants/${id}/policy`, body),
 
   createKey: (id: string, type: 'publishable' | 'secret') =>
