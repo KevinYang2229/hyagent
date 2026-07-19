@@ -97,19 +97,24 @@ npm run typecheck
 | POST   | `/api/conversations/:id/cancel`        | 取消                                                        |
 | GET    | `/api/forms` / `/api/forms/:formId` | 列出 / 取得表單 Definition                                  |
 
-> MVP 未接 JWT，使用者身分用 `x-user-id` header（預設 `demo-user`）。
+> 對話 API 需 JWT：先 `POST /api/auth/login`（dev 環境為 mock 帳號 `kevin`/`hyweb` + `AUTH_DEV_PASSWORD`）取得 accessToken，之後帶 `Authorization: Bearer <token>`。widget/SDK 另可走租戶 `ssoSecret` 的 SSO handoff（`/api/auth/sso/exchange`）。
 
 ### Demo（curl）
 
 ```bash
+# 登入取得 token（dev：mock 帳號 + AUTH_DEV_PASSWORD，預設 oa1234）
+TOKEN=$(curl -s -X POST localhost:3000/api/auth/login \
+  -H 'content-type: application/json' \
+  -d '{"username":"kevin","password":"oa1234"}' | jq -r .data.accessToken)
+
 # 建立並起首輪
 curl -s -X POST localhost:3000/api/conversations \
-  -H 'content-type: application/json' -H 'x-user-id: kevin' \
+  -H 'content-type: application/json' -H "authorization: Bearer $TOKEN" \
   -d '{"message":"我下週一到週二要請特休，家裡有事"}'
 
 # 後續回答（用回傳的 id）
 curl -s -X POST localhost:3000/api/conversations/<id>/messages \
-  -H 'content-type: application/json' -H 'x-user-id: kevin' \
+  -H 'content-type: application/json' -H "authorization: Bearer $TOKEN" \
   -d '{"message":"確認"}'
 ```
 
@@ -123,7 +128,7 @@ server/src/
   lib/llm/                      LLM provider 抽象 + Claude 實作（tool use + prompt caching）
   lib/oa/                       OA 連接器抽象 + StubOAConnector
   modules/form/                 schema-core：型別 / Ajv 引擎 / loader / registry / 工具生成 / approvals（簽核關卡狀態）
-  modules/conversation/         in-memory session + slot-filling agent loop + REST
+  modules/conversation/         session store（記憶體 + file/db 持久化）+ slot-filling agent loop + REST
   modules/leave/                請假最終驗證 → 送 OA + workflow
   modules/business-trip/        國內出差報銷最終驗證 → 送 OA + workflow
   modules/outing/               外出登記最終驗證 → 送 OA + workflow
@@ -161,7 +166,7 @@ schemas/<formId>/*.json         六層表單 Definition（前後端共用單一�
 
 **共用 schema 不會把前後端綁死**：schema JSON 只住後端（[`form.loader.ts`](server/src/modules/form/form.loader.ts) 以 `fs` 讀 `schemas/`），前端執行時用 `GET /api/forms/:formId` 取得 Definition，**bundle 內零張 schema**。前後端唯一共用的是 `@oa-agent/shared` 的 TypeScript 型別，屬 build 期便利、runtime 會被編譯掉。
 
-**gateway 典型該管、目前尚未補的**（上線前處理）：認證（現用 `x-user-id` header，未接 JWT）、限流／配額（對話會按 token 計費）、session 持久化（現為記憶體，重啟即失）。
+**gateway 典型該管的現況**：認證已接 JWT（dev 為 mock 名錄 + 共用密碼，上線前換真實身分來源）、session 已可持久化（`DATA_BACKEND=db`）；**尚未補**：限流／配額（對話會按 token 計費）。
 
 ## 已實作 vs 延後
 
@@ -176,5 +181,5 @@ schemas/<formId>/*.json         六層表單 Definition（前後端共用單一�
 - LLM：`LLM_PROVIDER`（目前 `anthropic`）— 換廠商只要新增 `lib/llm/<x>.provider.ts`
 - 地端模型：`LLM_PROVIDER=local` + `LLM_BASE_URL` 指向自架 OpenAI 相容端點（vLLM / Ollama），資料不出機房；embedding 另以 `EMBEDDING_PROVIDER=local` + `EMBEDDING_BASE_URL` 地端化。選地端時絕不 fallback 回雲端。租戶亦可於後台「AI 模型」選「地端」（沿用部署層端點，租戶不自帶 URL）。
 - 租戶 BYO key：每租戶可自帶 OpenAI / Anthropic API key 與 provider/model（`llmConfig`），未設定 fallback 平台 env 金鑰；用量按「模型 × key 來源」歸戶（`/api/admin/tenants/:id/usage` 含預估成本）。設定入口：sk_ 自助 `PUT /api/tenant/llm-config` 或 admin 後台「AI 模型」卡片。
-- 持久化：`DATA_BACKEND`（`file` / `db`）— `file` 為記憶體 + JSON 檔（dev 預設）；`db` 為記憶體 + Postgres write-through（Prisma，`DATABASE_URL` 必填、boot fail-fast），涵蓋全部 8 個 runtime store（audit 於 DB 留全史、其餘與 file 同語意），store 介面不變；知識庫索引（pgvector）另案。DDL 見 `server/db/migrations/`。
+- 持久化：`DATA_BACKEND`（`file` / `db`）— `file` 為記憶體 + JSON 檔（dev 預設）；`db` 為記憶體 + Postgres write-through（Prisma，`DATABASE_URL` 必填、boot fail-fast），涵蓋全部 8 個 runtime store（audit 於 DB 留全史、其餘與 file 同語意），store 介面不變；知識庫索引（pgvector）另案。API key 只存 sha256 雜湊（簽發當下顯示一次）；設 `DATA_ENCRYPTION_KEY`（64 hex）後租戶 BYO LLM key 與 ssoSecret 以 AES-256-GCM 加密落地，舊明文資料開機自動補雜湊/加密。DDL 見 `server/db/migrations/`。
 - OA：`OA_CONNECTOR`（`stub` / `http`）— `http` 連接器骨架已就緒（[`lib/oa/http.connector.ts`](server/src/lib/oa/http.connector.ts)）；切到 `http` 需設 `OA_BASE_URL`（boot 時 fail-fast 檢查）。真 OA 規格到位後只需調整檔內三個「對接點」（端點路徑 / request body 映射 / 回應映射）
