@@ -6,7 +6,7 @@ import { closeDb } from '@/lib/db';
 import { initAuditStore } from '@/modules/audit/audit.store';
 import { initScopePolicy } from '@/modules/authz/scope-policy';
 import { migrateTenantScopes } from '@/modules/authz/scope-migration';
-import { initConversationStore } from '@/modules/conversation/conversation.store';
+import { cleanupExpiredSessions, initConversationStore } from '@/modules/conversation/conversation.store';
 import { initFormStore } from '@/modules/form/form.store';
 import { initTenantStore } from '@/modules/tenant/tenant.store';
 import { initUsageStore } from '@/modules/usage/usage.store';
@@ -30,6 +30,11 @@ async function main(): Promise<void> {
 
   // 既有租戶的 disabledServices/disabledForms → grantedScopes 一次性遷移；store 已於上方 init 完成。
   migrateTenantScopes();
+
+  // session 保留政策：開機已清一次（initConversationStore），此後每日再跑；unref 不擋關機
+  setInterval(() => {
+    cleanupExpiredSessions().catch((err) => logger.warn({ err }, 'session cleanup failed'));
+  }, 24 * 60 * 60 * 1000).unref();
 
   const server = http.createServer(app);
 

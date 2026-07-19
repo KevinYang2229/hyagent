@@ -103,13 +103,44 @@ if (env.DATA_BACKEND !== 'db') {
   }
 }
 
+// ---- 保留政策（db 後端）----
+// 已完成（submitted / cancelled）的 session 保留 30 天；任何 session 閒置 90 天即回收。
+// 附件孤兒列（session 已清）一併回收。file 後端不清（dev 資料量小、無 updatedAt 可依據）。
+const COMPLETED_RETENTION_DAYS = 30;
+const IDLE_RETENTION_DAYS = 90;
+
 /**
- * db 後端的開機載入：連 DB、還原 session Map。
+ * 清理過期 session 與孤兒附件，並同步記憶體 Map。
+ * initConversationStore 於開機呼叫、index.ts 每日呼叫一次；file 後端為 no-op。
+ */
+export async function cleanupExpiredSessions(): Promise<void> {
+  if (env.DATA_BACKEND !== 'db') return;
+  const db = await connectDb();
+  const removed = await db.$executeRaw`
+    delete from sessions
+    where updated_at < now() - make_interval(days => ${IDLE_RETENTION_DAYS}::int)
+       or (data->>'status' in ('submitted', 'cancelled')
+           and updated_at < now() - make_interval(days => ${COMPLETED_RETENTION_DAYS}::int))`;
+  const orphans = await db.$executeRaw`
+    delete from attachments where session_id not in (select id from sessions)`;
+  if (removed > 0 || orphans > 0) {
+    // 同步記憶體：把 DB 已不存在的 session 從 Map 移除
+    const kept = new Set((await db.sessionRow.findMany({ select: { id: true } })).map((r) => r.id));
+    for (const id of [...sessions.keys()]) {
+      if (!kept.has(id)) sessions.delete(id);
+    }
+    logger.info({ sessions: removed, attachments: orphans }, 'expired sessions cleaned up');
+  }
+}
+
+/**
+ * db 後端的開機載入：先跑保留政策清理，再連 DB 還原 session Map。
  * 必須在開始服務請求前 await（index.ts listen 前）；file 後端為 no-op。
  */
 export async function initConversationStore(): Promise<void> {
   if (env.DATA_BACKEND !== 'db') return;
   const db = await connectDb();
+  await cleanupExpiredSessions();
   const rows = await db.sessionRow.findMany();
   for (const r of rows) {
     const s = sessionFromRow(r);
