@@ -14,6 +14,9 @@ const tdStyle: CSSProperties = {
   borderBottom: '1px solid var(--border-color)',
   verticalAlign: 'middle',
 };
+/** 收縮欄（對象/套餐勾選）：固定為內容寬，欄距穩定；剩餘寬度全給「已指派」欄，
+ *  摘要文字變長變短都只影響自己，不再牽動其他欄跳動 */
+const shrinkCol: CSSProperties = { width: '1%', whiteSpace: 'nowrap' };
 
 /** 指派矩陣的一列：對象名稱 + 各套餐勾選 + 已指派摘要 */
 function AssignRow({
@@ -32,12 +35,12 @@ function AssignRow({
   const names = bundles.filter((b) => assigned.includes(b.id)).map((b) => b.name);
   return (
     <tr>
-      <td style={tdStyle}>
+      <td style={{ ...tdStyle, ...shrinkCol }}>
         {label}
         {sub && <span className="row-sub" style={{ marginLeft: 6 }}>{sub}</span>}
       </td>
       {bundles.map((b) => (
-        <td key={b.id} style={{ ...tdStyle, textAlign: 'center' }}>
+        <td key={b.id} style={{ ...tdStyle, ...shrinkCol, textAlign: 'center', paddingInline: 18 }}>
           <Checkbox checked={assigned.includes(b.id)} onChange={() => onToggle(b.id)} />
         </td>
       ))}
@@ -225,9 +228,13 @@ export default function BundlesSection({
             <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 13.5 }}>
               <thead>
                 <tr>
-                  <th style={thStyle}>對象</th>
+                  <th style={{ ...thStyle, ...shrinkCol }}>對象</th>
                   {policy.bundles.map((b) => (
-                    <th key={b.id} style={{ ...thStyle, textAlign: 'center' }} title={b.scopes.map(scopeLabel).join('、')}>
+                    <th
+                      key={b.id}
+                      style={{ ...thStyle, ...shrinkCol, textAlign: 'center', paddingInline: 18 }}
+                      title={b.scopes.map(scopeLabel).join('、')}
+                    >
                       {b.name}
                     </th>
                   ))}
