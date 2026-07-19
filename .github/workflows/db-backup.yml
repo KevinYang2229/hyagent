@@ -1,0 +1,30 @@
+# 每日 DB 備份：Supabase 免費方案無自動備份，資料（租戶/單據/用量/稽核）全押在上面。
+# pg_dump（custom format）→ 上傳為私有 repo 的 workflow artifact，保留 30 天。
+# 還原：下載 artifact 後 `pg_restore -d "$DB_URL" --clean --if-exists backup.dump`
+# 需要 repo secret：SUPABASE_DB_URL（session pooler 連線字串，與 server/.env 的 DATABASE_URL 同）
+name: DB Backup
+
+on:
+  schedule:
+    # 每日 18:10 UTC = 台北 02:10（離峰）
+    - cron: '10 18 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: pg_dump（postgres:17 對齊伺服器版本）
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          docker run --rm -e DB_URL postgres:17-alpine \
+            sh -c 'pg_dump "$DB_URL" --format=custom --no-owner' > backup.dump
+          ls -la backup.dump
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: db-backup-${{ github.run_id }}
+          path: backup.dump
+          retention-days: 30
+          if-no-files-found: error
