@@ -13,6 +13,10 @@ import { join } from 'node:path';
 // （曾實際覆寫 default 租戶授予、灌入上百個測試租戶）。
 process.env.OA_AGENT_DATA_DIR ??= mkdtempSync(join(tmpdir(), 'oa-agent-test-'));
 
+// store 後端固定 file：本機 server/.env 可能設 DATA_BACKEND=db（dotenv 不覆蓋既有值），
+// 測試絕不能打到真 DB；db 模式的種子要等 initTenantStore()，測試不跑 boot 流程會缺預設租戶。
+process.env.DATA_BACKEND ??= 'file';
+
 process.env.ANTHROPIC_API_KEY ??= 'test-anthropic-key';
 // 啟用管理 API（Form Designer 端點測試用）
 process.env.ADMIN_API_KEY ??= 'test-admin-key';
