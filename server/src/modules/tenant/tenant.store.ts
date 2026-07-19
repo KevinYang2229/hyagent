@@ -344,6 +344,7 @@ export const tenantStore = {
         | 'grantedScopes'
         | 'scopesMigrated'
         | 'llmConfig'
+        | 'quotaMonthlyLlmTokens'
       >
     >,
   ): Tenant | undefined {
@@ -364,6 +365,9 @@ export const tenantStore = {
       // 用 'in' 而非 '!== undefined'：llmConfig 需支援三態（不動/覆寫/清空），
       // undefined 也是合法值（代表整包清除），要能被 patch 帶入。
       ...('llmConfig' in patch ? { llmConfig: patch.llmConfig } : {}),
+      ...(patch.quotaMonthlyLlmTokens !== undefined
+        ? { quotaMonthlyLlmTokens: patch.quotaMonthlyLlmTokens }
+        : {}),
     };
     tenants.set(id, next);
     persist();

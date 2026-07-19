@@ -31,6 +31,8 @@ export interface TenantUsage {
   embeddingTokens: number;
   /** key = `${keySource}|${model}`；value 自帶 model/keySource，UI 不需解析 key */
   llmByModel: Record<string, ModelTokenUsage>;
+  /** 月度 LLM+embedding token 分桶：key = 'YYYY-MM'；月配額守門（tenant-quota middleware）讀當月值 */
+  monthlyLlmTokens: Record<string, number>;
 }
 
 export type UsageMetric = 'conversations' | 'messages' | 'submissions' | 'llmTokens' | 'embeddingTokens';
@@ -63,7 +65,12 @@ function persist(tenantId: string): void {
 }
 
 function empty(): TenantUsage {
-  return { conversations: 0, messages: 0, submissions: 0, llmTokens: 0, embeddingTokens: 0, llmByModel: {} };
+  return { conversations: 0, messages: 0, submissions: 0, llmTokens: 0, embeddingTokens: 0, llmByModel: {}, monthlyLlmTokens: {} };
+}
+
+/** 當月分桶 key（UTC，'YYYY-MM'） */
+export function monthKey(d = new Date()): string {
+  return d.toISOString().slice(0, 7);
 }
 
 // file 後端：模組載入即同步還原（沿用既有行為）
@@ -115,6 +122,7 @@ export const usageStore = {
     if (total <= 0) return;
     const current = usage.get(tenantId) ?? empty();
     current.llmTokens += total;
+    current.monthlyLlmTokens[monthKey()] = (current.monthlyLlmTokens[monthKey()] ?? 0) + total;
     if (result?.model) {
       const b = bucket(current, result.model, result.keySource ?? 'platform');
       b.inputTokens += llmUsage.inputTokens;
@@ -129,6 +137,7 @@ export const usageStore = {
     if (tokens <= 0) return;
     const current = usage.get(tenantId) ?? empty();
     current.embeddingTokens += tokens;
+    current.monthlyLlmTokens[monthKey()] = (current.monthlyLlmTokens[monthKey()] ?? 0) + tokens;
     bucket(current, model, keySource).inputTokens += tokens;
     usage.set(tenantId, current);
     persist(tenantId);
@@ -136,5 +145,10 @@ export const usageStore = {
 
   get(tenantId: string): TenantUsage {
     return usage.get(tenantId) ?? empty();
+  },
+
+  /** 當月已用 LLM+embedding token（月配額守門用） */
+  currentMonthLlmTokens(tenantId: string): number {
+    return usage.get(tenantId)?.monthlyLlmTokens[monthKey()] ?? 0;
   },
 };

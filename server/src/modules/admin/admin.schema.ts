@@ -28,6 +28,8 @@ export const patchTenantSchema = z
     allowedOrigins: z.array(z.string().trim().min(1)).optional(),
     ssoSecret: z.string().min(16).optional(),
     appearance: appearanceSchema.optional(),
+    // 月度 LLM token 配額；0 = 不限
+    quotaMonthlyLlmTokens: z.number().int().min(0).optional(),
   })
   .refine((v) => Object.keys(v).length > 0, { message: '至少需提供一個欄位' });
 

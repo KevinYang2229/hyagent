@@ -56,5 +56,7 @@ export interface Tenant {
    * 未設＝平台 env 設定；讀寫一律走 llmConfigService（合併/驗證/遮罩/稽核）。
    */
   llmConfig?: TenantLLMConfig;
+  /** 月度 LLM token 配額（LLM+embedding 合計）；0 或未設＝不限。超過由 tenant-quota middleware 回 429。 */
+  quotaMonthlyLlmTokens?: number;
   createdAt: string;
 }

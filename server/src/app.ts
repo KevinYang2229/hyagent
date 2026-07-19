@@ -9,6 +9,7 @@ import { errorHandler, notFoundHandler } from '@/middlewares/error-handler';
 import { requireAuth } from '@/middlewares/require-auth';
 import { resolveTenant } from '@/middlewares/resolve-tenant';
 import { tenantRateLimit } from '@/middlewares/tenant-rate-limit';
+import { tenantMonthlyQuota } from '@/middlewares/tenant-quota';
 import { tenantService } from '@/modules/tenant/tenant.service';
 import { authRouter } from '@/modules/auth/auth.routes';
 import { conversationRouter } from '@/modules/conversation/conversation.routes';
@@ -84,9 +85,10 @@ export function createApp(): Express {
 
   // 受保護：需帶有效 access token 才能操作
   // resolveTenant 先解析 API Key → 租戶（未帶 key 落到預設租戶，向後相容），
-  // tenantRateLimit 依租戶限流，再 requireAuth 驗證使用者身分
-  app.use('/api/conversations', resolveTenant, tenantRateLimit, requireAuth, conversationRouter);
-  app.use('/api/forms', resolveTenant, tenantRateLimit, requireAuth, formRouter);
+  // requireAuth 驗證使用者身分後 tenantRateLimit 依「租戶＋使用者」限流；
+  // conversations 會觸發 LLM 計費，再加 tenantMonthlyQuota 月配額守門
+  app.use('/api/conversations', resolveTenant, requireAuth, tenantRateLimit, tenantMonthlyQuota, conversationRouter);
+  app.use('/api/forms', resolveTenant, requireAuth, tenantRateLimit, formRouter);
   app.use('/api/leave', requireAuth, leaveRouter);
 
   // 公開 widget 設定：resolveTenant 以 ?key=pk_ 解租戶，無 requireAuth（widget 載入即可讀外觀）
