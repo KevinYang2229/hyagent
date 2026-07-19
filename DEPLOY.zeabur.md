@@ -124,12 +124,33 @@ Zeabur 連上 GitHub repo 後，會 watch 指定分支；**每次 `git push` 到
 
 ---
 
-## 四、驗證
+## 四、資料庫備份與還原
+
+**備份（自動）**：GitHub Actions 的 `DB Backup` workflow（`.github/workflows/db-backup.yml`）每日台北 02:10
+以 `pg_dump`（custom format、postgres:17 對齊伺服器版本）備份整個 Supabase DB，
+上傳為私有 repo 的 workflow artifact，保留 30 天。也可到 Actions 頁面手動觸發（workflow_dispatch）。
+需要 repo secret `SUPABASE_DB_URL`（= server 的 `DATABASE_URL`，session pooler 連線字串）。
+
+**還原步驟**：
+
+1. GitHub repo → **Actions** → 左側選 **DB Backup** → 點進要還原的那次 run → 下載 artifact（`db-backup-<run id>`，解壓得 `backup.dump`）。
+2. 本機執行（`DB_URL` 用與備份同一條連線字串；`--clean --if-exists` 會先清掉現有物件再還原，**整庫覆蓋，請先確認**）：
+
+```bash
+docker run --rm -v "$PWD:/backup" -e DB_URL postgres:17-alpine \
+  pg_restore -d "$DB_URL" --clean --if-exists --no-owner /backup/backup.dump
+```
+
+3. 還原後重啟 server（記憶體 Map 是開機時從 DB 載入的，不重啟不會反映還原後的資料）。
+
+> 注意：備份含全部租戶資料（API key 為 sha256 雜湊、BYO key 為密文——還原後要能解密，`DATA_ENCRYPTION_KEY` 必須是同一把）。artifact 只有 repo 協作者能下載，repo 需維持 private。
+
+## 五、驗證
 - 開 client Domain → 應正常載入頁面。
 - 用帳號 + `AUTH_DEV_PASSWORD` 登入 → 對話功能能打到 server（瀏覽器 Network 面板看到請求送往 `VITE_API_BASE`，回 200）。
 - 若出現 CORS 錯誤 → 確認 server 的 `CORS_ORIGIN` 等於 client 的 Domain（含 `https://`、結尾不要多斜線）。
 
-## 五、本機驗證（可選，需裝 Docker）
+## 六、本機驗證（可選，需裝 Docker）
 ```bash
 # server
 docker build -f Dockerfile.server -t oa-server .
