@@ -33,3 +33,54 @@ jobs:
 
       - name: Lint
         run: npm run lint
+
+  # 主 verify 只跑 file 模式；db 層（Prisma store / write-through / 加密 / 月分桶）另用
+  # 拋棄式 Postgres 跑煙霧驗證，補上 file 測試涵蓋不到的持久化程式碼。
+  db-smoke:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: oa_agent_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATA_BACKEND: db
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/oa_agent_test
+      # 開機 fail-fast 需要的最小 env（db-smoke 不實際呼叫 LLM）
+      ANTHROPIC_API_KEY: ci-dummy-key
+      # 走加密路徑（驗證 ssoSecret / BYO key 落地加密＋讀回解密）
+      DATA_ENCRYPTION_KEY: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: 安裝依賴
+        run: npm ci
+
+      - name: Prisma client 生成
+        run: npm run db:generate -w server
+
+      - name: 套用 migrations（依序）
+        run: |
+          for f in server/db/migrations/*.sql; do
+            echo "applying $f"
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$f"
+          done
+
+      - name: db 煙霧——寫入（8 store）
+        run: npm run db:smoke:write -w server
+
+      - name: db 煙霧——重啟還原並斷言
+        run: npm run db:smoke:verify -w server
