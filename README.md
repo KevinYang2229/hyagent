@@ -122,6 +122,8 @@ Agent 會逐一問缺漏欄位 → 必填齊全後出摘要請你回「確認」
 
 ## 架構
 
+> 🗺️ **平台目標架構、現況對照與演進觸發點見 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)**——決定「要不要做某個平台機制」時查它，不重新辯論。
+
 ```
 server/src/
   config/env.ts                 環境變數（含 LLM_/OA_）
