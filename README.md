@@ -168,7 +168,7 @@ schemas/<formId>/*.json         六層表單 Definition（前後端共用單一�
 
 **共用 schema 不會把前後端綁死**：schema JSON 只住後端（[`form.loader.ts`](server/src/modules/form/form.loader.ts) 以 `fs` 讀 `schemas/`），前端執行時用 `GET /api/forms/:formId` 取得 Definition，**bundle 內零張 schema**。前後端唯一共用的是 `@oa-agent/shared` 的 TypeScript 型別，屬 build 期便利、runtime 會被編譯掉。
 
-**gateway 典型該管的現況**：認證已接 JWT（dev 為 mock 名錄 + 共用密碼，上線前換真實身分來源）、session 已可持久化（`DATA_BACKEND=db`）；**尚未補**：限流／配額（對話會按 token 計費）。
+**gateway 典型該管的現況**：認證已接 JWT（dev 為 mock 名錄 + 共用密碼，上線前換真實身分來源）、session 已可持久化（`DATA_BACKEND=db`）、限流／配額已補齊（兩層守門：[`tenant-rate-limit.ts`](server/src/middlewares/tenant-rate-limit.ts) 依「租戶＋使用者」防突發轟炸、[`tenant-quota.ts`](server/src/middlewares/tenant-quota.ts) 依 `quotaMonthlyLlmTokens` 對照當月 usage 分桶做月配額，掛在會觸發 LLM 計費的 `/api/conversations`）；**尚未補**：真實身分來源（換掉 mock 名錄）。
 
 ## 已實作 vs 延後
 
@@ -176,7 +176,10 @@ schemas/<formId>/*.json         六層表單 Definition（前後端共用單一�
 - ✅ React 前端：對話畫面 + schema-driven 表單（依 `field.component` 渲染、依 `layout` 分組／多步驟、送出前可編輯）
 - ✅ 多表單（請假／國內出差／外出登記）、workflow 簽核關卡狀態（Demo 以時間自動推進）
 - ✅ 持久化後端切換：`DATA_BACKEND=db`（Prisma + Postgres/Supabase）涵蓋全部 8 個 runtime store（tenant / sessions / submissions / usage / audit / forms / scope-policy / webhooks）
-- 🔜 延後（架構留 seam）：表單 Designer、真 OA HTTP 連接器（含真實簽核狀態查詢）、知識庫索引上 pgvector、OpenAI provider、報告產出
+- ✅ 限流／配額：兩層守門（每租戶＋使用者速率限制 + 每租戶月度 LLM token 配額）
+- ✅ 表單 Designer：admin 後台 [`FormDesignerPage`](admin/src/pages/FormDesignerPage.tsx) 建立／編輯／匯出租戶表單（走 `/api/admin/tenants/:id/forms`）
+- ✅ OpenAI provider：[`lib/llm/openai.provider.ts`](server/src/lib/llm/openai.provider.ts)（Chat Completions + function calling；`local` 端點重用之）
+- 🔜 延後（架構留 seam）：真 OA HTTP 連接器（含真實簽核狀態查詢）、知識庫索引上 pgvector、報告產出
 
 ## 可抽換層
 

@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import swaggerUi from 'swagger-ui-express';
 import { openapiSpec } from '@/modules/docs/openapi';
 import { env } from '@/config/env';
+import { pingDb } from '@/lib/db';
 import { requestLogger } from '@/middlewares/request-logger';
 import { errorHandler, notFoundHandler } from '@/middlewares/error-handler';
 import { requireAuth } from '@/middlewares/require-auth';
@@ -58,12 +59,24 @@ export function createApp(): Express {
   app.use(express.json({ limit: '1mb' }));
   app.use(requestLogger);
 
-  // 健康檢查：server 能啟動即代表 LLM provider 的 API key 通過 env 驗證（見 config/env fail-fast），
-  // 故回報 provider/model 供前端顯示「AI 已連線」。此處不實際呼叫 LLM，避免額外費用與延遲。
+  // 存活檢查（liveness）：process 有回應即 200。server 能啟動即代表 LLM provider 的 API key
+  // 通過 env 驗證（見 config/env fail-fast），故回報 provider/model 供前端顯示「AI 已連線」。
+  // 此處不實際呼叫 LLM、不查 DB，避免額外費用與延遲——依賴健康度由 /readyz 負責。
   app.get('/healthz', (_req, res) => {
     res.status(200).json({
       status: 'ok',
       llm: { provider: env.LLM_PROVIDER, model: env.LLM_MODEL },
+    });
+  });
+
+  // 就緒檢查（readiness）：確認外部依賴可服務——db 模式下實際 ping 資料庫，不可達回 503，
+  // 讓編排器（Zeabur/K8s）在 DB 斷線時停止導流。file 模式無外部依賴，恆 ready。
+  app.get('/readyz', async (_req, res) => {
+    const dbOk = await pingDb();
+    res.status(dbOk ? 200 : 503).json({
+      status: dbOk ? 'ready' : 'unready',
+      backend: env.DATA_BACKEND,
+      checks: { db: dbOk ? 'ok' : 'down' },
     });
   });
 

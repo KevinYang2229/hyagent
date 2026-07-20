@@ -41,6 +41,21 @@ export class DbWriteQueue {
   }
 }
 
+/**
+ * 就緒探測：db 模式下對已連線的 client 打一次 `SELECT 1`，確認資料庫可達。
+ * file 模式或尚未連線（不需 db）回 true——readiness 端點據此回 200/503。
+ */
+export async function pingDb(): Promise<boolean> {
+  if (!client) return true;
+  try {
+    await client.$queryRaw`SELECT 1`;
+    return true;
+  } catch (err) {
+    logger.warn({ err }, 'db ping failed');
+    return false;
+  }
+}
+
 /** 沖完所有 store 的排隊寫入並斷線；file 模式為 no-op */
 export async function closeDb(): Promise<void> {
   await Promise.all(queues.map((q) => q.flush()));
