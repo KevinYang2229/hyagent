@@ -114,4 +114,18 @@ export const webhookStore = {
     else persistFile();
     return next;
   },
+
+  /** 移除某租戶所有 webhook 端點（刪租戶級聯清理用） */
+  purgeTenant(tenantId: string): void {
+    for (const [id, e] of endpoints) {
+      if (e.tenantId === tenantId) endpoints.delete(id);
+    }
+    if (env.DATA_BACKEND === 'db') {
+      writeQueue.enqueue(async (db) => {
+        await db.webhookRow.deleteMany({ where: { tenantId } });
+      });
+      return;
+    }
+    persistFile();
+  },
 };

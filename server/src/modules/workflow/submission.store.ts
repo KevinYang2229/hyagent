@@ -146,4 +146,16 @@ export const submissionStore = {
     }
     persistFile();
   },
+
+  /** 移除某租戶所有申請紀錄（刪租戶級聯清理用） */
+  purgeTenant(tenantId: string): void {
+    byTenant.delete(tenantId);
+    if (env.DATA_BACKEND === 'db') {
+      writeQueue.enqueue(async (db) => {
+        await db.submissionRow.deleteMany({ where: { tenantId } });
+      });
+      return;
+    }
+    persistFile();
+  },
 };

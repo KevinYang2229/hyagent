@@ -108,6 +108,18 @@ export const formStore = {
     return def;
   },
 
+  /** 移除某租戶所有自建/覆寫表單（刪租戶級聯清理用） */
+  purgeTenant(tenantId: string): void {
+    byTenant.delete(tenantId);
+    if (env.DATA_BACKEND === 'db') {
+      writeQueue.enqueue(async (db) => {
+        await db.tenantFormRow.deleteMany({ where: { tenantId } });
+      });
+      return;
+    }
+    persistFile();
+  },
+
   /** 刪除一份定義；回傳是否確有刪除 */
   deleteDefinition(tenantId: string, formId: string): boolean {
     const removed = byTenant.get(tenantId)?.delete(formId) ?? false;

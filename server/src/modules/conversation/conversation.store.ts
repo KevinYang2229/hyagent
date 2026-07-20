@@ -15,6 +15,7 @@ import { connectDb, DbWriteQueue } from '@/lib/db';
 import { env } from '@/config/env';
 import { logger } from '@/lib/logger';
 import { AppError } from '@/utils/app-error';
+import { attachmentStore } from './attachment.store';
 import type { Session } from './conversation.types';
 
 const STORE_FILE = dataFile('oa-agent-sessions.json');
@@ -182,5 +183,22 @@ export const conversationStore = {
    */
   save(session?: Session): void {
     persist(session);
+  },
+
+  /** 移除某租戶所有 session 及其附件（刪租戶級聯清理用） */
+  purgeTenant(tenantId: string): void {
+    for (const [id, s] of sessions) {
+      if ((s.tenantId ?? 'default') === tenantId) {
+        attachmentStore.clearSession(id); // 附件（記憶體 + db）由 attachmentStore 清
+        sessions.delete(id);
+      }
+    }
+    if (env.DATA_BACKEND === 'db') {
+      writeQueue.enqueue(async (db) => {
+        await db.sessionRow.deleteMany({ where: { tenantId } });
+      });
+      return;
+    }
+    persistFile();
   },
 };

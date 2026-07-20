@@ -141,4 +141,16 @@ export const auditStore = {
     }
     persistFile();
   },
+
+  /** 移除某租戶所有稽核紀錄（刪租戶級聯清理用） */
+  purgeTenant(tenantId: string): void {
+    logs.delete(tenantId);
+    if (env.DATA_BACKEND === 'db') {
+      writeQueue.enqueue(async (db) => {
+        await db.auditLogRow.deleteMany({ where: { tenantId } });
+      });
+      return;
+    }
+    persistFile();
+  },
 };

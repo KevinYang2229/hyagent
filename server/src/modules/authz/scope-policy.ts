@@ -138,4 +138,16 @@ export const scopePolicy = {
     }
     persistFile();
   },
+
+  /** 移除某租戶授權政策（刪租戶級聯清理用） */
+  purgeTenant(tenantId: string): void {
+    policies.delete(tenantId);
+    if (env.DATA_BACKEND === 'db') {
+      writeQueue.enqueue(async (db) => {
+        await db.scopePolicyRow.deleteMany({ where: { tenantId } });
+      });
+      return;
+    }
+    persistFile();
+  },
 };

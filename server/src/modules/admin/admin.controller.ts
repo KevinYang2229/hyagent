@@ -5,9 +5,12 @@
 import type { Request, Response } from 'express';
 import { DEFAULT_TENANT_ID, tenantStore } from '@/modules/tenant/tenant.store';
 import { serviceRegistry } from '@/modules/conversation/service.registry';
+import { conversationStore } from '@/modules/conversation/conversation.store';
 import { webhookStore } from '@/modules/webhook/webhook.store';
 import { usageStore } from '@/modules/usage/usage.store';
 import { auditStore } from '@/modules/audit/audit.store';
+import { submissionStore } from '@/modules/workflow/submission.store';
+import { formStore } from '@/modules/form/form.store';
 import { AppError } from '@/utils/app-error';
 import { SCOPE_CATALOG, assertGrantableScopes, tenantGrantableScopes } from '@/modules/authz/scope-catalog';
 import { defaultGrantedScopes } from '@/modules/authz/scope-migration';
@@ -61,6 +64,15 @@ export const adminController = {
     ensureTenant(id);
     // 不存在已由 ensureTenant 擋下；deleteTenant 回 false 僅剩「預設租戶」情形
     if (!tenantStore.deleteTenant(id)) throw AppError.unprocessable('預設租戶不可刪除');
+    // 級聯清理該租戶散落各 store 的資料（這些表無 FK 到 tenants，需顯式清）——
+    // 否則刪租戶會留下孤兒 session/單據/用量/稽核/表單/政策/webhook。
+    conversationStore.purgeTenant(id);
+    submissionStore.purgeTenant(id);
+    usageStore.purgeTenant(id);
+    auditStore.purgeTenant(id);
+    formStore.purgeTenant(id);
+    scopePolicy.purgeTenant(id);
+    webhookStore.purgeTenant(id);
     res.status(200).json({ data: { id } });
   },
 

@@ -151,4 +151,20 @@ export const usageStore = {
   currentMonthLlmTokens(tenantId: string): number {
     return usage.get(tenantId)?.monthlyLlmTokens[monthKey()] ?? 0;
   },
+
+  /** 移除某租戶用量計數（刪租戶級聯清理用） */
+  purgeTenant(tenantId: string): void {
+    usage.delete(tenantId);
+    if (env.DATA_BACKEND === 'db') {
+      writeQueue.enqueue(async (db) => {
+        await db.tenantUsageRow.deleteMany({ where: { tenantId } });
+      });
+      return;
+    }
+    try {
+      fs.writeFileSync(STORE_FILE, JSON.stringify([...usage.entries()]));
+    } catch (err) {
+      logger.warn({ err, file: STORE_FILE }, 'failed to persist usage');
+    }
+  },
 };

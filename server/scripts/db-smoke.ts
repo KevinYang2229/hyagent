@@ -122,19 +122,28 @@ async function verify(): Promise<void> {
   check('bundle 展開生效', resolveScopes({ tenantId, userId: 'kevin' }).includes('service:form'));
   check('webhook 還原', webhookStore.listByTenant(tenantId).length === 1);
 
-  // 清理（本機重複跑不留殘料；CI 為拋棄式 DB，無妨）。
-  // 註：submissions/forms/attachments/usage/audit/scope-policy/webhooks 刻意不設 FK 到
-  // tenants，deleteTenant 不會級聯它們，故此處以 raw SQL 逐表清乾淨（涵蓋所有 smoke 資料）。
+  // 清理即驗證：級聯清理（controller 用的 purgeTenant）在此以 store 方法逐一呼叫，
+  // 沖寫後查 DB 確認各表 0 殘留——同時驗證「刪租戶不留孤兒」。
   tenantStore.deleteTenant(tenantId);
-  const sessionIds = (await db.sessionRow.findMany({ where: { userId: 'smoke-user' }, select: { id: true } })).map((r) => r.id);
-  await db.attachmentRow.deleteMany({ where: { sessionId: { in: sessionIds } } });
-  await db.sessionRow.deleteMany({ where: { userId: 'smoke-user' } });
-  await db.submissionRow.deleteMany({ where: { tenantId } });
-  await db.tenantFormRow.deleteMany({ where: { tenantId } });
-  await db.tenantUsageRow.deleteMany({ where: { tenantId } });
-  await db.auditLogRow.deleteMany({ where: { tenantId } });
-  await db.scopePolicyRow.deleteMany({ where: { tenantId } });
-  await db.webhookRow.deleteMany({ where: { tenantId } });
+  conversationStore.purgeTenant(tenantId);
+  submissionStore.purgeTenant(tenantId);
+  usageStore.purgeTenant(tenantId);
+  auditStore.purgeTenant(tenantId);
+  formStore.purgeTenant(tenantId);
+  scopePolicy.purgeTenant(tenantId);
+  webhookStore.purgeTenant(tenantId);
+  await closeDb(); // 沖完所有 purge 寫入
+
+  const after = await connectDb();
+  const orphans =
+    (await after.submissionRow.count({ where: { tenantId } })) +
+    (await after.tenantFormRow.count({ where: { tenantId } })) +
+    (await after.tenantUsageRow.count({ where: { tenantId } })) +
+    (await after.auditLogRow.count({ where: { tenantId } })) +
+    (await after.scopePolicyRow.count({ where: { tenantId } })) +
+    (await after.webhookRow.count({ where: { tenantId } })) +
+    (await after.sessionRow.count({ where: { tenantId } }));
+  check('刪租戶級聯清理無孤兒', orphans === 0);
   await closeDb();
 
   if (failures > 0) {
