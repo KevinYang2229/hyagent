@@ -69,6 +69,34 @@ describe('assistantAgentService', () => {
     expect(res.reply).toContain('服務範圍');
     expect(session.messages.at(-1)?.role).toBe('assistant');
   });
+
+  it('零開通服務：system prompt 誠實說明無服務，不推銷用不到的知識庫/代理', async () => {
+    const mockCreate = jest.fn().mockResolvedValue({ text: 'ok', toolCalls: [], stopReason: 'end_turn' });
+    // 預設 session（HYW103 於 guard-test 租戶）未被授予任何 service scope → 無可用服務
+    const session = makeSession();
+    await assistantAgentService.handleTurn(session, '你好', {
+      name: 'mock',
+      createMessage: mockCreate,
+    } as never);
+    const sys = mockCreate.mock.calls[0][0].system as string;
+    expect(sys).toContain('管理員');
+    expect(sys).not.toContain('知識庫問答');
+    expect(sys).not.toContain('代理任務');
+  });
+
+  it('已開通知識庫服務：system prompt 才列入知識庫並允許引導提問', async () => {
+    const t = tenantStore.createTenant('guard-kb-on');
+    tenantStore.updateTenant(t.id, { grantedScopes: ['service:knowledge'] });
+    const mockCreate = jest.fn().mockResolvedValue({ text: 'ok', toolCalls: [], stopReason: 'end_turn' });
+    const session = makeSession({ tenantId: t.id });
+    await assistantAgentService.handleTurn(session, '你好', {
+      name: 'mock',
+      createMessage: mockCreate,
+    } as never);
+    const sys = mockCreate.mock.calls[0][0].system as string;
+    expect(sys).toContain('知識庫問答');
+    expect(sys).not.toContain('代理任務');
+  });
 });
 
 describe('serviceRegistry.enabledFor', () => {
