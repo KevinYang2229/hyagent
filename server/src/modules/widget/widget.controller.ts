@@ -4,6 +4,7 @@
  */
 import type { Request, Response } from 'express';
 import type { TenantAppearance } from '@oa-agent/shared';
+import { knowledgeStore } from '@/modules/knowledge/knowledge.store';
 
 const DEFAULT_APPEARANCE: Required<Pick<TenantAppearance, 'theme' | 'position'>> = {
   theme: 'light',
@@ -17,6 +18,11 @@ export const widgetController = {
     // scope，故沿用租戶層 disabledServices 判斷（僅影響提示文案是否顯示，非實際權限守門——
     // 真正的服務門檻在對話建立後由 serviceRegistry.enabledFor(tenantId, userId) 以 service:knowledge scope 把關）。
     const knowledgeEnabled = !(req.tenant?.disabledServices ?? []).includes('knowledge');
-    res.status(200).json({ data: { appearance, knowledgeEnabled } });
+    // 依索引內容生成的推薦問句；未生成時為 undefined，前端回落 i18n 預設句。
+    // 整組語系一起回傳、不在後端挑：widget 語系可於執行期切換，後端挑定就切不動了
+    const suggestedPrompts = req.tenant
+      ? knowledgeStore.getMeta(req.tenant.id).suggestedPrompts
+      : undefined;
+    res.status(200).json({ data: { appearance, knowledgeEnabled, suggestedPrompts } });
   },
 };
