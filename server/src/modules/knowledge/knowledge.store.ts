@@ -48,6 +48,12 @@ export interface KnowledgeFileMeta {
   fidelity?: 'structured' | 'text';
 }
 
+/** widget 開場推薦問句；兩語系一組，缺一不可 */
+export interface SuggestedPrompts {
+  'zh-Hant': string;
+  en: string;
+}
+
 /** 每租戶的向量索引狀態 */
 export interface KnowledgeIndexMeta {
   /** 索引狀態：none（未建立）/ ready（可用）/ failed（建立失敗） */
@@ -64,6 +70,11 @@ export interface KnowledgeIndexMeta {
   error?: string;
   /** 已上傳的檔案來源清單（與網站來源並存） */
   files?: KnowledgeFileMeta[];
+  /**
+   * 依索引內容生成的開場推薦問句（widget 開場 chip 用）。
+   * 無索引、生成失敗或驗證未過時不存在——前端據此回落 i18n 預設句。
+   */
+  suggestedPrompts?: SuggestedPrompts;
 }
 
 /** 回傳預設來源設定（以 env 為基準） */
