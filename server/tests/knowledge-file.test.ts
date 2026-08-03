@@ -1,4 +1,10 @@
 /** 檔案來源：txt/md 解析→附加索引（帶 fileId + 全文摘要 chunk）→刪除；網站重爬 carry-over 保留檔案 chunks。 */
+// 本檔只關心檔案 ingest/刪除流程，與推薦問句生成無關；mock 掉整支函式，
+// 避免它與本檔的 mockCreateMessage（摘要用）共用同一個假 LLM 而互相污染呼叫次數統計
+jest.mock('@/modules/knowledge/knowledge.suggest', () => ({
+  __esModule: true,
+  refreshSuggestedPrompts: jest.fn().mockResolvedValue(undefined),
+}));
 jest.mock('@/lib/embedding', () => ({
   getEmbeddingProvider: () => ({
     model: 'test-embed',
@@ -132,19 +138,16 @@ describe('ingestFile / removeFile', () => {
     expect(idx.chunks.filter((c) => c.fileId === meta.fileId).length).toBe(meta.chunks);
   });
 
-  it('全文只切出單一 chunk → 不呼叫摘要 LLM、不產摘要（原文即全貌）', async () => {
+  it('全文只切出單一 chunk → 不呼叫 LLM、不產摘要（原文即全貌）', async () => {
     const t = tenantStore.createTenant('kfile-summary-single');
     const meta = await ingestFile(
       t.id,
       '短文.txt',
       Buffer.from('簡短公告：本週五下午全公司彈性放假，請同仁提前完成當週工作並關閉電源。'),
     );
-    // mockCreateMessage 同時被摘要生成與（本次接線新增的）推薦問句生成共用；
-    // 這裡只驗證「摘要」這支呼叫沒發生，不是驗證 LLM 完全零呼叫
-    const summaryCalls = mockCreateMessage.mock.calls.filter(
-      ([req]) => typeof req?.system === 'string' && req.system.includes('文件摘要員'),
-    );
-    expect(summaryCalls).toHaveLength(0);
+    // refreshSuggestedPrompts 整支已在檔頭 mock 掉（見上方 jest.mock），
+    // 這裡的 mockCreateMessage 只剩摘要生成一個呼叫來源，零呼叫即代表摘要沒被觸發
+    expect(mockCreateMessage).not.toHaveBeenCalled();
     expect(readIndex(t.id).chunks.some((c) => c.id === `${meta.fileId}-summary`)).toBe(false);
   });
 });

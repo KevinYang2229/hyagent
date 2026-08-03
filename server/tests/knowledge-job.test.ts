@@ -1,3 +1,10 @@
+// 成功路徑會觸發 refreshSuggestedPrompts（→ 真實 LLM API）；此檔只關心 job 狀態機，
+// 與推薦問句生成無關，故直接 mock 掉整支函式，避免測試對外發出真實網路請求
+jest.mock('@/modules/knowledge/knowledge.suggest', () => ({
+  __esModule: true,
+  refreshSuggestedPrompts: jest.fn().mockResolvedValue(undefined),
+}));
+
 import { getJob, startIngestJob } from '@/modules/knowledge/knowledge.job';
 import { knowledgeStore } from '@/modules/knowledge/knowledge.store';
 import type { KnowledgeIndexFile } from '@/modules/knowledge/knowledge-index.types';
