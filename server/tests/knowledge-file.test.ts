@@ -132,14 +132,19 @@ describe('ingestFile / removeFile', () => {
     expect(idx.chunks.filter((c) => c.fileId === meta.fileId).length).toBe(meta.chunks);
   });
 
-  it('全文只切出單一 chunk → 不呼叫 LLM、不產摘要（原文即全貌）', async () => {
+  it('全文只切出單一 chunk → 不呼叫摘要 LLM、不產摘要（原文即全貌）', async () => {
     const t = tenantStore.createTenant('kfile-summary-single');
     const meta = await ingestFile(
       t.id,
       '短文.txt',
       Buffer.from('簡短公告：本週五下午全公司彈性放假，請同仁提前完成當週工作並關閉電源。'),
     );
-    expect(mockCreateMessage).not.toHaveBeenCalled();
+    // mockCreateMessage 同時被摘要生成與（本次接線新增的）推薦問句生成共用；
+    // 這裡只驗證「摘要」這支呼叫沒發生，不是驗證 LLM 完全零呼叫
+    const summaryCalls = mockCreateMessage.mock.calls.filter(
+      ([req]) => typeof req?.system === 'string' && req.system.includes('文件摘要員'),
+    );
+    expect(summaryCalls).toHaveLength(0);
     expect(readIndex(t.id).chunks.some((c) => c.id === `${meta.fileId}-summary`)).toBe(false);
   });
 });

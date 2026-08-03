@@ -4,6 +4,7 @@ import { logger } from '@/lib/logger';
 import { AppError } from '@/utils/app-error';
 import { runIngest as defaultRun, type IngestParams } from './ingest.service';
 import { knowledgeStore } from './knowledge.store';
+import { refreshSuggestedPrompts } from './knowledge.suggest';
 import { invalidateIndexCache } from './retriever.staticIndex';
 
 /** 單一 ingest job 的狀態快照 */
@@ -97,6 +98,9 @@ export function startIngestJob(
         source: idx.source,
         ...(files ? { files } : {}),
       });
+
+      // 推薦問句生成：不阻塞、不影響索引狀態。失敗時前端回落 i18n 預設句
+      void refreshSuggestedPrompts(params.tenantId, idx).catch(() => {});
 
       job.status = 'done';
       job.finishedAt = new Date().toISOString();

@@ -26,6 +26,7 @@ import {
 import { parseDocument } from './doc-parse';
 import type { IndexedChunk, KnowledgeIndexFile } from './knowledge-index.types';
 import { knowledgeStore, type KnowledgeFileMeta } from './knowledge.store';
+import { refreshSuggestedPrompts } from './knowledge.suggest';
 import { invalidateIndexCache } from './retriever.staticIndex';
 
 export type { KnowledgeFileMeta };
@@ -160,6 +161,7 @@ export async function ingestFile(
     model: idx.model,
     files: [...(meta.files ?? []), fileMeta],
   });
+  void refreshSuggestedPrompts(tenantId, idx).catch(() => {});
   return fileMeta;
 }
 
@@ -176,6 +178,7 @@ export function removeFile(tenantId: string, fileId: string): boolean {
       chunkCount: chunks.length,
       files: meta.files.filter((f) => f.fileId !== fileId),
     });
+    void refreshSuggestedPrompts(tenantId, { ...existing, chunks }).catch(() => {});
   } else {
     knowledgeStore.setMeta(tenantId, { ...meta, files: meta.files.filter((f) => f.fileId !== fileId) });
   }
