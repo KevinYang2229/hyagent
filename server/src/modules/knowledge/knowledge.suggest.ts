@@ -7,7 +7,13 @@
  * 抽樣不做任何排名，只保證覆蓋度：索引來源有兩種形狀，檔案來源的 title 是檔名（零訊號）、
  * 網站來源的 title 資訊豐富但出現次數幾乎全為 1（依次數排序等同隨機），故次數不可用。
  */
+import { env } from '@/config/env';
+import { getLLMProvider } from '@/lib/llm';
+import { logger } from '@/lib/logger';
+import { tenantStore } from '@/modules/tenant/tenant.store';
+import { usageStore } from '@/modules/usage/usage.store';
 import type { KnowledgeIndexFile } from './knowledge-index.types';
+import { knowledgeStore } from './knowledge.store';
 import type { SuggestedPrompts } from './knowledge.store';
 
 const MAX_TEXT_SAMPLES = 10;
@@ -94,4 +100,59 @@ export function parseSuggestion(text: string): SuggestedPrompts | undefined {
   if (en.split(/\s+/).length > MAX_EN_WORDS) return undefined;
 
   return { 'zh-Hant': zh, en };
+}
+
+/**
+ * 重新生成某租戶的推薦問句並寫回 meta。
+ *
+ * 永不 reject：呼叫端一律以 `void refreshSuggestedPrompts(...)` 觸發，
+ * 任何失敗都不得影響索引本身的狀態。
+ */
+export async function refreshSuggestedPrompts(
+  tenantId: string,
+  idx: KnowledgeIndexFile,
+): Promise<void> {
+  // 索引已空：清除舊句，不留下指向已刪內容的問句
+  if (idx.chunks.length === 0) {
+    const meta = knowledgeStore.getMeta(tenantId);
+    if (meta.suggestedPrompts) {
+      const { suggestedPrompts: _drop, ...rest } = meta;
+      knowledgeStore.setMeta(tenantId, rest);
+    }
+    return;
+  }
+
+  const material = sampleIndexForSuggestion(idx);
+  if (!material) return;
+
+  try {
+    const result = await getLLMProvider(
+      tenantStore.getTenant(tenantId)?.llmConfig,
+    ).createMessage({
+      system: SUGGESTION_SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: [{ type: 'text', text: material }] }],
+      // 與 intent-router、rerank 同級的輔助任務，用 Haiku 即可；
+      // 租戶鎖定自有 provider 時，provider 內的 pickModel 會自動忽略此覆寫
+      model: env.LLM_ROUTER_MODEL,
+      maxTokens: 200,
+    });
+    usageStore.recordLLMUsage(tenantId, result);
+
+    const prompts = parseSuggestion(result.text);
+    if (!prompts) {
+      logger.warn(
+        { tenantId, text: result.text.slice(0, 200) },
+        'suggested prompt 驗證未過，維持 fallback',
+      );
+      return;
+    }
+
+    // setMeta 是整包覆蓋：await 期間 meta 可能已被其他寫入更新（如使用者刪檔），必須重讀
+    knowledgeStore.setMeta(tenantId, {
+      ...knowledgeStore.getMeta(tenantId),
+      suggestedPrompts: prompts,
+    });
+  } catch (err) {
+    logger.warn({ err, tenantId }, 'suggested prompt 生成失敗，維持 fallback');
+  }
 }
