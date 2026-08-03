@@ -121,8 +121,12 @@ Prompt 的硬性規則：
 - 禁止產出「有哪些產品或服務」這類套到任何組織都成立的泛問——泛問正是現行寫死句的缺陷，
   換成另一句一樣泛的沒有意義
 
-模型使用 `pickModel(resolveLLMSettings(tenant.llmConfig))` 的租戶預設，不另外指定。租戶若鎖定
-自有 provider（`lockModel`），此處一併尊重。
+模型指定 `env.LLM_ROUTER_MODEL`（預設 Haiku），與 intent-router、rerank 等輔助性 LLM 呼叫一致。
+產生一句開場問句屬於同一類廉價任務，不需動用主模型。
+
+租戶鎖定自有 provider（`lockModel`）的情形不需在此特別處理——provider 內部即以
+`pickModel(settings, params.model)` 決定實際模型（見 `anthropic.provider.ts:82`），鎖定時會
+自動忽略呼叫端的 model 覆寫。
 
 ### 輸出驗證
 
@@ -151,7 +155,8 @@ void refreshSuggestedPrompts(tenantId).catch(() => {});   // 失敗只留 log，
 
 ## 傳遞與前端
 
-`GET /api/widget/appearance`（`server/src/modules/widget/widget.controller.ts:20`）回應新增欄位：
+`GET /api/widget/config`（`server/src/modules/widget/widget.controller.ts:20`，前端呼叫端為
+`client/src/embedConfig.ts:63` 的 `fetchAppearance`）回應新增欄位：
 
 ```ts
 res.status(200).json({ data: { appearance, knowledgeEnabled, suggestedPrompts } });
