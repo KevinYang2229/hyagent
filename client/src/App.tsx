@@ -19,6 +19,7 @@ import {
 import type { TenantAppearance } from '@oa-agent/shared';
 import { changeLanguage } from './i18n';
 import { embedConfig, fetchAppearance } from './embedConfig';
+import { pickKnowledgePrompts, type SuggestedPrompts } from './knowledgePrompt';
 import FormView from './FormView';
 import LoginView from './LoginView';
 import AuthErrorView from './AuthErrorView';
@@ -158,6 +159,7 @@ export default function App() {
   const [paneOpen, setPaneOpen] = useState(false); // 表單明細預設收合
   const [pickerOpen, setPickerOpen] = useState(true); // 「要辦理什麼？」可收合，預設展開
   const [knowledgeEnabled, setKnowledgeEnabled] = useState(true); // 知識庫服務是否啟用（依租戶）
+  const [suggestedPrompts, setSuggestedPrompts] = useState<SuggestedPrompts | undefined>();
   // 主題優先序：data-theme（宿主明確）> 嵌入時略過本地記憶（避免與第一方 App 共用 localStorage 互相干擾，
   // 改由租戶 theme/預設決定）> 第一方 App 才讀本地記憶 > 預設淺色。後端 theme 於下方 effect 補上。
   const [theme, setTheme] = useState<Theme>(
@@ -195,9 +197,10 @@ export default function App() {
   // 共通原則：使用者／宿主的明確選擇（URL data-* 或本地記憶）優先，租戶設定只作後備預設。
   useEffect(() => {
     let cancelled = false;
-    void fetchAppearance().then(({ appearance: a, knowledgeEnabled: ke }) => {
+    void fetchAppearance().then(({ appearance: a, knowledgeEnabled: ke, suggestedPrompts: sp }) => {
       if (cancelled) return;
       setKnowledgeEnabled(ke);
+      setSuggestedPrompts(sp);
       // 主色：寫 --primary-color / --primary-color-rgb（applyPrimaryColor 處理 hex→rgb）
       if (a.primaryColor) applyPrimaryColor(a.primaryColor);
       // AI 名稱：後端名稱僅在沒有 data-* 覆寫（後台預覽）時採用，不蓋掉宿主明確指定
@@ -570,7 +573,12 @@ export default function App() {
     : [];
   // 知識庫推薦用詞：僅在知識庫服務啟用時顯示（i18n 陣列）
   const kbPromptsRaw = t('app.knowledgePrompts', { returnObjects: true });
-  const knowledgePrompts = knowledgeEnabled && Array.isArray(kbPromptsRaw) ? (kbPromptsRaw as string[]) : [];
+  const knowledgePrompts = pickKnowledgePrompts({
+    knowledgeEnabled,
+    language: i18n.language,
+    suggested: suggestedPrompts,
+    fallback: Array.isArray(kbPromptsRaw) ? (kbPromptsRaw as string[]) : [],
+  });
 
   // 建議回覆：只取「最新一則 agent 訊息」附帶的建議，作為可一鍵送出的快捷按鈕
   const lastMsg = messages[messages.length - 1];

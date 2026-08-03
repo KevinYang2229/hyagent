@@ -7,6 +7,7 @@
  * 全部選填——未帶任何參數時等同改造前的純 ?embed=1 行為（向後相容）。
  */
 import type { TenantAppearance } from '@oa-agent/shared';
+import type { SuggestedPrompts } from './knowledgePrompt';
 
 type Theme = 'light' | 'dark';
 
@@ -58,6 +59,8 @@ export interface WidgetConfig {
   appearance: TenantAppearance;
   /** 知識庫服務是否啟用（決定要不要顯示知識庫推薦用詞）；無 key/失敗時預設 true */
   knowledgeEnabled: boolean;
+  /** 依索引內容生成的知識庫推薦問句；未生成時 undefined，由前端回落 i18n 預設句 */
+  suggestedPrompts?: SuggestedPrompts;
 }
 
 export async function fetchAppearance(): Promise<WidgetConfig> {
@@ -67,11 +70,16 @@ export async function fetchAppearance(): Promise<WidgetConfig> {
     const res = await fetch(url);
     if (!res.ok) return { appearance: {}, knowledgeEnabled: true };
     const json = (await res.json()) as {
-      data?: { appearance?: TenantAppearance; knowledgeEnabled?: boolean };
+      data?: {
+        appearance?: TenantAppearance;
+        knowledgeEnabled?: boolean;
+        suggestedPrompts?: SuggestedPrompts;
+      };
     };
     return {
       appearance: json.data?.appearance ?? {},
       knowledgeEnabled: json.data?.knowledgeEnabled ?? true,
+      suggestedPrompts: json.data?.suggestedPrompts,
     };
   } catch {
     return { appearance: {}, knowledgeEnabled: true };
