@@ -475,10 +475,18 @@ export default function KnowledgeTab({
                 {job!.embedded} / {job!.chunks}
               </div>
             ) : meta.status === "ready" ? (
-              <div className="row-sub">
-                {meta.chunkCount} 片段｜來源 {meta.source ?? "—"}｜
-                {meta.generatedAt ?? ""}
-              </div>
+              <>
+                <div className="row-sub">
+                  {meta.chunkCount} 片段｜來源 {meta.source ?? "—"}｜
+                  {meta.generatedAt ?? ""}
+                </div>
+                {meta.suggestedPrompts && (
+                  <div className="row-sub">
+                    開場推薦詞｜{meta.suggestedPrompts["zh-Hant"]}｜
+                    {meta.suggestedPrompts.en}
+                  </div>
+                )}
+              </>
             ) : meta.status === "failed" ? (
               <div className="row-sub">失敗：{meta.error ?? "未知錯誤"}</div>
             ) : (

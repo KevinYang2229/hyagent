@@ -170,6 +170,8 @@ export interface KnowledgeMeta {
   source?: string;
   error?: string;
   files?: KnowledgeFileMeta[];
+  /** 依索引內容生成的 widget 開場推薦問句；未生成時不存在 */
+  suggestedPrompts?: { 'zh-Hant': string; en: string };
 }
 export interface IngestJob {
   id: string;
