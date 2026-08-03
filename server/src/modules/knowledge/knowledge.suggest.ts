@@ -43,10 +43,13 @@ export function sampleIndexForSuggestion(idx: KnowledgeIndexFile): string {
   const chunks = idx.chunks;
   if (chunks.length === 0) return '';
 
-  // 等距而非取前 N 筆：前 N 筆在長文件上只會看到封面與目錄
-  const stride = Math.max(1, Math.floor(chunks.length / MAX_TEXT_SAMPLES));
+  // 首尾皆含的等距抽樣：FAQ、常見問題、聯絡方式這類最適合生成推薦問句的素材常落在文件尾端，
+  // 若跨距只從 0 起跳（stride = n/MAX），最後一筆恆為 (MAX-1)*stride，永遠碰不到 index n-1。
+  // 改用「第 k 筆 = floor(k * (n-1) / (count-1))」，第一筆必為 0、最後一筆必為 n-1。
+  const count = Math.min(chunks.length, MAX_TEXT_SAMPLES);
   const samples: string[] = [];
-  for (let i = 0; i < chunks.length && samples.length < MAX_TEXT_SAMPLES; i += stride) {
+  for (let k = 0; k < count; k++) {
+    const i = count === 1 ? 0 : Math.floor((k * (chunks.length - 1)) / (count - 1));
     const text = chunks[i].text.trim().slice(0, TEXT_CHARS);
     if (text) samples.push(text);
   }

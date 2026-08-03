@@ -53,13 +53,15 @@ describe('sampleIndexForSuggestion', () => {
   });
 
   it('大量 chunk 時等距取樣，涵蓋頭中尾且不超過 10 筆', () => {
+    // 斷言首尾皆命中（而非特定 stride 值反推出的中間索引）：
+    // FAQ、聯絡方式這類最適合生成推薦問句的素材常落在文件尾端，取樣不能系統性地漏掉它。
     const chunks = Array.from({ length: 285 }, (_, i) => ({
       title: '1784768063225.html',
       text: `段落${i}`,
     }));
     const out = sampleIndexForSuggestion(makeIndex(chunks));
     expect(out).toContain('段落0');
-    expect(out).toContain('段落252');
+    expect(out).toContain('段落284');
     expect(out.match(/段落\d+/g)?.length).toBeLessThanOrEqual(10);
   });
 
