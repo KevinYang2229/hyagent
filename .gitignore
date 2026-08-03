@@ -23,6 +23,9 @@ prisma/migrations/dev.db*
 # Superpowers SDD 工作區（ledger / 任務 brief / review 產物）＝暫存，不進版控
 .superpowers/
 
+# 隔離實作用的 git worktree（含各自的 node_modules）＝暫存，不進版控
+.claude/worktrees/
+
 # 知識庫 RAG 產物（generated / 本地評測集）
 server/data/knowledge-index.*.json
 server/data/knowledge-eval.json
