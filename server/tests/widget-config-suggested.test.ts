@@ -45,4 +45,65 @@ describe('widget config 推薦問句', () => {
 
     expect(res.body.data.suggestedPrompts).toBeUndefined();
   });
+
+  it('status 為 none（索引已刪）但 suggestedPrompts 殘留時不得回傳', async () => {
+    // 重現 B-1：刪索引與爬取失敗都不遞增世代，若 refresh 恰好在此之後才 resolve，
+    // 過期的 suggestedPrompts 會殘留在 meta 裡——讀取端必須自行擋，不能只信任世代防護。
+    const tenant = tenantStore.createTenant('widget-suggest-deleted');
+    const apiKey = tenantStore.createApiKey(tenant.id, 'publishable');
+    knowledgeStore.setMeta(tenant.id, {
+      status: 'none',
+      chunkCount: 0,
+      suggestedPrompts: { 'zh-Hant': '補助怎麼申請？', en: 'How to apply?' },
+    });
+
+    const res = await request(app).get('/api/widget/config').query({ key: apiKey.key }).expect(200);
+
+    expect(res.body.data.suggestedPrompts).toBeUndefined();
+  });
+
+  it('status 為 failed（爬取失敗）但 suggestedPrompts 殘留時不得回傳', async () => {
+    const tenant = tenantStore.createTenant('widget-suggest-failed');
+    const apiKey = tenantStore.createApiKey(tenant.id, 'publishable');
+    knowledgeStore.setMeta(tenant.id, {
+      status: 'failed',
+      chunkCount: 0,
+      error: 'crawl timeout',
+      suggestedPrompts: { 'zh-Hant': '補助怎麼申請？', en: 'How to apply?' },
+    });
+
+    const res = await request(app).get('/api/widget/config').query({ key: apiKey.key }).expect(200);
+
+    expect(res.body.data.suggestedPrompts).toBeUndefined();
+  });
+
+  it('status 為 ready 但 chunkCount 為 0 時不得回傳', async () => {
+    const tenant = tenantStore.createTenant('widget-suggest-zero-chunk');
+    const apiKey = tenantStore.createApiKey(tenant.id, 'publishable');
+    knowledgeStore.setMeta(tenant.id, {
+      status: 'ready',
+      chunkCount: 0,
+      suggestedPrompts: { 'zh-Hant': '補助怎麼申請？', en: 'How to apply?' },
+    });
+
+    const res = await request(app).get('/api/widget/config').query({ key: apiKey.key }).expect(200);
+
+    expect(res.body.data.suggestedPrompts).toBeUndefined();
+  });
+
+  it('租戶關閉 knowledge 服務時不得回傳（I-1：內部文件問句不得外洩）', async () => {
+    const tenant = tenantStore.createTenant('widget-suggest-disabled-service');
+    const apiKey = tenantStore.createApiKey(tenant.id, 'publishable');
+    tenantStore.updateTenant(tenant.id, { disabledServices: ['knowledge'] });
+    knowledgeStore.setMeta(tenant.id, {
+      status: 'ready',
+      chunkCount: 3,
+      suggestedPrompts: { 'zh-Hant': '補助怎麼申請？', en: 'How to apply?' },
+    });
+
+    const res = await request(app).get('/api/widget/config').query({ key: apiKey.key }).expect(200);
+
+    expect(res.body.data.suggestedPrompts).toBeUndefined();
+    expect(res.body.data.knowledgeEnabled).toBe(false);
+  });
 });

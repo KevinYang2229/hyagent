@@ -2,6 +2,14 @@
  * 知識庫 admin API 整合測試（supertest）：來源設定存取 + 未設來源時觸發解析被擋。
  * 用 x-admin-key（setup-env 設 ADMIN_API_KEY=test-admin-key）。不觸發真實爬取/embedding。
  */
+// fixture 用 chunks: [] 恰好走不到 refreshSuggestedPrompts 裡的 LLM 呼叫（見 knowledge.suggest.ts
+// 空 chunks 提早 return），屬巧合式安全；明確 mock 掉，未來任何一支測試改用非空 chunks 也不會
+// 打到真實 LLM API（比照 knowledge-job.test.ts 已有的做法）。
+jest.mock('@/modules/knowledge/knowledge.suggest', () => ({
+  __esModule: true,
+  refreshSuggestedPrompts: jest.fn().mockResolvedValue(undefined),
+}));
+
 import request from 'supertest';
 import { createApp } from '@/app';
 import { startIngestJob } from '@/modules/knowledge/knowledge.job';

@@ -20,9 +20,16 @@ export const widgetController = {
     const knowledgeEnabled = !(req.tenant?.disabledServices ?? []).includes('knowledge');
     // 依索引內容生成的推薦問句；未生成時為 undefined，前端回落 i18n 預設句。
     // 整組語系一起回傳、不在後端挑：widget 語系可於執行期切換，後端挑定就切不動了
-    const suggestedPrompts = req.tenant
-      ? knowledgeStore.getMeta(req.tenant.id).suggestedPrompts
-      : undefined;
+    const meta = req.tenant ? knowledgeStore.getMeta(req.tenant.id) : undefined;
+    // 世代防護只堵得住 refreshSuggestedPrompts 彼此之間的競態，堵不住刪索引／爬取失敗
+    // 這兩個外部寫入端（它們不遞增世代，也不清 suggestedPrompts）：LLM 若在這兩者之後
+    // 才寫回，過期問句會留在 meta 裡、跨重啟存活。故一律以 status === 'ready' 為準，
+    // 與 admin 卡片的門檻（僅 ready 時顯示）一致；同時比照 admin 卡片守 knowledgeEnabled，
+    // 避免內部文件（docx/pdf）生成的問句在服務關閉後仍透過這個免登入端點外洩。
+    const suggestedPrompts =
+      knowledgeEnabled && meta?.status === 'ready' && meta.chunkCount > 0
+        ? meta.suggestedPrompts
+        : undefined;
     res.status(200).json({ data: { appearance, knowledgeEnabled, suggestedPrompts } });
   },
 };
