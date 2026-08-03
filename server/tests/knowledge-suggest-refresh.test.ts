@@ -146,3 +146,90 @@ it('生成期間 meta 被其他寫入更新時不覆蓋（呼叫後重讀 meta�
   expect(meta.model).toBe('後來寫入的');
   expect(meta.suggestedPrompts).toBeDefined();
 });
+
+it('慢的非空生成尚未 resolve 時被中途插入的清空呼叫覆蓋，事後不得讓推薦句復活', async () => {
+  const tenantId = 'sug-race-empty-wins';
+  knowledgeStore.setMeta(tenantId, { status: 'ready', chunkCount: 1 });
+
+  // t0：非空 refresh 發動，LLM 呼叫卡住不 resolve
+  let resolveSlow: (value: unknown) => void = () => {};
+  const slow = new Promise((resolve) => {
+    resolveSlow = resolve;
+  });
+  const slowCreate = jest.fn().mockReturnValue(slow);
+  (getLLMProvider as jest.Mock).mockReturnValue({ name: 'mock', createMessage: slowCreate });
+  const slowCall = refreshSuggestedPrompts(tenantId, idx);
+
+  // t1：使用者刪光所有文件，觸發清空 refresh；完全同步、不呼叫 LLM，立刻清掉舊句
+  await refreshSuggestedPrompts(tenantId, emptyIdx);
+  expect(knowledgeStore.getMeta(tenantId).suggestedPrompts).toBeUndefined();
+
+  // t2：t0 那通的 LLM 才 resolve，帶著「已刪除的 v1 內容」生成的句子
+  resolveSlow({
+    text: '{"zh-Hant":"補助要附什麼文件？","en":"What documents are needed?"}',
+    toolCalls: [],
+    stopReason: 'end_turn',
+    model: 'm',
+    keySource: 'platform',
+  });
+  await slowCall;
+
+  expect(knowledgeStore.getMeta(tenantId).suggestedPrompts).toBeUndefined();
+});
+
+it('兩次重疊的非空生成，只保留後發動那次的結果', async () => {
+  const tenantId = 'sug-race-overlap';
+  knowledgeStore.setMeta(tenantId, { status: 'ready', chunkCount: 1 });
+
+  let resolveFirst: (value: unknown) => void = () => {};
+  const firstPending = new Promise((resolve) => {
+    resolveFirst = resolve;
+  });
+  const firstCreate = jest.fn().mockReturnValue(firstPending);
+  const secondCreate = jest.fn().mockResolvedValue({
+    text: '{"zh-Hant":"後發動的句子","en":"Second call answer"}',
+    toolCalls: [],
+    stopReason: 'end_turn',
+    model: 'm',
+    keySource: 'platform',
+  });
+  (getLLMProvider as jest.Mock)
+    .mockReturnValueOnce({ name: 'mock', createMessage: firstCreate })
+    .mockReturnValueOnce({ name: 'mock', createMessage: secondCreate });
+
+  const firstCall = refreshSuggestedPrompts(tenantId, idx); // 先發動，卡住不 resolve
+  const secondCall = refreshSuggestedPrompts(tenantId, idx); // 後發動，先完成
+  await secondCall;
+
+  // 先發動那次現在才 resolve，帶著較舊的內容
+  resolveFirst({
+    text: '{"zh-Hant":"先發動的舊句子","en":"First call answer"}',
+    toolCalls: [],
+    stopReason: 'end_turn',
+    model: 'm',
+    keySource: 'platform',
+  });
+  await firstCall;
+
+  expect(knowledgeStore.getMeta(tenantId).suggestedPrompts).toEqual({
+    'zh-Hant': '後發動的句子',
+    en: 'Second call answer',
+  });
+});
+
+it('索引清空分支中 store 拋錯時仍不 reject（regression：舊版此分支在 try 保護之外）', async () => {
+  const tenantId = 'sug-empty-store-throw';
+  knowledgeStore.setMeta(tenantId, {
+    status: 'ready',
+    chunkCount: 0,
+    suggestedPrompts: { 'zh-Hant': '舊句', en: 'old' },
+  });
+
+  const spy = jest.spyOn(knowledgeStore, 'getMeta').mockImplementation(() => {
+    throw new Error('store 掛了');
+  });
+
+  await expect(refreshSuggestedPrompts(tenantId, emptyIdx)).resolves.toBeUndefined();
+
+  spy.mockRestore();
+});

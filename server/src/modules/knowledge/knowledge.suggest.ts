@@ -103,29 +103,58 @@ export function parseSuggestion(text: string): SuggestedPrompts | undefined {
 }
 
 /**
+ * per-tenant 世代編號：refresh 呼叫可能重疊（爬取/上傳/刪檔可連續觸發），且不保證
+ * resolve 順序與發動順序一致。用世代編號讓「較晚發動」的呼叫永遠贏——寫入前若發現
+ * 自己的世代已被更晚發動的呼叫超越，一律放棄寫入，避免舊呼叫用過期內容（甚至已刪除
+ * 的內容）覆蓋新呼叫剛寫入、或剛清空的結果。
+ */
+const generations = new Map<string, number>();
+
+/** 遞增並回傳該租戶的最新世代編號；呼叫本身即代表「這是目前最新一次 refresh」 */
+function beginGeneration(tenantId: string): number {
+  const gen = (generations.get(tenantId) ?? 0) + 1;
+  generations.set(tenantId, gen);
+  return gen;
+}
+
+/** 判斷 gen 是否仍是該租戶目前最新的一次呼叫；不是即代表這次呼叫已過期 */
+function isLatestGeneration(tenantId: string, gen: number): boolean {
+  return generations.get(tenantId) === gen;
+}
+
+/**
  * 重新生成某租戶的推薦問句並寫回 meta。
  *
  * 永不 reject：呼叫端一律以 `void refreshSuggestedPrompts(...)` 觸發，
- * 任何失敗都不得影響索引本身的狀態。
+ * 任何失敗（含 store 讀寫拋錯）都不得影響索引本身的狀態，故整個函式體都在
+ * try/catch 保護內。
  */
 export async function refreshSuggestedPrompts(
   tenantId: string,
   idx: KnowledgeIndexFile,
 ): Promise<void> {
-  // 索引已空：清除舊句，不留下指向已刪內容的問句
-  if (idx.chunks.length === 0) {
-    const meta = knowledgeStore.getMeta(tenantId);
-    if (meta.suggestedPrompts) {
-      const { suggestedPrompts: _drop, ...rest } = meta;
-      knowledgeStore.setMeta(tenantId, rest);
-    }
-    return;
-  }
-
-  const material = sampleIndexForSuggestion(idx);
-  if (!material) return;
+  const gen = beginGeneration(tenantId);
 
   try {
+    // 索引已空：清除舊句，不留下指向已刪內容的問句。
+    // 這段沒有 await，同步執行完畢前不可能有其他呼叫插入，故世代必為最新，
+    // 不需再檢查；此呼叫遞增的世代會讓「更早發動、還在 await 中」的舊呼叫
+    // 之後寫入時被判定過期。
+    if (idx.chunks.length === 0) {
+      const meta = knowledgeStore.getMeta(tenantId);
+      if (meta.suggestedPrompts) {
+        const { suggestedPrompts: _drop, ...rest } = meta;
+        knowledgeStore.setMeta(tenantId, rest);
+      }
+      return;
+    }
+
+    const material = sampleIndexForSuggestion(idx);
+    // chunks 非空，但每筆文字 trim 後皆為空白、且沒有多個相異 title 可用時
+    // （例如僅含空白內容的頁面、且與其他 chunk 同 title），抽樣素材會是空字串——
+    // 沒有可餵給 LLM 的內容，直接放棄，不視為錯誤
+    if (!material) return;
+
     const result = await getLLMProvider(
       tenantStore.getTenant(tenantId)?.llmConfig,
     ).createMessage({
@@ -144,6 +173,13 @@ export async function refreshSuggestedPrompts(
         { tenantId, text: result.text.slice(0, 200) },
         'suggested prompt 驗證未過，維持 fallback',
       );
+      return;
+    }
+
+    // 世代防護：await 期間可能有更晚發動的呼叫（含清空）已經完成，此時這次的結果
+    // 已過期（可能指向已刪內容，或被更新的生成蓋過），一律放棄寫入
+    if (!isLatestGeneration(tenantId, gen)) {
+      logger.warn({ tenantId }, 'suggested prompt 生成期間已有更新的呼叫，放棄過期寫入');
       return;
     }
 
