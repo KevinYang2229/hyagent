@@ -217,3 +217,42 @@ describe('intentRouter.route', () => {
     expect(r.serviceId).not.toBe('knowledge');
   });
 });
+
+/**
+ * 回歸：新對話「尚未真正進入填表流程」時不該被 form 點黏。
+ *
+ * 症狀是使用者回報的「只能問一次，第二題就要重開 session」：session 一建立 status 就是
+ * 'collecting'，router 又把未設定的 activeServiceId 預設成 'form'，於是每個對話從第一輪
+ * 就處於填表點黏中；第二輪起只要沒踩到知識語氣詞就 0-token 鎖回 form，連分類器都不問。
+ */
+describe('尚未進入填表流程時不點黏', () => {
+  const kbQuery = { text: '{"intent":"kb.query","confidence":0.95}', toolCalls: [], stopReason: 'end_turn' };
+
+  it('activeServiceId 未設定時，第二輪知識提問仍能路由到知識庫', async () => {
+    mockCreate.mockResolvedValue(kbQuery);
+    const r = await intentRouter.route(
+      makeSession({ activeServiceId: undefined, messages: MID_CONV_MSGS }),
+      '莫拉克颱風遷村紀錄填表人是誰',
+    );
+    expect(r.serviceId).toBe('knowledge');
+  });
+
+  it('真正進入填表流程後（activeServiceId=form），續填訊息仍 0-token 續留', async () => {
+    const r = await intentRouter.route(
+      makeSession({ activeServiceId: 'form', messages: MID_CONV_MSGS }),
+      '特休',
+    );
+    expect(r).toEqual({ serviceId: 'form', viaLLM: false });
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it('填表中夾帶「⋯是誰」這類知識提問，仍逃得出點黏', async () => {
+    // 舊的知識語氣白名單只列 規定/如何/有哪些⋯，問「誰」「哪個單位」一律被當成填表回答吞掉
+    mockCreate.mockResolvedValue(kbQuery);
+    const r = await intentRouter.route(
+      makeSession({ activeServiceId: 'form', messages: MID_CONV_MSGS }),
+      '莫拉克颱風遷村紀錄填表人是誰',
+    );
+    expect(r.serviceId).toBe('knowledge');
+  });
+});

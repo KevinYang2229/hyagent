@@ -21,8 +21,15 @@ const DEFAULT_FORM_ID = 'leave-request';
 
 // 疑似「知識查詢」的語氣詞：命中才考慮把填表中途插入知識問答（觸發一次 Haiku 二次確認）。
 // 過度觸發只是多一次 Haiku 呼叫、由分類器把關，故涵蓋常見「事實/聯絡/產品」提問詞。
+/**
+ * 填表點黏中「疑似知識提問」的逃生閘：命中才花一次 Haiku 判斷，否則 0-token 續留填表。
+ *
+ * 這是白名單，漏列即代表該問法會被當成填表回答吞掉。原本只涵蓋「規定/如何/有哪些」這類
+ * 詢問句式，卻漏了公文查詢最常見的「誰、哪個單位、何時、名單」——「⋯填表人是誰」完全不命中，
+ * 於是被請假助理婉拒。寧可多花一次分類器呼叫，也不要把真問題吞掉。
+ */
 const KNOWLEDGE_HINT_RE =
-  /(規定|政策|辦法|制度|規章|可以嗎|可不可以|如何|怎麼|多久|幾天|幾小時|是否|說明|什麼是|是什麼|定義|標準|條件|資格|請問|電話|地址|在哪|聯絡|信箱|email|有哪些|幾號|多少)/i;
+  /(規定|政策|辦法|制度|規章|可以嗎|可不可以|如何|怎麼|多久|幾天|幾小時|是否|說明|什麼是|是什麼|定義|標準|條件|資格|請問|電話|地址|在哪|聯絡|信箱|email|有哪些|幾號|多少|誰|哪個|哪些|哪裡|哪一|何時|名單|清單|為什麼|為何|主辦|承辦|負責)/i;
 
 const CLASSIFY_THRESHOLD = 0.6;
 
@@ -114,10 +121,15 @@ export const intentRouter = {
       return { serviceId: 'agent', viaLLM: false };
     }
 
-    const activeId = session.activeServiceId ?? 'form';
-    const active = serviceRegistry.tryGet(activeId);
+    // activeServiceId 只由「點黏服務實際處理過一輪」時寫入（runTurn）。不可預設成 'form'：
+    // session 一建立 status 就是 'collecting'，若再預設 form 為擁有者，等於每個對話從第一輪
+    // 就處於填表點黏中，第二輪起沒踩到知識語氣詞就被 0-token 鎖回 form——使用者體感是
+    // 「只能問一題，第二題就要重開對話」。點黏必須由真實的填表行為建立，而非 session 的出生狀態。
+    const activeId = session.activeServiceId;
+    const active = activeId ? serviceRegistry.tryGet(activeId) : undefined;
     // 點黏只在「該服務仍為啟用」時成立——停用的服務不得因點黏繞過過濾
     const inStickyFlow =
+      !!activeId &&
       !!active?.sticky &&
       enabledIds.has(activeId) &&
       (session.status === 'collecting' || session.status === 'confirming');

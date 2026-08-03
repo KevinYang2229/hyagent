@@ -455,8 +455,10 @@ a {
   @apply flex items-center gap-[9px] text-sm font-semibold;
 }
 .row-sub {
-  @apply mt-[3px] text-xs text-[var(--text-secondary)];
+  @apply mt-[3px] min-w-0 text-xs text-[var(--text-secondary)];
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  /* 長 URL／雜湊沒有可斷點，不強制斷行會撐破卡片 */
+  overflow-wrap: anywhere;
 }
 .row-actions {
   @apply flex flex-none gap-2;

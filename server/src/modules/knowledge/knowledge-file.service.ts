@@ -6,8 +6,6 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import mammoth from 'mammoth';
-import { PDFParse } from 'pdf-parse';
 import { getEmbeddingProvider } from '@/lib/embedding';
 import { getLLMProvider } from '@/lib/llm';
 import { logger } from '@/lib/logger';
@@ -18,7 +16,14 @@ import { AppError } from '@/utils/app-error';
 import { indexPathFor } from './index-path';
 // carryOverFileChunks 從 ingest.service 匯入（而非本檔自行定義），維持單向依賴：
 // 本檔已需要 ingest.service 的 chunkText/squash，若 ingest.service 反過來 import 本檔會形成循環引用。
-import { carryOverFileChunks, chunkText, squash } from './ingest.service';
+import {
+  carryOverFileChunks,
+  chunkMarkdown,
+  embedInBatches,
+  normalizeDocText,
+  squash,
+} from './ingest.service';
+import { parseDocument } from './doc-parse';
 import type { IndexedChunk, KnowledgeIndexFile } from './knowledge-index.types';
 import { knowledgeStore, type KnowledgeFileMeta } from './knowledge.store';
 import { invalidateIndexCache } from './retriever.staticIndex';
@@ -61,29 +66,9 @@ async function summarizeText(tenantId: string, name: string, text: string): Prom
   }
 }
 
-/**
- * 依副檔名解析為純文字；不支援的副檔名回 400。
- *
- * pdf-parse 已升級為 2.x（class-based API：`new PDFParse({ data }).getText()`，
- * 不再是 1.x 的 `pdfParse(buffer)` 單一函式），故採官方新版 API 呼叫方式。
- */
+/** 只要文字的呼叫端用這個；格式判定與各格式解析見 doc-parse。 */
 export async function parseFileToText(name: string, buf: Buffer): Promise<string> {
-  const ext = name.slice(name.lastIndexOf('.')).toLowerCase();
-  if (ext === '.txt' || ext === '.md') return buf.toString('utf8');
-  if (ext === '.pdf') {
-    const parser = new PDFParse({ data: buf });
-    try {
-      const out = await parser.getText();
-      return out.text ?? '';
-    } finally {
-      await parser.destroy();
-    }
-  }
-  if (ext === '.docx') {
-    const out = await mammoth.extractRawText({ buffer: buf });
-    return out.value ?? '';
-  }
-  throw AppError.badRequest(`不支援的檔案格式：${ext}（支援 .txt/.md/.pdf/.docx）`);
+  return (await parseDocument(name, buf)).text;
 }
 
 function loadIndexFile(tenantId: string): KnowledgeIndexFile | null {
@@ -105,12 +90,14 @@ export async function ingestFile(
   name: string,
   buf: Buffer,
 ): Promise<KnowledgeFileMeta> {
-  const text = squash(await parseFileToText(name, buf));
+  const parsed = await parseDocument(name, buf);
+  // normalizeDocText（而非 squash）：保留段落與 Markdown 標題行，切塊才切得到語意邊界
+  const text = normalizeDocText(parsed.text);
   if (text.length < MIN_TEXT_CHARS) {
     throw AppError.unprocessable('無可抽取文字（可能為掃描檔或空檔）');
   }
   const source = knowledgeStore.getSource(tenantId);
-  const pieces = chunkText(text, source.chunkChars);
+  const pieces = chunkMarkdown(text, source.chunkChars);
 
   // 單一 chunk 就是全文本身，摘要無增益；多 chunk 才值得花一次 LLM 呼叫
   const summary = pieces.length >= 2 ? await summarizeText(tenantId, name, text) : null;
@@ -120,8 +107,10 @@ export async function ingestFile(
   // 模型一致性：同一份索引只能用同一個 embedding 模型
   const model = existing?.model ?? source.embeddingModel;
   const embedder = getEmbeddingProvider(tenantStore.getTenant(tenantId)?.llmConfig);
-  const { vectors, tokens } = await embedder.embed(toEmbed, model);
-  usageStore.recordEmbeddingUsage(tenantId, tokens, model, embedder.keySource);
+  // 必須分批：整份文件一次送出會撞 embeddings 端點的 300k tokens/request 上限（400 Invalid 'input'）
+  const vectors = await embedInBatches(embedder, toEmbed, model, (tokens) => {
+    usageStore.recordEmbeddingUsage(tenantId, tokens, model, embedder.keySource);
+  });
 
   const fileId = randomUUID();
   const fileChunks: IndexedChunk[] = pieces.map((t, i) => ({
@@ -159,6 +148,8 @@ export async function ingestFile(
     name,
     chunks: fileChunks.length,
     ingestedAt: new Date().toISOString(),
+    format: parsed.format,
+    fidelity: parsed.fidelity,
   };
   const meta = knowledgeStore.getMeta(tenantId);
   knowledgeStore.setMeta(tenantId, {

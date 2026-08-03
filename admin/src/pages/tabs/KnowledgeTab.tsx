@@ -232,7 +232,7 @@ export default function KnowledgeTab({
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".txt,.md,.pdf,.docx"
+                  accept=".txt,.md,.htm,.html,.doc,.docx,.pdf"
                   style={{ display: "none" }}
                   onChange={(e) => {
                     const file = e.target.files?.[0];
@@ -266,8 +266,10 @@ export default function KnowledgeTab({
                     const ext = file.name
                       .slice(file.name.lastIndexOf(".") + 1)
                       .toLowerCase();
-                    if (!["txt", "md", "pdf", "docx"].includes(ext)) {
-                      toast.error("僅支援 TXT、MD、PDF、DOCX 檔案");
+                    if (
+                      !["txt", "md", "htm", "html", "doc", "docx", "pdf"].includes(ext)
+                    ) {
+                      toast.error("僅支援 TXT、MD、HTM、DOC、DOCX、PDF 檔案");
                       return;
                     }
                     pickFile(file);
@@ -303,7 +305,7 @@ export default function KnowledgeTab({
                       <div className="kdrop-sub">
                         {pendingFile
                           ? `${Math.max(1, Math.round(pendingFile.size / 1024))} KB，支援重新點擊更換檔案`
-                          : "支援 TXT・MD・PDF・DOCX，單檔上限 10MB"}
+                          : "支援 TXT・MD・HTM・DOC・DOCX・PDF，單檔上限 10MB（DOCX 檢索準確度最佳）"}
                       </div>
                     </>
                   )}

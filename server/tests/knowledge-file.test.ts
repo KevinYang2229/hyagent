@@ -22,6 +22,7 @@ import { indexPathFor } from '@/modules/knowledge/index-path';
 import { knowledgeStore } from '@/modules/knowledge/knowledge.store';
 import type { IndexedChunk, KnowledgeIndexFile } from '@/modules/knowledge/knowledge-index.types';
 import { tenantStore } from '@/modules/tenant/tenant.store';
+import { makeDocx, para, table } from './helpers/make-docx';
 
 function readIndex(tenantId: string): KnowledgeIndexFile {
   return JSON.parse(readFileSync(indexPathFor(tenantId), 'utf8')) as KnowledgeIndexFile;
@@ -40,6 +41,41 @@ describe('parseFileToText', () => {
     await expect(parseFileToText('a.txt', Buffer.from('哈囉 規章內容'))).resolves.toContain('規章');
     await expect(parseFileToText('b.md', Buffer.from('# 標題\n內文'))).resolves.toContain('內文');
     await expect(parseFileToText('c.exe', Buffer.from('x'))).rejects.toMatchObject({ statusCode: 400 });
+  });
+});
+
+describe('ingestFile（docx 結構化路徑）', () => {
+  it('docx 的標題成為章節前綴、表格逐列成塊且自帶欄位名，meta 標示 structured', async () => {
+    const t = tenantStore.createTenant('kfile-docx');
+    const long = '特休依年資計算，未休完得遞延至次年三月底。'.repeat(20);
+    const buf = await makeDocx(
+      para('員工手冊', 'Heading1'),
+      para('請假規定', 'Heading2'),
+      para(long),
+      table([
+        ['年資', '天數'],
+        ['1年', '7'],
+      ]),
+    );
+
+    const meta = await ingestFile(t.id, '手冊.docx', buf);
+    expect(meta).toMatchObject({ format: 'docx', fidelity: 'structured' });
+
+    const fileChunks = readIndex(t.id).chunks.filter((c) => c.fileId === meta.fileId);
+    const bodyChunks = fileChunks.filter((c) => c.id !== `${meta.fileId}-summary`);
+    expect(bodyChunks.every((c) => c.text.startsWith('員工手冊 > 請假規定\n'))).toBe(true);
+
+    // 表格不再以 Markdown 管線進索引：每個資料列自成一塊並自帶欄位名，
+    // 這樣切塊後每一塊都還知道哪一欄是「天數」（舊的管線形式表頭只留在第一塊）
+    const row = bodyChunks.find((c) => c.text.includes('年資：1年'));
+    expect(row?.text).toContain('天數：7');
+    expect(bodyChunks.some((c) => c.text.includes('|'))).toBe(false);
+  });
+
+  it('純文字來源標示 fidelity=text（admin 據此提示改上傳 docx）', async () => {
+    const t = tenantStore.createTenant('kfile-fidelity');
+    const meta = await ingestFile(t.id, '規章.txt', Buffer.from('請假規定：特休依年資計算。'.repeat(40)));
+    expect(meta).toMatchObject({ format: 'txt', fidelity: 'text' });
   });
 });
 
