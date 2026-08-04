@@ -6,7 +6,9 @@ import {
   type KnowledgeFileMeta,
   type KnowledgeMeta,
   type KnowledgeSource,
+  type PromptSource,
   type QueryHit,
+  type SuggestedPromptText,
 } from "../../api";
 import NumberField from "../../components/NumberField";
 
@@ -27,8 +29,12 @@ export default function KnowledgeTab({
   const [question, setQuestion] = useState("");
   const [hits, setHits] = useState<QueryHit[]>([]);
   const [uploading, setUploading] = useState(false);
-  const [regenerating, setRegenerating] = useState(false); // 手動重新生成開場推薦詞中
+  const [regenerating, setRegenerating] = useState<PromptSource | null>(null); // 手動重新生成開場推薦詞中的來源
   const [dragOver, setDragOver] = useState(false); // 拖放上傳區的 drag-over 高亮
+  // 手動編輯中的來源與草稿（null = 沒有在編輯）
+  const [editingSource, setEditingSource] = useState<PromptSource | null>(null);
+  const [manualDraft, setManualDraft] = useState<SuggestedPromptText>({ "zh-Hant": "", en: "" });
+  const [savingManual, setSavingManual] = useState(false);
   // 來源設定：先選網站或檔案，再填完參數，最後由同一顆「開始解析」依類型處理。
   const [sourceKind, setSourceKind] = useState<SourceKind>("website");
   const [pendingFile, setPendingFile] = useState<File | null>(null);
@@ -131,19 +137,45 @@ export default function KnowledgeTab({
   };
 
   /**
-   * 重新生成開場推薦詞：平時由索引異動自動觸發，這裡是補救入口
+   * 重新生成某來源的開場推薦詞：平時由索引異動自動觸發，這裡是補救入口
    * （索引建立於此功能上線前、或當時生成失敗的租戶，否則要重爬才生得出來）。
    */
-  const regenerateSuggestion = async () => {
-    setRegenerating(true);
+  const regenerateSuggestion = async (source: PromptSource) => {
+    setRegenerating(source);
     try {
-      const { suggestedPrompts } = await api.refreshKnowledgeSuggestion(tenantId);
-      setMeta((m) => (m ? { ...m, suggestedPrompts } : m));
+      const { slot } = await api.refreshKnowledgeSuggestion(tenantId, source);
+      setMeta((m) => (m ? { ...m, suggestedPrompts: { ...m.suggestedPrompts, [source]: slot } } : m));
       toast.success("已重新生成開場推薦詞");
     } catch (e) {
       onError(e);
     } finally {
-      setRegenerating(false);
+      setRegenerating(null);
+    }
+  };
+
+  /** 儲存手動推薦詞：儲存成功後關閉編輯區並帶回最新的 slot */
+  const saveManual = async (source: PromptSource) => {
+    setSavingManual(true);
+    try {
+      const { slot } = await api.setKnowledgeSuggestionManual(tenantId, source, manualDraft);
+      setMeta((m) => (m ? { ...m, suggestedPrompts: { ...m.suggestedPrompts, [source]: slot } } : m));
+      setEditingSource(null);
+      toast.success("已儲存手動推薦詞");
+    } catch (e) {
+      onError(e);
+    } finally {
+      setSavingManual(false);
+    }
+  };
+
+  /** 清除手動推薦詞，恢復顯示自動生成的句子 */
+  const clearManual = async (source: PromptSource) => {
+    try {
+      const { slot } = await api.setKnowledgeSuggestionManual(tenantId, source, null);
+      setMeta((m) => (m ? { ...m, suggestedPrompts: { ...m.suggestedPrompts, [source]: slot } } : m));
+      toast.success("已恢復自動生成");
+    } catch (e) {
+      onError(e);
     }
   };
 
@@ -497,23 +529,91 @@ export default function KnowledgeTab({
                   {meta.chunkCount} 片段｜來源 {meta.source ?? "—"}｜
                   {meta.generatedAt ?? ""}
                 </div>
-                {/* 開場推薦詞：widget 的推薦 chip 就顯示這句，沒有生成就不會有 chip，
-                    所以未生成時也要露出狀態與重新生成入口，而不是整列藏起來 */}
-                <div className="row-sub">
-                  開場推薦詞｜
-                  {meta.suggestedPrompts
-                    ? `${meta.suggestedPrompts["zh-Hant"]}｜${meta.suggestedPrompts.en}`
-                    : "尚未生成，widget 不會顯示推薦問句"}
-                  <button
-                    type="button"
-                    className="btn btn-sm"
-                    onClick={regenerateSuggestion}
-                    disabled={regenerating}
-                    style={{ marginInlineStart: 8 }}
-                  >
-                    {regenerating ? "生成中…" : "重新生成"}
-                  </button>
-                </div>
+                {/* 開場推薦詞：widget 的推薦 chip 依來源各一顆，未生成就不會有 chip */}
+                {(["website", "file"] as const).map((source) => {
+                  const slot = meta.suggestedPrompts?.[source];
+                  const effective = slot?.manual ?? slot?.generated;
+                  const count = meta.chunkCountBySource?.[source] ?? 0;
+                  return (
+                    <div className="row-sub" key={source}>
+                      {source === "website" ? "網站來源" : "檔案來源"}｜
+                      {effective
+                        ? `${effective["zh-Hant"]}｜${effective.en || "（英文未填）"}`
+                        : "尚未生成，widget 不會顯示這顆 chip"}
+                      {slot?.manual ? "（手動）" : "（自動）"}
+                      <button
+                        type="button"
+                        className="btn btn-sm"
+                        onClick={() => regenerateSuggestion(source)}
+                        disabled={regenerating !== null || count === 0}
+                        style={{ marginInlineStart: 8 }}
+                      >
+                        {regenerating === source ? "生成中…" : "重新生成"}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-sm"
+                        onClick={() => {
+                          setEditingSource(source);
+                          setManualDraft(slot?.manual ?? { "zh-Hant": "", en: "" });
+                        }}
+                        style={{ marginInlineStart: 4 }}
+                      >
+                        編輯
+                      </button>
+                      {slot?.manual && (
+                        <button
+                          type="button"
+                          className="btn btn-sm"
+                          onClick={() => clearManual(source)}
+                          style={{ marginInlineStart: 4 }}
+                        >
+                          恢復自動
+                        </button>
+                      )}
+                      {editingSource === source && (
+                        <div className="form-grid" style={{ marginBlockStart: 8 }}>
+                          <div className="field">
+                            <label className="field-label">繁體中文（必填，20 字以內）</label>
+                            <input
+                              className="input"
+                              value={manualDraft["zh-Hant"]}
+                              onChange={(e) =>
+                                setManualDraft((d) => ({ ...d, "zh-Hant": e.target.value }))
+                              }
+                            />
+                          </div>
+                          <div className="field">
+                            <label className="field-label">英文（選填，留空則英文介面不顯示）</label>
+                            <input
+                              className="input"
+                              value={manualDraft.en}
+                              onChange={(e) => setManualDraft((d) => ({ ...d, en: e.target.value }))}
+                            />
+                          </div>
+                          <div className="field">
+                            <button
+                              type="button"
+                              className="btn btn-primary btn-sm"
+                              onClick={() => saveManual(source)}
+                              disabled={savingManual || !manualDraft["zh-Hant"].trim()}
+                            >
+                              儲存
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-sm"
+                              onClick={() => setEditingSource(null)}
+                              style={{ marginInlineStart: 4 }}
+                            >
+                              取消
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </>
             ) : meta.status === "failed" ? (
               <div className="row-sub">失敗：{meta.error ?? "未知錯誤"}</div>

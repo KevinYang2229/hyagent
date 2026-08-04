@@ -162,6 +162,15 @@ export interface KnowledgeFileMeta {
   chunks: number;
   ingestedAt: string;
 }
+export type PromptSource = 'website' | 'file';
+export interface SuggestedPromptText {
+  'zh-Hant': string;
+  en: string;
+}
+export interface PromptSlotView {
+  generated?: SuggestedPromptText;
+  manual?: SuggestedPromptText;
+}
 export interface KnowledgeMeta {
   status: 'none' | 'ready' | 'failed';
   chunkCount: number;
@@ -170,8 +179,10 @@ export interface KnowledgeMeta {
   source?: string;
   error?: string;
   files?: KnowledgeFileMeta[];
-  /** 依索引內容生成的 widget 開場推薦問句；未生成時不存在 */
-  suggestedPrompts?: { 'zh-Hant': string; en: string };
+  /** 依索引內容生成的 widget 開場推薦問句；依來源各一格，未生成時該格不存在 */
+  suggestedPrompts?: Partial<Record<PromptSource, PromptSlotView>>;
+  /** 各來源目前的 chunk 數；舊 meta 可能沒有這個欄位 */
+  chunkCountBySource?: Record<PromptSource, number>;
 }
 export interface IngestJob {
   id: string;
@@ -307,11 +318,19 @@ export const api = {
     req<{ hits: QueryHit[] }>('POST', `/admin/tenants/${id}/knowledge/query-test`, { question }),
   deleteKnowledge: (id: string) =>
     req<{ ok: boolean }>('DELETE', `/admin/tenants/${id}/knowledge`),
-  /** 手動重新生成開場推薦詞（平時由索引異動自動觸發，這是補救入口） */
-  refreshKnowledgeSuggestion: (id: string) =>
-    req<{ suggestedPrompts: { 'zh-Hant': string; en: string } }>(
+  /** 重新生成某來源的開場推薦詞（平時由索引異動自動觸發，這是補救入口） */
+  refreshKnowledgeSuggestion: (id: string, source: PromptSource) =>
+    req<{ source: PromptSource; slot: PromptSlotView }>(
       'POST',
       `/admin/tenants/${id}/knowledge/suggestion`,
+      { source },
+    ),
+  /** 設定或清除某來源的手動推薦詞；manual 傳 null 代表恢復自動 */
+  setKnowledgeSuggestionManual: (id: string, source: PromptSource, manual: SuggestedPromptText | null) =>
+    req<{ source: PromptSource; slot: PromptSlotView }>(
+      'PUT',
+      `/admin/tenants/${id}/knowledge/suggestion`,
+      { source, manual },
     ),
   uploadKnowledgeFile: (id: string, file: File) => {
     const form = new FormData();
