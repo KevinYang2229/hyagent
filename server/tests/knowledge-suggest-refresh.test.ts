@@ -148,6 +148,38 @@ it('生成期間 meta 被其他寫入更新時不覆蓋（呼叫後重讀 meta�
   expect(meta.suggestedPrompts).toBeDefined();
 });
 
+it('生成期間管理者設定了 manual，寫回時不得被 await 前的舊快照蓋掉', async () => {
+  const tenantId = 'sug-race-manual';
+  knowledgeStore.setMeta(tenantId, { status: 'ready', chunkCount: 1 });
+  const manual = { 'zh-Hant': '手動句？', en: '' };
+
+  mockCreate = jest.fn().mockImplementation(async () => {
+    // 模擬管理者在 LLM 呼叫（尚未 resolve）期間，透過 PUT /suggestion 設定了 manual；
+    // setSuggestionManual 本身不遞增世代，refreshSuggestedPrompts 完全不知道這件事發生過
+    const meta = knowledgeStore.getMeta(tenantId);
+    knowledgeStore.setMeta(tenantId, {
+      ...meta,
+      suggestedPrompts: { ...(meta.suggestedPrompts ?? {}), website: { manual } },
+    });
+    return {
+      text: '{"zh-Hant":"補助要附什麼文件？","en":"What documents are needed?"}',
+      toolCalls: [],
+      stopReason: 'end_turn',
+      model: 'm',
+      keySource: 'platform',
+    };
+  });
+  (getLLMProvider as jest.Mock).mockReturnValue({ name: 'mock', createMessage: mockCreate });
+
+  await refreshSuggestedPrompts(tenantId, idx);
+
+  const slot = knowledgeStore.getMeta(tenantId).suggestedPrompts?.website;
+  // manual 是生成期間才設定的，寫回前的舊快照裡沒有——若沿用舊快照就會在這裡消失
+  expect(slot?.manual).toEqual(manual);
+  // generated 仍要正確寫入，manual 修好不能反過來讓 generated 消失
+  expect(slot?.generated).toEqual({ 'zh-Hant': '補助要附什麼文件？', en: 'What documents are needed?' });
+});
+
 it('慢的非空生成尚未 resolve 時被中途插入的清空呼叫覆蓋，事後不得讓推薦句復活', async () => {
   const tenantId = 'sug-race-empty-wins';
   knowledgeStore.setMeta(tenantId, { status: 'ready', chunkCount: 1 });

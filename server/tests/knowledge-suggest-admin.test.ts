@@ -17,6 +17,7 @@ import request from 'supertest';
 import { createApp } from '@/app';
 import { getLLMProvider } from '@/lib/llm';
 import { indexPathFor } from '@/modules/knowledge/index-path';
+import { startIngestJob } from '@/modules/knowledge/knowledge.job';
 import { knowledgeStore } from '@/modules/knowledge/knowledge.store';
 import type { KnowledgeIndexFile } from '@/modules/knowledge/knowledge-index.types';
 
@@ -134,6 +135,25 @@ describe('POST /admin/tenants/:id/knowledge/suggestion', () => {
       .send({ source: 'file' })
       .expect(422);
   });
+
+  it('解析任務進行中時回 409', async () => {
+    const tenantId = 'sug-admin-running-job';
+    writeIndex(tenantId, [chunk]);
+    knowledgeStore.setMeta(tenantId, { status: 'ready', chunkCount: 1 });
+    mockLLM('{"zh-Hant":"不該被呼叫","en":"should not be called"}');
+    // 注入永不完成的 run，製造「進行中」job（getRunningJobForTenant 命中），比照 knowledge-file-admin.test.ts
+    const never = () => new Promise<never>(() => {});
+    startIngestJob(
+      { tenantId, startUrl: 'https://x.com', maxPages: 1, chunkChars: 800, embeddingModel: 'm' },
+      never as never,
+    );
+
+    await request(app)
+      .post(`/api/admin/tenants/${tenantId}/knowledge/suggestion`)
+      .set(auth)
+      .send({ source: 'website' })
+      .expect(409);
+  });
 });
 
 describe('PUT /admin/tenants/:id/knowledge/suggestion', () => {
@@ -185,5 +205,12 @@ describe('PUT /admin/tenants/:id/knowledge/suggestion', () => {
       .set(auth)
       .send({ source: 'website', manual: { 'zh-Hant': '  ', en: '' } })
       .expect(400);
+  });
+
+  it('未帶 admin key 時擋下', async () => {
+    await request(app)
+      .put('/api/admin/tenants/sug-admin-manual/knowledge/suggestion')
+      .send({ source: 'website', manual: { 'zh-Hant': '手動句？', en: '' } })
+      .expect(401);
   });
 });

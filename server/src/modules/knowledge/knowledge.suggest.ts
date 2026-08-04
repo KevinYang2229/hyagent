@@ -18,6 +18,7 @@ import type { SuggestedPrompts } from './knowledge.store';
 import {
   SOURCE_KEYS,
   splitChunksBySource,
+  type PromptSlot,
   type SourceKey,
   type SuggestedPromptSlots,
 } from './prompt-slots';
@@ -179,6 +180,14 @@ async function generateOne(tenantId: string, material: string): Promise<Suggeste
  * 回傳「這次實際寫入的格位」，沒寫入則為 undefined。後台的手動重新生成需要據此
  * 分辨成功與失敗——只看 meta 分不出來：失敗時 meta 會留著上一次的舊句，
  * 看起來就像剛生成成功。
+ *
+ * manual 的寫回一律以「動作完成當刻」的最新值為準，不沿用 await 前讀到的快照：
+ * 這支函式的兩次 LLM 呼叫本身就要等（秒級），若寫回時還照 await 前那份舊快照組出
+ * 整包覆蓋，管理者剛好在這段等待期間用 setSuggestionManual 設定或清除 manual，
+ * 結果會被這裡晚到的寫入悄悄蓋掉——PUT 當下回 200、讀回也正確，數秒後才消失，
+ * 且完全不觸發世代防護（manual 寫入不遞增世代）。本函式的權責只有 generated：
+ * 有新生成結果就用新的，生成略過或失敗就沿用舊的；manual 永遠交給寫回那一刻的
+ * 最新 meta 決定，即使該來源同時被判定內容已清空（generated 因此清除）也一樣。
  */
 export async function refreshSuggestedPrompts(
   tenantId: string,
@@ -190,20 +199,22 @@ export async function refreshSuggestedPrompts(
     const bySource = splitChunksBySource(idx.chunks);
     const current = knowledgeStore.getMeta(tenantId).suggestedPrompts ?? {};
 
-    // 逐格決定該格的新內容；兩格併發，彼此不影響
+    // 逐格決定該格「generated」的新內容；兩格併發，彼此不影響。
+    // 這裡只決定 generated，manual 留給 await 之後重讀 meta 時才決定，見下方函式註解。
     const entries = await Promise.all(
       SOURCE_KEYS.map(async (key: SourceKey) => {
         const slot = current[key] ?? {};
-        // 手動鎖定：整格跳過，不呼叫 LLM（生成了也用不到）
-        if (slot.manual) return [key, slot] as const;
+        // 手動鎖定：整格跳過，不呼叫 LLM（生成了也用不到）——沿用舊的 generated 即可
+        if (slot.manual) return [key, slot.generated] as const;
         // 該來源已無內容：清掉 generated，不留指向已刪內容的句子
         const chunks = bySource[key];
-        if (chunks.length === 0) return [key, {}] as const;
+        if (chunks.length === 0) return [key, undefined] as const;
         const material = sampleIndexForSuggestion({ ...idx, chunks });
         // 抽樣素材為空（chunks 皆空白）：不視為錯誤，維持原樣
-        if (!material) return [key, slot] as const;
+        if (!material) return [key, slot.generated] as const;
         const generated = await generateOne(tenantId, material);
-        return [key, generated ? { ...slot, generated } : slot] as const;
+        // 生成失敗（undefined）：沿用舊的，不因這次失敗而清空
+        return [key, generated ?? slot.generated] as const;
       }),
     );
 
@@ -213,14 +224,22 @@ export async function refreshSuggestedPrompts(
       return undefined;
     }
 
+    // setMeta 是整包覆蓋：await 期間 meta 可能已被其他寫入更新（如使用者刪檔、
+    // 或管理者剛設定的 manual），必須重讀。manual 一律取這份最新值，不用 await 前的 current。
+    const latestMeta = knowledgeStore.getMeta(tenantId);
+    const latestSlots = latestMeta.suggestedPrompts ?? {};
+
     const next: SuggestedPromptSlots = {};
-    for (const [key, slot] of entries) {
+    for (const [key, generated] of entries) {
+      const manual = latestSlots[key]?.manual;
+      const slot: PromptSlot = {};
+      if (generated) slot.generated = generated;
+      if (manual) slot.manual = manual;
       if (slot.generated || slot.manual) next[key] = slot;
     }
     const hasAny = SOURCE_KEYS.some((k) => next[k]);
-    // setMeta 是整包覆蓋：await 期間 meta 可能已被其他寫入更新（如使用者刪檔），必須重讀
     knowledgeStore.setMeta(tenantId, {
-      ...knowledgeStore.getMeta(tenantId),
+      ...latestMeta,
       suggestedPrompts: hasAny ? next : undefined,
     });
     return hasAny ? next : undefined;
