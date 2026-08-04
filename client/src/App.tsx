@@ -324,8 +324,8 @@ export default function App() {
       .then((list) => {
         if (!alive) return;
         setForms(list);
-        // 多張表單不預選（使用者先選辦理項目，才顯示該表單的動態提示按鈕）；
-        // 只有一張時自動選取，否則那張表單的範例提示永遠不會出現
+        // 一律不預選（含只有一張表單的租戶），使用者先選辦理項目才顯示該表單的動態提示按鈕；
+        // 只有 embed 的 ?form= 會帶著預選進來
         setSelectedFormId((cur) => cur ?? pickInitialFormId(list, embedConfig.formId));
       })
       .catch(() => alive && setForms([]));

@@ -20,13 +20,15 @@ export function shouldShowFormPicker(opts: {
 }
 
 /**
- * 初始選取的表單：embed 預選（?form=）優先，其次單一表單自動選取。
- * 多張表單時維持不預選，讓使用者自己挑辦理項目。
+ * 初始選取的表單：只認 embed 預選（?form=），其餘一律不預選。
+ *
+ * 單一表單曾經自動選取（怕該表單的範例提示永遠不出現），但那讓 chip 一進畫面就亮著、
+ * 看起來像使用者已經挑過辦理項目。chip 現在只要 formCount > 0 就會顯示，
+ * 使用者點一下即可拿到範例提示，不需要靠預選補救。
  */
 export function pickInitialFormId(
   forms: { formId: string }[],
   preset: string | null,
 ): string | null {
-  if (preset && forms.some((f) => f.formId === preset)) return preset;
-  return forms.length === 1 ? forms[0]!.formId : null;
+  return preset && forms.some((f) => f.formId === preset) ? preset : null;
 }

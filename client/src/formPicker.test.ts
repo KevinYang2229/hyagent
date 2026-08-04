@@ -23,8 +23,8 @@ describe('shouldShowFormPicker', () => {
 });
 
 describe('pickInitialFormId', () => {
-  it('只有一張表單時自動選取（否則永遠選不到，該表單的範例提示也不會出現）', () => {
-    expect(pickInitialFormId(one, null)).toBe('task-assignment');
+  it('只有一張表單時也不預選（chip 一進畫面就 active 會像使用者已挑過）', () => {
+    expect(pickInitialFormId(one, null)).toBeNull();
   });
 
   it('多張表單時不預選，等使用者挑', () => {
@@ -35,11 +35,11 @@ describe('pickInitialFormId', () => {
     expect(pickInitialFormId([], null)).toBeNull();
   });
 
-  it('embed 預選（?form=）優先於自動選取', () => {
+  it('embed 預選（?form=）仍然生效', () => {
     expect(pickInitialFormId(many, 'leave-request')).toBe('leave-request');
   });
 
-  it('embed 預選不在清單內時忽略，回落自動選取', () => {
-    expect(pickInitialFormId(one, 'unknown-form')).toBe('task-assignment');
+  it('embed 預選不在清單內時忽略，回落不預選', () => {
+    expect(pickInitialFormId(one, 'unknown-form')).toBeNull();
   });
 });
