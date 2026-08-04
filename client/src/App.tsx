@@ -160,7 +160,7 @@ export default function App() {
   const [paneOpen, setPaneOpen] = useState(false); // 表單明細預設收合
   const [pickerOpen, setPickerOpen] = useState(true); // 「要辦理什麼？」可收合，預設展開
   const [knowledgeEnabled, setKnowledgeEnabled] = useState(true); // 知識庫服務是否啟用（依租戶）
-  const [suggestedPrompts, setSuggestedPrompts] = useState<SuggestedPrompts | undefined>();
+  const [suggestedPrompts, setSuggestedPrompts] = useState<SuggestedPrompts[] | undefined>();
   // 主題優先序：data-theme（宿主明確）> 嵌入時略過本地記憶（避免與第一方 App 共用 localStorage 互相干擾，
   // 改由租戶 theme/預設決定）> 第一方 App 才讀本地記憶 > 預設淺色。後端 theme 於下方 effect 補上。
   const [theme, setTheme] = useState<Theme>(
@@ -879,8 +879,8 @@ export default function App() {
                       {t(`forms.${f.formId}.title`, { defaultValue: f.title })}
                     </button>
                   ))}
-                  {/* 知識庫推薦用詞：只顯示一個，樣式與表單 chip 一致；點擊直接以該問句發問 */}
-                  {knowledgePrompts.slice(0, 1).map((p) => (
+                  {/* 知識庫推薦用詞：網站來源與檔案來源各一顆 */}
+                  {knowledgePrompts.map((p) => (
                     <button
                       key={p}
                       type="button"

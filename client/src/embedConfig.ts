@@ -59,8 +59,8 @@ export interface WidgetConfig {
   appearance: TenantAppearance;
   /** 知識庫服務是否啟用（決定要不要顯示知識庫推薦用詞）；無 key/失敗時預設 true */
   knowledgeEnabled: boolean;
-  /** 依索引內容生成的知識庫推薦問句；未生成時 undefined，由前端回落 i18n 預設句 */
-  suggestedPrompts?: SuggestedPrompts;
+  /** 依各來源索引生成的推薦問句；未生成時為空陣列 */
+  suggestedPrompts?: SuggestedPrompts[];
 }
 
 export async function fetchAppearance(): Promise<WidgetConfig> {
@@ -73,13 +73,15 @@ export async function fetchAppearance(): Promise<WidgetConfig> {
       data?: {
         appearance?: TenantAppearance;
         knowledgeEnabled?: boolean;
-        suggestedPrompts?: SuggestedPrompts;
+        suggestedPrompts?: SuggestedPrompts[];
       };
     };
     return {
       appearance: json.data?.appearance ?? {},
       knowledgeEnabled: json.data?.knowledgeEnabled ?? true,
-      suggestedPrompts: json.data?.suggestedPrompts,
+      suggestedPrompts: Array.isArray(json.data?.suggestedPrompts)
+        ? json.data.suggestedPrompts
+        : undefined,
     };
   } catch {
     return { appearance: {}, knowledgeEnabled: true };

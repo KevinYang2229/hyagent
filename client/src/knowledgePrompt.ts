@@ -19,10 +19,12 @@ export interface SuggestedPrompts {
 export function pickKnowledgePrompts(opts: {
   knowledgeEnabled: boolean;
   language: string;
-  suggested?: SuggestedPrompts;
+  /** 後端依各來源索引生成的問句（網站在前、檔案在後），最多兩筆 */
+  suggested?: SuggestedPrompts[];
 }): string[] {
-  if (!opts.knowledgeEnabled) return [];
-  // 查表 miss（未知語系）與未生成走同一條路：不顯示
-  const generated = opts.suggested?.[opts.language as keyof SuggestedPrompts];
-  return generated ? [generated] : [];
+  if (!opts.knowledgeEnabled || !opts.suggested) return [];
+  // 查表 miss（未知語系）與手動留空的語系一併濾掉
+  return opts.suggested
+    .map((s) => s[opts.language as keyof SuggestedPrompts])
+    .filter((text): text is string => !!text);
 }
