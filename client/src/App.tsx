@@ -880,9 +880,9 @@ export default function App() {
                     </button>
                   ))}
                   {/* 知識庫推薦用詞：網站來源與檔案來源各一顆 */}
-                  {knowledgePrompts.map((p) => (
+                  {knowledgePrompts.map((p, i) => (
                     <button
-                      key={p}
+                      key={`${p}-${i}`}
                       type="button"
                       className="quick-chip"
                       onClick={() => sendQuick(p)}

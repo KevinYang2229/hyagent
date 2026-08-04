@@ -1,5 +1,9 @@
 /**
  * 各來源 chunk 數必須跟著索引寫入點同步更新，否則 widget 判斷 chip 要不要出現會失準。
+ *
+ * 四個寫入點：ingestFile／removeFile（knowledge-file.service.ts）、
+ * startIngestJob 成功／失敗路徑（knowledge.job.ts）、清除索引（knowledge.admin.controller.ts）。
+ * 全部測試都走真實入口（不手造 setMeta 再自我斷言），確保驗證的是 production code 的行為。
  */
 jest.mock('@/lib/embedding', () => ({
   getEmbeddingProvider: () => ({
@@ -23,17 +27,34 @@ jest.mock('@/lib/llm', () => ({
 }));
 
 import { existsSync, rmSync } from 'node:fs';
+import request from 'supertest';
+import { createApp } from '@/app';
 import { ingestFile, removeFile } from '@/modules/knowledge/knowledge-file.service';
+import { getJob, startIngestJob } from '@/modules/knowledge/knowledge.job';
 import { knowledgeStore } from '@/modules/knowledge/knowledge.store';
 import { indexPathFor } from '@/modules/knowledge/index-path';
+import type { KnowledgeIndexFile } from '@/modules/knowledge/knowledge-index.types';
+
+const app = createApp();
+const auth = { 'x-admin-key': 'test-admin-key' };
 
 const tenantId = 'chunk-count-tenant';
+// ingestFile 會把 chunks 疊加進磁碟上既有的索引檔；固定 tenantId 若不清乾淨，
+// 重跑整個 test suite（同一台機器、同一個 KNOWLEDGE_INDEX_DIR）會累積前一輪殘留的 chunks，
+// 讓依賴精確計數的斷言變得不穩定。這裡把所有會呼叫 ingestFile 的固定 tenantId 一併清乾淨。
+const FIXED_TENANT_IDS = [
+  tenantId,
+  'chunk-count-remove-one-of-two',
+  'chunk-count-remove-real',
+  'chunk-count-ingest-fail-real',
+];
 
 beforeAll(() => {
-  // 清理舊的索引文件，確保測試獨立性
-  const indexPath = indexPathFor(tenantId);
-  if (existsSync(indexPath)) {
-    rmSync(indexPath);
+  for (const id of FIXED_TENANT_IDS) {
+    const indexPath = indexPathFor(id);
+    if (existsSync(indexPath)) {
+      rmSync(indexPath);
+    }
   }
 });
 
@@ -46,56 +67,73 @@ it('上傳檔案後 file 計數增加、website 為 0', async () => {
   expect(counts?.website).toBe(0);
 });
 
-it('刪除該檔後 file 計數歸零', async () => {
+it('刪除其中一個檔案後，file 計數等於剩餘檔案的 chunk 數', async () => {
+  const tenantIdTwoFiles = 'chunk-count-remove-one-of-two';
+  const textA = '出差規定：需事前簽核。'.repeat(80);
+  const textB = '請假規定：特休依年資計算。'.repeat(60);
+  const metaA = await ingestFile(tenantIdTwoFiles, 'A.txt', Buffer.from(textA));
+  const metaB = await ingestFile(tenantIdTwoFiles, 'B.txt', Buffer.from(textB));
+
+  removeFile(tenantIdTwoFiles, metaA.fileId);
+
+  expect(knowledgeStore.getMeta(tenantIdTwoFiles).chunkCountBySource?.file).toBe(metaB.chunks);
+});
+
+it('DELETE /admin/tenants/:id/knowledge 清除索引後 chunkCountBySource 歸零', async () => {
+  const tenantIdRemove = 'chunk-count-remove-real';
   const text = '出差規定：需事前簽核。'.repeat(80);
-  const meta = await ingestFile(tenantId, '出差.txt', Buffer.from(text));
+  await ingestFile(tenantIdRemove, '出差.txt', Buffer.from(text));
+  // 清除前先確認確實有非零計數，否則歸零斷言測不出東西
+  expect(knowledgeStore.getMeta(tenantIdRemove).chunkCountBySource?.file).toBeGreaterThan(0);
 
-  removeFile(tenantId, meta.fileId);
+  await request(app).delete(`/api/admin/tenants/${tenantIdRemove}/knowledge`).set(auth).expect(200);
 
-  expect(knowledgeStore.getMeta(tenantId).chunkCountBySource?.file).toBe(
-    knowledgeStore.getMeta(tenantId).chunkCount,
+  expect(knowledgeStore.getMeta(tenantIdRemove).chunkCountBySource).toEqual({ website: 0, file: 0 });
+});
+
+it('startIngestJob 失敗時 chunkCountBySource 歸零', async () => {
+  const tenantIdFail = 'chunk-count-ingest-fail-real';
+  const text = '出差規定：需事前簽核。'.repeat(80);
+  await ingestFile(tenantIdFail, '出差.txt', Buffer.from(text));
+  expect(knowledgeStore.getMeta(tenantIdFail).chunkCountBySource?.file).toBeGreaterThan(0);
+
+  const failRun = async () => {
+    throw new Error('crawl failed');
+  };
+  const job = startIngestJob(
+    { tenantId: tenantIdFail, startUrl: 'https://x.com', maxPages: 1, chunkChars: 800, embeddingModel: 'm' },
+    failRun as never,
   );
+  await new Promise((r) => setTimeout(r, 20));
+
+  expect(getJob(job.id)?.status).toBe('failed');
+  expect(knowledgeStore.getMeta(tenantIdFail).chunkCountBySource).toEqual({ website: 0, file: 0 });
 });
 
-it('清除索引時 chunkCountBySource 應為 { website: 0, file: 0 }', () => {
-  const tenantIdRemove = 'chunk-count-remove-test';
-  // 模擬先有索引狀態
-  knowledgeStore.setMeta(tenantIdRemove, {
-    status: 'ready',
-    chunkCount: 5,
-    chunkCountBySource: { website: 2, file: 3 },
-  });
+it('startIngestJob 成功時 chunkCountBySource 依索引內容分來源計數', async () => {
+  const tenantIdSuccess = 'chunk-count-ingest-success-real';
+  const idx: KnowledgeIndexFile = {
+    generatedAt: new Date().toISOString(),
+    model: 'm',
+    source: 'https://x.com',
+    chunks: [
+      { id: 'w1', url: 'https://x.com/a', title: 'A', text: '網站內容甲', vector: [1] },
+      { id: 'w2', url: 'https://x.com/b', title: 'B', text: '網站內容乙', vector: [1] },
+      { id: 'f1', url: 'file://c', title: 'C', text: '檔案內容丙', vector: [1], fileId: 'file-1' },
+    ],
+  };
+  const job = startIngestJob(
+    {
+      tenantId: tenantIdSuccess,
+      startUrl: 'https://x.com',
+      maxPages: 1,
+      chunkChars: 800,
+      embeddingModel: 'm',
+    },
+    (async () => idx) as never,
+  );
+  await new Promise((r) => setTimeout(r, 20));
 
-  // 模擬 admin remove() 的 setMeta 呼叫
-  knowledgeStore.setMeta(tenantIdRemove, {
-    status: 'none',
-    chunkCount: 0,
-    chunkCountBySource: { website: 0, file: 0 },
-  });
-
-  const counts = knowledgeStore.getMeta(tenantIdRemove).chunkCountBySource;
-  expect(counts?.website).toBe(0);
-  expect(counts?.file).toBe(0);
-});
-
-it('ingest 失敗時 chunkCountBySource 應為 { website: 0, file: 0 }', () => {
-  const tenantIdFail = 'chunk-count-fail-test';
-  // 模擬先有索引狀態
-  knowledgeStore.setMeta(tenantIdFail, {
-    status: 'ready',
-    chunkCount: 5,
-    chunkCountBySource: { website: 2, file: 3 },
-  });
-
-  // 模擬 ingest 失敗路徑的 setMeta 呼叫
-  knowledgeStore.setMeta(tenantIdFail, {
-    status: 'failed',
-    chunkCount: 0,
-    error: 'test error',
-    chunkCountBySource: { website: 0, file: 0 },
-  });
-
-  const counts = knowledgeStore.getMeta(tenantIdFail).chunkCountBySource;
-  expect(counts?.website).toBe(0);
-  expect(counts?.file).toBe(0);
+  expect(getJob(job.id)?.status).toBe('done');
+  expect(knowledgeStore.getMeta(tenantIdSuccess).chunkCountBySource).toEqual({ website: 2, file: 1 });
 });

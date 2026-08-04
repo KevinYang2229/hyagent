@@ -88,9 +88,12 @@ export function startIngestJob(
 
       // ingest 完成後：清除快取、更新索引 meta
       invalidateIndexCache(params.tenantId);
-      // setMeta 是整包覆蓋、不會 merge；重爬不得清掉既有的檔案來源清單，
-      // 否則檔案 chunks 雖仍留在索引中（carry-over），卻因 meta.files 消失而變孤兒、無法透過 API 刪除
-      const { files } = knowledgeStore.getMeta(params.tenantId);
+      // setMeta 是整包覆蓋、不會 merge；重爬不得清掉既有的 files 與 suggestedPrompts：
+      // - files 消失會讓仍留在索引中的檔案 chunks（carry-over）變孤兒、無法透過 API 刪除；
+      // - suggestedPrompts 消失會把管理者設定的 manual 一併清掉——且這裡清空後緊接著的
+      //   void refreshSuggestedPrompts(...) 會讀到已清空的 meta，兩格都判定「無 manual」
+      //   而重新生成，manual 因此永久消失（而非暫時被蓋過）。
+      const { files, suggestedPrompts } = knowledgeStore.getMeta(params.tenantId);
       knowledgeStore.setMeta(params.tenantId, {
         status: 'ready',
         chunkCount: idx.chunks.length,
@@ -99,6 +102,7 @@ export function startIngestJob(
         source: idx.source,
         chunkCountBySource: countBySource(idx.chunks),
         ...(files ? { files } : {}),
+        ...(suggestedPrompts ? { suggestedPrompts } : {}),
       });
 
       // 推薦問句生成：不阻塞、不影響索引狀態。失敗時前端就不顯示推薦 chip
@@ -115,14 +119,19 @@ export function startIngestJob(
       job.error = (err as Error).message;
       job.finishedAt = new Date().toISOString();
 
-      // 失敗路徑同樣不得清掉既有的檔案來源清單（理由同上）
-      const { files: filesOnFail } = knowledgeStore.getMeta(params.tenantId);
+      // 失敗路徑同樣不得清掉既有的 files 與 suggestedPrompts（理由同上）。
+      // 這裡比成功路徑更嚴重：失敗路徑不會觸發 refreshSuggestedPrompts 補救，
+      // 若漏帶 suggestedPrompts，manual 與 generated 會一起永久消失、無從恢復。
+      const { files: filesOnFail, suggestedPrompts: suggestedPromptsOnFail } = knowledgeStore.getMeta(
+        params.tenantId,
+      );
       knowledgeStore.setMeta(params.tenantId, {
         status: 'failed',
         chunkCount: 0,
         error: job.error,
         chunkCountBySource: { website: 0, file: 0 },
         ...(filesOnFail ? { files: filesOnFail } : {}),
+        ...(suggestedPromptsOnFail ? { suggestedPrompts: suggestedPromptsOnFail } : {}),
       });
 
       logger.warn({ err, tenantId: params.tenantId }, 'ingest job failed');
