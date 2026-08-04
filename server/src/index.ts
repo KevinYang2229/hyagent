@@ -8,6 +8,7 @@ import { initScopePolicy } from '@/modules/authz/scope-policy';
 import { migrateTenantScopes } from '@/modules/authz/scope-migration';
 import { cleanupExpiredSessions, initConversationStore } from '@/modules/conversation/conversation.store';
 import { initFormStore } from '@/modules/form/form.store';
+import { initKnowledgeStore } from '@/modules/knowledge/knowledge.store';
 import { initTenantStore } from '@/modules/tenant/tenant.store';
 import { initUsageStore } from '@/modules/usage/usage.store';
 import { initWebhookStore } from '@/modules/webhook/webhook.store';
@@ -24,6 +25,7 @@ async function main(): Promise<void> {
     initFormStore(),
     initScopePolicy(),
     initWebhookStore(),
+    initKnowledgeStore(),
   ]);
 
   const app = createApp();

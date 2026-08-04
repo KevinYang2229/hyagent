@@ -4,6 +4,8 @@
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import type { Prisma } from '@prisma/client';
+import { connectDb, DbWriteQueue } from '@/lib/db';
 import { env } from '@/config/env';
 import { logger } from '@/lib/logger';
 import { normalizeSuggestedPrompts, type SourceKey, type SuggestedPromptSlots } from './prompt-slots';
@@ -92,7 +94,7 @@ function defaultSource(): KnowledgeSource {
   };
 }
 
-/** 持久化 JSON 路徑：存在 KNOWLEDGE_INDEX_DIR 下 */
+/** 持久化 JSON 路徑：存在 KNOWLEDGE_INDEX_DIR 下（file 後端） */
 const FILE = resolve(process.cwd(), env.KNOWLEDGE_INDEX_DIR, 'knowledge-config.json');
 
 /** 以租戶 ID 為 key 的來源設定 Map */
@@ -100,7 +102,9 @@ const sources = new Map<string, KnowledgeSource>();
 /** 以租戶 ID 為 key 的索引 meta Map */
 const metas = new Map<string, KnowledgeIndexMeta>();
 
-/** 將目前 Map 狀態寫入磁碟 JSON */
+const writeQueue = new DbWriteQueue('knowledge-sources');
+
+/** 將目前 Map 狀態寫入磁碟 JSON（file 後端） */
 function persist(): void {
   try {
     if (!existsSync(dirname(FILE))) mkdirSync(dirname(FILE), { recursive: true });
@@ -114,20 +118,65 @@ function persist(): void {
   }
 }
 
-/** 啟動時從磁碟 JSON 還原（IIFE；檔案不存在或解析失敗則靜默略過） */
-(function restore() {
+/**
+ * db 後端：定向 upsert 單一租戶。
+ * source 與 meta 兩個欄位分開寫——setMeta 不該覆蓋 saveSource 的內容，反之亦然。
+ */
+function upsertToDb(tenantId: string, patch: { source?: KnowledgeSource; meta?: KnowledgeIndexMeta }): void {
+  // undefined 欄位序列化剔除（與 file 後端同語意）
+  const json = <T,>(v: T): Prisma.InputJsonValue => JSON.parse(JSON.stringify(v)) as Prisma.InputJsonValue;
+  const create = {
+    tenantId,
+    source: patch.source ? json(patch.source) : {},
+    meta: patch.meta ? json(patch.meta) : {},
+  };
+  const update = {
+    ...(patch.source ? { source: json(patch.source) } : {}),
+    ...(patch.meta ? { meta: json(patch.meta) } : {}),
+  };
+  writeQueue.enqueue(async (db) => {
+    await db.knowledgeSourceRow.upsert({ where: { tenantId }, create, update });
+  });
+}
+
+/** 依後端寫回（db 走佇列、file 寫檔） */
+function save(tenantId: string, patch: { source?: KnowledgeSource; meta?: KnowledgeIndexMeta }): void {
+  if (env.DATA_BACKEND === 'db') upsertToDb(tenantId, patch);
+  else persist();
+}
+
+// file 後端：模組載入即同步還原（沿用既有行為）
+if (env.DATA_BACKEND !== 'db') {
   try {
-    if (!existsSync(FILE)) return;
-    const raw = JSON.parse(readFileSync(FILE, 'utf8')) as {
-      sources: [string, KnowledgeSource][];
-      metas: [string, KnowledgeIndexMeta][];
-    };
-    raw.sources?.forEach(([k, v]) => sources.set(k, v));
-    raw.metas?.forEach(([k, v]) => metas.set(k, v));
+    if (existsSync(FILE)) {
+      const raw = JSON.parse(readFileSync(FILE, 'utf8')) as {
+        sources: [string, KnowledgeSource][];
+        metas: [string, KnowledgeIndexMeta][];
+      };
+      raw.sources?.forEach(([k, v]) => sources.set(k, v));
+      raw.metas?.forEach(([k, v]) => metas.set(k, v));
+    }
   } catch (err) {
     logger.warn({ err }, 'knowledge config restore failed');
   }
-})();
+}
+
+/**
+ * db 後端的開機載入。必須在開始服務請求前 await（index.ts listen 前）；file 後端為 no-op。
+ * jsonb 欄位預設 '{}'，空物件視同未設定，交由 getSource/getMeta 的預設值處理。
+ */
+export async function initKnowledgeStore(): Promise<void> {
+  if (env.DATA_BACKEND !== 'db') return;
+  const db = await connectDb();
+  const rows = await db.knowledgeSourceRow.findMany();
+  for (const r of rows) {
+    const src = r.source as unknown as KnowledgeSource;
+    const meta = r.meta as unknown as KnowledgeIndexMeta;
+    if (src && Object.keys(src).length) sources.set(r.tenantId, src);
+    if (meta && Object.keys(meta).length) metas.set(r.tenantId, meta);
+  }
+  logger.info({ count: rows.length }, 'knowledge config restored from db');
+}
 
 export const knowledgeStore = {
   /** 取得租戶的知識來源設定；未設定時回預設值 */
@@ -139,7 +188,7 @@ export const knowledgeStore = {
   saveSource(tenantId: string, src: Omit<KnowledgeSource, 'updatedAt'>): KnowledgeSource {
     const saved: KnowledgeSource = { ...src, updatedAt: new Date().toISOString() };
     sources.set(tenantId, saved);
-    persist();
+    save(tenantId, { source: saved });
     return saved;
   },
 
@@ -155,6 +204,6 @@ export const knowledgeStore = {
   /** 更新租戶的索引 meta */
   setMeta(tenantId: string, meta: KnowledgeIndexMeta): void {
     metas.set(tenantId, meta);
-    persist();
+    save(tenantId, { meta });
   },
 };
