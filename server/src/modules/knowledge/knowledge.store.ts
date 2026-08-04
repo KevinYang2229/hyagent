@@ -72,7 +72,7 @@ export interface KnowledgeIndexMeta {
   files?: KnowledgeFileMeta[];
   /**
    * 依索引內容生成的開場推薦問句（widget 開場 chip 用）。
-   * 無索引、生成失敗或驗證未過時不存在——前端據此回落 i18n 預設句。
+   * 無索引、生成失敗或驗證未過時不存在——前端據此不顯示推薦 chip（無寫死後備句）。
    */
   suggestedPrompts?: SuggestedPrompts;
 }

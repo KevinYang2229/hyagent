@@ -91,7 +91,41 @@ describe('widget config 推薦問句', () => {
     expect(res.body.data.suggestedPrompts).toBeUndefined();
   });
 
-  it('租戶關閉 knowledge 服務時不得回傳（I-1：內部文件問句不得外洩）', async () => {
+  it('grantedScopes 未含 service:knowledge 時關閉（後台關掉知識庫要真的生效）', async () => {
+    // 回歸：先前這裡只看 disabledServices（舊 opt-out 模型），但 scope-migration 之後
+    // 沒人再寫那個欄位，導致後台把知識庫關掉、widget 仍回 knowledgeEnabled: true
+    const tenant = tenantStore.createTenant('widget-suggest-scope-off');
+    const apiKey = tenantStore.createApiKey(tenant.id, 'publishable');
+    tenantStore.updateTenant(tenant.id, { grantedScopes: ['service:form'] });
+    knowledgeStore.setMeta(tenant.id, {
+      status: 'ready',
+      chunkCount: 3,
+      suggestedPrompts: { 'zh-Hant': '補助怎麼申請？', en: 'How to apply?' },
+    });
+
+    const res = await request(app).get('/api/widget/config').query({ key: apiKey.key }).expect(200);
+
+    expect(res.body.data.knowledgeEnabled).toBe(false);
+    expect(res.body.data.suggestedPrompts).toBeUndefined();
+  });
+
+  it('grantedScopes 含 service:knowledge 時啟用', async () => {
+    const tenant = tenantStore.createTenant('widget-suggest-scope-on');
+    const apiKey = tenantStore.createApiKey(tenant.id, 'publishable');
+    tenantStore.updateTenant(tenant.id, { grantedScopes: ['service:knowledge'] });
+    knowledgeStore.setMeta(tenant.id, {
+      status: 'ready',
+      chunkCount: 3,
+      suggestedPrompts: { 'zh-Hant': '補助怎麼申請？', en: 'How to apply?' },
+    });
+
+    const res = await request(app).get('/api/widget/config').query({ key: apiKey.key }).expect(200);
+
+    expect(res.body.data.knowledgeEnabled).toBe(true);
+    expect(res.body.data.suggestedPrompts).toEqual({ 'zh-Hant': '補助怎麼申請？', en: 'How to apply?' });
+  });
+
+  it('尚未遷移（無 grantedScopes）的租戶仍看 disabledServices（I-1：內部文件問句不得外洩）', async () => {
     const tenant = tenantStore.createTenant('widget-suggest-disabled-service');
     const apiKey = tenantStore.createApiKey(tenant.id, 'publishable');
     tenantStore.updateTenant(tenant.id, { disabledServices: ['knowledge'] });

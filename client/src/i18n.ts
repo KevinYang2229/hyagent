@@ -74,10 +74,8 @@ const zhHant = {
     expandPane: "展開面板",
     paneLabel: "表單明細",
     formPickerHint: "要辦理什麼？",
-    // 知識庫推薦 chip 的「後備」句：正常情況由後端依租戶索引內容生成（widget config 的
-    // suggestedPrompts）。僅在未建索引、生成失敗或語系無對應時才會顯示這裡的內容。
-    // 注意 App.tsx 只渲染第一句，後兩句目前不會出現。
-    knowledgePrompts: ["公司有哪些產品或服務？", "聯絡電話與地址在哪？", "相關規定與常見問題"],
+    // 知識庫推薦 chip 的文字一律由後端依租戶索引內容生成（widget config 的 suggestedPrompts），
+    // 這裡不留寫死的後備句——泛用問句在未建索引時只會問出答不出來的問題。
     quickHint: "不知道怎麼開始？試試：",
     quickPrompts: [
       "我下週一到週二請特休，家裡有事",
@@ -269,9 +267,8 @@ const en = {
     expandPane: "Expand panel",
     paneLabel: "Details",
     formPickerHint: "What would you like to do?",
-    // Fallback prompts for the knowledge chip; normally generated per tenant from the
-    // indexed content (see suggestedPrompts in widget config). Only the first is rendered.
-    knowledgePrompts: ["What products or services do you offer?", "Contact phone & address", "Policies & FAQ"],
+    // The knowledge chip text always comes from the per-tenant generated prompt
+    // (see suggestedPrompts in widget config); no hardcoded fallback here on purpose.
     quickHint: "Not sure where to start? Try:",
     quickPrompts: [
       "I'll take annual leave next Mon–Tue for family matters",

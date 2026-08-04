@@ -99,7 +99,7 @@ export function startIngestJob(
         ...(files ? { files } : {}),
       });
 
-      // 推薦問句生成：不阻塞、不影響索引狀態。失敗時前端回落 i18n 預設句
+      // 推薦問句生成：不阻塞、不影響索引狀態。失敗時前端就不顯示推薦 chip
       void refreshSuggestedPrompts(params.tenantId, idx).catch(() => {});
 
       job.status = 'done';

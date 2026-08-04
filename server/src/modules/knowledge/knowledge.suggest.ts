@@ -2,7 +2,7 @@
  * 依索引內容生成 widget 開場推薦問句。
  *
  * 生成時機為索引異動（爬取完成／上傳／刪檔），結果快取進 KnowledgeIndexMeta，
- * widget 載入時直接讀快取、零延遲。生成失敗一律不寫入，前端回落 i18n 預設句。
+ * widget 載入時直接讀快取、零延遲。生成失敗一律不寫入，前端就不顯示推薦 chip。
  *
  * 抽樣不做任何排名，只保證覆蓋度：索引來源有兩種形狀，檔案來源的 title 是檔名（零訊號）、
  * 網站來源的 title 資訊豐富但出現次數幾乎全為 1（依次數排序等同隨機），故次數不可用。
@@ -79,7 +79,7 @@ export const SUGGESTION_SYSTEM_PROMPT = `你要為一個網站客服機器人產
 - 只輸出 JSON，不要有其他文字：
 {"zh-Hant":"...","en":"..."}`;
 
-/** 驗證 LLM 輸出；任一項不合即整筆丟棄（回 undefined），呼叫端維持 fallback */
+/** 驗證 LLM 輸出；任一項不合即整筆丟棄（回 undefined），呼叫端不寫入、前端不顯示 chip */
 export function parseSuggestion(text: string): SuggestedPrompts | undefined {
   const match = text.match(/\{[\s\S]*\}/);
   if (!match) return undefined;
@@ -171,7 +171,7 @@ export async function refreshSuggestedPrompts(
     if (!prompts) {
       logger.warn(
         { tenantId, text: result.text.slice(0, 200) },
-        'suggested prompt 驗證未過，維持 fallback',
+        'suggested prompt 驗證未過，不寫入',
       );
       return;
     }
@@ -189,6 +189,6 @@ export async function refreshSuggestedPrompts(
       suggestedPrompts: prompts,
     });
   } catch (err) {
-    logger.warn({ err, tenantId }, 'suggested prompt 生成失敗，維持 fallback');
+    logger.warn({ err, tenantId }, 'suggested prompt 生成失敗，不寫入');
   }
 }

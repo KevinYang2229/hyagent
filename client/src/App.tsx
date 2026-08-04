@@ -574,13 +574,11 @@ export default function App() {
         defaultValue: selectedForm.examples ?? [],
       }) as string[])
     : [];
-  // 知識庫推薦用詞：僅在知識庫服務啟用時顯示（i18n 陣列）
-  const kbPromptsRaw = t('app.knowledgePrompts', { returnObjects: true });
+  // 知識庫推薦用詞：後端依租戶索引內容生成，沒有生成句就不顯示（不再回落寫死句）
   const knowledgePrompts = pickKnowledgePrompts({
     knowledgeEnabled,
     language: i18n.language,
     suggested: suggestedPrompts,
-    fallback: Array.isArray(kbPromptsRaw) ? (kbPromptsRaw as string[]) : [],
   });
 
   // 建議回覆：只取「最新一則 agent 訊息」附帶的建議，作為可一鍵送出的快捷按鈕
