@@ -37,6 +37,41 @@ describe('admin knowledge API', () => {
     expect(res.body.data.meta.status).toBeDefined();
   });
 
+  it('檔案 RAG 可在未設定網站時儲存共用解析設定', async () => {
+    const tenantId = 'file-only-source-tenant';
+    await request(app)
+      .put(`/api/admin/tenants/${tenantId}/knowledge/source`)
+      .set(auth)
+      .send({
+        startUrl: '',
+        maxPages: 100,
+        chunkChars: 600,
+        embeddingModel: 'text-embedding-3-large',
+        rerank: true,
+      })
+      .expect(200);
+
+    const res = await request(app)
+      .get(`/api/admin/tenants/${tenantId}/knowledge`)
+      .set(auth)
+      .expect(200);
+    expect(res.body.data.source).toMatchObject({ startUrl: '', chunkChars: 600 });
+  });
+
+  it('非空的網站來源仍必須是合法 URL', async () => {
+    await request(app)
+      .put('/api/admin/tenants/invalid-url-tenant/knowledge/source')
+      .set(auth)
+      .send({
+        startUrl: 'not-a-url',
+        maxPages: 100,
+        chunkChars: 800,
+        embeddingModel: 'text-embedding-3-large',
+        rerank: true,
+      })
+      .expect(422);
+  });
+
   it('缺 startUrl 觸發 ingest → 422', async () => {
     await request(app)
       .post('/api/admin/tenants/no-src-tenant-xyz/knowledge/ingest')

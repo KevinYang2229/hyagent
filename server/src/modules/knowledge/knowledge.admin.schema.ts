@@ -3,7 +3,9 @@ import { z } from 'zod';
 
 /** 知識來源設定（PUT /knowledge/source 的 body） */
 export const sourceSchema = z.object({
-  startUrl: z.string().url(),
+  // 檔案 RAG 不需要網站來源，因此尚未設定網址時允許空字串；
+  // 真正啟動網站 ingest 時仍由 controller 機制擋下空值。
+  startUrl: z.union([z.literal(''), z.string().url()]),
   maxPages: z.coerce.number().int().min(1).max(1000).default(100),
   pathPrefix: z.string().optional(),
   includePatterns: z.array(z.string()).optional(),
