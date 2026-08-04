@@ -5,6 +5,7 @@ import { AppError } from '@/utils/app-error';
 import { runIngest as defaultRun, type IngestParams } from './ingest.service';
 import { knowledgeStore } from './knowledge.store';
 import { refreshSuggestedPrompts } from './knowledge.suggest';
+import { invalidatePgvectorModelCache } from './retriever.pgvector';
 import { invalidateIndexCache } from './retriever.staticIndex';
 import { countBySource } from './prompt-slots';
 
@@ -86,8 +87,10 @@ export function startIngestJob(
         job.embedded = p.embedded;
       });
 
-      // ingest 完成後：清除快取、更新索引 meta
+      // ingest 完成後：清除快取、更新索引 meta（file 與 db 兩種檢索器快取都要清，
+      // 避免重爬後 pgvector 檢索器繼續拿舊模型查詢）
       invalidateIndexCache(params.tenantId);
+      invalidatePgvectorModelCache(params.tenantId);
       // setMeta 是整包覆蓋、不會 merge；重爬不得清掉既有的 files 與 suggestedPrompts：
       // - files 消失會讓仍留在索引中的檔案 chunks（carry-over）變孤兒、無法透過 API 刪除；
       // - suggestedPrompts 消失會把管理者設定的 manual 一併清掉——且這裡清空後緊接著的

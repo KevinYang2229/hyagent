@@ -16,6 +16,7 @@ import { env } from '@/config/env';
 import { connectDb } from '@/lib/db';
 import { indexPathFor } from './index-path';
 import type { IndexedChunk, KnowledgeIndexFile } from './knowledge-index.types';
+import { invalidatePgvectorModelCache } from './retriever.pgvector';
 import { invalidateIndexCache } from './retriever.staticIndex';
 
 /** 單次 INSERT 的最大列數：3072 維 × 200 列約 2.4MB statement，遠低於 Postgres 限制 */
@@ -144,11 +145,12 @@ export async function loadIndex(tenantId: string): Promise<KnowledgeIndexFile | 
   return env.DATA_BACKEND === 'db' ? loadIndexFromDb(tenantId) : loadIndexFromFile(tenantId);
 }
 
-/** 整份取代該租戶的索引 */
+/** 整份取代該租戶的索引；同時清 file 與 db 兩種檢索器的快取，避免任一邊撈到舊資料 */
 export async function saveIndex(tenantId: string, idx: KnowledgeIndexFile): Promise<void> {
   if (env.DATA_BACKEND === 'db') await saveIndexToDb(tenantId, idx);
   else saveIndexToFile(tenantId, idx);
   invalidateIndexCache(tenantId);
+  invalidatePgvectorModelCache(tenantId);
 }
 
 /** 刪除該租戶整份索引；本來就不存在也視為成功（冪等） */
@@ -156,4 +158,5 @@ export async function deleteIndex(tenantId: string): Promise<void> {
   if (env.DATA_BACKEND === 'db') await deleteIndexFromDb(tenantId);
   else deleteIndexFromFile(tenantId);
   invalidateIndexCache(tenantId);
+  invalidatePgvectorModelCache(tenantId);
 }

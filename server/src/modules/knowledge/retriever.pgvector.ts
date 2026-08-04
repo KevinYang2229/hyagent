@@ -30,13 +30,32 @@ interface CandidateRow {
   cosine: number;
 }
 
-/** 該租戶索引所用的 embedding 模型；未建索引回 null */
+/**
+ * 每租戶快取索引模型：agent-service 每回合會先 hasPgvectorIndex 再 search，
+ * 兩者都要知道模型才能動作，若各自查一次 knowledge_indexes 就是每回合兩次網路往返。
+ * 快取 null 也代表「已查過、目前無索引」，同樣要在重建/刪除索引時失效，
+ * 否則剛建好索引的租戶會繼續被誤判成沒有索引。
+ */
+const modelCache = new Map<string, string | null>();
+
+/** 該租戶索引所用的 embedding 模型；未建索引回 null（有快取，見 invalidatePgvectorModelCache） */
 async function indexModelOf(tenantId: string): Promise<string | null> {
+  if (modelCache.has(tenantId)) return modelCache.get(tenantId) ?? null;
   const db = await connectDb();
   const rows = await db.$queryRaw<{ model: string }[]>`
     select model from knowledge_indexes where tenant_id = ${tenantId}
   `;
-  return rows[0]?.model ?? null;
+  const model = rows[0]?.model ?? null;
+  modelCache.set(tenantId, model);
+  return model;
+}
+
+/**
+ * 索引重建或刪除後使快取失效，避免撈到舊模型（維度或語意不一致會讓檢索整個壞掉）。
+ * 由 knowledge.index.repo 的 saveIndex/deleteIndex 掛勾呼叫；測試也用它重置快取。
+ */
+export function invalidatePgvectorModelCache(tenantId: string): void {
+  modelCache.delete(tenantId);
 }
 
 /** 是否已建立可用的 pgvector 索引（供服務決定是否退回 stub） */
