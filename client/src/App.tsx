@@ -896,8 +896,8 @@ export default function App() {
             </div>
           )}
 
-          {/* 開場引導：需先選定辦理項目，才顯示該表單的動態範例提示 */}
-          {!convId && !busy && selectedFormId && quickPrompts.length > 0 && (
+          {/* 開場引導：需先選定辦理項目，才顯示該表單的動態範例提示；隨「要辦理什麼？」一起收合 */}
+          {!convId && !busy && pickerOpen && selectedFormId && quickPrompts.length > 0 && (
             <div className="quick-bar">
               <span className="quick-hint">{t('app.quickHint')}</span>
               {quickPrompts.map((p) => (
