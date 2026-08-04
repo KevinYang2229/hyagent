@@ -1,13 +1,11 @@
 /* 知識庫 ingest 服務：爬取靜態網站→抽正文→切段→embedding→產生每租戶索引。CLI 與 admin API 共用。 */
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
 import * as cheerio from 'cheerio';
 import { getEmbeddingProvider, type EmbeddingProvider } from '@/lib/embedding';
 import { logger } from '@/lib/logger';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 import { usageStore } from '@/modules/usage/usage.store';
-import { indexPathFor } from './index-path';
+import { loadIndex, saveIndex } from './knowledge.index.repo';
 import type { IndexedChunk, KnowledgeIndexFile } from './knowledge-index.types';
 
 // 注意：carryOverFileChunks 定義於本檔（而非 knowledge-file.service.ts），
@@ -97,13 +95,6 @@ export function normalizeDocText(s: string): string {
     .replace(/ *\n */g, '\n')
     .replace(/\n{3,}/g, '\n\n') // 段落之間最多留一個空行
     .trim();
-}
-
-/** 讀取租戶既有索引檔；不存在則回 null（模組內共用，避免與 knowledge-file.service 重複實作）。 */
-function loadExistingIndex(tenantId: string): KnowledgeIndexFile | null {
-  const path = indexPathFor(tenantId);
-  if (!existsSync(path)) return null;
-  return JSON.parse(readFileSync(path, 'utf8')) as KnowledgeIndexFile;
 }
 
 /**
@@ -370,7 +361,7 @@ export async function runIngest(
   const chunks: IndexedChunk[] = pending.map((c, i) => ({ ...c, vector: vectors[i] }));
 
   // 重爬會整批重建網站 chunks；寫回前併入既有索引中帶 fileId 的檔案來源 chunks，避免蓋掉上傳檔內容
-  const existing = loadExistingIndex(params.tenantId);
+  const existing = await loadIndex(params.tenantId);
   const mergedChunks = carryOverFileChunks(existing, chunks);
   const index: KnowledgeIndexFile = {
     generatedAt: new Date().toISOString(),
@@ -378,9 +369,7 @@ export async function runIngest(
     source: params.startUrl,
     chunks: mergedChunks,
   };
-  const path = indexPathFor(params.tenantId);
-  if (!existsSync(dirname(path))) mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, JSON.stringify(index), 'utf8');
+  await saveIndex(params.tenantId, index);
   onProgress?.({ phase: 'done', pagesCrawled: pages.length, chunks: pending.length, embedded: chunks.length });
   return index;
 }

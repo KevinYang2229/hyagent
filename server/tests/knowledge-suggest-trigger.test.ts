@@ -102,7 +102,7 @@ it('removeFile 成功後觸發生成，索引 chunks 已排除被刪檔案（仍
   const fileB = await ingestFile(tenantId, 'B.txt', Buffer.from('公告乙：地下停車場本週進行例行維修施工，請注意用路安全。'));
   (refreshSuggestedPrompts as jest.Mock).mockClear();
 
-  expect(removeFile(tenantId, fileA.fileId)).toBe(true);
+  expect(await removeFile(tenantId, fileA.fileId)).toBe(true);
 
   expect(refreshSuggestedPrompts).toHaveBeenCalledTimes(1);
   const [calledTenantId, calledIdx] = (refreshSuggestedPrompts as jest.Mock).mock.calls[0] as [
@@ -119,7 +119,7 @@ it('removeFile 刪到索引變空時，傳入的索引 chunks 長度為 0', asyn
   const onlyFile = await ingestFile(tenantId, 'C.txt', Buffer.from('公告丙：系統將於今晚十二點進行維護，預計兩小時內完成。'));
   (refreshSuggestedPrompts as jest.Mock).mockClear();
 
-  expect(removeFile(tenantId, onlyFile.fileId)).toBe(true);
+  expect(await removeFile(tenantId, onlyFile.fileId)).toBe(true);
 
   expect(refreshSuggestedPrompts).toHaveBeenCalledTimes(1);
   const [calledTenantId, calledIdx] = (refreshSuggestedPrompts as jest.Mock).mock.calls[0] as [

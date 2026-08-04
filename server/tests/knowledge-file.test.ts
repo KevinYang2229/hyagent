@@ -98,7 +98,7 @@ describe('ingestFile / removeFile', () => {
     expect(fileChunks[0].title).toBe('規章.txt');
     expect(knowledgeStore.getMeta(t.id).files?.some((f) => f.fileId === meta.fileId)).toBe(true);
 
-    expect(removeFile(t.id, meta.fileId)).toBe(true);
+    expect(await removeFile(t.id, meta.fileId)).toBe(true);
     expect(readIndex(t.id).chunks.some((c) => c.fileId === meta.fileId)).toBe(false);
     expect(knowledgeStore.getMeta(t.id).files?.some((f) => f.fileId === meta.fileId)).toBe(false);
   });
@@ -122,7 +122,7 @@ describe('ingestFile / removeFile', () => {
     expect(summaryChunk?.text).toContain('請假規定');
     expect(meta.chunks).toBe(idx.chunks.filter((c) => c.fileId === meta.fileId).length); // 計數含摘要
 
-    removeFile(t.id, meta.fileId);
+    await removeFile(t.id, meta.fileId);
     expect(readIndex(t.id).chunks.some((c) => c.id === `${meta.fileId}-summary`)).toBe(false);
   });
 

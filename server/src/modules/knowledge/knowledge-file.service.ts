@@ -4,8 +4,6 @@
  * 不保存原始檔（重傳即更新）。
  */
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
 import { getEmbeddingProvider } from '@/lib/embedding';
 import { getLLMProvider } from '@/lib/llm';
 import { logger } from '@/lib/logger';
@@ -13,7 +11,7 @@ import { env } from '@/config/env';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 import { usageStore } from '@/modules/usage/usage.store';
 import { AppError } from '@/utils/app-error';
-import { indexPathFor } from './index-path';
+import { loadIndex, saveIndex } from './knowledge.index.repo';
 // carryOverFileChunks 從 ingest.service 匯入（而非本檔自行定義），維持單向依賴：
 // 本檔已需要 ingest.service 的 chunkText/squash，若 ingest.service 反過來 import 本檔會形成循環引用。
 import {
@@ -27,7 +25,6 @@ import { parseDocument } from './doc-parse';
 import type { IndexedChunk, KnowledgeIndexFile } from './knowledge-index.types';
 import { knowledgeStore, type KnowledgeFileMeta } from './knowledge.store';
 import { refreshSuggestedPrompts } from './knowledge.suggest';
-import { invalidateIndexCache } from './retriever.staticIndex';
 import { countBySource } from './prompt-slots';
 
 export type { KnowledgeFileMeta };
@@ -73,19 +70,8 @@ export async function parseFileToText(name: string, buf: Buffer): Promise<string
   return (await parseDocument(name, buf)).text;
 }
 
-/** 直讀索引檔（不經 retriever 的記憶體快取）；無索引回 null */
-export function loadIndexFile(tenantId: string): KnowledgeIndexFile | null {
-  const path = indexPathFor(tenantId);
-  if (!existsSync(path)) return null;
-  return JSON.parse(readFileSync(path, 'utf8')) as KnowledgeIndexFile;
-}
-
-function saveIndexFile(tenantId: string, idx: KnowledgeIndexFile): void {
-  const path = indexPathFor(tenantId);
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, JSON.stringify(idx));
-  invalidateIndexCache(tenantId);
-}
+/** 直讀索引（不經 retriever 的記憶體快取）；無索引回 null */
+export const loadIndexFile = loadIndex;
 
 /** 上傳檔 ingest：解析→切塊→embed→附加索引→meta.files。解析成功前不動索引/meta。 */
 export async function ingestFile(
@@ -106,7 +92,7 @@ export async function ingestFile(
   const summary = pieces.length >= 2 ? await summarizeText(tenantId, name, text) : null;
   const toEmbed = summary ? [...pieces, summary] : pieces;
 
-  const existing = loadIndexFile(tenantId);
+  const existing = await loadIndex(tenantId);
   // 模型一致性：同一份索引只能用同一個 embedding 模型
   const model = existing?.model ?? source.embeddingModel;
   const embedder = getEmbeddingProvider(tenantStore.getTenant(tenantId)?.llmConfig);
@@ -144,7 +130,7 @@ export async function ingestFile(
         source: `file://${name}`,
         chunks: fileChunks,
       };
-  saveIndexFile(tenantId, idx);
+  await saveIndex(tenantId, idx);
 
   const fileMeta: KnowledgeFileMeta = {
     fileId,
@@ -169,13 +155,13 @@ export async function ingestFile(
 }
 
 /** 刪除檔案：索引剔除該 fileId 的 chunks + meta 移除；查無回 false。 */
-export function removeFile(tenantId: string, fileId: string): boolean {
+export async function removeFile(tenantId: string, fileId: string): Promise<boolean> {
   const meta = knowledgeStore.getMeta(tenantId);
   if (!meta.files?.some((f) => f.fileId === fileId)) return false;
-  const existing = loadIndexFile(tenantId);
+  const existing = await loadIndex(tenantId);
   if (existing) {
     const chunks = existing.chunks.filter((c) => c.fileId !== fileId);
-    saveIndexFile(tenantId, { ...existing, generatedAt: new Date().toISOString(), chunks });
+    await saveIndex(tenantId, { ...existing, generatedAt: new Date().toISOString(), chunks });
     knowledgeStore.setMeta(tenantId, {
       ...meta,
       chunkCount: chunks.length,

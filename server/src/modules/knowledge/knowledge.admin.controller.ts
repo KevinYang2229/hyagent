@@ -106,7 +106,7 @@ export const knowledgeAdminController = {
     if (getRunningJobForTenant(tenantId)) {
       throw AppError.conflict('解析任務進行中，請待完成後再重新生成');
     }
-    const idx = loadIndexFile(tenantId);
+    const idx = await loadIndexFile(tenantId);
     if (!idx || splitChunksBySource(idx.chunks)[source].length === 0) {
       throw AppError.unprocessable('該來源尚無索引內容');
     }
@@ -163,7 +163,7 @@ export const knowledgeAdminController = {
       throw AppError.conflict('解析任務進行中，請待完成後再刪除檔案');
     }
     const fileId = String(req.params.fileId);
-    const removed = removeFile(tenantId, fileId);
+    const removed = await removeFile(tenantId, fileId);
     if (!removed) throw AppError.notFound('檔案不存在');
     res.json({ data: { fileId } });
   },

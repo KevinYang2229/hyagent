@@ -74,7 +74,7 @@ it('刪除其中一個檔案後，file 計數等於剩餘檔案的 chunk 數', a
   const metaA = await ingestFile(tenantIdTwoFiles, 'A.txt', Buffer.from(textA));
   const metaB = await ingestFile(tenantIdTwoFiles, 'B.txt', Buffer.from(textB));
 
-  removeFile(tenantIdTwoFiles, metaA.fileId);
+  await removeFile(tenantIdTwoFiles, metaA.fileId);
 
   expect(knowledgeStore.getMeta(tenantIdTwoFiles).chunkCountBySource?.file).toBe(metaB.chunks);
 });
