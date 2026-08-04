@@ -533,7 +533,12 @@ export default function KnowledgeTab({
                 {(["website", "file"] as const).map((source) => {
                   const slot = meta.suggestedPrompts?.[source];
                   const effective = slot?.manual ?? slot?.generated;
-                  const count = meta.chunkCountBySource?.[source] ?? 0;
+                  // chunkCountBySource 是後補欄位，舊租戶的 meta 可能沒有；
+                  // 「欄位缺席」代表未知，要退回總數 meta.chunkCount，不能當成 0
+                  // （否則舊租戶的重新生成入口會永遠被鎖住）。只有明確拿到 0 才 disable。
+                  const count = meta.chunkCountBySource
+                    ? meta.chunkCountBySource[source]
+                    : meta.chunkCount;
                   return (
                     <div className="row-sub" key={source}>
                       {source === "website" ? "網站來源" : "檔案來源"}｜
@@ -557,6 +562,7 @@ export default function KnowledgeTab({
                           setEditingSource(source);
                           setManualDraft(slot?.manual ?? { "zh-Hant": "", en: "" });
                         }}
+                        disabled={editingSource !== null && editingSource !== source}
                         style={{ marginInlineStart: 4 }}
                       >
                         編輯
@@ -581,6 +587,7 @@ export default function KnowledgeTab({
                               onChange={(e) =>
                                 setManualDraft((d) => ({ ...d, "zh-Hant": e.target.value }))
                               }
+                              maxLength={20}
                             />
                           </div>
                           <div className="field">

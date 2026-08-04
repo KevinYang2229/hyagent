@@ -48,7 +48,9 @@ export const suggestionManualSchema = z.object({
   source: promptSourceSchema,
   manual: z
     .object({
-      'zh-Hant': z.string().trim(),
+      // 上限與自動生成路徑的 MAX_ZH_CHARS 一致：手動值一樣要塞進 widget 的 chip，
+      // 版面寬度沒有例外可言。
+      'zh-Hant': z.string().trim().max(20),
       en: z.string().trim(),
     })
     .nullable(),
