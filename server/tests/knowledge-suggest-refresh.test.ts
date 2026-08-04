@@ -98,7 +98,7 @@ it('索引清空時清除舊句，且不呼叫 LLM', async () => {
   knowledgeStore.setMeta(tenantId, {
     status: 'ready',
     chunkCount: 0,
-    suggestedPrompts: { 'zh-Hant': '舊句', en: 'old' },
+    suggestedPrompts: { website: { generated: { 'zh-Hant': '舊句', en: 'old' } } },
   });
 
   await refreshSuggestedPrompts(tenantId, emptyIdx);
@@ -115,7 +115,7 @@ it('索引清空時不誤刪 meta 其他欄位', async () => {
     chunkCount: 0,
     model: 'text-embedding-3-small',
     files: [{ fileId: 'F1', name: 'a.txt', chunks: 0, ingestedAt: 't' }],
-    suggestedPrompts: { 'zh-Hant': '舊句', en: 'old' },
+    suggestedPrompts: { website: { generated: { 'zh-Hant': '舊句', en: 'old' } } },
   });
 
   await refreshSuggestedPrompts(tenantId, emptyIdx);
@@ -224,7 +224,7 @@ it('索引清空分支中 store 拋錯時仍不 reject（regression：舊版此�
   knowledgeStore.setMeta(tenantId, {
     status: 'ready',
     chunkCount: 0,
-    suggestedPrompts: { 'zh-Hant': '舊句', en: 'old' },
+    suggestedPrompts: { website: { generated: { 'zh-Hant': '舊句', en: 'old' } } },
   });
 
   const spy = jest.spyOn(knowledgeStore, 'getMeta').mockImplementation(() => {
