@@ -20,6 +20,7 @@ import type { TenantAppearance } from '@oa-agent/shared';
 import { changeLanguage } from './i18n';
 import { embedConfig, fetchAppearance } from './embedConfig';
 import { pickKnowledgePrompts, type SuggestedPrompts } from './knowledgePrompt';
+import { pickInitialFormId, shouldShowFormPicker } from './formPicker';
 import FormView from './FormView';
 import LoginView from './LoginView';
 import AuthErrorView from './AuthErrorView';
@@ -314,7 +315,7 @@ export default function App() {
     };
   }, [authUser]);
 
-  // 可辦理的表單清單：登入後載入，供表單類型選單；預設選第一個（請假）
+  // 可辦理的表單清單：登入後載入，供表單類型選單
   useEffect(() => {
     if (!authUser || PREVIEW) return;
     let alive = true;
@@ -323,7 +324,9 @@ export default function App() {
       .then((list) => {
         if (!alive) return;
         setForms(list);
-        // 不預選：使用者先選辦理項目，才顯示該表單的動態提示按鈕
+        // 多張表單不預選（使用者先選辦理項目，才顯示該表單的動態提示按鈕）；
+        // 只有一張時自動選取，否則那張表單的範例提示永遠不會出現
+        setSelectedFormId((cur) => cur ?? pickInitialFormId(list, embedConfig.formId));
       })
       .catch(() => alive && setForms([]));
     return () => {
@@ -827,7 +830,12 @@ export default function App() {
           </div>
 
           {/* 辦理項目選單：表單（選擇）+ 知識庫推薦用詞（直接詢問）；對話開始前顯示 */}
-          {!convId && !busy && (forms.length > 1 || knowledgePrompts.length > 0) && (
+          {!convId &&
+            !busy &&
+            shouldShowFormPicker({
+              formCount: forms.length,
+              knowledgePromptCount: knowledgePrompts.length,
+            }) && (
             <div className="form-picker">
               <div className="form-picker-hint flex w-full items-center justify-between">
                 <span>{t('app.formPickerHint')}</span>
@@ -861,19 +869,18 @@ export default function App() {
               </div>
               {pickerOpen && (
                 <>
-                  {forms.length > 1 &&
-                    forms.map((f) => (
-                      <button
-                        key={f.formId}
-                        type="button"
-                        className={`quick-chip${selectedFormId === f.formId ? ' active' : ''}`}
-                        onClick={() => setSelectedFormId(f.formId)}
-                        title={t(`forms.${f.formId}.description`, { defaultValue: f.description })}
-                        aria-pressed={selectedFormId === f.formId}
-                      >
-                        {t(`forms.${f.formId}.title`, { defaultValue: f.title })}
-                      </button>
-                    ))}
+                  {forms.map((f) => (
+                    <button
+                      key={f.formId}
+                      type="button"
+                      className={`quick-chip${selectedFormId === f.formId ? ' active' : ''}`}
+                      onClick={() => setSelectedFormId(f.formId)}
+                      title={t(`forms.${f.formId}.description`, { defaultValue: f.description })}
+                      aria-pressed={selectedFormId === f.formId}
+                    >
+                      {t(`forms.${f.formId}.title`, { defaultValue: f.title })}
+                    </button>
+                  ))}
                   {/* 知識庫推薦用詞：只顯示一個，樣式與表單 chip 一致；點擊直接以該問句發問 */}
                   {knowledgePrompts.slice(0, 1).map((p) => (
                     <button
