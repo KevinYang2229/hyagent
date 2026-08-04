@@ -28,6 +28,7 @@ import type { IndexedChunk, KnowledgeIndexFile } from './knowledge-index.types';
 import { knowledgeStore, type KnowledgeFileMeta } from './knowledge.store';
 import { refreshSuggestedPrompts } from './knowledge.suggest';
 import { invalidateIndexCache } from './retriever.staticIndex';
+import { splitChunksBySource } from './prompt-slots';
 
 export type { KnowledgeFileMeta };
 export { carryOverFileChunks };
@@ -36,6 +37,12 @@ const MIN_TEXT_CHARS = 20;
 
 /** 摘要輸入上限：超長文件截前段即可（摘要只求鳥瞰，兼顧 token 成本） */
 const SUMMARY_MAX_INPUT_CHARS = 24000;
+
+/** 依來源計算 chunk 數，供 meta.chunkCountBySource 使用 */
+function countBySource(chunks: IndexedChunk[]): { website: number; file: number } {
+  const split = splitChunksBySource(chunks);
+  return { website: split.website.length, file: split.file.length };
+}
 
 /**
  * 全文摘要 chunk：入庫時先「消化一次」，讓籠統問題（這份文件在講什麼）有可命中的候選。
@@ -161,6 +168,7 @@ export async function ingestFile(
     generatedAt: idx.generatedAt,
     model: idx.model,
     files: [...(meta.files ?? []), fileMeta],
+    chunkCountBySource: countBySource(idx.chunks),
   });
   void refreshSuggestedPrompts(tenantId, idx).catch(() => {});
   return fileMeta;
@@ -178,6 +186,7 @@ export function removeFile(tenantId: string, fileId: string): boolean {
       ...meta,
       chunkCount: chunks.length,
       files: meta.files.filter((f) => f.fileId !== fileId),
+      chunkCountBySource: countBySource(chunks),
     });
     void refreshSuggestedPrompts(tenantId, { ...existing, chunks }).catch(() => {});
   } else {

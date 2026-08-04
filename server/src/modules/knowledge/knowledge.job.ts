@@ -6,6 +6,7 @@ import { runIngest as defaultRun, type IngestParams } from './ingest.service';
 import { knowledgeStore } from './knowledge.store';
 import { refreshSuggestedPrompts } from './knowledge.suggest';
 import { invalidateIndexCache } from './retriever.staticIndex';
+import { splitChunksBySource } from './prompt-slots';
 
 /** 單一 ingest job 的狀態快照 */
 export interface IngestJob {
@@ -90,12 +91,14 @@ export function startIngestJob(
       // setMeta 是整包覆蓋、不會 merge；重爬不得清掉既有的檔案來源清單，
       // 否則檔案 chunks 雖仍留在索引中（carry-over），卻因 meta.files 消失而變孤兒、無法透過 API 刪除
       const { files } = knowledgeStore.getMeta(params.tenantId);
+      const bySource = splitChunksBySource(idx.chunks);
       knowledgeStore.setMeta(params.tenantId, {
         status: 'ready',
         chunkCount: idx.chunks.length,
         generatedAt: idx.generatedAt,
         model: idx.model,
         source: idx.source,
+        chunkCountBySource: { website: bySource.website.length, file: bySource.file.length },
         ...(files ? { files } : {}),
       });
 
