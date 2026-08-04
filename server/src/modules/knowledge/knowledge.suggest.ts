@@ -85,27 +85,38 @@ export const SUGGESTION_SYSTEM_PROMPT = `你要為一個網站客服機器人產
 - 只輸出 JSON，不要有其他文字：
 {"zh-Hant":"...","en":"..."}`;
 
-/** 驗證 LLM 輸出；任一項不合即整筆丟棄（回 undefined），呼叫端不寫入、前端不顯示 chip */
-export function parseSuggestion(text: string): SuggestedPrompts | undefined {
+/** 驗證結果：不合格時帶原因，供重試時回饋給模型 */
+export type ParseResult =
+  | { ok: true; prompts: SuggestedPrompts }
+  | { ok: false; reason: string };
+
+/** 驗證 LLM 輸出；任一項不合即整筆丟棄並回報原因 */
+export function parseSuggestion(text: string): ParseResult {
   const match = text.match(/\{[\s\S]*\}/);
-  if (!match) return undefined;
+  if (!match) return { ok: false, reason: '不是合法 JSON，輸出必須只有一個 JSON 物件' };
 
   let parsed: unknown;
   try {
     parsed = JSON.parse(match[0]);
   } catch {
-    return undefined;
+    return { ok: false, reason: '不是合法 JSON，輸出必須只有一個 JSON 物件' };
   }
-  if (typeof parsed !== 'object' || parsed === null) return undefined;
+  if (typeof parsed !== 'object' || parsed === null) {
+    return { ok: false, reason: '不是合法 JSON 物件' };
+  }
 
   const obj = parsed as Record<string, unknown>;
   const zh = typeof obj['zh-Hant'] === 'string' ? obj['zh-Hant'].trim() : '';
   const en = typeof obj.en === 'string' ? obj.en.trim() : '';
-  if (!zh || !en) return undefined;
-  if (zh.length > MAX_ZH_CHARS) return undefined;
-  if (en.split(/\s+/).length > MAX_EN_WORDS) return undefined;
+  if (!zh || !en) return { ok: false, reason: 'zh-Hant 與 en 兩個欄位都必須有值' };
+  if (zh.length > MAX_ZH_CHARS) {
+    return { ok: false, reason: `繁體中文超過 ${MAX_ZH_CHARS} 個字元（實際 ${zh.length} 個），請縮短` };
+  }
+  if (en.split(/\s+/).length > MAX_EN_WORDS) {
+    return { ok: false, reason: `英文超過 ${MAX_EN_WORDS} 個單字，請縮短` };
+  }
 
-  return { 'zh-Hant': zh, en };
+  return { ok: true, prompts: { 'zh-Hant': zh, en } };
 }
 
 /**
@@ -128,23 +139,34 @@ function isLatestGeneration(tenantId: string, gen: number): boolean {
   return generations.get(tenantId) === gen;
 }
 
-/** 呼叫 LLM 生成一句並驗證；失敗（含驗證未過）回 undefined。不寫 store */
+/**
+ * 呼叫 LLM 生成一句並驗證；驗證未過時把原因回饋給模型再試一次。
+ * 兩次都不過回 undefined（該格不寫入）。
+ */
 async function generateOne(tenantId: string, material: string): Promise<SuggestedPrompts | undefined> {
-  const result = await getLLMProvider(tenantStore.getTenant(tenantId)?.llmConfig).createMessage({
-    system: SUGGESTION_SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: [{ type: 'text', text: material }] }],
-    // 與 intent-router、rerank 同級的輔助任務，用 Haiku 即可；
-    // 租戶鎖定自有 provider 時，provider 內的 pickModel 會自動忽略此覆寫
-    model: env.LLM_ROUTER_MODEL,
-    maxTokens: 200,
-  });
-  usageStore.recordLLMUsage(tenantId, result);
+  let text = material;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const result = await getLLMProvider(tenantStore.getTenant(tenantId)?.llmConfig).createMessage({
+      system: SUGGESTION_SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: [{ type: 'text', text }] }],
+      // 與 intent-router、rerank 同級的輔助任務，用 Haiku 即可；
+      // 租戶鎖定自有 provider 時，provider 內的 pickModel 會自動忽略此覆寫
+      model: env.LLM_ROUTER_MODEL,
+      maxTokens: 200,
+    });
+    usageStore.recordLLMUsage(tenantId, result);
 
-  const prompts = parseSuggestion(result.text);
-  if (!prompts) {
-    logger.warn({ tenantId, text: result.text.slice(0, 200) }, 'suggested prompt 驗證未過，不寫入');
+    const parsed = parseSuggestion(result.text);
+    if (parsed.ok) return parsed.prompts;
+
+    logger.warn(
+      { tenantId, attempt, reason: parsed.reason, text: result.text.slice(0, 200) },
+      'suggested prompt 驗證未過',
+    );
+    if (attempt === 2) return undefined;
+    text = `${material}\n\n上一次的輸出不合格：${parsed.reason}。請重新輸出。`;
   }
-  return prompts;
+  return undefined;
 }
 
 /**

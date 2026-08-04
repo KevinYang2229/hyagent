@@ -91,34 +91,34 @@ describe('sampleIndexForSuggestion', () => {
 describe('parseSuggestion', () => {
   it('接受合法 JSON 並 trim', () => {
     expect(parseSuggestion('{"zh-Hant":" 補助怎麼申請？ ","en":" How to apply? "}')).toEqual({
-      'zh-Hant': '補助怎麼申請？',
-      en: 'How to apply?',
+      ok: true,
+      prompts: { 'zh-Hant': '補助怎麼申請？', en: 'How to apply?' },
     });
   });
 
   it('容忍 JSON 前後的額外文字', () => {
     expect(parseSuggestion('好的：\n{"zh-Hant":"補助怎麼申請？","en":"How to apply?"}\n')).toEqual({
-      'zh-Hant': '補助怎麼申請？',
-      en: 'How to apply?',
+      ok: true,
+      prompts: { 'zh-Hant': '補助怎麼申請？', en: 'How to apply?' },
     });
   });
 
-  it('壞 JSON 回 undefined', () => {
-    expect(parseSuggestion('not json at all')).toBeUndefined();
-    expect(parseSuggestion('{"zh-Hant":')).toBeUndefined();
+  it('壞 JSON 回 ok: false', () => {
+    expect(parseSuggestion('not json at all').ok).toBe(false);
+    expect(parseSuggestion('{"zh-Hant":').ok).toBe(false);
   });
 
-  it('缺 key 或空字串回 undefined', () => {
-    expect(parseSuggestion('{"zh-Hant":"補助怎麼申請？"}')).toBeUndefined();
-    expect(parseSuggestion('{"zh-Hant":"","en":"How to apply?"}')).toBeUndefined();
+  it('缺 key 或空字串回 ok: false', () => {
+    expect(parseSuggestion('{"zh-Hant":"補助怎麼申請？"}').ok).toBe(false);
+    expect(parseSuggestion('{"zh-Hant":"","en":"How to apply?"}').ok).toBe(false);
   });
 
-  it('zh 超過 20 字元回 undefined', () => {
-    expect(parseSuggestion(`{"zh-Hant":"${'字'.repeat(21)}","en":"ok"}`)).toBeUndefined();
+  it('zh 超過 20 字元回 ok: false', () => {
+    expect(parseSuggestion(`{"zh-Hant":"${'字'.repeat(21)}","en":"ok"}`).ok).toBe(false);
   });
 
-  it('en 超過 12 個單字回 undefined', () => {
+  it('en 超過 12 個單字回 ok: false', () => {
     const long = Array.from({ length: 13 }, (_, i) => `w${i}`).join(' ');
-    expect(parseSuggestion(`{"zh-Hant":"短句","en":"${long}"}`)).toBeUndefined();
+    expect(parseSuggestion(`{"zh-Hant":"短句","en":"${long}"}`).ok).toBe(false);
   });
 });
