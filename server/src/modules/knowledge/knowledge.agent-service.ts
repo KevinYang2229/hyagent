@@ -2,7 +2,7 @@
  * Knowledge Agent 服務（RAG）。
  *
  * sticky=false：屬「旁路」服務——回答後不奪走填表流程，且**不動 session 的 values / status**。
- * 檢索：有靜態網站索引時走 staticIndexRetriever（向量檢索），否則退回 stub FAQ（dev/測試）。
+ * 檢索：依 DATA_BACKEND 選 pgvector 或靜態索引檔（見 pickRetriever），皆無索引時退回 stub FAQ（dev/測試）。
  * 作答：只把 top-k 片段交給 LLM 綜合成答案並附來源；整站內容永不進 LLM（省 token）。
  */
 import { env } from '@/config/env';
@@ -18,6 +18,7 @@ import type {
 import type { Session } from '@/modules/conversation/conversation.types';
 import { usageStore } from '@/modules/usage/usage.store';
 import { rerankChunks } from './rerank';
+import { hasPgvectorIndex, pgvectorRetriever } from './retriever.pgvector';
 import { hasStaticIndex, staticIndexRetriever } from './retriever.staticIndex';
 import { stubRetriever } from './retriever.stub';
 import type { KnowledgeChunk, KnowledgeRetriever } from './retriever.types';
@@ -112,7 +113,14 @@ function kbAnswerSystem(locale?: string): string {
   ].join('\n');
 }
 
-function pickRetriever(tenantId: string): KnowledgeRetriever {
+/**
+ * 依持久化後端挑檢索器：db 走 pgvector、file 走靜態索引檔；
+ * 兩者都沒有索引時退回 stub FAQ（dev/測試）。
+ */
+async function pickRetriever(tenantId: string): Promise<KnowledgeRetriever> {
+  if (env.DATA_BACKEND === 'db') {
+    return (await hasPgvectorIndex(tenantId)) ? pgvectorRetriever : stubRetriever;
+  }
   return hasStaticIndex(tenantId) ? staticIndexRetriever : stubRetriever;
 }
 
@@ -152,7 +160,8 @@ export const knowledgeAgentService: AgentService = {
     const query = await resolveQuery(session, userText, llm, history);
 
     // 兩階段檢索：向量取候選池 → LLM（Haiku）重排出最相關前 K 筆
-    const pool = await pickRetriever(session.tenantId).search(session.tenantId, query);
+    const retriever = await pickRetriever(session.tenantId);
+    const pool = await retriever.search(session.tenantId, query);
     const chunks = await rerankChunks(session.tenantId, query, pool, FINAL_K);
 
     let reply: string;
@@ -201,7 +210,7 @@ export const knowledgeAgentService: AgentService = {
     // 旁路回答：只在逐字稿留紀錄，刻意不觸碰 session.values / session.status
     session.messages.push({ role: 'assistant', content: [{ type: 'text', text: reply }] });
     logger.info(
-      { sessionId: session.id, hits: chunks.length, retriever: pickRetriever(session.tenantId).name },
+      { sessionId: session.id, hits: chunks.length, retriever: retriever.name },
       'knowledge answer',
     );
     return { reply };
