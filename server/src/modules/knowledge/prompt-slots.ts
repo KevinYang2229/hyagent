@@ -4,6 +4,7 @@
  * 刻意不 import knowledge.store：store 需要這裡的正規化函式（runtime import），
  * 反向再 import 會形成循環。型別定義因此放這裡，由 store re-export 供既有呼叫端沿用。
  */
+import type { IndexedChunk } from './knowledge-index.types';
 
 /** widget 開場推薦問句；兩語系一組，空字串代表該語系不顯示 */
 export interface SuggestedPrompts {
@@ -52,6 +53,12 @@ export function normalizeSuggestedPrompts(
   }
   const slots = value as SuggestedPromptSlots;
   return SOURCE_KEYS.some((k) => slots[k]) ? slots : undefined;
+}
+
+/** 依來源計算 chunk 數，供 meta.chunkCountBySource 使用 */
+export function countBySource(chunks: IndexedChunk[]): Record<SourceKey, number> {
+  const split = splitChunksBySource(chunks);
+  return { website: split.website.length, file: split.file.length };
 }
 
 /**

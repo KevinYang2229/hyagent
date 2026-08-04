@@ -56,3 +56,46 @@ it('刪除該檔後 file 計數歸零', async () => {
     knowledgeStore.getMeta(tenantId).chunkCount,
   );
 });
+
+it('清除索引時 chunkCountBySource 應為 { website: 0, file: 0 }', () => {
+  const tenantIdRemove = 'chunk-count-remove-test';
+  // 模擬先有索引狀態
+  knowledgeStore.setMeta(tenantIdRemove, {
+    status: 'ready',
+    chunkCount: 5,
+    chunkCountBySource: { website: 2, file: 3 },
+  });
+
+  // 模擬 admin remove() 的 setMeta 呼叫
+  knowledgeStore.setMeta(tenantIdRemove, {
+    status: 'none',
+    chunkCount: 0,
+    chunkCountBySource: { website: 0, file: 0 },
+  });
+
+  const counts = knowledgeStore.getMeta(tenantIdRemove).chunkCountBySource;
+  expect(counts?.website).toBe(0);
+  expect(counts?.file).toBe(0);
+});
+
+it('ingest 失敗時 chunkCountBySource 應為 { website: 0, file: 0 }', () => {
+  const tenantIdFail = 'chunk-count-fail-test';
+  // 模擬先有索引狀態
+  knowledgeStore.setMeta(tenantIdFail, {
+    status: 'ready',
+    chunkCount: 5,
+    chunkCountBySource: { website: 2, file: 3 },
+  });
+
+  // 模擬 ingest 失敗路徑的 setMeta 呼叫
+  knowledgeStore.setMeta(tenantIdFail, {
+    status: 'failed',
+    chunkCount: 0,
+    error: 'test error',
+    chunkCountBySource: { website: 0, file: 0 },
+  });
+
+  const counts = knowledgeStore.getMeta(tenantIdFail).chunkCountBySource;
+  expect(counts?.website).toBe(0);
+  expect(counts?.file).toBe(0);
+});

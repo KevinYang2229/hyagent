@@ -89,7 +89,7 @@ export const knowledgeAdminController = {
     const path = indexPathFor(tenantId);
     if (existsSync(path)) rmSync(path);
     invalidateIndexCache(tenantId);
-    knowledgeStore.setMeta(tenantId, { status: 'none', chunkCount: 0 });
+    knowledgeStore.setMeta(tenantId, { status: 'none', chunkCount: 0, chunkCountBySource: { website: 0, file: 0 } });
     res.json({ data: { ok: true } });
   },
 
