@@ -598,7 +598,7 @@ export default function KnowledgeTab({
                               onChange={(e) => setManualDraft((d) => ({ ...d, en: e.target.value }))}
                             />
                           </div>
-                          <div className="field">
+                          <div className="row-actions">
                             <button
                               type="button"
                               className="btn btn-primary btn-sm"
@@ -611,7 +611,6 @@ export default function KnowledgeTab({
                               type="button"
                               className="btn btn-sm"
                               onClick={() => setEditingSource(null)}
-                              style={{ marginInlineStart: 4 }}
                             >
                               取消
                             </button>
