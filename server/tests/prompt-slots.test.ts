@@ -2,14 +2,15 @@
  * 推薦問句格位的純函式：來源切分、舊資料正規化、有效句挑選。
  * 不碰 store／LLM，故不需要 mock。
  */
+import type { IndexedChunk } from '@/modules/knowledge/knowledge-index.types';
 import {
   splitChunksBySource,
   normalizeSuggestedPrompts,
   effectivePrompts,
 } from '@/modules/knowledge/prompt-slots';
 
-const web = { id: 'w1', url: 'https://x.com/a', title: 'A', text: 'a', vector: [1] };
-const file = { ...web, id: 'f1', url: 'file://a.pdf', fileId: 'file-1' };
+const web: IndexedChunk = { id: 'w1', url: 'https://x.com/a', title: 'A', text: 'a', vector: [1] };
+const file: IndexedChunk = { ...web, id: 'f1', url: 'file://a.pdf', fileId: 'file-1' };
 
 describe('splitChunksBySource', () => {
   it('有 fileId 分到 file、無 fileId 分到 website', () => {
