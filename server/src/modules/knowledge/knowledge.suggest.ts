@@ -1,5 +1,5 @@
 /**
- * 依索引內容生成 widget 開場推薦問句。
+ * 依索引內容生成 widget 開場推薦問句，依來源（網站／檔案）分兩格獨立生成。
  *
  * 生成時機為索引異動（爬取完成／上傳／刪檔），結果快取進 KnowledgeIndexMeta，
  * widget 載入時直接讀快取、零延遲。生成失敗一律不寫入，前端就不顯示推薦 chip。
@@ -15,6 +15,12 @@ import { usageStore } from '@/modules/usage/usage.store';
 import type { KnowledgeIndexFile } from './knowledge-index.types';
 import { knowledgeStore } from './knowledge.store';
 import type { SuggestedPrompts } from './knowledge.store';
+import {
+  SOURCE_KEYS,
+  splitChunksBySource,
+  type SourceKey,
+  type SuggestedPromptSlots,
+} from './prompt-slots';
 
 const MAX_TEXT_SAMPLES = 10;
 const TEXT_CHARS = 150;
@@ -122,77 +128,80 @@ function isLatestGeneration(tenantId: string, gen: number): boolean {
   return generations.get(tenantId) === gen;
 }
 
+/** 呼叫 LLM 生成一句並驗證；失敗（含驗證未過）回 undefined。不寫 store */
+async function generateOne(tenantId: string, material: string): Promise<SuggestedPrompts | undefined> {
+  const result = await getLLMProvider(tenantStore.getTenant(tenantId)?.llmConfig).createMessage({
+    system: SUGGESTION_SYSTEM_PROMPT,
+    messages: [{ role: 'user', content: [{ type: 'text', text: material }] }],
+    // 與 intent-router、rerank 同級的輔助任務，用 Haiku 即可；
+    // 租戶鎖定自有 provider 時，provider 內的 pickModel 會自動忽略此覆寫
+    model: env.LLM_ROUTER_MODEL,
+    maxTokens: 200,
+  });
+  usageStore.recordLLMUsage(tenantId, result);
+
+  const prompts = parseSuggestion(result.text);
+  if (!prompts) {
+    logger.warn({ tenantId, text: result.text.slice(0, 200) }, 'suggested prompt 驗證未過，不寫入');
+  }
+  return prompts;
+}
+
 /**
- * 重新生成某租戶的推薦問句並寫回 meta。
+ * 重新生成某租戶的推薦問句並寫回 meta，依來源分兩格各自獨立生成。
  *
  * 永不 reject：索引異動端一律以 `void refreshSuggestedPrompts(...)` 觸發，
  * 任何失敗（含 store 讀寫拋錯）都不得影響索引本身的狀態，故整個函式體都在
  * try/catch 保護內。
  *
- * 回傳「這次實際寫入的問句」，沒寫入則為 undefined。後台的手動重新生成需要據此
+ * 回傳「這次實際寫入的格位」，沒寫入則為 undefined。後台的手動重新生成需要據此
  * 分辨成功與失敗——只看 meta 分不出來：失敗時 meta 會留著上一次的舊句，
  * 看起來就像剛生成成功。
  */
 export async function refreshSuggestedPrompts(
   tenantId: string,
   idx: KnowledgeIndexFile,
-): Promise<SuggestedPrompts | undefined> {
+): Promise<SuggestedPromptSlots | undefined> {
   const gen = beginGeneration(tenantId);
 
   try {
-    // 索引已空：清除舊句，不留下指向已刪內容的問句。
-    // 這段沒有 await，同步執行完畢前不可能有其他呼叫插入，故世代必為最新，
-    // 不需再檢查；此呼叫遞增的世代會讓「更早發動、還在 await 中」的舊呼叫
-    // 之後寫入時被判定過期。
-    if (idx.chunks.length === 0) {
-      const meta = knowledgeStore.getMeta(tenantId);
-      if (meta.suggestedPrompts) {
-        const { suggestedPrompts: _drop, ...rest } = meta;
-        knowledgeStore.setMeta(tenantId, rest);
-      }
-      return undefined;
-    }
+    const bySource = splitChunksBySource(idx.chunks);
+    const current = knowledgeStore.getMeta(tenantId).suggestedPrompts ?? {};
 
-    const material = sampleIndexForSuggestion(idx);
-    // chunks 非空，但每筆文字 trim 後皆為空白、且沒有多個相異 title 可用時
-    // （例如僅含空白內容的頁面、且與其他 chunk 同 title），抽樣素材會是空字串——
-    // 沒有可餵給 LLM 的內容，直接放棄，不視為錯誤
-    if (!material) return undefined;
+    // 逐格決定該格的新內容；兩格併發，彼此不影響
+    const entries = await Promise.all(
+      SOURCE_KEYS.map(async (key: SourceKey) => {
+        const slot = current[key] ?? {};
+        // 手動鎖定：整格跳過，不呼叫 LLM（生成了也用不到）
+        if (slot.manual) return [key, slot] as const;
+        // 該來源已無內容：清掉 generated，不留指向已刪內容的句子
+        const chunks = bySource[key];
+        if (chunks.length === 0) return [key, {}] as const;
+        const material = sampleIndexForSuggestion({ ...idx, chunks });
+        // 抽樣素材為空（chunks 皆空白）：不視為錯誤，維持原樣
+        if (!material) return [key, slot] as const;
+        const generated = await generateOne(tenantId, material);
+        return [key, generated ? { ...slot, generated } : slot] as const;
+      }),
+    );
 
-    const result = await getLLMProvider(
-      tenantStore.getTenant(tenantId)?.llmConfig,
-    ).createMessage({
-      system: SUGGESTION_SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: [{ type: 'text', text: material }] }],
-      // 與 intent-router、rerank 同級的輔助任務，用 Haiku 即可；
-      // 租戶鎖定自有 provider 時，provider 內的 pickModel 會自動忽略此覆寫
-      model: env.LLM_ROUTER_MODEL,
-      maxTokens: 200,
-    });
-    usageStore.recordLLMUsage(tenantId, result);
-
-    const prompts = parseSuggestion(result.text);
-    if (!prompts) {
-      logger.warn(
-        { tenantId, text: result.text.slice(0, 200) },
-        'suggested prompt 驗證未過，不寫入',
-      );
-      return undefined;
-    }
-
-    // 世代防護：await 期間可能有更晚發動的呼叫（含清空）已經完成，此時這次的結果
-    // 已過期（可能指向已刪內容，或被更新的生成蓋過），一律放棄寫入
+    // 世代防護：await 期間若有更晚發動的呼叫（含清空）已完成，這批結果已過期
     if (!isLatestGeneration(tenantId, gen)) {
       logger.warn({ tenantId }, 'suggested prompt 生成期間已有更新的呼叫，放棄過期寫入');
       return undefined;
     }
 
+    const next: SuggestedPromptSlots = {};
+    for (const [key, slot] of entries) {
+      if (slot.generated || slot.manual) next[key] = slot;
+    }
+    const hasAny = SOURCE_KEYS.some((k) => next[k]);
     // setMeta 是整包覆蓋：await 期間 meta 可能已被其他寫入更新（如使用者刪檔），必須重讀
     knowledgeStore.setMeta(tenantId, {
       ...knowledgeStore.getMeta(tenantId),
-      suggestedPrompts: prompts,
+      suggestedPrompts: hasAny ? next : undefined,
     });
-    return prompts;
+    return hasAny ? next : undefined;
   } catch (err) {
     logger.warn({ err, tenantId }, 'suggested prompt 生成失敗，不寫入');
     return undefined;

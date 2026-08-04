@@ -47,8 +47,9 @@ it('生成成功時寫入 meta.suggestedPrompts', async () => {
   await refreshSuggestedPrompts(tenantId, idx);
 
   expect(knowledgeStore.getMeta(tenantId).suggestedPrompts).toEqual({
-    'zh-Hant': '補助要附什麼文件？',
-    en: 'What documents are needed?',
+    website: {
+      generated: { 'zh-Hant': '補助要附什麼文件？', en: 'What documents are needed?' },
+    },
   });
 });
 
@@ -212,8 +213,9 @@ it('兩次重疊的非空生成，只保留後發動那次的結果', async () =
   await firstCall;
 
   expect(knowledgeStore.getMeta(tenantId).suggestedPrompts).toEqual({
-    'zh-Hant': '後發動的句子',
-    en: 'Second call answer',
+    website: {
+      generated: { 'zh-Hant': '後發動的句子', en: 'Second call answer' },
+    },
   });
 });
 
