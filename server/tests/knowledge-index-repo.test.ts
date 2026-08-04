@@ -2,7 +2,7 @@
  * 索引 repository（file 後端）：寫入後可讀回、無索引回 null、覆寫為整份取代。
  * KNOWLEDGE_INDEX_DIR 已由 tests/setup-env.ts 指向暫存目錄。
  */
-import { loadIndex, saveIndex } from '@/modules/knowledge/knowledge.index.repo';
+import { deleteIndex, loadIndex, saveIndex } from '@/modules/knowledge/knowledge.index.repo';
 import type { KnowledgeIndexFile } from '@/modules/knowledge/knowledge-index.types';
 
 const uid = (p: string) => `${p}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -45,5 +45,16 @@ describe('knowledge index repo（file 後端）', () => {
     idx.chunks[0].fileId = 'F1';
     await saveIndex(t, idx);
     expect((await loadIndex(t))?.chunks[0].fileId).toBe('F1');
+  });
+
+  it('deleteIndex 後 loadIndex 回 null（追加需求：整份索引刪除）', async () => {
+    const t = uid('repo-delete');
+    await saveIndex(t, makeIndex(['a']));
+    await deleteIndex(t);
+    expect(await loadIndex(t)).toBeNull();
+  });
+
+  it('deleteIndex 對不存在的索引也視為成功（冪等）', async () => {
+    await expect(deleteIndex(uid('repo-delete-missing'))).resolves.toBeUndefined();
   });
 });

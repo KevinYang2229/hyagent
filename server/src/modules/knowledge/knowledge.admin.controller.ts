@@ -2,17 +2,16 @@
  * 知識庫 admin controller：每租戶知識來源設定、觸發解析、查進度、測試查詢、清除索引。
  * 全部端點受 requireAdmin 保護（掛載於 admin.routes）。
  */
-import { existsSync, rmSync } from 'node:fs';
 import type { Request, Response } from 'express';
 import { AppError } from '@/utils/app-error';
-import { indexPathFor } from './index-path';
 import type { IngestParams } from './ingest.service';
+import { deleteIndex } from './knowledge.index.repo';
 import { ingestFile, loadIndexFile, removeFile } from './knowledge-file.service';
 import { getJob, getRunningJobForTenant, startIngestJob } from './knowledge.job';
 import { knowledgeStore, type KnowledgeSource } from './knowledge.store';
 import { regenerateSlot } from './knowledge.suggest';
 import { splitChunksBySource, type SourceKey } from './prompt-slots';
-import { invalidateIndexCache, staticIndexRetriever } from './retriever.staticIndex';
+import { staticIndexRetriever } from './retriever.staticIndex';
 
 /** 由已存來源設定組出 ingest 參數；未設定起始網址則擋下 */
 function ingestParamsFor(tenantId: string): IngestParams {
@@ -86,9 +85,7 @@ export const knowledgeAdminController = {
 
   async remove(req: Request, res: Response): Promise<void> {
     const tenantId = String(req.params.id);
-    const path = indexPathFor(tenantId);
-    if (existsSync(path)) rmSync(path);
-    invalidateIndexCache(tenantId);
+    await deleteIndex(tenantId);
     knowledgeStore.setMeta(tenantId, { status: 'none', chunkCount: 0, chunkCountBySource: { website: 0, file: 0 } });
     res.json({ data: { ok: true } });
   },
