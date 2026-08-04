@@ -8,6 +8,7 @@ import {
   type KnowledgeSource,
   type QueryHit,
 } from "../../api";
+import NumberField from "../../components/NumberField";
 
 const EMBEDDING_MODELS = ["text-embedding-3-large", "text-embedding-3-small"];
 type SourceKind = "website" | "file";
@@ -206,11 +207,11 @@ export default function KnowledgeTab({
                 </div>
                 <div className="field">
                   <label className="field-label">最大頁數</label>
-                  <input
-                    className="input"
-                    type="number"
+                  <NumberField
                     value={src.maxPages}
-                    onChange={(e) => update({ maxPages: Number(e.target.value) })}
+                    onChange={(maxPages) => update({ maxPages })}
+                    min={1}
+                    max={1000}
                     disabled={parsing}
                   />
                 </div>
@@ -317,13 +318,11 @@ export default function KnowledgeTab({
               <div className="form-grid">
                 <div className="field">
                   <label className="field-label">chunk 大小（字元）</label>
-                  <input
-                    className="input"
-                    type="number"
+                  <NumberField
                     value={src.chunkChars}
-                    onChange={(e) =>
-                      update({ chunkChars: Number(e.target.value) })
-                    }
+                    onChange={(chunkChars) => update({ chunkChars })}
+                    min={200}
+                    max={4000}
                     disabled={parsing}
                   />
                 </div>
