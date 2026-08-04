@@ -138,3 +138,27 @@ model ApiKeyRow {
   @@index([tenantId])
   @@map("api_keys")
 }
+
+model KnowledgeSourceRow {
+  tenantId  String   @id @map("tenant_id")
+  /// KnowledgeSource（startUrl / maxPages / chunkChars / embeddingModel / rerank…）
+  source    Json     @default("{}")
+  /// KnowledgeIndexMeta（status / chunkCount / files / suggestedPrompts…）
+  meta      Json     @default("{}")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("knowledge_sources")
+}
+
+model KnowledgeIndexRow {
+  tenantId    String   @id @map("tenant_id")
+  generatedAt DateTime @map("generated_at")
+  model       String
+  source      String
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("knowledge_indexes")
+}
+
+/// 註：knowledge_chunks 刻意不建 model——embedding 欄位為 pgvector 的 halfvec(3072)，
+/// Prisma schema 無對應型別。該表的讀寫一律經 lib/db 的 $queryRaw / $executeRaw。
