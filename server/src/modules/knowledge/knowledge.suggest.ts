@@ -125,14 +125,18 @@ function isLatestGeneration(tenantId: string, gen: number): boolean {
 /**
  * 重新生成某租戶的推薦問句並寫回 meta。
  *
- * 永不 reject：呼叫端一律以 `void refreshSuggestedPrompts(...)` 觸發，
+ * 永不 reject：索引異動端一律以 `void refreshSuggestedPrompts(...)` 觸發，
  * 任何失敗（含 store 讀寫拋錯）都不得影響索引本身的狀態，故整個函式體都在
  * try/catch 保護內。
+ *
+ * 回傳「這次實際寫入的問句」，沒寫入則為 undefined。後台的手動重新生成需要據此
+ * 分辨成功與失敗——只看 meta 分不出來：失敗時 meta 會留著上一次的舊句，
+ * 看起來就像剛生成成功。
  */
 export async function refreshSuggestedPrompts(
   tenantId: string,
   idx: KnowledgeIndexFile,
-): Promise<void> {
+): Promise<SuggestedPrompts | undefined> {
   const gen = beginGeneration(tenantId);
 
   try {
@@ -146,14 +150,14 @@ export async function refreshSuggestedPrompts(
         const { suggestedPrompts: _drop, ...rest } = meta;
         knowledgeStore.setMeta(tenantId, rest);
       }
-      return;
+      return undefined;
     }
 
     const material = sampleIndexForSuggestion(idx);
     // chunks 非空，但每筆文字 trim 後皆為空白、且沒有多個相異 title 可用時
     // （例如僅含空白內容的頁面、且與其他 chunk 同 title），抽樣素材會是空字串——
     // 沒有可餵給 LLM 的內容，直接放棄，不視為錯誤
-    if (!material) return;
+    if (!material) return undefined;
 
     const result = await getLLMProvider(
       tenantStore.getTenant(tenantId)?.llmConfig,
@@ -173,14 +177,14 @@ export async function refreshSuggestedPrompts(
         { tenantId, text: result.text.slice(0, 200) },
         'suggested prompt 驗證未過，不寫入',
       );
-      return;
+      return undefined;
     }
 
     // 世代防護：await 期間可能有更晚發動的呼叫（含清空）已經完成，此時這次的結果
     // 已過期（可能指向已刪內容，或被更新的生成蓋過），一律放棄寫入
     if (!isLatestGeneration(tenantId, gen)) {
       logger.warn({ tenantId }, 'suggested prompt 生成期間已有更新的呼叫，放棄過期寫入');
-      return;
+      return undefined;
     }
 
     // setMeta 是整包覆蓋：await 期間 meta 可能已被其他寫入更新（如使用者刪檔），必須重讀
@@ -188,7 +192,9 @@ export async function refreshSuggestedPrompts(
       ...knowledgeStore.getMeta(tenantId),
       suggestedPrompts: prompts,
     });
+    return prompts;
   } catch (err) {
     logger.warn({ err, tenantId }, 'suggested prompt 生成失敗，不寫入');
+    return undefined;
   }
 }

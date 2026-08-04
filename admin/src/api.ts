@@ -307,6 +307,12 @@ export const api = {
     req<{ hits: QueryHit[] }>('POST', `/admin/tenants/${id}/knowledge/query-test`, { question }),
   deleteKnowledge: (id: string) =>
     req<{ ok: boolean }>('DELETE', `/admin/tenants/${id}/knowledge`),
+  /** 手動重新生成開場推薦詞（平時由索引異動自動觸發，這是補救入口） */
+  refreshKnowledgeSuggestion: (id: string) =>
+    req<{ suggestedPrompts: { 'zh-Hant': string; en: string } }>(
+      'POST',
+      `/admin/tenants/${id}/knowledge/suggestion`,
+    ),
   uploadKnowledgeFile: (id: string, file: File) => {
     const form = new FormData();
     form.append('file', file);

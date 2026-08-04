@@ -213,6 +213,11 @@ router.delete(
   asyncHandler(knowledgeAdminController.remove),
 );
 router.post(
+  '/tenants/:id/knowledge/suggestion',
+  validate({ params: tenantParamSchema }),
+  asyncHandler(knowledgeAdminController.refreshSuggestion),
+);
+router.post(
   '/tenants/:id/knowledge/files',
   validate({ params: tenantParamSchema }),
   uploadKnowledgeFile,

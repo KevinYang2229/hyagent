@@ -27,6 +27,7 @@ export default function KnowledgeTab({
   const [question, setQuestion] = useState("");
   const [hits, setHits] = useState<QueryHit[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [regenerating, setRegenerating] = useState(false); // 手動重新生成開場推薦詞中
   const [dragOver, setDragOver] = useState(false); // 拖放上傳區的 drag-over 高亮
   // 來源設定：先選網站或檔案，再填完參數，最後由同一顆「開始解析」依類型處理。
   const [sourceKind, setSourceKind] = useState<SourceKind>("website");
@@ -126,6 +127,23 @@ export default function KnowledgeTab({
       setHits([]);
     } catch (e) {
       onError(e);
+    }
+  };
+
+  /**
+   * 重新生成開場推薦詞：平時由索引異動自動觸發，這裡是補救入口
+   * （索引建立於此功能上線前、或當時生成失敗的租戶，否則要重爬才生得出來）。
+   */
+  const regenerateSuggestion = async () => {
+    setRegenerating(true);
+    try {
+      const { suggestedPrompts } = await api.refreshKnowledgeSuggestion(tenantId);
+      setMeta((m) => (m ? { ...m, suggestedPrompts } : m));
+      toast.success("已重新生成開場推薦詞");
+    } catch (e) {
+      onError(e);
+    } finally {
+      setRegenerating(false);
     }
   };
 
@@ -479,12 +497,23 @@ export default function KnowledgeTab({
                   {meta.chunkCount} 片段｜來源 {meta.source ?? "—"}｜
                   {meta.generatedAt ?? ""}
                 </div>
-                {meta.suggestedPrompts && (
-                  <div className="row-sub">
-                    開場推薦詞｜{meta.suggestedPrompts["zh-Hant"]}｜
-                    {meta.suggestedPrompts.en}
-                  </div>
-                )}
+                {/* 開場推薦詞：widget 的推薦 chip 就顯示這句，沒有生成就不會有 chip，
+                    所以未生成時也要露出狀態與重新生成入口，而不是整列藏起來 */}
+                <div className="row-sub">
+                  開場推薦詞｜
+                  {meta.suggestedPrompts
+                    ? `${meta.suggestedPrompts["zh-Hant"]}｜${meta.suggestedPrompts.en}`
+                    : "尚未生成，widget 不會顯示推薦問句"}
+                  <button
+                    type="button"
+                    className="btn btn-sm"
+                    onClick={regenerateSuggestion}
+                    disabled={regenerating}
+                    style={{ marginInlineStart: 8 }}
+                  >
+                    {regenerating ? "生成中…" : "重新生成"}
+                  </button>
+                </div>
               </>
             ) : meta.status === "failed" ? (
               <div className="row-sub">失敗：{meta.error ?? "未知錯誤"}</div>

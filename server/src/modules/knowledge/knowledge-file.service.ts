@@ -72,7 +72,8 @@ export async function parseFileToText(name: string, buf: Buffer): Promise<string
   return (await parseDocument(name, buf)).text;
 }
 
-function loadIndexFile(tenantId: string): KnowledgeIndexFile | null {
+/** 直讀索引檔（不經 retriever 的記憶體快取）；無索引回 null */
+export function loadIndexFile(tenantId: string): KnowledgeIndexFile | null {
   const path = indexPathFor(tenantId);
   if (!existsSync(path)) return null;
   return JSON.parse(readFileSync(path, 'utf8')) as KnowledgeIndexFile;

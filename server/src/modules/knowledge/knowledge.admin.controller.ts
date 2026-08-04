@@ -7,9 +7,10 @@ import type { Request, Response } from 'express';
 import { AppError } from '@/utils/app-error';
 import { indexPathFor } from './index-path';
 import type { IngestParams } from './ingest.service';
-import { ingestFile, removeFile } from './knowledge-file.service';
+import { ingestFile, loadIndexFile, removeFile } from './knowledge-file.service';
 import { getJob, getRunningJobForTenant, startIngestJob } from './knowledge.job';
 import { knowledgeStore, type KnowledgeSource } from './knowledge.store';
+import { refreshSuggestedPrompts } from './knowledge.suggest';
 import { invalidateIndexCache, staticIndexRetriever } from './retriever.staticIndex';
 
 /** 由已存來源設定組出 ingest 參數；未設定起始網址則擋下 */
@@ -89,6 +90,28 @@ export const knowledgeAdminController = {
     invalidateIndexCache(tenantId);
     knowledgeStore.setMeta(tenantId, { status: 'none', chunkCount: 0 });
     res.json({ data: { ok: true } });
+  },
+
+  /**
+   * 手動重新生成開場推薦詞。
+   *
+   * 平時由索引異動（爬取完成／上傳／刪檔）自動觸發，這支是補救入口：索引建立於本功能
+   * 上線前、或當時生成失敗的租戶，否則要重爬一次才生得出來。
+   * 這裡 await 而非 void 觸發——管理者按了按鈕就要看到結果。
+   */
+  async refreshSuggestion(req: Request, res: Response): Promise<void> {
+    const tenantId = String(req.params.id);
+    // 比照上傳／刪檔：爬網進行中不要另外發動生成，否則兩邊的世代競爭沒有意義（晚的贏，早的白花 LLM 費用）
+    if (getRunningJobForTenant(tenantId)) {
+      throw AppError.conflict('解析任務進行中，請待完成後再重新生成');
+    }
+    const idx = loadIndexFile(tenantId);
+    if (!idx || idx.chunks.length === 0) throw AppError.unprocessable('尚未建立索引');
+
+    const suggestedPrompts = await refreshSuggestedPrompts(tenantId, idx);
+    // 失敗時 meta 會留著舊句，不能改讀 meta 充數；一律據實回報讓管理者可以重試
+    if (!suggestedPrompts) throw AppError.unprocessable('推薦詞生成失敗，請稍後再試');
+    res.json({ data: { suggestedPrompts } });
   },
 
   /** 上傳單一檔案（multipart field: file）：解析→切塊→embed→附加索引 */
