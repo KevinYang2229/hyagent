@@ -1,8 +1,10 @@
 /**
- * 後台手動重新生成推薦詞（POST /admin/tenants/:id/knowledge/suggestion）。
+ * 後台推薦詞端點：POST 單格重新生成（/admin/tenants/:id/knowledge/suggestion）
+ * 與 PUT 手動覆寫／恢復自動（同一路徑）。
  *
- * 存在理由：自動生成只在索引異動時觸發，索引建立於本功能上線前的租戶不重爬就永遠沒有推薦詞。
- * 重點驗證「失敗要據實回報」——meta 會留著上一次的舊句，端點不能拿舊句充數。
+ * 存在理由：自動生成只在索引異動時觸發，索引建立於本功能上線前的租戶不重爬就永遠沒有推薦詞，
+ * 且管理者需要能覆寫單句或恢復自動。重點驗證：POST 不理會 manual、失敗要據實回報（不拿舊句充數）；
+ * PUT 的有效句規則為 manual ?? generated。
  */
 jest.mock('@/lib/llm', () => ({
   __esModule: true,
@@ -48,6 +50,7 @@ function writeIndex(tenantId: string, chunks: KnowledgeIndexFile['chunks']) {
   writeFileSync(path, JSON.stringify(idx));
 }
 
+// 無 fileId：屬網站來源（splitChunksBySource 依此切分）
 const chunk = {
   id: 'c1',
   url: 'https://x.com/faq',
@@ -70,11 +73,13 @@ describe('POST /admin/tenants/:id/knowledge/suggestion', () => {
     const res = await request(app)
       .post(`/api/admin/tenants/${tenantId}/knowledge/suggestion`)
       .set(auth)
+      .send({ source: 'website' })
       .expect(200);
 
     const expected = { 'zh-Hant': '育兒補助要附什麼？', en: 'What to submit for the subsidy?' };
-    expect(res.body.data.suggestedPrompts).toEqual(expected);
-    expect(knowledgeStore.getMeta(tenantId).suggestedPrompts).toEqual(expected);
+    expect(res.body.data.source).toBe('website');
+    expect(res.body.data.slot.generated).toEqual(expected);
+    expect(knowledgeStore.getMeta(tenantId).suggestedPrompts?.website?.generated).toEqual(expected);
   });
 
   it('尚未建立索引時回 422', async () => {
@@ -85,6 +90,7 @@ describe('POST /admin/tenants/:id/knowledge/suggestion', () => {
     await request(app)
       .post(`/api/admin/tenants/${tenantId}/knowledge/suggestion`)
       .set(auth)
+      .send({ source: 'website' })
       .expect(422);
   });
 
@@ -92,19 +98,92 @@ describe('POST /admin/tenants/:id/knowledge/suggestion', () => {
     const tenantId = 'sug-admin-fail';
     const stale = { 'zh-Hant': '上一次的舊問句？', en: 'Previous prompt?' };
     writeIndex(tenantId, [chunk]);
-    knowledgeStore.setMeta(tenantId, { status: 'ready', chunkCount: 1, suggestedPrompts: stale });
+    knowledgeStore.setMeta(tenantId, {
+      status: 'ready',
+      chunkCount: 1,
+      suggestedPrompts: { website: { generated: stale } },
+    });
     mockLLM('這不是 JSON');
 
     await request(app)
       .post(`/api/admin/tenants/${tenantId}/knowledge/suggestion`)
       .set(auth)
+      .send({ source: 'website' })
       .expect(422);
 
     // 舊句留著（widget 端維持現狀），但端點沒有把它當成「剛生成成功」回報
-    expect(knowledgeStore.getMeta(tenantId).suggestedPrompts).toEqual(stale);
+    expect(knowledgeStore.getMeta(tenantId).suggestedPrompts?.website?.generated).toEqual(stale);
   });
 
   it('未帶 admin key 時擋下', async () => {
-    await request(app).post('/api/admin/tenants/sug-admin-ok/knowledge/suggestion').expect(401);
+    await request(app)
+      .post('/api/admin/tenants/sug-admin-ok/knowledge/suggestion')
+      .send({ source: 'website' })
+      .expect(401);
+  });
+
+  it('指定 file 來源但索引只有網站 chunks → 422', async () => {
+    const tenantId = 'sug-admin-wrong-source';
+    writeIndex(tenantId, [chunk]);
+    knowledgeStore.setMeta(tenantId, { status: 'ready', chunkCount: 1 });
+    mockLLM('{"zh-Hant":"不該被呼叫","en":"should not be called"}');
+
+    await request(app)
+      .post(`/api/admin/tenants/${tenantId}/knowledge/suggestion`)
+      .set(auth)
+      .send({ source: 'file' })
+      .expect(422);
+  });
+});
+
+describe('PUT /admin/tenants/:id/knowledge/suggestion', () => {
+  it('PUT 設定手動值後 slot.manual 生效', async () => {
+    const tenantId = 'sug-admin-manual';
+    writeIndex(tenantId, [chunk]);
+    knowledgeStore.setMeta(tenantId, { status: 'ready', chunkCount: 1 });
+
+    const res = await request(app)
+      .put(`/api/admin/tenants/${tenantId}/knowledge/suggestion`)
+      .set(auth)
+      .send({ source: 'website', manual: { 'zh-Hant': '手動句？', en: '' } })
+      .expect(200);
+
+    expect(res.body.data.slot.manual).toEqual({ 'zh-Hant': '手動句？', en: '' });
+    expect(knowledgeStore.getMeta(tenantId).suggestedPrompts?.website?.manual).toEqual({
+      'zh-Hant': '手動句？',
+      en: '',
+    });
+  });
+
+  it('PUT manual: null 清除手動值，generated 保留', async () => {
+    const tenantId = 'sug-admin-manual-clear';
+    const generated = { 'zh-Hant': '自動句？', en: 'Auto?' };
+    writeIndex(tenantId, [chunk]);
+    knowledgeStore.setMeta(tenantId, {
+      status: 'ready',
+      chunkCount: 1,
+      suggestedPrompts: { website: { generated, manual: { 'zh-Hant': '手動句？', en: '' } } },
+    });
+
+    const res = await request(app)
+      .put(`/api/admin/tenants/${tenantId}/knowledge/suggestion`)
+      .set(auth)
+      .send({ source: 'website', manual: null })
+      .expect(200);
+
+    expect(res.body.data.slot.manual).toBeUndefined();
+    expect(res.body.data.slot.generated).toEqual(generated);
+  });
+
+  it('PUT 的 zh-Hant 為空字串 → 400', async () => {
+    const tenantId = 'sug-admin-manual-empty';
+    writeIndex(tenantId, [chunk]);
+    knowledgeStore.setMeta(tenantId, { status: 'ready', chunkCount: 1 });
+
+    await request(app)
+      .put(`/api/admin/tenants/${tenantId}/knowledge/suggestion`)
+      .set(auth)
+      .send({ source: 'website', manual: { 'zh-Hant': '  ', en: '' } })
+      .expect(400);
   });
 });

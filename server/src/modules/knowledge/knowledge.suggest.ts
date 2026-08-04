@@ -229,3 +229,39 @@ export async function refreshSuggestedPrompts(
     return undefined;
   }
 }
+
+/**
+ * 只重新生成指定來源那一格（後台按鈕用）。
+ *
+ * 與 refreshSuggestedPrompts 的差別：不理會 manual 鎖定——按鈕的語意是「重生自動句」，
+ * 手動值仍蓋在它上面，直到管理者按恢復自動。該來源無內容時回 undefined 由呼叫端擋。
+ */
+export async function regenerateSlot(
+  tenantId: string,
+  source: SourceKey,
+  idx: KnowledgeIndexFile,
+): Promise<SuggestedPrompts | undefined> {
+  const gen = beginGeneration(tenantId);
+  try {
+    const chunks = splitChunksBySource(idx.chunks)[source];
+    if (chunks.length === 0) return undefined;
+    const material = sampleIndexForSuggestion({ ...idx, chunks });
+    if (!material) return undefined;
+
+    const generated = await generateOne(tenantId, material);
+    if (!generated) return undefined;
+    if (!isLatestGeneration(tenantId, gen)) {
+      logger.warn({ tenantId }, 'suggested prompt 單格重生期間已有更新的呼叫，放棄過期寫入');
+      return undefined;
+    }
+
+    const meta = knowledgeStore.getMeta(tenantId);
+    const slots = { ...(meta.suggestedPrompts ?? {}) };
+    slots[source] = { ...(slots[source] ?? {}), generated };
+    knowledgeStore.setMeta(tenantId, { ...meta, suggestedPrompts: slots });
+    return generated;
+  } catch (err) {
+    logger.warn({ err, tenantId, source }, 'suggested prompt 單格重生失敗');
+    return undefined;
+  }
+}

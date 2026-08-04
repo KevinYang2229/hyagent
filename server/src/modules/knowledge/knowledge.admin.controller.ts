@@ -10,7 +10,8 @@ import type { IngestParams } from './ingest.service';
 import { ingestFile, loadIndexFile, removeFile } from './knowledge-file.service';
 import { getJob, getRunningJobForTenant, startIngestJob } from './knowledge.job';
 import { knowledgeStore, type KnowledgeSource } from './knowledge.store';
-import { refreshSuggestedPrompts } from './knowledge.suggest';
+import { regenerateSlot } from './knowledge.suggest';
+import { splitChunksBySource, type SourceKey } from './prompt-slots';
 import { invalidateIndexCache, staticIndexRetriever } from './retriever.staticIndex';
 
 /** 由已存來源設定組出 ingest 參數；未設定起始網址則擋下 */
@@ -93,25 +94,50 @@ export const knowledgeAdminController = {
   },
 
   /**
-   * 手動重新生成開場推薦詞。
+   * 手動重新生成指定來源的開場推薦詞。
    *
-   * 平時由索引異動（爬取完成／上傳／刪檔）自動觸發，這支是補救入口：索引建立於本功能
-   * 上線前、或當時生成失敗的租戶，否則要重爬一次才生得出來。
+   * 平時由索引異動自動觸發，這是補救入口：索引建立於本功能上線前、或當時生成失敗的租戶。
    * 這裡 await 而非 void 觸發——管理者按了按鈕就要看到結果。
    */
   async refreshSuggestion(req: Request, res: Response): Promise<void> {
     const tenantId = String(req.params.id);
-    // 比照上傳／刪檔：爬網進行中不要另外發動生成，否則兩邊的世代競爭沒有意義（晚的贏，早的白花 LLM 費用）
+    const { source } = req.body as { source: SourceKey };
+    // 比照上傳／刪檔：爬網進行中不要另外發動生成，兩邊的世代競爭沒有意義
     if (getRunningJobForTenant(tenantId)) {
       throw AppError.conflict('解析任務進行中，請待完成後再重新生成');
     }
     const idx = loadIndexFile(tenantId);
-    if (!idx || idx.chunks.length === 0) throw AppError.unprocessable('尚未建立索引');
+    if (!idx || splitChunksBySource(idx.chunks)[source].length === 0) {
+      throw AppError.unprocessable('該來源尚無索引內容');
+    }
 
-    const suggestedPrompts = await refreshSuggestedPrompts(tenantId, idx);
+    const generated = await regenerateSlot(tenantId, source, idx);
     // 失敗時 meta 會留著舊句，不能改讀 meta 充數；一律據實回報讓管理者可以重試
-    if (!suggestedPrompts) throw AppError.unprocessable('推薦詞生成失敗，請稍後再試');
-    res.json({ data: { suggestedPrompts } });
+    if (!generated) throw AppError.unprocessable('推薦詞生成失敗，請稍後再試');
+    res.json({ data: { source, slot: knowledgeStore.getMeta(tenantId).suggestedPrompts?.[source] } });
+  },
+
+  /** 設定或清除某格的手動推薦詞；manual 為 null 代表恢復自動 */
+  async setSuggestionManual(req: Request, res: Response): Promise<void> {
+    const tenantId = String(req.params.id);
+    const { source, manual } = req.body as {
+      source: SourceKey;
+      manual: { 'zh-Hant': string; en: string } | null;
+    };
+    // schema 只做 trim 正規化，非空檢查放這裡：空白視為格式錯誤，回 400 而非 zod 驗證失敗慣用的 422
+    if (manual && !manual['zh-Hant']) {
+      throw AppError.badRequest('zh-Hant 不可為空白');
+    }
+    const meta = knowledgeStore.getMeta(tenantId);
+    const slots = { ...(meta.suggestedPrompts ?? {}) };
+    const slot = { ...(slots[source] ?? {}) };
+    if (manual) slot.manual = manual;
+    else delete slot.manual;
+    // 兩者皆空的格位不留下來，避免 meta 累積空物件
+    if (slot.generated || slot.manual) slots[source] = slot;
+    else delete slots[source];
+    knowledgeStore.setMeta(tenantId, { ...meta, suggestedPrompts: slots });
+    res.json({ data: { source, slot: slots[source] } });
   },
 
   /** 上傳單一檔案（multipart field: file）：解析→切塊→embed→附加索引 */

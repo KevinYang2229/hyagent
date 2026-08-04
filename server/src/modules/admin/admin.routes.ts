@@ -17,6 +17,8 @@ import {
   jobParamSchema,
   queryTestSchema,
   sourceSchema,
+  suggestionManualSchema,
+  suggestionRefreshSchema,
 } from '@/modules/knowledge/knowledge.admin.schema';
 import { putLlmConfigSchema } from '@/modules/tenant/llm-config.schema';
 import { adminController } from './admin.controller';
@@ -214,8 +216,13 @@ router.delete(
 );
 router.post(
   '/tenants/:id/knowledge/suggestion',
-  validate({ params: tenantParamSchema }),
+  validate({ params: tenantParamSchema, body: suggestionRefreshSchema }),
   asyncHandler(knowledgeAdminController.refreshSuggestion),
+);
+router.put(
+  '/tenants/:id/knowledge/suggestion',
+  validate({ params: tenantParamSchema, body: suggestionManualSchema }),
+  asyncHandler(knowledgeAdminController.setSuggestionManual),
 );
 router.post(
   '/tenants/:id/knowledge/files',

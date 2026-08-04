@@ -30,3 +30,26 @@ export const fileParamSchema = z.object({
   id: z.string().min(1),
   fileId: z.string().min(1),
 });
+
+/** 單格推薦問句的來源（POST 重新生成 / PUT 設定手動值共用） */
+const promptSourceSchema = z.enum(['website', 'file']);
+
+/** 重新生成單格（POST /knowledge/suggestion 的 body） */
+export const suggestionRefreshSchema = z.object({ source: promptSourceSchema });
+
+/**
+ * 設定／清除手動值（PUT /knowledge/suggestion 的 body）；manual 為 null 代表恢復自動。
+ *
+ * zh-Hant 的非空檢查刻意不放在這裡：zod 驗證失敗會由全域 error handler 轉成 422，
+ * 但「必填欄位空白」屬於格式錯誤，語意上該回 400——故只在此做 trim（正規化），
+ * 非空檢查留給 controller 用 AppError.badRequest 處理。
+ */
+export const suggestionManualSchema = z.object({
+  source: promptSourceSchema,
+  manual: z
+    .object({
+      'zh-Hant': z.string().trim(),
+      en: z.string().trim(),
+    })
+    .nullable(),
+});
