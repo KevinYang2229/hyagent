@@ -19,76 +19,132 @@ import { tenantStore } from '@/modules/tenant/tenant.store';
 const app = createApp();
 
 describe('widget config 推薦問句', () => {
-  it('meta 有 suggestedPrompts 時一併回傳', async () => {
-    const tenant = tenantStore.createTenant('widget-suggest-on');
+  it('兩種來源都有句子時回兩筆，網站在前', async () => {
+    const tenant = tenantStore.createTenant('widget-suggest-two');
     const apiKey = tenantStore.createApiKey(tenant.id, 'publishable');
+    tenantStore.updateTenant(tenant.id, { grantedScopes: ['service:knowledge'] });
+    knowledgeStore.setMeta(tenant.id, {
+      status: 'ready',
+      chunkCount: 5,
+      chunkCountBySource: { website: 3, file: 2 },
+      suggestedPrompts: {
+        website: { generated: { 'zh-Hant': '網站句？', en: 'Website?' } },
+        file: { generated: { 'zh-Hant': '檔案句？', en: 'File?' } },
+      },
+    });
+
+    const res = await request(app).get('/api/widget/config').query({ key: apiKey.key }).expect(200);
+
+    expect(res.body.data.suggestedPrompts).toEqual([
+      { 'zh-Hant': '網站句？', en: 'Website?' },
+      { 'zh-Hant': '檔案句？', en: 'File?' },
+    ]);
+  });
+
+  it('manual 蓋過 generated', async () => {
+    const tenant = tenantStore.createTenant('widget-suggest-manual');
+    const apiKey = tenantStore.createApiKey(tenant.id, 'publishable');
+    tenantStore.updateTenant(tenant.id, { grantedScopes: ['service:knowledge'] });
     knowledgeStore.setMeta(tenant.id, {
       status: 'ready',
       chunkCount: 3,
-      suggestedPrompts: { 'zh-Hant': '補助怎麼申請？', en: 'How to apply?' },
+      chunkCountBySource: { website: 3, file: 0 },
+      suggestedPrompts: {
+        website: {
+          generated: { 'zh-Hant': '自動句？', en: 'Auto?' },
+          manual: { 'zh-Hant': '手動句？', en: 'Manual?' },
+        },
+      },
     });
 
     const res = await request(app).get('/api/widget/config').query({ key: apiKey.key }).expect(200);
 
-    expect(res.body.data.suggestedPrompts).toEqual({
-      'zh-Hant': '補助怎麼申請？',
-      en: 'How to apply?',
-    });
+    expect(res.body.data.suggestedPrompts).toEqual([{ 'zh-Hant': '手動句？', en: 'Manual?' }]);
   });
 
-  it('meta 無 suggestedPrompts 時欄位為 undefined', async () => {
+  it('該來源 chunks 為 0 時不輸出該格，即使有 manual', async () => {
+    const tenant = tenantStore.createTenant('widget-suggest-zero-source');
+    const apiKey = tenantStore.createApiKey(tenant.id, 'publishable');
+    tenantStore.updateTenant(tenant.id, { grantedScopes: ['service:knowledge'] });
+    knowledgeStore.setMeta(tenant.id, {
+      status: 'ready',
+      chunkCount: 3,
+      chunkCountBySource: { website: 3, file: 0 },
+      suggestedPrompts: {
+        website: { generated: { 'zh-Hant': '網站句？', en: 'Website?' } },
+        file: { manual: { 'zh-Hant': '檔案手動句？', en: 'File manual?' } },
+      },
+    });
+
+    const res = await request(app).get('/api/widget/config').query({ key: apiKey.key }).expect(200);
+
+    expect(res.body.data.suggestedPrompts).toEqual([{ 'zh-Hant': '網站句？', en: 'Website?' }]);
+  });
+
+  it('meta 無 suggestedPrompts 時回空陣列', async () => {
     const tenant = tenantStore.createTenant('widget-suggest-off');
     const apiKey = tenantStore.createApiKey(tenant.id, 'publishable');
-    knowledgeStore.setMeta(tenant.id, { status: 'ready', chunkCount: 3 });
+    tenantStore.updateTenant(tenant.id, { grantedScopes: ['service:knowledge'] });
+    knowledgeStore.setMeta(tenant.id, {
+      status: 'ready',
+      chunkCount: 3,
+      chunkCountBySource: { website: 3, file: 0 },
+    });
 
     const res = await request(app).get('/api/widget/config').query({ key: apiKey.key }).expect(200);
 
-    expect(res.body.data.suggestedPrompts).toBeUndefined();
+    expect(res.body.data.suggestedPrompts).toEqual([]);
   });
 
-  it('status 為 none（索引已刪）但 suggestedPrompts 殘留時不得回傳', async () => {
+  it('status 為 none（索引已刪）但 suggestedPrompts 殘留時回空陣列', async () => {
     // 重現 B-1：刪索引與爬取失敗都不遞增世代，若 refresh 恰好在此之後才 resolve，
     // 過期的 suggestedPrompts 會殘留在 meta 裡——讀取端必須自行擋，不能只信任世代防護。
     const tenant = tenantStore.createTenant('widget-suggest-deleted');
     const apiKey = tenantStore.createApiKey(tenant.id, 'publishable');
+    tenantStore.updateTenant(tenant.id, { grantedScopes: ['service:knowledge'] });
     knowledgeStore.setMeta(tenant.id, {
       status: 'none',
       chunkCount: 0,
-      suggestedPrompts: { 'zh-Hant': '補助怎麼申請？', en: 'How to apply?' },
+      chunkCountBySource: { website: 0, file: 0 },
+      suggestedPrompts: { website: { generated: { 'zh-Hant': '補助怎麼申請？', en: 'How to apply?' } } },
     });
 
     const res = await request(app).get('/api/widget/config').query({ key: apiKey.key }).expect(200);
 
-    expect(res.body.data.suggestedPrompts).toBeUndefined();
+    expect(res.body.data.suggestedPrompts).toEqual([]);
   });
 
-  it('status 為 failed（爬取失敗）但 suggestedPrompts 殘留時不得回傳', async () => {
+  it('status 為 failed（爬取失敗）但 suggestedPrompts 殘留時回空陣列', async () => {
     const tenant = tenantStore.createTenant('widget-suggest-failed');
     const apiKey = tenantStore.createApiKey(tenant.id, 'publishable');
+    tenantStore.updateTenant(tenant.id, { grantedScopes: ['service:knowledge'] });
     knowledgeStore.setMeta(tenant.id, {
       status: 'failed',
       chunkCount: 0,
+      chunkCountBySource: { website: 0, file: 0 },
       error: 'crawl timeout',
-      suggestedPrompts: { 'zh-Hant': '補助怎麼申請？', en: 'How to apply?' },
+      suggestedPrompts: { website: { generated: { 'zh-Hant': '補助怎麼申請？', en: 'How to apply?' } } },
     });
 
     const res = await request(app).get('/api/widget/config').query({ key: apiKey.key }).expect(200);
 
-    expect(res.body.data.suggestedPrompts).toBeUndefined();
+    expect(res.body.data.suggestedPrompts).toEqual([]);
   });
 
-  it('status 為 ready 但 chunkCount 為 0 時不得回傳', async () => {
+  it('status 為 ready 但 chunkCount 為 0 時回空陣列', async () => {
     const tenant = tenantStore.createTenant('widget-suggest-zero-chunk');
     const apiKey = tenantStore.createApiKey(tenant.id, 'publishable');
+    tenantStore.updateTenant(tenant.id, { grantedScopes: ['service:knowledge'] });
     knowledgeStore.setMeta(tenant.id, {
       status: 'ready',
       chunkCount: 0,
-      suggestedPrompts: { 'zh-Hant': '補助怎麼申請？', en: 'How to apply?' },
+      chunkCountBySource: { website: 0, file: 0 },
+      suggestedPrompts: { website: { generated: { 'zh-Hant': '補助怎麼申請？', en: 'How to apply?' } } },
     });
 
     const res = await request(app).get('/api/widget/config').query({ key: apiKey.key }).expect(200);
 
-    expect(res.body.data.suggestedPrompts).toBeUndefined();
+    expect(res.body.data.suggestedPrompts).toEqual([]);
   });
 
   it('grantedScopes 未含 service:knowledge 時關閉（後台關掉知識庫要真的生效）', async () => {
@@ -100,13 +156,14 @@ describe('widget config 推薦問句', () => {
     knowledgeStore.setMeta(tenant.id, {
       status: 'ready',
       chunkCount: 3,
-      suggestedPrompts: { 'zh-Hant': '補助怎麼申請？', en: 'How to apply?' },
+      chunkCountBySource: { website: 3, file: 0 },
+      suggestedPrompts: { website: { generated: { 'zh-Hant': '補助怎麼申請？', en: 'How to apply?' } } },
     });
 
     const res = await request(app).get('/api/widget/config').query({ key: apiKey.key }).expect(200);
 
     expect(res.body.data.knowledgeEnabled).toBe(false);
-    expect(res.body.data.suggestedPrompts).toBeUndefined();
+    expect(res.body.data.suggestedPrompts).toEqual([]);
   });
 
   it('grantedScopes 含 service:knowledge 時啟用', async () => {
@@ -116,13 +173,14 @@ describe('widget config 推薦問句', () => {
     knowledgeStore.setMeta(tenant.id, {
       status: 'ready',
       chunkCount: 3,
-      suggestedPrompts: { 'zh-Hant': '補助怎麼申請？', en: 'How to apply?' },
+      chunkCountBySource: { website: 3, file: 0 },
+      suggestedPrompts: { website: { generated: { 'zh-Hant': '補助怎麼申請？', en: 'How to apply?' } } },
     });
 
     const res = await request(app).get('/api/widget/config').query({ key: apiKey.key }).expect(200);
 
     expect(res.body.data.knowledgeEnabled).toBe(true);
-    expect(res.body.data.suggestedPrompts).toEqual({ 'zh-Hant': '補助怎麼申請？', en: 'How to apply?' });
+    expect(res.body.data.suggestedPrompts).toEqual([{ 'zh-Hant': '補助怎麼申請？', en: 'How to apply?' }]);
   });
 
   it('尚未遷移（無 grantedScopes）的租戶仍看 disabledServices（I-1：內部文件問句不得外洩）', async () => {
@@ -132,12 +190,13 @@ describe('widget config 推薦問句', () => {
     knowledgeStore.setMeta(tenant.id, {
       status: 'ready',
       chunkCount: 3,
-      suggestedPrompts: { 'zh-Hant': '補助怎麼申請？', en: 'How to apply?' },
+      chunkCountBySource: { website: 3, file: 0 },
+      suggestedPrompts: { website: { generated: { 'zh-Hant': '補助怎麼申請？', en: 'How to apply?' } } },
     });
 
     const res = await request(app).get('/api/widget/config').query({ key: apiKey.key }).expect(200);
 
-    expect(res.body.data.suggestedPrompts).toBeUndefined();
+    expect(res.body.data.suggestedPrompts).toEqual([]);
     expect(res.body.data.knowledgeEnabled).toBe(false);
   });
 });
