@@ -6,6 +6,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { env } from '@/config/env';
 import { logger } from '@/lib/logger';
+import { normalizeSuggestedPrompts, type SourceKey, type SuggestedPromptSlots } from './prompt-slots';
 
 /** 每租戶的網站爬取與 embedding 設定 */
 export interface KnowledgeSource {
@@ -48,11 +49,9 @@ export interface KnowledgeFileMeta {
   fidelity?: 'structured' | 'text';
 }
 
-/** widget 開場推薦問句；兩語系一組，缺一不可 */
-export interface SuggestedPrompts {
-  'zh-Hant': string;
-  en: string;
-}
+/** 由 prompt-slots.ts 定義的型別，此處 re-export 供既有呼叫端沿用 */
+export type { SuggestedPrompts, PromptSlot, SourceKey, SuggestedPromptSlots } from './prompt-slots';
+
 
 /** 每租戶的向量索引狀態 */
 export interface KnowledgeIndexMeta {
@@ -71,10 +70,15 @@ export interface KnowledgeIndexMeta {
   /** 已上傳的檔案來源清單（與網站來源並存） */
   files?: KnowledgeFileMeta[];
   /**
-   * 依索引內容生成的開場推薦問句（widget 開場 chip 用）。
-   * 無索引、生成失敗或驗證未過時不存在——前端據此不顯示推薦 chip（無寫死後備句）。
+   * 依索引內容生成的開場推薦問句，依來源分兩格（見 prompt-slots.ts）。
+   * 有效句 = manual ?? generated；無內容時不存在，widget 即不顯示該顆 chip。
    */
-  suggestedPrompts?: SuggestedPrompts;
+  suggestedPrompts?: SuggestedPromptSlots;
+  /**
+   * 各來源的 chunk 數。widget config 是免登入端點，不該為了算數量去讀整份索引檔，
+   * 故在索引寫入時一併記下。舊 meta 無此欄，讀取端需自備退路。
+   */
+  chunkCountBySource?: Record<SourceKey, number>;
 }
 
 /** 回傳預設來源設定（以 env 為基準） */
@@ -139,9 +143,13 @@ export const knowledgeStore = {
     return saved;
   },
 
-  /** 取得租戶的索引 meta；未建立時回預設 none 狀態 */
+  /** 取得租戶的索引 meta；未建立時回預設 none 狀態。舊格式的推薦問句於此就地正規化 */
   getMeta(tenantId: string): KnowledgeIndexMeta {
-    return metas.get(tenantId) ?? { status: 'none', chunkCount: 0 };
+    const meta = metas.get(tenantId) ?? { status: 'none', chunkCount: 0 };
+    const slots = normalizeSuggestedPrompts(meta.suggestedPrompts, {
+      hasStartUrl: !!sources.get(tenantId)?.startUrl,
+    });
+    return slots ? { ...meta, suggestedPrompts: slots } : meta;
   },
 
   /** 更新租戶的索引 meta */
