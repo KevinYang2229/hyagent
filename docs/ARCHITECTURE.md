@@ -37,7 +37,7 @@ Management Portal（admin 後台）
   Tool Executor（toolRegistry.invoke：scope 檢查 + audit）
     ├─ API / Webhook Connector
     ├─ Form Engine（Ajv，六層 schema）
-    ├─ RAG / Vector DB（檔案索引；pgvector 待遷移）
+    ├─ RAG / Vector DB（file / pgvector 雙後端）
     └─ Email / OA Connector（stub / http）
 ```
 
@@ -61,12 +61,12 @@ Management Portal（admin 後台）
 | Tool Executor | `modules/tools/`（scope 檢查 + `modules/audit/`） | ✅ |
 | Dynamic Form | 六層 schema 引擎（`modules/form/`） | ✅ |
 | API / Webhook | `lib/connectors/` + `modules/webhook/` | ✅ |
-| RAG / Vector DB | 每租戶檔案索引；Vector DB = pgvector | 🟡 檔案索引 |
+| RAG / Vector DB | `DATA_BACKEND` 切換 file / pgvector；索引持久化見「知識庫檢索後端」 | ✅ |
 | Workflow / BPM | workflow schema（Demo 以時間推進） | 🔴 真 BPM 待接 |
 | Memory | — | 🔴 未實作 |
 | Management Portal | admin 後台（8 分頁 + Skill Library） | ✅ |
 
-持久化：8 個 runtime store 皆支援 `DATA_BACKEND=db`（Prisma + Supabase Postgres），
+持久化：10 個 runtime store 皆支援 `DATA_BACKEND=db`（Prisma + Supabase Postgres），
 DDL 見 `server/db/migrations/`。API key 存 sha256 雜湊、BYO key / ssoSecret 以
 `DATA_ENCRYPTION_KEY` 靜態加密。詳見 [../README.md](../README.md)。
 
@@ -99,7 +99,6 @@ HNSW 索引的 2000 維上限，只有 `halfvec`（上限 4000 維）建得了�
 | **Skill Ranking** | 出現「兩個 skill 搶同一意圖」的真實衝突 | 目前 keywords + 分類器足夠，ranking 是為不存在的問題買保險 |
 | **Community / Marketplace** | 內建 skill 數 > 20 且有第三方供給 | 規模未到，維護成本 > 價值 |
 | **真 BPM / Workflow 引擎** | 公司 OA 簽核規格到位 | 等外部規格，非工程自主 |
-| **Vector DB（pgvector）** | 知識庫索引量級成長、檔案檢索變慢 | 現行檔案索引在小量下夠快 |
 | **真 OA HTTP Connector** | 公司 OA 端點/欄位規格到位 | 骨架已就緒（`lib/oa/http.connector.ts`），改三個對接點即可 |
 | **真實身分來源 / OAuth** | 導入正式部署、SSO 決策定案 | 目前 mock 名錄 + SSO handoff 足夠 demo |
 

@@ -8,7 +8,7 @@
 - `Dockerfile.admin` → **admin 服務**（管理後台，Vite 靜態網站，nginx 提供）
 - `Dockerfile.presale-tenant` →（選用）**presale demo 服務**（模擬租戶網站 + SSO 免登入，展示用）
 
-> server 支援 `DATA_BACKEND=db`（Postgres write-through，涵蓋全部 9 個 runtime store，
+> server 支援 `DATA_BACKEND=db`（Postgres write-through，涵蓋全部 10 個 runtime store，
 > 含知識庫索引——向量存於 pgvector 的 `knowledge_chunks`）。
 >
 > 知識庫的向量與來源設定在 `DATA_BACKEND=file` 時寫在 `server/data/*.json`。

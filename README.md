@@ -175,7 +175,7 @@ schemas/<formId>/*.json         六層表單 Definition（前後端共用單一�
 - ✅ schema-driven 引擎、對話 slot-filling、Claude 抽象、OA stub、確認送出、REST
 - ✅ React 前端：對話畫面 + schema-driven 表單（依 `field.component` 渲染、依 `layout` 分組／多步驟、送出前可編輯）
 - ✅ 多表單（請假／國內出差／外出登記）、workflow 簽核關卡狀態（Demo 以時間自動推進）
-- ✅ 持久化後端切換：`DATA_BACKEND=db`（Prisma + Postgres/Supabase）涵蓋全部 8 個 runtime store（tenant / sessions / submissions / usage / audit / forms / scope-policy / webhooks）
+- ✅ 持久化後端切換：`DATA_BACKEND=db`（Prisma + Postgres/Supabase）涵蓋全部 10 個 runtime store（attachments / audit / forms / knowledge / scope-policy / sessions / submissions / tenants / usage / webhooks）
 - ✅ 限流／配額：兩層守門（每租戶＋使用者速率限制 + 每租戶月度 LLM token 配額）
 - ✅ 表單 Designer：admin 後台 [`FormDesignerPage`](admin/src/pages/FormDesignerPage.tsx) 建立／編輯／匯出租戶表單（走 `/api/admin/tenants/:id/forms`）
 - ✅ OpenAI provider：[`lib/llm/openai.provider.ts`](server/src/lib/llm/openai.provider.ts)（Chat Completions + function calling；`local` 端點重用之）
