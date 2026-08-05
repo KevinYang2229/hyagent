@@ -4,7 +4,16 @@
  */
 const executeRaw = jest.fn().mockResolvedValue(0);
 const queryRaw = jest.fn().mockResolvedValue([]);
-const transaction = jest.fn(async (ops: unknown[]) => ops);
+
+/**
+ * 假交易 client：$transaction 收 callback 時，把一個帶 $executeRaw / $queryRaw 的 tx
+ * 物件交給它（saveIndexToDb 的三段敘述全部走 tx，不再走 db）。仍相容陣列型呼叫。
+ */
+const txClient = { $executeRaw: executeRaw, $queryRaw: queryRaw };
+const transaction = jest.fn(
+  async (arg: unknown, _opts?: { timeout?: number }) =>
+    typeof arg === 'function' ? await (arg as (tx: unknown) => Promise<unknown>)(txClient) : arg,
+);
 
 jest.mock('@/lib/db', () => ({
   __esModule: true,
@@ -34,7 +43,30 @@ afterEach(() => {
   process.env.DATA_BACKEND = 'file';
   executeRaw.mockClear();
   queryRaw.mockClear();
+  transaction.mockClear();
 });
+
+/** tagged template 的第一個參數是字串片段陣列；接回來就是靜態 SQL 模板 */
+function sqlTextOf(call: unknown[]): string {
+  return (call[0] as readonly string[]).join(' ').toLowerCase();
+}
+
+/**
+ * 把一次 $executeRaw 呼叫真正綁定的值攤平。
+ * insert 那幾筆的內插值是 Prisma.join 合併後的 Sql，實際參數在它的 .values 裡；
+ * 只看 call[0]（靜態模板）分辨不出「綁對值」與「綁成常數/錯欄位」的實作。
+ */
+function bindValuesOf(call: unknown[]): unknown[] {
+  return call.slice(1).flatMap((v) =>
+    v !== null && typeof v === 'object' && Array.isArray((v as { values?: unknown }).values)
+      ? (v as { values: unknown[] }).values
+      : [v],
+  );
+}
+
+/** 每列 chunk 綁 7 個值，順序同 saveIndexToDb 的 Prisma.sql 片段 */
+const FIELDS_PER_CHUNK = 7;
+const [I_TENANT, I_ID, I_URL, I_TITLE, I_TEXT, I_FILE_ID, I_VECTOR] = [0, 1, 2, 3, 4, 5, 6];
 
 const idx: KnowledgeIndexFile = {
   generatedAt: '2026-08-04T00:00:00.000Z',
@@ -72,6 +104,101 @@ describe('saveIndex（db 後端）', () => {
     await saveIndex('t1', idx);
     const stmts = executeRaw.mock.calls.map((c) => String(c[0] ?? '').toLowerCase());
     expect(stmts.some((s) => s.includes('knowledge_indexes'))).toBe(true);
+  });
+
+  it('delete + 所有批次 insert + metadata upsert 全部在同一個交易內', async () => {
+    const { saveIndex } = loadRepoInDbMode();
+    await saveIndex('t1', idx);
+    // 沒有交易的話，delete 已 commit 而中途 insert 失敗會留下「metadata 說 ready、
+    // chunks 只剩一半」的狀態——hasPgvectorIndex 仍回 true，靜默供應殘缺索引。
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(typeof transaction.mock.calls[0][0]).toBe('function');
+    // 逾時要放得下最大租戶整份重寫；Prisma 預設 5 秒對 1.5k 列太緊
+    const opts = transaction.mock.calls[0][1] as { timeout?: number } | undefined;
+    expect(opts?.timeout).toBeGreaterThanOrEqual(30_000);
+  });
+});
+
+/**
+ * 綁定值的保真度：只斷言靜態 SQL 模板分辨不出「寫對」與數種寫壞的實作——
+ * 把 toVectorLiteral(c.vector) 換成 c.text、fileId 無條件 null、批次迴圈 off-by-one
+ * 造成重複或漏掉 chunks，這些都會讓模板長得一模一樣。而這條路徑搬的是已經付過錢、
+ * 無法重來的向量，唯一的成功訊號是腳本印出的一行字。
+ */
+describe('saveIndex（db 後端）綁定值保真度', () => {
+  const TOTAL = 205; // = CHUNK_INSERT_BATCH(200) + 5，強迫真的走到第二批
+  const bigIdx: KnowledgeIndexFile = {
+    generatedAt: '2026-08-04T00:00:00.000Z',
+    model: 'text-embedding-3-large',
+    source: 'https://example.com',
+    // 每個 chunk 的 id 與向量都可辨識：向量首元素即序號，錯位/重複一眼看得出來
+    chunks: Array.from({ length: TOTAL }, (_, i) => ({
+      id: `c${i}`,
+      url: `https://example.com/${i}`,
+      title: `標題 ${i}`,
+      text: `內容 ${i}`,
+      vector: [i, 0.5, -1],
+      // 奇數號為檔案來源、偶數號為網站來源（removeFile / countBySource 靠這欄區分）
+      ...(i % 2 === 1 ? { fileId: `F${i}` } : {}),
+    })),
+  };
+
+  /** 走完 saveIndex，回傳所有 insert 呼叫攤平後的「每列 7 值」tuple */
+  async function insertTuplesOf(): Promise<{ calls: unknown[][]; tuples: unknown[][] }> {
+    const { saveIndex } = loadRepoInDbMode();
+    await saveIndex('t1', bigIdx);
+    const calls = executeRaw.mock.calls.filter((c) =>
+      sqlTextOf(c).includes('insert into knowledge_chunks'),
+    );
+    const tuples: unknown[][] = [];
+    for (const call of calls) {
+      const values = bindValuesOf(call);
+      expect(values.length % FIELDS_PER_CHUNK).toBe(0);
+      for (let i = 0; i < values.length; i += FIELDS_PER_CHUNK) {
+        tuples.push(values.slice(i, i + FIELDS_PER_CHUNK));
+      }
+    }
+    return { calls, tuples };
+  }
+
+  it('205 個 chunk 剛好切成兩個 insert statement（200 + 5）', async () => {
+    const { calls } = await insertTuplesOf();
+    expect(calls).toHaveLength(2);
+    expect(bindValuesOf(calls[0]).length / FIELDS_PER_CHUNK).toBe(200);
+    expect(bindValuesOf(calls[1]).length / FIELDS_PER_CHUNK).toBe(5);
+  });
+
+  it('每個 chunk id 恰好出現一次（不重複、不遺漏）', async () => {
+    const { tuples } = await insertTuplesOf();
+    const ids = tuples.map((t) => t[I_ID]);
+    expect(ids).toHaveLength(TOTAL);
+    expect(new Set(ids).size).toBe(TOTAL);
+    expect([...ids].sort()).toEqual([...bigIdx.chunks.map((c) => c.id)].sort());
+  });
+
+  it('向量以精確的 pgvector 字面值綁在該列的向量欄位上', async () => {
+    const { tuples } = await insertTuplesOf();
+    // 挑第二批裡的一個（c203），確保跨批次也沒有錯位
+    const t = tuples.find((x) => x[I_ID] === 'c203');
+    expect(t?.[I_VECTOR]).toBe('[203,0.5,-1]');
+    // 同一列的其餘欄位也要對上，否則「向量對了但接到別列」照樣是壞的
+    expect(t?.[I_TENANT]).toBe('t1');
+    expect(t?.[I_URL]).toBe('https://example.com/203');
+    expect(t?.[I_TITLE]).toBe('標題 203');
+    expect(t?.[I_TEXT]).toBe('內容 203');
+    // 第一批的邊界列也驗一次
+    expect(tuples.find((x) => x[I_ID] === 'c0')?.[I_VECTOR]).toBe('[0,0.5,-1]');
+    expect(tuples.find((x) => x[I_ID] === 'c199')?.[I_VECTOR]).toBe('[199,0.5,-1]');
+  });
+
+  it('fileId：網站 chunk 綁 null、檔案 chunk 綁該 id（來源區分不可被抹掉）', async () => {
+    const { tuples } = await insertTuplesOf();
+    expect(tuples.find((t) => t[I_ID] === 'c204')?.[I_FILE_ID]).toBeNull();
+    expect(tuples.find((t) => t[I_ID] === 'c203')?.[I_FILE_ID]).toBe('F203');
+    expect(tuples.find((t) => t[I_ID] === 'c0')?.[I_FILE_ID]).toBeNull();
+    expect(tuples.find((t) => t[I_ID] === 'c1')?.[I_FILE_ID]).toBe('F1');
+    // 全體數量也要對（0..204 的奇數共 102 個）：無條件 null 的實作會讓這裡歸零
+    expect(tuples.filter((t) => t[I_FILE_ID] !== null)).toHaveLength(102);
   });
 });
 

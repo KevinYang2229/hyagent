@@ -99,36 +99,57 @@ async function loadIndexFromDb(tenantId: string): Promise<KnowledgeIndexFile | n
 }
 
 /**
+ * 交易逾時（毫秒）：涵蓋最大租戶整份重寫（1.5k 列 halfvec 約 40MB statement）。
+ * Prisma 互動式交易預設 5 秒，對這個量級太緊；寧可放寬也不能中途 commit 一半。
+ */
+const SAVE_TX_TIMEOUT_MS = 30_000;
+
+/**
  * 整份取代：刪光該租戶 chunks 再分批寫入，最後 upsert 索引層級 metadata。
- * 不包 transaction——1470 列的交易會長時間持鎖，且失敗時的語意與 file 後端
- * （寫檔失敗即保留舊檔）本就不同；重跑 ingest 即可修復。
+ *
+ * 三段**必須**同屬一個交易。若不包交易，delete 先 commit 而中途某批 insert 失敗
+ * （連線重置、statement timeout、單批內重複 id 觸發 ON CONFLICT 二次更新），
+ * knowledge_indexes 的舊列會原封不動留著——hasPgvectorIndex 仍回 true、admin 仍看到
+ * status='ready'，檢索器卻只剩殘缺的 chunks，機器人拿半份資料自信作答且不噴任何錯誤。
+ * 而原本的向量已經沒了，只能重爬並重付一次 embedding 費用。
+ *
+ * 觸發窗口一點都不罕見：ingestFile／removeFile 都是把整份索引交給 saveIndex，
+ * 所以每次上傳、每次刪檔都會走一次「刪 1470 列再塞回」。
+ *
+ * 包交易的代價很小：單表插入、沒有其他寫入者競爭這張表，1.5k 列是個位數秒。
+ * 這也讓 db 後端追上 file 後端本來就有的安全性——writeFileSync 失敗時舊索引檔完好無損。
  */
 async function saveIndexToDb(tenantId: string, idx: KnowledgeIndexFile): Promise<void> {
   const db = await connectDb();
-  await db.$executeRaw`delete from knowledge_chunks where tenant_id = ${tenantId}`;
+  await db.$transaction(
+    async (tx) => {
+      await tx.$executeRaw`delete from knowledge_chunks where tenant_id = ${tenantId}`;
 
-  for (let i = 0; i < idx.chunks.length; i += CHUNK_INSERT_BATCH) {
-    const batch = idx.chunks.slice(i, i + CHUNK_INSERT_BATCH);
-    const values = batch.map(
-      (c) => Prisma.sql`(${tenantId}, ${c.id}, ${c.url}, ${c.title}, ${c.text}, ${c.fileId ?? null},
-                        ${toVectorLiteral(c.vector)}::halfvec(3072))`,
-    );
-    await db.$executeRaw`
-      insert into knowledge_chunks (tenant_id, id, url, title, text, file_id, embedding)
-      values ${Prisma.join(values)}
-      on conflict (tenant_id, id) do update set
-        url = excluded.url, title = excluded.title, text = excluded.text,
-        file_id = excluded.file_id, embedding = excluded.embedding
-    `;
-  }
+      for (let i = 0; i < idx.chunks.length; i += CHUNK_INSERT_BATCH) {
+        const batch = idx.chunks.slice(i, i + CHUNK_INSERT_BATCH);
+        const values = batch.map(
+          (c) => Prisma.sql`(${tenantId}, ${c.id}, ${c.url}, ${c.title}, ${c.text}, ${c.fileId ?? null},
+                            ${toVectorLiteral(c.vector)}::halfvec(3072))`,
+        );
+        await tx.$executeRaw`
+          insert into knowledge_chunks (tenant_id, id, url, title, text, file_id, embedding)
+          values ${Prisma.join(values)}
+          on conflict (tenant_id, id) do update set
+            url = excluded.url, title = excluded.title, text = excluded.text,
+            file_id = excluded.file_id, embedding = excluded.embedding
+        `;
+      }
 
-  await db.$executeRaw`
-    insert into knowledge_indexes (tenant_id, generated_at, model, source, updated_at)
-    values (${tenantId}, ${new Date(idx.generatedAt)}, ${idx.model}, ${idx.source}, now())
-    on conflict (tenant_id) do update set
-      generated_at = excluded.generated_at, model = excluded.model,
-      source = excluded.source, updated_at = now()
-  `;
+      await tx.$executeRaw`
+        insert into knowledge_indexes (tenant_id, generated_at, model, source, updated_at)
+        values (${tenantId}, ${new Date(idx.generatedAt)}, ${idx.model}, ${idx.source}, now())
+        on conflict (tenant_id) do update set
+          generated_at = excluded.generated_at, model = excluded.model,
+          source = excluded.source, updated_at = now()
+      `;
+    },
+    { timeout: SAVE_TX_TIMEOUT_MS },
+  );
 }
 
 /** 刪除該租戶在 knowledge_chunks／knowledge_indexes 兩張表中的所有列 */
