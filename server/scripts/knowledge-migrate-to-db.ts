@@ -13,7 +13,7 @@ import { resolve } from 'node:path';
 import { env } from '@/config/env';
 import { closeDb } from '@/lib/db';
 import { saveIndex } from '@/modules/knowledge/knowledge.index.repo';
-import { knowledgeStore } from '@/modules/knowledge/knowledge.store';
+import { initKnowledgeStore, knowledgeStore } from '@/modules/knowledge/knowledge.store';
 import type { KnowledgeIndexFile } from '@/modules/knowledge/knowledge-index.types';
 import type { KnowledgeIndexMeta, KnowledgeSource } from '@/modules/knowledge/knowledge.store';
 
@@ -23,14 +23,22 @@ async function main(): Promise<void> {
   const dryRun = process.argv.includes('--dry-run');
   if (env.DATA_BACKEND !== 'db') {
     console.error('需要 DATA_BACKEND=db 才能遷移；目前為', env.DATA_BACKEND);
+    await closeDb();
     process.exit(1);
   }
 
   const dir = resolve(process.cwd(), env.KNOWLEDGE_INDEX_DIR);
   if (!existsSync(dir)) {
     console.error('找不到索引目錄：', dir);
+    await closeDb();
     process.exit(1);
   }
+
+  // knowledgeStore 的 db 寫入走 DbWriteQueue，enqueue 時若 Prisma client 尚未連線會靜默丟棄任務
+  // （見 lib/db.ts 的 enqueue：client 為 undefined 就直接 return，不會排入佇列，closeDb 也沖不到）。
+  // 因此必須在下面呼叫 knowledgeStore.saveSource / setMeta 之前，先確保連線已建立；
+  // initKnowledgeStore() 內部會呼叫 connectDb()，之後 module-level 的 client 才會就緒。
+  await initKnowledgeStore();
 
   // 先搬設定檔（來源設定 + meta），再搬各租戶索引
   const configPath = resolve(dir, 'knowledge-config.json');
