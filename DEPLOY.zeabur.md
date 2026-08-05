@@ -8,10 +8,13 @@
 - `Dockerfile.admin` → **admin 服務**（管理後台，Vite 靜態網站，nginx 提供）
 - `Dockerfile.presale-tenant` →（選用）**presale demo 服務**（模擬租戶網站 + SSO 免登入，展示用）
 
-> server 支援 `DATA_BACKEND=db`（Postgres write-through，涵蓋全部 8 個 runtime store）。
-> **正式環境建議開啟**：容器檔案系統重新部署即歸零，`file` 後端的租戶 / 金鑰資料會跟著消失。
-> 在 server 服務的環境變數設 `DATA_BACKEND=db` 與 `DATABASE_URL`（外部 Supabase 連線字串，
-> 或同 Project 一鍵加的 PostgreSQL）。不設則沿用 `file`，行為與先前版本相同。Redis 仍未使用。
+> server 支援 `DATA_BACKEND=db`（Postgres write-through，涵蓋全部 9 個 runtime store，
+> 含知識庫索引——向量存於 pgvector 的 `knowledge_chunks`）。
+>
+> 知識庫的向量與來源設定在 `DATA_BACKEND=file` 時寫在 `server/data/*.json`。
+> 容器檔案系統為 ephemeral 且該目錄不在映像檔內，**正式環境必須用 `db`**，
+> 否則每次重新部署都要重爬並重新支出 embedding 費用。
+> 首次切換時以 `npm run migrate:knowledge -w server` 把既有索引搬進資料庫。
 
 ---
 

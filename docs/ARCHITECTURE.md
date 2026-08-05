@@ -70,6 +70,22 @@ Management Portal（admin 後台）
 DDL 見 `server/db/migrations/`。API key 存 sha256 雜湊、BYO key / ssoSecret 以
 `DATA_ENCRYPTION_KEY` 靜態加密。詳見 [../README.md](../README.md)。
 
+### 知識庫檢索後端
+
+索引持久化由 `knowledge.index.repo.ts` 收斂，依 `env.DATA_BACKEND` 分流：
+
+| 後端 | 索引儲存 | 檢索器 | 取候選方式 |
+| --- | --- | --- | --- |
+| `file` | `server/data/knowledge-index.{tenantId}.json` | `retriever.staticIndex` | 全量載入記憶體，JS 算餘弦 |
+| `db` | `knowledge_chunks`（`halfvec(3072)` + HNSW） | `retriever.pgvector` | SQL `order by embedding <=> $vec limit 20` |
+
+兩個檢索器共用 `retriever.scoring.ts` 的評分公式與保留條件，換後端不改變召回與排序。
+pgvector 那路額外跑一支 lexical 分支再與 dense 候選聯集——ANN 只看語意距離，
+會漏掉「語意遠但精確命中產品代碼」的片段。
+
+`halfvec` 而非 `vector`：`text-embedding-3-large` 為 3072 維，超過 `vector` 型別
+HNSW 索引的 2000 維上限，只有 `halfvec`（上限 4000 維）建得了索引。
+
 ## 演進觸發點
 
 決策原則：**換一個專案還用得到的能力 → 平台機制；只服務眼前需求 → 現在別做。**
