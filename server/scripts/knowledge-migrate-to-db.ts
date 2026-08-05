@@ -11,7 +11,7 @@
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { env } from '@/config/env';
-import { closeDb, connectDb } from '@/lib/db';
+import { closeDb, connectDb, flushDbWrites } from '@/lib/db';
 import { saveIndex } from '@/modules/knowledge/knowledge.index.repo';
 import { initKnowledgeStore, knowledgeStore } from '@/modules/knowledge/knowledge.store';
 import type { KnowledgeIndexFile } from '@/modules/knowledge/knowledge-index.types';
@@ -91,9 +91,14 @@ async function main(): Promise<void> {
  * knowledgeStore.saveSource / setMeta 走 DbWriteQueue.enqueue，其失敗路徑只有
  * logger.warn（見 lib/db.ts），所以上面那些 `[設定] …` / `[meta] …` 不管寫入成功與否
  * 都會照印。（`✓ 已寫入` 例外——它跟在 awaited 的 saveIndex 之後，是可信的。）
- * 回讀是唯一能證明資料真的落地的方式。closeDb() 之前呼叫，此時佇列已沖完。
+ * 回讀是操作者唯一能證明資料真的落地的判準，因此**必須**先呼叫 flushDbWrites()
+ * 才能相信這裡查到的數字：enqueue 只是把 task 排進佇列的 chain 就立刻回傳，
+ * 呼叫端（上面的 knowledgeStore.saveSource / setMeta）並沒有 await 那個 chain，
+ * 若不先沖佇列，這裡的 select 有可能在那些 upsert 真正提交之前就先跑到 Postgres，
+ * 印出偏低、誤導操作者的數字。
  */
 async function printReadBackSummary(): Promise<void> {
+  await flushDbWrites();
   const db = await connectDb();
   const [{ count: sourceCount }] = await db.$queryRaw<{ count: bigint }[]>`
     select count(*) as count from knowledge_sources

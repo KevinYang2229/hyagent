@@ -56,9 +56,19 @@ export async function pingDb(): Promise<boolean> {
   }
 }
 
+/**
+ * 沖完所有 store 的排隊寫入（等所有 enqueue 的 task 真正 await 完成）。
+ * 呼叫者若要在寫入之後做任何依賴「資料已落地」的動作（例如回讀驗證），
+ * 必須先 await 這個函式——enqueue 只是把 task 排進 chain，呼叫端拿不到
+ * 那個 Promise，沒有東西會自動幫忙等。
+ */
+export async function flushDbWrites(): Promise<void> {
+  await Promise.all(queues.map((q) => q.flush()));
+}
+
 /** 沖完所有 store 的排隊寫入並斷線；file 模式為 no-op */
 export async function closeDb(): Promise<void> {
-  await Promise.all(queues.map((q) => q.flush()));
+  await flushDbWrites();
   await client?.$disconnect();
   client = undefined;
 }
