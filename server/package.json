@@ -18,6 +18,7 @@
     "smoke": "tsx scripts/engine-smoke.ts",
     "ingest:knowledge": "tsx scripts/knowledge-ingest.ts",
     "eval:knowledge": "tsx scripts/knowledge-eval.ts",
+    "migrate:knowledge": "tsx scripts/knowledge-migrate-to-db.ts",
     "test": "jest",
     "db:smoke:write": "tsx scripts/db-smoke.ts write",
     "db:smoke:verify": "tsx scripts/db-smoke.ts verify"
