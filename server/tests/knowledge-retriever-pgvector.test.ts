@@ -95,6 +95,27 @@ describe('pgvectorRetriever', () => {
     expect(lexicalFragment?.values.flat()).toContain('%spaceme%');
   });
 
+  it('lexical 分支的 limit 之前必須有 order by（否則拿到的是任意 50 列）', async () => {
+    mockQueries([{ id: 'A', url: 'u/a', title: 'HyEIP', text: '請假流程', cosine: 0.7 }]);
+    await pgvectorRetriever.search('t1', 'HyEIP 的請假流程');
+
+    // asciiTerms 會抽出任何 ≥2 字元的 ASCII token，'hyeip' 在整站都在講 HyEIP 的租戶
+    // 上會 like 命中好幾百列。沒有 order by 時 Postgres 就在實體掃描順序下取前 50 停手，
+    // 這 50 列全都 hits > 0、無條件通過 keepChunk 又各拿最多 +0.45 加權，會擠掉 dense
+    // 真正相關的候選——結果取決於列的實體順序，不可重現。加了 order by 才是設計本意的
+    // 「lexical 命中之中 cosine 最好的 50 筆」。
+    const lexicalFragment = lexicalFragmentIn(queryRaw.mock.calls[1]);
+    const sql = lexicalFragment?.sql ?? '';
+    expect(sql).toEqual(expect.stringContaining('order by'));
+    // 順序也要對：order by 必須落在 limit 之前，寫在後面 Postgres 根本不接受
+    expect(sql.indexOf('order by')).toBeGreaterThan(-1);
+    expect(sql.indexOf('order by')).toBeLessThan(sql.indexOf('limit'));
+    // 排序依據必須是與 dense 那路同一個餘弦距離運算子，不能是別的欄位
+    expect(sql.slice(sql.indexOf('order by'), sql.indexOf('limit'))).toEqual(
+      expect.stringContaining('embedding <=>'),
+    );
+  });
+
   it('候選重複時只留一筆（dense 與 lexical 兩路可能撈到同一列）', async () => {
     mockQueries([
       { id: 'A', url: 'u/a', title: 'HyCMS', text: '內容', cosine: 0.8 },

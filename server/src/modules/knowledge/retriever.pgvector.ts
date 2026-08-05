@@ -1,14 +1,18 @@
 /**
- * pgvector 檢索器：以 HNSW 索引在資料庫端取 top-k，只把候選帶回 Node。
+ * pgvector 檢索器：在資料庫端取 top-k 候選，只把候選帶回 Node。
  *
  * 與 retriever.staticIndex 的差別只在「候選從哪來」——評分、加權、保留條件
  * 全部共用 retriever.scoring，確保換後端不改變召回與排序。
  *
- * 兩路候選以一次 union 查詢取得：
- *   dense   —— order by embedding <=> $vec limit POOL_SIZE（走 HNSW 索引）
- *   lexical —— 專有名詞字面命中（走 tenant_id 索引後掃該租戶列）
- * 缺了 lexical 這路，「語意遠但精確命中產品代碼」的片段會被 ANN 直接截掉，
+ * 兩路候選以一次 union 查詢取得，兩路都以餘弦距離排序後截斷：
+ *   dense   —— 全租戶列中 cosine 最好的 POOL_SIZE 筆
+ *   lexical —— 專有名詞字面命中之中 cosine 最好的 LEXICAL_LIMIT 筆
+ * 缺了 lexical 這路，「語意遠但精確命中產品代碼」的片段會被 dense 的 top-k 直接截掉，
  * 那是靜默的檢索退化——此行為有專門的回歸測試看守。
+ *
+ * 兩路都走精確掃描（seq scan + 排序），不走 ANN 索引：0005 建的 HNSW 沒有 tenant
+ * 區分欄，pgvector 的 post-filter 會讓小租戶幾乎撈不到自己的列，已於 0006 移除。
+ * 現況資料量（單租戶最多約 1.5k 列）精確掃描是個位數毫秒，且結果完全正確。
  */
 import { Prisma } from '@prisma/client';
 import { getEmbeddingProvider } from '@/lib/embedding';
@@ -19,7 +23,7 @@ import { toVectorLiteral } from './knowledge.index.repo';
 import { asciiTerms, keepChunk, lexicalHits, POOL_SIZE, scoreOf } from './retriever.scoring';
 import type { KnowledgeChunk, KnowledgeRetriever } from './retriever.types';
 
-/** lexical 那一路的取回上限：只為補 ANN 漏掉的精確命中，不必無限制 */
+/** lexical 那一路的取回上限：只為補 dense top-k 漏掉的精確命中，不必無限制 */
 const LEXICAL_LIMIT = 50;
 
 interface CandidateRow {
@@ -36,17 +40,26 @@ interface CandidateRow {
  * 快取 null 也代表「已查過、目前無索引」，同樣要在重建/刪除索引時失效，
  * 否則剛建好索引的租戶會繼續被誤判成沒有索引。
  */
-const modelCache = new Map<string, string | null>();
+const modelCache = new Map<string, { model: string | null; at: number }>();
+
+/**
+ * 快取存活時間。invalidatePgvectorModelCache 只清得掉「本行程」的快取，但 db 模式下
+ * 資料是跨機器共享的：A 機重建索引後，B 機的快取沒有任何人會去清。最糟的是快取住 null
+ * 的情形——剛建好第一份索引的租戶，凡是落到 B 機的請求會永遠拿到「查無相關資料」，
+ * 直到重啟為止，而且從 admin 面板重現不出來。用短 TTL 讓這種歪斜自己收斂。
+ */
+const MODEL_CACHE_TTL_MS = 60_000;
 
 /** 該租戶索引所用的 embedding 模型；未建索引回 null（有快取，見 invalidatePgvectorModelCache） */
 async function indexModelOf(tenantId: string): Promise<string | null> {
-  if (modelCache.has(tenantId)) return modelCache.get(tenantId) ?? null;
+  const cached = modelCache.get(tenantId);
+  if (cached && Date.now() - cached.at < MODEL_CACHE_TTL_MS) return cached.model;
   const db = await connectDb();
   const rows = await db.$queryRaw<{ model: string }[]>`
     select model from knowledge_indexes where tenant_id = ${tenantId}
   `;
   const model = rows[0]?.model ?? null;
-  modelCache.set(tenantId, model);
+  modelCache.set(tenantId, { model, at: Date.now() });
   return model;
 }
 
@@ -82,7 +95,13 @@ export const pgvectorRetriever: KnowledgeRetriever = {
     const vec = toVectorLiteral(queryVec);
     const db = await connectDb();
 
-    // lexical 沒有詞可比對時只跑 dense 那一路，省一次全租戶掃描
+    // lexical 沒有詞可比對時只跑 dense 那一路，省一次全租戶掃描。
+    // order by 不可省：asciiTerms 會抽出任何 ≥2 字元的 ASCII token，像「HyEIP 的請假流程」
+    // 在整站都在講 HyEIP 的租戶上會命中好幾百列（英文問句更是幾乎命中整個語料庫）。
+    // 沒有 order by 時 Postgres 就在實體掃描順序下取前 50 停手——這 50 列全都 hits > 0，
+    // 會無條件通過 keepChunk、各自拿到最多 +0.45 加權，再去擠掉 dense 真正相關的候選。
+    // 重排（FINAL_K）丟得掉爛候選，卻救不回從來沒進候選池的好候選。
+    // 排序後語意才是「lexical 命中之中 cosine 最好的 50 筆」——確定且可重現。
     const lexicalBranch = terms.length
       ? Prisma.sql`
           union
@@ -91,6 +110,7 @@ export const pgvectorRetriever: KnowledgeRetriever = {
            where tenant_id = ${tenantId}
              and (lower(title) like any(${terms.map((t) => `%${t}%`)}::text[])
                or lower(text)  like any(${terms.map((t) => `%${t}%`)}::text[]))
+           order by embedding <=> ${vec}::halfvec(3072)
            limit ${LEXICAL_LIMIT})`
       : Prisma.empty;
 
