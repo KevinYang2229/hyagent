@@ -2,7 +2,7 @@
  * Knowledge Agent 服務（RAG）。
  *
  * sticky=false：屬「旁路」服務——回答後不奪走填表流程，且**不動 session 的 values / status**。
- * 檢索：依 DATA_BACKEND 選 pgvector 或靜態索引檔（見 pickRetriever），皆無索引時退回 stub FAQ（dev/測試）。
+ * 檢索：依 DATA_BACKEND 選 pgvector 或靜態索引檔（見 retriever.pick），皆無索引時退回 stub FAQ（dev/測試）。
  * 作答：只把 top-k 片段交給 LLM 綜合成答案並附來源；整站內容永不進 LLM（省 token）。
  */
 import { env } from '@/config/env';
@@ -18,10 +18,8 @@ import type {
 import type { Session } from '@/modules/conversation/conversation.types';
 import { usageStore } from '@/modules/usage/usage.store';
 import { rerankChunks } from './rerank';
-import { hasPgvectorIndex, pgvectorRetriever } from './retriever.pgvector';
-import { hasStaticIndex, staticIndexRetriever } from './retriever.staticIndex';
-import { stubRetriever } from './retriever.stub';
-import type { KnowledgeChunk, KnowledgeRetriever } from './retriever.types';
+import { pickRetriever } from './retriever.pick';
+import type { KnowledgeChunk } from './retriever.types';
 
 // 重排後交給作答 LLM 的最終片段數
 const FINAL_K = 5;
@@ -111,17 +109,6 @@ function kbAnswerSystem(locale?: string): string {
     '- 回答精簡、直接切中問題；必要時條列。',
     '- 若有幫助，於句末以（來源：標題）標註引用。',
   ].join('\n');
-}
-
-/**
- * 依持久化後端挑檢索器：db 走 pgvector、file 走靜態索引檔；
- * 兩者都沒有索引時退回 stub FAQ（dev/測試）。
- */
-async function pickRetriever(tenantId: string): Promise<KnowledgeRetriever> {
-  if (env.DATA_BACKEND === 'db') {
-    return (await hasPgvectorIndex(tenantId)) ? pgvectorRetriever : stubRetriever;
-  }
-  return hasStaticIndex(tenantId) ? staticIndexRetriever : stubRetriever;
 }
 
 /** 片段找到但 LLM 失敗時的降級：直接列出片段（best-effort，不中斷對話） */

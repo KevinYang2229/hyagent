@@ -11,7 +11,7 @@ import { getJob, getRunningJobForTenant, startIngestJob } from './knowledge.job'
 import { knowledgeStore, type KnowledgeSource } from './knowledge.store';
 import { regenerateSlot } from './knowledge.suggest';
 import { splitChunksBySource, type SourceKey } from './prompt-slots';
-import { staticIndexRetriever } from './retriever.staticIndex';
+import { pickRetriever } from './retriever.pick';
 
 /** 由已存來源設定組出 ingest 參數；未設定起始網址則擋下 */
 function ingestParamsFor(tenantId: string): IngestParams {
@@ -67,10 +67,15 @@ export const knowledgeAdminController = {
     res.json({ data: job });
   },
 
+  /**
+   * 測試查詢：必須與問答走同一條 pickRetriever，否則在 db 模式下會靜默回 0 命中
+   * ——而這正是操作者用來驗證遷移成功的工具，不能自己有一套檢索器選法。
+   */
   async queryTest(req: Request, res: Response): Promise<void> {
     const tenantId = String(req.params.id);
     const { question } = req.body as { question: string };
-    const hits = await staticIndexRetriever.search(tenantId, question);
+    const retriever = await pickRetriever(tenantId);
+    const hits = await retriever.search(tenantId, question);
     res.json({
       data: {
         hits: hits.map((h) => ({
