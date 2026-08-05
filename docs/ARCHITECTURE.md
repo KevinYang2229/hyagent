@@ -77,14 +77,24 @@ DDL 見 `server/db/migrations/`。API key 存 sha256 雜湊、BYO key / ssoSecre
 | 後端 | 索引儲存 | 檢索器 | 取候選方式 |
 | --- | --- | --- | --- |
 | `file` | `server/data/knowledge-index.{tenantId}.json` | `retriever.staticIndex` | 全量載入記憶體，JS 算餘弦 |
-| `db` | `knowledge_chunks`（`halfvec(3072)` + HNSW） | `retriever.pgvector` | SQL `order by embedding <=> $vec limit 20` |
+| `db` | `knowledge_chunks`（`halfvec(3072)`，精確掃描） | `retriever.pgvector` | SQL `order by embedding <=> $vec limit 20` |
 
 兩個檢索器共用 `retriever.scoring.ts` 的評分公式與保留條件，換後端不改變召回與排序。
-pgvector 那路額外跑一支 lexical 分支再與 dense 候選聯集——ANN 只看語意距離，
-會漏掉「語意遠但精確命中產品代碼」的片段。
+pgvector 那路額外跑一支 lexical 分支再與 dense 候選聯集——單看語意距離
+會漏掉「語意遠但精確命中產品代碼」的片段。兩路都以餘弦距離排序後截斷，
+候選池的內容不依賴列的實體順序。
+
+**沒有 ANN 索引**：0005 原本建了 `hnsw (embedding halfvec_cosine_ops)`，已於
+`0006_knowledge_chunks_index.sql` 移除。pgvector 的近似索引是先掃索引再套 `WHERE`
+（post-filter），而檢索熱路徑帶 `where tenant_id = $1`；預設 `hnsw.ef_search = 40` 下，
+只占全表 2% 列數的小租戶平均拿不到一列，會靜默變成「查無相關資料」。
+目前全表約 1.8k 列、單租戶最多 1.5k 列，精確掃描是個位數毫秒且結果完全正確。
+單一租戶破十萬列時再回頭加 ANN，且必須用 per-tenant partial index 或依 `tenant_id`
+分區，否則同樣的陷阱會再犯一次。
 
 `halfvec` 而非 `vector`：`text-embedding-3-large` 為 3072 維，超過 `vector` 型別
-HNSW 索引的 2000 維上限，只有 `halfvec`（上限 4000 維）建得了索引。
+HNSW 索引的 2000 維上限，只有 `halfvec`（上限 4000 維）建得了索引——型別保留不動，
+就是為了留著未來加回 ANN 的選項。
 
 ## 演進觸發點
 

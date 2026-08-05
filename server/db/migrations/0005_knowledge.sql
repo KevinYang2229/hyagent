@@ -25,6 +25,7 @@ create table if not exists knowledge_indexes (
 
 -- 向量 chunks。halfvec(3072) 對應 text-embedding-3-large：
 -- vector 型別的 HNSW 索引上限為 2000 維，3072 維只有 halfvec 建得了索引。
+-- （halfvec 保留不變；下方的 HNSW 索引已於 0006 移除，理由見該檔）
 create table if not exists knowledge_chunks (
   tenant_id text not null,
   id        text not null,
@@ -37,6 +38,9 @@ create table if not exists knowledge_chunks (
 );
 
 -- 檢索熱路徑：where tenant_id = $1 order by embedding <=> $2 limit 20
+-- ⚠️ 本索引已由 0006_knowledge_chunks_index.sql 移除：ANN 索引無 tenant 區分欄，
+--    pgvector 的 post-filter 行為會讓小租戶幾乎撈不到自己的列。DDL 保留原樣不改動
+--    （已套用於正式環境，維持歷史可重現）；現行狀態以 0006 為準。
 create index if not exists knowledge_chunks_embedding_idx
   on knowledge_chunks using hnsw (embedding halfvec_cosine_ops);
 

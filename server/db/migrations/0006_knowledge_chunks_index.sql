@@ -1,0 +1,31 @@
+-- 0006: 移除 knowledge_chunks 的 HNSW 索引，檢索改走精確掃描
+-- 與 server/prisma/schema.prisma 對應；經 Supabase 套用（apply_migration）。
+-- 只動索引，不動 0005 的 DDL（已套用於正式環境，保持歷史可重現）。
+--
+-- 為何移除：
+-- 0005 建的 hnsw (embedding halfvec_cosine_ops) 沒有 tenant 區分欄，但檢索熱路徑是
+--   where tenant_id = $1 order by embedding <=> $2 limit 20
+-- pgvector 的近似索引會「先掃索引再套 WHERE」（post-filter，官方 README 明載）。
+-- 預設 hnsw.ef_search = 40，索引先跨全表取約 40 個最近鄰，才篩掉不屬於該租戶的列。
+-- 目前資料分布：一租戶 1470 chunks（80%）、一租戶 285（15.5%）、兩租戶各 39（2.1%）。
+-- 對 2.1% 的租戶，40 個候選平均只剩約 0.85 列存活——要 20 列卻幾乎拿不到任何一列，
+-- 小租戶會直接變成「查無相關資料」，而且不會噴任何錯誤，完全靜默。
+--
+-- 為何精確掃描可以接受：
+-- 全表共約 1833 列，單一租戶最多 1470 列。1470 筆 halfvec(3072) 的精確餘弦是個位數
+-- 毫秒，且結果完全正確、沒有 ANN 的近似誤差。用正確性換掉一個看不見的召回黑洞，划算。
+--
+-- 什麼時候該加回來：
+-- 單一租戶 chunks 破十萬列、或精確掃描的 p95 延遲超過百毫秒級時。屆時正解不是把
+-- 0005 那個索引原樣加回去，而是改用可分區的做法：per-tenant partial index
+--   create index ... on knowledge_chunks using hnsw (embedding halfvec_cosine_ops)
+--     where tenant_id = '<id>';
+-- 或以 tenant_id 做 partitioned table 後各分區自建 HNSW，否則同樣的 post-filter 陷阱會再犯一次。
+-- embedding 欄位維持 halfvec(3072)（vector 型別的 HNSW 上限 2000 維），保留這條路。
+--
+-- 為何不另建 (tenant_id) 單欄索引：
+-- 主鍵 (tenant_id, id) 與 knowledge_chunks_file_idx (tenant_id, file_id) 的前導欄都是
+-- tenant_id，已經能服務 where tenant_id = $1 的過濾。再建第三個同前導欄的索引只是多一份
+-- 寫入成本與體積，沒有新的存取路徑（YAGNI）。
+
+drop index if exists knowledge_chunks_embedding_idx;
