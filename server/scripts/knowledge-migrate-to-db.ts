@@ -11,7 +11,7 @@
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { env } from '@/config/env';
-import { closeDb } from '@/lib/db';
+import { closeDb, connectDb } from '@/lib/db';
 import { saveIndex } from '@/modules/knowledge/knowledge.index.repo';
 import { initKnowledgeStore, knowledgeStore } from '@/modules/knowledge/knowledge.store';
 import type { KnowledgeIndexFile } from '@/modules/knowledge/knowledge-index.types';
@@ -77,8 +77,37 @@ async function main(): Promise<void> {
     }
   }
 
-  if (dryRun) console.log('\n--dry-run：未寫入任何資料');
+  if (dryRun) {
+    console.log('\n--dry-run：未寫入任何資料');
+  } else {
+    await printReadBackSummary();
+  }
   await closeDb();
+}
+
+/**
+ * 從資料庫回讀並印出摘要——操作者的成功判準不能只是「沒有拋例外」。
+ *
+ * knowledgeStore.saveSource / setMeta 走 DbWriteQueue.enqueue，其失敗路徑只有
+ * logger.warn（見 lib/db.ts），所以上面那些 `[設定] …` / `[meta] …` 不管寫入成功與否
+ * 都會照印。（`✓ 已寫入` 例外——它跟在 awaited 的 saveIndex 之後，是可信的。）
+ * 回讀是唯一能證明資料真的落地的方式。closeDb() 之前呼叫，此時佇列已沖完。
+ */
+async function printReadBackSummary(): Promise<void> {
+  const db = await connectDb();
+  const [{ count: sourceCount }] = await db.$queryRaw<{ count: bigint }[]>`
+    select count(*) as count from knowledge_sources
+  `;
+  const chunkRows = await db.$queryRaw<{ tenant_id: string; count: bigint }[]>`
+    select tenant_id, count(*) as count from knowledge_chunks group by 1 order by 1
+  `;
+  console.log('\n=== 回讀摘要（資料庫實際內容）===');
+  console.log(`knowledge_sources: ${sourceCount} 列`);
+  if (chunkRows.length === 0) {
+    console.log('knowledge_chunks: 空 —— 沒有任何向量寫入，請檢查上面的錯誤訊息');
+  } else {
+    for (const r of chunkRows) console.log(`knowledge_chunks[${r.tenant_id}]: ${r.count} chunks`);
+  }
 }
 
 main().catch(async (err) => {
