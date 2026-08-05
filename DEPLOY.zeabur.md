@@ -14,7 +14,30 @@
 > 知識庫的向量與來源設定在 `DATA_BACKEND=file` 時寫在 `server/data/*.json`。
 > 容器檔案系統為 ephemeral 且該目錄不在映像檔內，**正式環境必須用 `db`**，
 > 否則每次重新部署都要重爬並重新支出 embedding 費用。
-> 首次切換時以 `npm run migrate:knowledge -w server` 把既有索引搬進資料庫。
+
+**⚠️ 先決條件：套 DDL 必須早於帶 `DATA_BACKEND=db` 部署。**
+
+**repo 沒有任何東西會自動套用 `server/db/migrations/*.sql`**（`build` / `start` 都不含
+`prisma migrate deploy`）。而 `server/src/index.ts` 把 `initKnowledgeStore()` 放在 fail-fast 的
+`Promise.all` 裡，失敗會 `process.exit(1)`。
+
+所以若帶著 `DATA_BACKEND=db` 部署、資料庫卻還沒套 0005，`knowledge_sources` 查詢會拋錯，
+**整台 server 起不來**——不是只有知識庫失效，是全部 API 都不通。順序不可顛倒：
+
+1. 在 Supabase SQL Editor 依序套用 `server/db/migrations/0005_knowledge.sql`（建表）
+   與 `server/db/migrations/0006_knowledge_chunks_index.sql`（移除 HNSW 索引）。
+2. 確認 pgvector ≥ 0.7（低於 0.7 沒有 `halfvec`，0005 會在建表時就失敗），
+   並確認三張表都在：
+
+   ```sql
+   select extversion from pg_extension where extname = 'vector';   -- 需 >= 0.7
+   select tablename from pg_tables where tablename like 'knowledge%';
+   ```
+
+3. **上面兩步都確認完**，才把 server 的 `DATA_BACKEND` 設成 `db` 並部署。
+4. 首次切換時以 `npm run migrate:knowledge -w server` 把既有索引搬進資料庫
+   （可先加 `-- --dry-run` 試跑）。腳本結束會回讀並印出 `knowledge_sources` 筆數與
+   各租戶 chunks 數，**以這份摘要為準**判斷是否真的寫進去了。
 
 ---
 
