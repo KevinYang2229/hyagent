@@ -6,10 +6,14 @@ const executeRaw = jest.fn().mockResolvedValue(0);
 const queryRaw = jest.fn().mockResolvedValue([]);
 
 /**
- * 假交易 client：$transaction 收 callback 時，把一個帶 $executeRaw / $queryRaw 的 tx
- * 物件交給它（saveIndexToDb 的三段敘述全部走 tx，不再走 db）。仍相容陣列型呼叫。
+ * 假交易 client 用自己專屬的 $executeRaw（txExecuteRaw），不跟外層 db 的 executeRaw
+ * 共用同一個 jest.fn。saveIndexToDb 的三段敘述**必須**全部走 tx、不能有任何一段
+ * 逃回外層 db——如果 tx 與外層共用同一個 mock，「metadata upsert 改用 db.$executeRaw
+ * 而非 tx.$executeRaw」這種部分逃逸的回歸會完全測不出來：呼叫次數、payload 都跟
+ * 全部走 tx 時一模一樣，只有分開計數才能抓到。
  */
-const txClient = { $executeRaw: executeRaw, $queryRaw: queryRaw };
+const txExecuteRaw = jest.fn().mockResolvedValue(0);
+const txClient = { $executeRaw: txExecuteRaw, $queryRaw: queryRaw };
 const transaction = jest.fn(
   async (arg: unknown, _opts?: { timeout?: number }) =>
     typeof arg === 'function' ? await (arg as (tx: unknown) => Promise<unknown>)(txClient) : arg,
@@ -42,6 +46,7 @@ function loadRepoInDbMode(): typeof import('@/modules/knowledge/knowledge.index.
 afterEach(() => {
   process.env.DATA_BACKEND = 'file';
   executeRaw.mockClear();
+  txExecuteRaw.mockClear();
   queryRaw.mockClear();
   transaction.mockClear();
 });
@@ -94,15 +99,15 @@ describe('saveIndex（db 後端）', () => {
     const { saveIndex } = loadRepoInDbMode();
     await saveIndex('t1', idx);
     // 第一個 statement 必須是 delete，否則會與舊 chunks 混在一起
-    const first = String(executeRaw.mock.calls[0]?.[0] ?? '');
+    const first = String(txExecuteRaw.mock.calls[0]?.[0] ?? '');
     expect(first.toLowerCase()).toContain('delete');
-    expect(executeRaw.mock.calls.length).toBeGreaterThanOrEqual(3); // delete + chunks + indexes upsert
+    expect(txExecuteRaw.mock.calls.length).toBeGreaterThanOrEqual(3); // delete + chunks + indexes upsert
   });
 
   it('索引層級 metadata 一併寫入 knowledge_indexes', async () => {
     const { saveIndex } = loadRepoInDbMode();
     await saveIndex('t1', idx);
-    const stmts = executeRaw.mock.calls.map((c) => String(c[0] ?? '').toLowerCase());
+    const stmts = txExecuteRaw.mock.calls.map((c) => String(c[0] ?? '').toLowerCase());
     expect(stmts.some((s) => s.includes('knowledge_indexes'))).toBe(true);
   });
 
@@ -116,6 +121,17 @@ describe('saveIndex（db 後端）', () => {
     // 逾時要放得下最大租戶整份重寫；Prisma 預設 5 秒對 1.5k 列太緊
     const opts = transaction.mock.calls[0][1] as { timeout?: number } | undefined;
     expect(opts?.timeout).toBeGreaterThanOrEqual(30_000);
+  });
+
+  it('三段敘述全部走交易內的 tx，沒有任何一段逃回外層 db.$executeRaw', async () => {
+    const { saveIndex } = loadRepoInDbMode();
+    await saveIndex('t1', idx);
+    // 只要有一段（例如 metadata upsert）改用 db.$executeRaw 而非 tx.$executeRaw，
+    // 就是「部分逃出交易」的回歸：delete 與 chunks insert 仍在交易內、能 rollback，
+    // 但 metadata upsert 已經 commit，交易語意名存實亡。呼叫次數與 payload 在
+    // 共用 mock 的情況下完全看不出差異，必須分開計數才能抓到。
+    expect(executeRaw).not.toHaveBeenCalled();
+    expect(txExecuteRaw.mock.calls.length).toBeGreaterThanOrEqual(3);
   });
 });
 
@@ -147,7 +163,7 @@ describe('saveIndex（db 後端）綁定值保真度', () => {
   async function insertTuplesOf(): Promise<{ calls: unknown[][]; tuples: unknown[][] }> {
     const { saveIndex } = loadRepoInDbMode();
     await saveIndex('t1', bigIdx);
-    const calls = executeRaw.mock.calls.filter((c) =>
+    const calls = txExecuteRaw.mock.calls.filter((c) =>
       sqlTextOf(c).includes('insert into knowledge_chunks'),
     );
     const tuples: unknown[][] = [];
