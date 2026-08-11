@@ -22,7 +22,7 @@
 ## 非目標
 
 - 不做報告模板 / schema（本輪一律 LLM 拆大綱）。
-- 不做 PDF、DOCX。
+- 不做 PDF、DOCX（本輪只出 Markdown 與 HTML；擴充路徑見「輸出格式的擴充點」）。
 - 不做 SSE 逐節串流（前端輪詢即可）。
 - 不做報告的編輯、版本、重跑既有報告。
 - 不做跨租戶或跨知識庫來源的彙整（維持現行單租戶索引視角）。
@@ -43,7 +43,8 @@ report → knowledge（pickRetriever / rerankChunks / KnowledgeChunk）
 | `report.types.ts` | `ReportJob` / `ReportSection` / `ReportDoc` | 無 |
 | `report.outline.ts` | 主題 → 大綱（LLM） | LLM |
 | `report.compose.ts` | 逐節：檢索 → rerank → 彙整 | knowledge 檢索出口、LLM |
-| `report.render.ts` | `ReportDoc` → Markdown / HTML 字串 | 無（純函式） |
+| `report.render.ts` | 格式登錄表；`ReportDoc` → 各格式 bytes | 各 renderer |
+| `renderers/markdown.ts` / `renderers/html.ts` | 單一格式的純函式 renderer | 無 |
 | `report.store.ts` | 產出物存放 + TTL 回收 | `@/lib/db` |
 | `report.job.ts` | 非同步 job 生命週期 | outline / compose / render / store |
 | `report.agent-service.ts` | `AgentService` 實作 | job、LLM |
@@ -188,7 +189,9 @@ chunks = await rerankChunks(tenantId, section.query, pool, FINAL_K)   // FINAL_K
 
 ## 產出物與下載
 
-`report.store.ts` 比照 `attachment.store.ts`：記憶體 `Map` + `DATA_BACKEND=db` 時 `DbWriteQueue` write-through。與附件不同的兩點：
+`report.store.ts` 比照 `attachment.store.ts`：記憶體 `Map` + `DATA_BACKEND=db` 時 `DbWriteQueue` write-through。儲存單位是 **(reportId, format)**，一份報告有 N 筆產出物列——不是「md 欄位 + html 欄位」兩個固定欄。兩種寫法在本輪功能完全等價，但固定欄的版本每加一種格式就要改 schema、改 migration、改讀寫程式；以 format 為 key 則只是多存一列。
+
+與附件不同的兩點：
 
 - **讀取路徑必須實作**。`attachment.store` 的檔頭明載「目前無任何呼叫端讀 bytes」，所以 `get` 只讀記憶體；報告的下載就是讀取路徑，db 模式下必須能從 Postgres 讀回，否則重啟後連結全失效。因此 `get` 一開始就是 async。
 - **TTL 回收**：`REPORT_TTL_HOURS`（預設 24）過期清除，記憶體與 DB 皆然。附件靠對話結束清理，報告沒有對應的生命週期終點。
@@ -202,13 +205,40 @@ chunks = await rerankChunks(tenantId, section.query, pool, FINAL_K)   // FINAL_K
 | Method | Path | 說明 |
 |---|---|---|
 | GET | `/api/reports/:id` | job 狀態 + 進度（`doneSections` / `totalSections`） |
-| GET | `/api/reports/:id/download?format=md\|html` | 下載；`format` 預設 `md` |
+| GET | `/api/reports/:id/download?format=<format>` | 下載；`format` 預設 `md` |
 
-下載回應帶 `Content-Disposition: attachment; filename="<slug>.md"`，MIME 分別為 `text/markdown; charset=utf-8` 與 `text/html; charset=utf-8`。
+`format` 的合法值由**格式登錄表**決定（zod enum 由登錄表的 key 生成，而非另外手寫一份），檔名副檔名與 `Content-Type` 也一併取自登錄表。`GET /api/reports/:id` 的回應帶 `formats: string[]`，前端據此渲染下載連結——前端不得寫死 `['md','html']`，否則之後補格式要動兩處。
 
 ### HTML 渲染
 
 單一內嵌 `<style>` 的極簡模板，**零外部資源**（無 CDN、無字型連結），確保離線與內網可開、可直接列印。所有由 LLM 或知識庫來的字串（標題、內文、來源標題、url）一律 escape 後再插入——內容來自被爬取的外部網站，必須當作不可信輸入處理。
+
+### 輸出格式的擴充點
+
+本輪只出 Markdown 與 HTML，但形狀要能無痛補格式。`report.render.ts` 是一張登錄表：
+
+```ts
+export interface ReportRenderer {
+  /** URL 與儲存用的 key，同時是副檔名 */
+  format: string;
+  contentType: string;
+  render(doc: ReportDoc): Buffer | Promise<Buffer>;
+}
+
+export const renderers: Record<string, ReportRenderer>;  // { md, html }
+```
+
+`ReportDoc` 已是格式無關的結構化資料（節、內文、來源、`degraded` 旗標），renderer 只做「資料 → bytes」。**新增一種格式 = 新增一個 renderer 檔 + 登錄表加一行**，路由、儲存、job、前端皆不動（`render` 回傳型別留 `Promise` 是為了將來需要非同步的格式）。
+
+各格式之後補做的真實代價（接縫成本近乎零，成本全在格式本身）：
+
+| 格式 | 需要什麼 | 代價 |
+|---|---|---|
+| DOCX | 純 JS 產生庫（如 `docx`） | 小；字型由 Word 端提供，中文無礙 |
+| PDF（JS 庫） | `pdfkit` / `pdfmake` + **內嵌中文字型檔** | 中；字型子集化是主要工作，非 API |
+| PDF（headless Chrome） | 映像檔加 Chromium + CJK 字型套件 | 大；image 約 +400MB、記憶體吃緊，但可直接複用 HTML renderer，排版最佳 |
+
+中文 PDF 的困難全在字型：`Dockerfile.server` 的 `node:20-slim` 未安裝任何 CJK 字型，不處理即為滿版豆腐字。先出 HTML 的另一個理由正在於此——瀏覽器列印成 PDF 可先把字型問題交給使用者端，等報告內容本身證明有價值，再決定要不要為排版付出映像檔或字型子集化的代價。
 
 ## 對話與前端契約
 
@@ -279,9 +309,9 @@ intents: [{ id: 'report.generate', keywords: ['報告', '彙整', '整理一份'
 
 - **outline**：正常 JSON；帶前後綴的 JSON；非 JSON → 判定 failed；節數超限截斷。
 - **compose**：零命中節保留標題且不呼叫 LLM；單節 LLM 失敗 → `degraded` 且內容為片段列表；節之間不共享脈絡（驗證傳給 LLM 的 input 不含他節內容）。
-- **render**：md / html 快照，含來源清單去重、`degraded` 標註、HTML escape（餵入含 `<script>` 的標題）。
+- **render**：md / html 快照，含來源清單去重、`degraded` 標註、HTML escape（餵入含 `<script>` 的標題）。另加一條登錄表契約測試——對 `renderers` 中的**每一個** renderer 跑同一份 `ReportDoc`，斷言回傳非空 Buffer 且 `contentType` 非空，讓之後新增的格式自動被涵蓋。
 - **job**：狀態流轉 queued→outlining→composing→done；全零命中 → `empty` 且未存檔；同租戶併發 → 409。
-- **store**：TTL 過期回收；db 模式 write-through 後可讀回（假 Prisma client）。
+- **store**：TTL 過期回收；db 模式 write-through 後可讀回（假 Prisma client）；同一 reportId 存多種 format 互不覆蓋。
 - **agent-service**：主題抽取失敗 → 不建 job 並回問；旁路不變式（`session.values` / `session.status` 未被觸碰）。
 - **意圖路由**：問答句 → knowledge、報告句 → report。
 - **授權**：無 `service:report` scope → 服務不在 `enabledFor`；跨租戶 / 非建立者下載 → 404。
