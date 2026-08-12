@@ -81,6 +81,28 @@ describe('GET /api/reports/:id/download', () => {
       .set('authorization', `Bearer ${await loginToken()}`);
     expect(res.status).toBe(404);
   });
+
+  it('中文標題檔名同時提供 ASCII fallback 與 RFC 5987 的 filename*，避免瀏覽器解讀不一致', async () => {
+    const filename = '請假規定彙整報告.md';
+    reportStore.save({
+      reportId: 'r2',
+      tenantId: 'default',
+      userId: 'kevin',
+      format: 'md',
+      filename,
+      content: Buffer.from('# 報告', 'utf8'),
+    });
+    const res = await request(app)
+      .get('/api/reports/r2/download?format=md')
+      .set('authorization', `Bearer ${await loginToken()}`);
+    expect(res.status).toBe(200);
+    const disposition = res.header['content-disposition'] as string;
+    expect(disposition).toContain('filename=');
+    expect(disposition).toContain("filename*=UTF-8''");
+    const match = disposition.match(/filename\*=UTF-8''([^;]+)/);
+    expect(match).not.toBeNull();
+    expect(decodeURIComponent(match?.[1] ?? '')).toBe(filename);
+  });
 });
 
 describe('GET /api/reports/:id', () => {
@@ -98,6 +120,17 @@ describe('GET /api/reports/:id', () => {
   it('查無此報告回 404', async () => {
     const res = await request(app)
       .get('/api/reports/nope')
+      .set('authorization', `Bearer ${await loginToken()}`);
+    expect(res.status).toBe(404);
+  });
+
+  it('非建立者查詢狀態回 404（job 已消失、僅剩產出物那條路徑——正是漏洞曾經藏身之處）', async () => {
+    // 這裡故意只用 reportStore.save 存產出物、不經 startReportJob，
+    // 讓 report.job 的記憶體 job 為空，重現「行程重啟後只剩 db/記憶體產出物」的狀態，
+    // 驗證 controller.get 的 !job 分支確實有做擁有者核對，而不是只看 formatsOf 有無資料
+    save('r1', 'someone-else', 'md', '# 報告');
+    const res = await request(app)
+      .get('/api/reports/r1')
       .set('authorization', `Bearer ${await loginToken()}`);
     expect(res.status).toBe(404);
   });

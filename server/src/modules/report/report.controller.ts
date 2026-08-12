@@ -12,6 +12,19 @@ function resolveTenantId(req: Request): string {
   return req.tenant?.id ?? 'default';
 }
 
+/**
+ * Content-Disposition 檔名：classic 的 `filename="..."` 只定義給 ASCII，本產品預設語系是繁中，
+ * 報告標題（因此檔名）預設就是中文——把 percent-encoded 字串塞進 `filename="..."` 是非標準用法，
+ * 各瀏覽器解讀不一致，使用者很可能下載到檔名字面是 `%E5%A0%B1...` 的檔案，這不是邊角案例。
+ * 同時提供 RFC 5987 的 `filename*`（標準做法）與一個安全的 ASCII fallback 給不支援 filename* 的舊瀏覽器。
+ * filename 只可能來自 report.job.ts 的 slugify（僅 \p{L}\p{N}_. 組成），不含引號／反斜線，無 header 注入風險。
+ */
+function contentDispositionHeader(filename: string): string {
+  const isAscii = /^[\x20-\x7E]*$/.test(filename);
+  const asciiFallback = isAscii ? filename : `report.${filename.split('.').pop() ?? 'txt'}`;
+  return `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
+}
+
 export const reportController = {
   /**
    * 狀態查詢。job 只活在記憶體，重啟後會消失；此時若產出物還在，就以產出物為準回報 done——
@@ -68,10 +81,7 @@ export const reportController = {
     }
 
     res.setHeader('Content-Type', renderers[format].contentType);
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="${encodeURIComponent(stored.filename)}"`,
-    );
+    res.setHeader('Content-Disposition', contentDispositionHeader(stored.filename));
     res.send(stored.content);
   },
 };
