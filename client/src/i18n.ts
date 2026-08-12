@@ -153,6 +153,14 @@ const zhHant = {
     descriptionPlaceholder: "附件說明",
     deleteFile: "移除附件",
   },
+  report: {
+    starting: "報告產生中…",
+    working: "報告產生中",
+    outlining: "規劃大綱中…",
+    ready: "報告完成，下載：",
+    empty: "知識庫查無相關資料，未產生報告。",
+    failed: "報告產生失敗，請稍後再試。",
+  },
 };
 
 const en = {
@@ -350,6 +358,14 @@ const en = {
     uploadError: "Upload failed",
     descriptionPlaceholder: "Description",
     deleteFile: "Remove attachment",
+  },
+  report: {
+    starting: "Generating report…",
+    working: "Generating report",
+    outlining: "Planning outline…",
+    ready: "Report ready. Download:",
+    empty: "No relevant information in the knowledge base; no report generated.",
+    failed: "Report generation failed. Please try again later.",
   },
 };
 

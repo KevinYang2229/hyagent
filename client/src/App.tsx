@@ -25,6 +25,7 @@ import FormView from './FormView';
 import LoginView from './LoginView';
 import AuthErrorView from './AuthErrorView';
 import SettingsMenu, { FONT_MAX, FONT_MIN } from './SettingsMenu';
+import { ReportStatus } from './ReportStatus';
 
 type Role = 'user' | 'agent' | 'sys';
 interface ChatMessage {
@@ -133,6 +134,8 @@ export default function App() {
   const userId = authUser?.id ?? '';
   const [convId, setConvId] = useState<string | null>(null);
   const [status, setStatus] = useState<SessionStatus | null>(null);
+  // 最近一次回合帶回的報告 id（僅報告服務會帶 TurnData.report）；用來渲染下方的 ReportStatus 進度區塊
+  const [reportId, setReportId] = useState<string | null>(null);
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [submission, setSubmission] = useState<SubmissionInfo | null>(null);
   const [balances, setBalances] = useState<LeaveBalance[]>([]);
@@ -390,6 +393,7 @@ export default function App() {
     setSubmission(null);
     setShowForm(false);
     setFormDef(null);
+    setReportId(null);
   }
 
   function handleLogin(user: Applicant) {
@@ -418,6 +422,8 @@ export default function App() {
     setStatus(data.status);
     setValues(data.values ?? {});
     setSubmission(data.submission ?? null);
+    // 本回合啟動了報告產生（僅報告服務會帶）：記下 id，下方渲染 ReportStatus 開始輪詢進度
+    if (data.report) setReportId(data.report.id);
     if (data.reply) pushMsg('agent', data.reply, data.suggestions);
 
     // 只在「剛填寫完畢（→confirming）」或「剛送出（→submitted）」的轉變當下主動開表單；
@@ -826,6 +832,9 @@ export default function App() {
               </div>
             )}
           </div>
+
+          {/* 報告產生進度／下載：本回合起了報告產生時顯示，輪詢後端 job 狀態 */}
+          {reportId && <ReportStatus reportId={reportId} />}
 
           {/* 辦理項目選單：表單（選擇）+ 知識庫推薦用詞（直接詢問）；對話開始前顯示 */}
           {!convId &&

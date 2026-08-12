@@ -6,6 +6,7 @@ import type {
   FieldOption,
   FieldSpec,
   LeaveBalance,
+  ReportRef,
   SessionStatus,
   SubmissionInfo,
 } from '@oa-agent/shared';
@@ -17,6 +18,7 @@ export type {
   FieldOption,
   FieldSpec,
   LeaveBalance,
+  ReportRef,
   SessionStatus,
   SubmissionInfo,
 };
@@ -29,6 +31,19 @@ export interface TurnData {
   submission?: SubmissionInfo;
   /** 後端動態產生的建議回覆（可一鍵送出）；可能為空陣列 */
   suggestions?: string[];
+  /** 本回合啟動的報告（僅報告服務會帶） */
+  report?: ReportRef;
+}
+
+export interface ReportData {
+  id: string;
+  status: 'queued' | 'outlining' | 'composing' | 'done' | 'empty' | 'failed';
+  topic?: string;
+  doneSections: number;
+  totalSections?: number;
+  /** 後端登錄表決定的可下載格式；前端不得自行寫死清單 */
+  formats: string[];
+  error?: string;
 }
 
 /** PATCH /:id/fields 的回傳（TurnData + 套用/退回明細） */
@@ -312,3 +327,33 @@ export const api = {
     });
   },
 };
+
+// request<T> 是 api.ts 內既有的私有輔助函式（自動帶 access token、401 時 refresh 重試），
+// 已回傳 unwrap 後的 data，因此這裡直接回傳它的結果
+export async function fetchReport(id: string): Promise<ReportData> {
+  return request<ReportData>(`${API_ORIGIN}/api/reports/${id}`);
+}
+
+/**
+ * 下載報告。
+ *
+ * 不能用 <a href="/api/reports/..."> 直接連——瀏覽器的一般導覽不會帶 Authorization header，
+ * 而該路由掛了 requireAuth，點下去只會拿到 401。因此改為帶 token 取回 blob 後觸發下載。
+ */
+export async function downloadReport(id: string, format: string): Promise<void> {
+  const res = await fetch(
+    `${API_ORIGIN}/api/reports/${id}/download?format=${encodeURIComponent(format)}`,
+    withAuth({}),
+  );
+  if (!res.ok) throw new Error(`report ${id} 下載失敗`);
+
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = `${id}.${format}`;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
