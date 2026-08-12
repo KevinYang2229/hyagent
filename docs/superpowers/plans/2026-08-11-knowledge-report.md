@@ -29,6 +29,7 @@
 
 **Files:**
 - Create: `server/src/modules/report/report.types.ts`
+- Create: `server/src/modules/report/report.strings.ts`
 - Create: `server/src/modules/report/renderers/markdown.ts`
 - Create: `server/src/modules/report/report.render.ts`
 - Test: `server/tests/report-render.test.ts`
@@ -45,6 +46,7 @@
   - `ReportRenderer { format: string; contentType: string; render(doc: ReportDoc): Buffer | Promise<Buffer> }`
   - `renderers: Record<string, ReportRenderer>`、`REPORT_FORMATS: string[]`、`isReportFormat(f: string): boolean`
   - `markdownRenderer: ReportRenderer`
+  - `report.strings.ts`：`emptySectionText(locale)`、`degradedNoticeText(locale)`、`sourcesHeading(locale)`、`dedupeSources(sections)`（各格式共用，不歸屬任何單一 renderer）
 
 - [ ] **Step 1: 寫失敗的測試**
 
@@ -244,14 +246,17 @@ export interface ReportJob {
 
 - [ ] **Step 4: 實作 Markdown renderer**
 
-`server/src/modules/report/renderers/markdown.ts`：
+先建共用字串模組 `server/src/modules/report/report.strings.ts`——這些語句與來源去重規則是「報告」的性質，不是 Markdown 的性質，各格式都要用同一份，放在任一 renderer 裡會讓其他 renderer 反向依賴它：
 
 ```ts
 /**
- * Markdown renderer：ReportDoc → .md bytes。純函式，不觸碰 IO。
+ * 報告的共用文案與來源整併規則，各輸出格式共用。
+ *
+ * 不放在任何一個 renderer 裡：這些是報告本身的性質（查無資料怎麼說、來源怎麼去重），
+ * 不是某種格式的性質。放進 markdown.ts 會讓 html.ts 反向依賴 markdown.ts。
  */
 import { normalizeLocale } from '@/lib/locale';
-import type { ReportDoc, ReportSection, SectionSource } from '../report.types';
+import type { ReportSection, SectionSource } from './report.types';
 
 /** 查無資料節的固定語句（中英各一） */
 export function emptySectionText(locale: string): string {
@@ -286,6 +291,21 @@ export function dedupeSources(sections: ReportSection[]): SectionSource[] {
   }
   return [...seen.values()];
 }
+```
+
+接著建 `server/src/modules/report/renderers/markdown.ts`：
+
+```ts
+/**
+ * Markdown renderer：ReportDoc → .md bytes。純函式，不觸碰 IO。
+ */
+import {
+  degradedNoticeText,
+  dedupeSources,
+  emptySectionText,
+  sourcesHeading,
+} from '../report.strings';
+import type { ReportDoc, ReportSection } from '../report.types';
 
 function sectionBody(section: ReportSection, locale: string): string {
   if (section.hits === 0) return emptySectionText(locale);
@@ -385,7 +405,7 @@ git commit -m "feat(report): 新增報告資料模型與 Markdown renderer 登�
 - Test: `server/tests/report-render.test.ts`（追加 describe）
 
 **Interfaces:**
-- Consumes: Task 1 的 `ReportDoc`、`ReportRenderer`、`renderers`、`emptySectionText` / `degradedNoticeText` / `sourcesHeading` / `dedupeSources`
+- Consumes: Task 1 的 `ReportDoc`、`ReportRenderer`、`renderers`，以及 `report.strings.ts` 的 `emptySectionText` / `degradedNoticeText` / `sourcesHeading` / `dedupeSources`
 - Produces: `htmlRenderer: ReportRenderer`（`format: 'html'`）、`escapeHtml(s: string): string`
 
 - [ ] **Step 1: 寫失敗的測試**
@@ -470,13 +490,13 @@ Expected: FAIL，`renderers.html` 為 undefined。
  * 零外部資源（無 CDN、無字型連結），確保離線與內網可開、可直接列印成 PDF。
  * 所有動態字串一律 escape：報告內容來自被爬取的外部網站與 LLM 輸出，屬不可信輸入。
  */
-import type { ReportDoc, ReportSection } from '../report.types';
 import {
   degradedNoticeText,
   dedupeSources,
   emptySectionText,
   sourcesHeading,
-} from './markdown';
+} from '../report.strings';
+import type { ReportDoc, ReportSection } from '../report.types';
 
 export function escapeHtml(value: string): string {
   return value
@@ -2865,4 +2885,4 @@ git commit -m "docs(report): 補上報告 API、scope、環境變數與 DDL 前�
 - `reportStore.get` 全程 async，Task 8 controller 以 `await` 呼叫。
 - `startReportJob` 的 `deps` 參數型別 `ReportJobDeps` 於 Task 6 定義，Task 6 測試使用，Task 7 正式呼叫時不帶 deps。
 - `ReportRef` 於 shared 定義（Task 7），server 的 `AgentTurnResult` / `TurnResult` 與 client 的 `TurnData` 共用同一型別。
-- `emptySectionText` / `degradedNoticeText` / `sourcesHeading` / `dedupeSources` 由 Task 1 的 markdown.ts export，Task 2 的 html.ts import——名稱一致。
+- `emptySectionText` / `degradedNoticeText` / `sourcesHeading` / `dedupeSources` 由 Task 1 的 `report.strings.ts` export，markdown.ts 與 html.ts 各自 import——兩個 renderer 之間無依賴。
