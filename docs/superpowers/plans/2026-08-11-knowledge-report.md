@@ -1140,7 +1140,7 @@ git commit -m "feat(report): 新增逐節檢索彙整，零命中不呼叫 LLM �
   - `StoredReport { reportId: string; tenantId: string; userId: string; format: string; filename: string; content: Buffer; expiresAt: string }`
   - `reportStore.save(input: { reportId; tenantId; userId; format; filename; content: Buffer }): void`
   - `reportStore.get(reportId: string, format: string): Promise<StoredReport | undefined>`
-  - `reportStore.formatsOf(reportId: string): string[]`
+  - `reportStore.formatsOf(reportId: string): Promise<string[]>`（async 且 db-aware：重啟後記憶體為空時仍要能從 db 取得格式清單，否則狀態端點會 404 但下載打得到）
   - `reportStore.purgeExpired(now?: Date): number`
   - `reportStore._resetForTest(): void`
 
@@ -2346,11 +2346,13 @@ export const reportController = {
    * 狀態查詢。job 只活在記憶體，重啟後會消失；此時若產出物還在，就以產出物為準回報 done——
    * 否則會出現「下載得到、狀態卻查不到」的矛盾。
    */
-  get(req: Request, res: Response): void {
+  async get(req: Request, res: Response): Promise<void> {
     const id = String(req.params.id);
     const tenantId = resolveTenantId(req);
     const userId = resolveUserId(req);
-    const formats = reportStore.formatsOf(id);
+    // formatsOf 是 async 且 db-aware：重啟後 job 已消失、記憶體也空，仍要能從 db 得知有哪些格式，
+    // 否則會出現「狀態查詢 404、下載卻打得到」的矛盾
+    const formats = await reportStore.formatsOf(id);
     const job = getReportJob(id);
 
     if (job && (job.tenantId !== tenantId || job.userId !== userId)) {
@@ -2410,7 +2412,11 @@ import { downloadQuerySchema, reportIdParamSchema } from './report.schema';
 
 const router = Router();
 
-router.get('/:id', validate({ params: reportIdParamSchema }), reportController.get);
+router.get(
+  '/:id',
+  validate({ params: reportIdParamSchema }),
+  asyncHandler(reportController.get),
+);
 
 router.get(
   '/:id/download',
