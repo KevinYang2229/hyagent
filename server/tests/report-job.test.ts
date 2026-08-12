@@ -5,7 +5,9 @@ import type { LLMProvider } from '@/lib/llm/types';
 import type { Outline, ReportSection } from '@/modules/report/report.types';
 import { reportStore } from '@/modules/report/report.store';
 import {
+  _resetJobsForTest,
   getReportJob,
+  purgeFinishedReportJobs,
   startReportJob,
   waitForJobForTest,
 } from '@/modules/report/report.job';
@@ -149,6 +151,84 @@ describe('startReportJob', () => {
       { outline: async () => outline, compose: sectionWith(1) },
     );
     expect(getReportJob(job.id)?.topic).toBe('主題');
+    await waitForJobForTest(job.id);
+  });
+});
+
+describe('purgeFinishedReportJobs', () => {
+  // 前面 describe('startReportJob', ...) 的測試會在共用的 jobs Map 留下已結束的 job（模組級狀態，
+  // 不隨 test case 結束自動清空）；每個測試開始前先清空，才能確保 purged 筆數只反映本測試建立的 job
+  beforeEach(() => _resetJobsForTest());
+  afterEach(() => _resetJobsForTest());
+
+  it('已結束且超過 TTL 的 job 會被清除', async () => {
+    const job = startReportJob(
+      { tenantId: 't1', userId: 'u1', topic: '主題', llm },
+      { outline: async () => outline, compose: sectionWith(1) },
+    );
+    await waitForJobForTest(job.id);
+    expect(getReportJob(job.id)?.status).toBe('done');
+
+    // finishedAt 為剛剛，用 25 小時後的「now」模擬已過 24 小時 TTL
+    const later = new Date(Date.now() + 25 * 60 * 60 * 1000);
+    const purged = purgeFinishedReportJobs(later);
+    expect(purged).toBe(1);
+    expect(getReportJob(job.id)).toBeUndefined();
+  });
+
+  it('已結束但未過 TTL 的 job 不會被清除', async () => {
+    const job = startReportJob(
+      { tenantId: 't1', userId: 'u1', topic: '主題', llm },
+      { outline: async () => outline, compose: sectionWith(1) },
+    );
+    await waitForJobForTest(job.id);
+    expect(purgeFinishedReportJobs(new Date())).toBe(0);
+    expect(getReportJob(job.id)).toBeDefined();
+  });
+
+  it('empty/failed 終態同樣會被 TTL 回收', async () => {
+    const emptyJob = startReportJob(
+      { tenantId: 't1', userId: 'u1', topic: '主題', llm },
+      { outline: async () => outline, compose: sectionWith(0) },
+    );
+    await waitForJobForTest(emptyJob.id);
+    const failedJob = startReportJob(
+      { tenantId: 't2', userId: 'u2', topic: '主題', llm },
+      {
+        outline: async () => {
+          throw new Error('報告大綱解析失敗');
+        },
+        compose: sectionWith(1),
+      },
+    );
+    await waitForJobForTest(failedJob.id);
+
+    const later = new Date(Date.now() + 25 * 60 * 60 * 1000);
+    expect(purgeFinishedReportJobs(later)).toBe(2);
+    expect(getReportJob(emptyJob.id)).toBeUndefined();
+    expect(getReportJob(failedJob.id)).toBeUndefined();
+  });
+
+  it('進行中（composing）的 job 即使「finishedAt 之外的計算超過 TTL」也不會被誤刪——沒有 finishedAt 就一律保留', async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    const job = startReportJob(
+      { tenantId: 't1', userId: 'u1', topic: '主題', llm },
+      {
+        outline: async () => outline,
+        compose: async (_t, s) => {
+          await gate;
+          return { heading: s.heading, query: s.query, body: '內文', sources: [], hits: 1 };
+        },
+      },
+    );
+    expect(getReportJob(job.id)?.status).toBe('queued');
+
+    const later = new Date(Date.now() + 25 * 60 * 60 * 1000);
+    expect(purgeFinishedReportJobs(later)).toBe(0);
+    expect(getReportJob(job.id)).toBeDefined();
+
+    release();
     await waitForJobForTest(job.id);
   });
 });

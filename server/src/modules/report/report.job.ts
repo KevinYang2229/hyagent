@@ -5,6 +5,7 @@
  * 啟動並立刻回覆，實際工作在程序內非同步進行、由前端輪詢。
  */
 import { randomUUID } from 'node:crypto';
+import { env } from '@/config/env';
 import type { LLMProvider } from '@/lib/llm/types';
 import { logger } from '@/lib/logger';
 import { AppError } from '@/utils/app-error';
@@ -142,4 +143,29 @@ export async function waitForJobForTest(id: string): Promise<ReportJob> {
   const job = jobs.get(id);
   if (!job) throw new Error(`unknown report job: ${id}`);
   return job;
+}
+
+/**
+ * 清除已結束（done/empty/failed）且結束時間超過 TTL 的 job，避免 jobs Map 隨行程存活時間無限增長。
+ * 進行中（queued/outlining/composing）的 job 一律保留，不受 TTL 影響。
+ * 由 index.ts 的每日 sweeper 呼叫；沿用 reportStore 產出物同一把 TTL（REPORT_TTL_HOURS），
+ * 讓「查得到 job 狀態」與「查得到產出物」的生命週期一致。
+ */
+export function purgeFinishedReportJobs(now: Date = new Date()): number {
+  const cutoff = now.getTime() - env.REPORT_TTL_HOURS * 3600_000;
+  let purged = 0;
+  for (const [id, job] of jobs) {
+    const isTerminal = job.status === 'done' || job.status === 'empty' || job.status === 'failed';
+    if (isTerminal && job.finishedAt && new Date(job.finishedAt).getTime() <= cutoff) {
+      jobs.delete(id);
+      purged += 1;
+    }
+  }
+  return purged;
+}
+
+/** 測試專用：清空 jobs Map，避免跨測試檔殘留背景 job 互相污染 */
+export function _resetJobsForTest(): void {
+  jobs.clear();
+  running.clear();
 }
