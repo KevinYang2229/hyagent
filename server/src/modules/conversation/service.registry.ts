@@ -5,6 +5,7 @@
  * 新增服務（未來 Workflow）只要實作 AgentService 並在此 register 即可。
  */
 import { knowledgeAgentService } from '@/modules/knowledge/knowledge.agent-service';
+import { reportAgentService } from '@/modules/report/report.agent-service';
 import { resolveScopes } from '@/modules/authz/resolve-scopes';
 import type { AgentService, SkillDescriptor } from './agent-service.types';
 import type { Session } from './conversation.types';
@@ -22,6 +23,7 @@ register(formAgentService);
 register(knowledgeAgentService);
 register(assistantAgentService);
 register(agentAgentService);
+register(reportAgentService);
 
 export const serviceRegistry = {
   get(id: string): AgentService {

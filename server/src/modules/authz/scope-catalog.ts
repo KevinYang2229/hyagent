@@ -19,6 +19,7 @@ export const SCOPE_CATALOG: ScopeDef[] = [
   { id: 'service:form', label: '填表申請', description: '使用填寫並送出表單的對話服務', base: false },
   { id: 'service:knowledge', label: '知識庫問答', description: '使用公司規章 / FAQ 問答服務', base: false },
   { id: 'service:agent', label: '智慧代理', description: '使用跨工具多步驟的智慧代理服務', base: false },
+  { id: 'service:report', label: '知識庫報告', description: '依知識庫檢索產生可下載的報告', base: false },
   { id: 'email:write', label: '寄送 Email', description: '代寄通知信 / 邀請信', base: false },
   { id: 'calendar:read', label: '讀取行事曆', description: '查詢空檔 / 會議', base: false },
   { id: 'calendar:write', label: '建立行事曆', description: '建立會議 / 邀請', base: false },

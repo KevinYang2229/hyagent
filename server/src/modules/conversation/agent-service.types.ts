@@ -5,6 +5,7 @@
  * 由 intent-router 每輪判斷該把對話指派給哪個服務。分派到單一服務可讓該次 LLM
  * 呼叫只帶「該服務的 tools」，比單一大 loop 更省 token。
  */
+import type { ReportRef } from '@oa-agent/shared';
 import type { LLMProvider } from '@/lib/llm/types';
 import type { Session } from './conversation.types';
 
@@ -20,6 +21,11 @@ export interface IntentDescriptor {
 
 export interface AgentTurnResult {
   reply: string;
+  /**
+   * 本回合啟動的報告；前端據此顯示進度與下載連結。
+   * 命名不做泛化的 artifact——目前只有這一種產出物，泛化會憑空多一層而沒有第二個使用者。
+   */
+  report?: ReportRef;
 }
 
 export interface AgentService {

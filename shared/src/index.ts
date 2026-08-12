@@ -248,6 +248,12 @@ export interface Attachment {
   description?: string;
 }
 
+/** 對話回合附帶的報告參考；建立當下恆為 queued，後續狀態由前端輪詢 */
+export interface ReportRef {
+  id: string;
+  status: 'queued';
+}
+
 // ---- 租戶 widget 外觀（admin 後台設定、widget 端套用）----
 export interface TenantAppearance {
   /** AI 助理顯示名稱；未設用 widget 內建預設（i18n app.aiName）。同時用於前端顯示與 AI 自稱 */
