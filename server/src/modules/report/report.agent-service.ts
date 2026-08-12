@@ -140,6 +140,12 @@ export const reportAgentService: AgentService = {
       // 併發限制在對話中是「說明」而非錯誤：拋 409 會讓整個回合失敗、逐字稿留下斷點
       result = { reply: busyReply(session.locale) };
     } else {
+      // 這裡與上面 getRunningReportJobForTenant 的檢查之間沒有 await，Node 單執行緒
+      // run-to-completion 保證兩者間不會插入另一個併發呼叫，故此處不會撞上 startReportJob
+      // 內部同樣的併發檢查而拋出 AppError.conflict——目前不包 try/catch 是安全的。
+      // 但這是對「job 狀態只存在單一行程記憶體」的脆弱假設：若日後 job 狀態改為跨行程共享
+      // （如外部佇列／多副本部署），這個保證就不成立，屆時必須在此包 try/catch 接住
+      // AppError.conflict 並降級為 busyReply，否則會讓例外原樣炸穿整個對話回合。
       const job = startReportJob({
         tenantId: session.tenantId,
         userId: session.userId,

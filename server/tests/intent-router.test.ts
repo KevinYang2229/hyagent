@@ -122,6 +122,28 @@ describe('intentRouter.route', () => {
     expect(r.viaLLM).toBe(true);
   });
 
+  it('填表中插入報告請求 → 需 Haiku 二次確認，不 0-token 直接跳轉（報告成本高，比照 knowledge 防護）', async () => {
+    // 需另建租戶：router-test-tenant 未授予 service:report，report 不會出現在 enabledFor 名單中
+    const t = tenantStore.createTenant('router-report-test');
+    tenantStore.updateTenant(t.id, {
+      grantedScopes: ['service:form', 'service:report', 'form:leave-request'],
+    });
+    mockCreate.mockResolvedValue({
+      text: '{"intent":"report.generate","confidence":0.9}',
+      toolCalls: [],
+      stopReason: 'end_turn',
+    });
+    // 同時命中報告關鍵字（整理成/總結/報告）與知識語氣詞（規定）：
+    // 若 intent-router 忘了把 'report' 排進點黏排除清單，這句話會被 0-token 直接判給 report。
+    const r = await intentRouter.route(
+      makeSession({ tenantId: t.id, messages: MID_CONV_MSGS }),
+      '幫我把請假規定整理成一份總結報告',
+    );
+    expect(mockCreate).toHaveBeenCalledTimes(1);
+    expect(r.serviceId).toBe('report');
+    expect(r.viaLLM).toBe(true);
+  });
+
   it('填表中疑似語氣但 Haiku 判為表單意圖 → 續留 form', async () => {
     mockCreate.mockResolvedValue({
       text: '{"intent":"leave-request.apply","confidence":0.85}',

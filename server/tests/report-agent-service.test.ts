@@ -100,6 +100,9 @@ describe('reportAgentService', () => {
     const result = await reportAgentService.handleTurn(session, '報告', fakeLLM('NONE'));
     expect(result.report).toBeUndefined();
     expect(result.reply).toContain('主題');
+    // 旁路不變式：這條「回問」分支也不得觸碰 session.values / session.status
+    expect(session.values).toEqual({ leaveType: 'annual' });
+    expect(session.status).toBe('collecting');
   });
 
   it('主題抽取 LLM 失敗時同樣不建 job（不得 fail-open）', async () => {
@@ -122,13 +125,30 @@ describe('reportAgentService', () => {
       '報告',
       fakeLLM('主題一'),
     );
-    const second = await reportAgentService.handleTurn(
-      makeSession({ tenantId }),
-      '報告',
-      fakeLLM('主題二'),
-    );
+    const secondSession = makeSession({ tenantId });
+    const second = await reportAgentService.handleTurn(secondSession, '報告', fakeLLM('主題二'));
     expect(second.report).toBeUndefined();
     expect(second.reply).toContain('進行中');
+    // 旁路不變式：「租戶忙碌」這條分支同樣不得觸碰 session.values / session.status
+    expect(secondSession.values).toEqual({ leaveType: 'annual' });
+    expect(secondSession.status).toBe('collecting');
+    await waitForJobForTest(first.report!.id);
+  });
+
+  it('英文 locale 下，同租戶已有任務進行中時回覆英文說明', async () => {
+    const tenantId = 'rep-busy-en';
+    const first = await reportAgentService.handleTurn(
+      makeSession({ tenantId, locale: 'en' }),
+      '報告',
+      fakeLLM('topic-one'),
+    );
+    const second = await reportAgentService.handleTurn(
+      makeSession({ tenantId, locale: 'en' }),
+      '報告',
+      fakeLLM('topic-two'),
+    );
+    expect(second.report).toBeUndefined();
+    expect(second.reply).toContain('already being generated');
     await waitForJobForTest(first.report!.id);
   });
 

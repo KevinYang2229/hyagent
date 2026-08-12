@@ -140,10 +140,17 @@ export const intentRouter = {
       // 明確命中「其他非知識服務」的關鍵字（form↔agent）即使在點黏中也放行互轉：
       //  - 在 form 點黏中：「寄信給」→ 轉 agent（否則簡短送信請求被困在 form）。
       //  - 在 agent 點黏中：「我要請假」等 form 關鍵字 → 轉回 form（避免被困在無表單工具的 agent）。
-      // 知識問句刻意不走關鍵字（易誤搶），改由下方 hint→classify 判斷。
+      // 知識問句刻意不走關鍵字（易誤搶），改由下方 hint→classify 判斷；
+      // 報告請求同理排除：報告成本是單次問答的數倍（1 次大綱 + N 次檢索 + N 次彙整 + 主題抽取），
+      // 填表點黏中若讓關鍵字 0-token 直接跳轉，隨口一句帶「報告/總結/彙整」就會誤觸發整條產線，
+      // 比知識問答更需要 Haiku 二次確認這層防護，不能只因為忘了列進排除清單就少了它。
       const kwSticky = keywordRoute(session, text);
       if (kwSticky.confident && enabledIds.has(kwSticky.serviceId)) {
-        if (kwSticky.serviceId !== activeId && kwSticky.serviceId !== 'knowledge') {
+        if (
+          kwSticky.serviceId !== activeId &&
+          kwSticky.serviceId !== 'knowledge' &&
+          kwSticky.serviceId !== 'report'
+        ) {
           return { serviceId: kwSticky.serviceId, viaLLM: false };
         }
         // 明確命中點黏服務自己的關鍵字（如首句「我要請假」）→ 0 token 續留，不進下方首問分類
