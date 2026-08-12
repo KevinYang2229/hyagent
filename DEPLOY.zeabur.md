@@ -38,6 +38,11 @@
 4. 首次切換時以 `npm run migrate:knowledge -w server` 把既有索引搬進資料庫
    （可先加 `-- --dry-run` 試跑）。腳本結束會回讀並印出 `knowledge_sources` 筆數與
    各租戶 chunks 數，**以這份摘要為準**判斷是否真的寫進去了。
+5. 同時套用 `server/db/migrations/0007_report_docs.sql`（報告產出物落地用的 `report_docs` 表）。
+   這張表**不在** boot 時的 fail-fast 檢查內，未套用不會讓 server 起不來，但寫入會在背景
+   靜默失敗（只留一行 warn log）：報告只存在記憶體，**一旦重啟，`DATA_BACKEND=db` 下已產生
+   的報告下載連結會全部失效**（狀態查得到、下載卻 404，或狀態也一併查不到）。建議與
+   0005 / 0006 一起、在第一次以 `db` 模式部署前套用。
 
 ---
 

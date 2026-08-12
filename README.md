@@ -96,8 +96,10 @@ npm run typecheck
 | GET    | `/api/conversations/:id`               | 取狀態 + 已填值 + 送出結果                                  |
 | POST   | `/api/conversations/:id/cancel`        | 取消                                                        |
 | GET    | `/api/forms` / `/api/forms/:formId` | 列出 / 取得表單 Definition                                  |
+| GET    | `/api/reports/:id`                        | 查報告產生進度與可下載格式                                  |
+| GET    | `/api/reports/:id/download?format=md`     | 下載報告（`format` 由後端登錄表決定，目前為 `md` / `html`） |
 
-> 對話 API 需 JWT：先 `POST /api/auth/login`（dev 環境為 mock 帳號 `kevin`/`hyweb` + `AUTH_DEV_PASSWORD`）取得 accessToken，之後帶 `Authorization: Bearer <token>`。widget/SDK 另可走租戶 `ssoSecret` 的 SSO handoff（`/api/auth/sso/exchange`）。
+> 對話 API 需 JWT：先 `POST /api/auth/login`（dev 環境為 mock 帳號 `kevin`/`hyweb` + `AUTH_DEV_PASSWORD`）取得 accessToken，之後帶 `Authorization: Bearer <token>`。widget/SDK 另可走租戶 `ssoSecret` 的 SSO handoff（`/api/auth/sso/exchange`）。`/api/reports/*` 同樣需要 JWT——`<a href>` 一般導覽不會帶 Authorization header，前端需改用 fetch 取 blob 後觸發下載。
 
 ### Demo（curl）
 
@@ -119,6 +121,25 @@ curl -s -X POST localhost:3000/api/conversations/<id>/messages \
 ```
 
 Agent 會逐一問缺漏欄位 → 必填齊全後出摘要請你回「確認」→ 送出 stub OA，回 `oaRequestId: STUB-...`。
+
+## 報告（依知識庫檢索彙整成可下載文件）
+
+在對話中提到想要一份「報告 / 彙整 / 總結」（例：「幫我整理一份請假規定的報告」），Agent 會辨識為報告意圖並觸發：
+
+1. **觸發方式**：純對話，沒有獨立的「建立報告」REST 端點。Agent 先用 LLM 從對話抽出主題（抽不到就回問，**不會** fail-open 拿一句空泛的話去硬跑，因為一份報告的成本是「1 次大綱 + N 次檢索 + N 次彙整」）。
+2. **需要的 scope**：`service:report`。這是刻意的產品決定——報告成本較高，**不列入新租戶預設開通的服務**，須由 admin 於後台「權限」手動授予該租戶（或該租戶內特定使用者）後才能使用；未授予時對話會判定沒有此意圖可用。
+3. **非同步產生**：抽到主題後對話立即回覆「已開始產生」並附上 `report: { id, status }`，實際彙整在背景進行，前端輪詢 `GET /api/reports/:id` 取得進度（`status`：`queued` → `outlining` → `composing` → `done` / `failed` / `empty`，並回傳 `doneSections` / `totalSections`）；`status: done` 後 `formats` 欄位才會列出可下載的格式。同一租戶同時只允許一份報告在跑，併發時會直接以對話回覆說明，不當錯誤處理。
+4. **內容全部來自 RAG 檢索結果**：LLM 依主題先拆出章節大綱，再逐節各自查知識庫、彙整檢索到的片段——章節之間互不共享脈絡，杜絕拼湊出檢索之外的內容。**查無資料的章節會據實標示為查無相關資料，不臆測、不生內容**；若全部章節都零命中，整份報告視為 `empty` 終態，不產出任何檔案。
+5. **產出物保存 `REPORT_TTL_HOURS` 小時**（預設 24）後過期，下載會回 404；`DATA_BACKEND=db` 時產出物落地 Postgres（`report_docs`，見 `server/db/migrations/0007_report_docs.sql`），重啟後仍可下載，`file` 模式僅存於記憶體、重啟即失效。
+6. **下載格式**：目前為 `md`（Markdown）與 `html`，由 `server/src/modules/report/report.render.ts` 的 renderer 登錄表決定；新增格式只需在該登錄表加一行，路由白名單、副檔名、Content-Type 皆由此推導。下載檔名為中文時走 RFC 5987（`Content-Disposition: ...; filename*=UTF-8''...`），並附 ASCII fallback 給不支援的舊瀏覽器。
+
+環境變數（`server/src/config/env.ts`）：
+
+| 變數 | 預設 | 範圍 | 說明 |
+|------|------|------|------|
+| `REPORT_MAX_SECTIONS` | `6` | 1–12 | 大綱節數上限；每節各一次檢索＋一次彙整 LLM，節數直接決定一份報告的成本 |
+| `REPORT_SECTION_TOP_K` | `5` | 1–20 | 每節交給彙整 LLM 的檢索片段數（與知識庫問答的 `FINAL_K` 同量級） |
+| `REPORT_TTL_HOURS` | `24` | 1–720 | 產出物保存時數；報告沒有對應「對話結束」的生命週期終點，只能靠 TTL 回收 |
 
 ## 架構
 
@@ -179,7 +200,8 @@ schemas/<formId>/*.json         六層表單 Definition（前後端共用單一�
 - ✅ 限流／配額：兩層守門（每租戶＋使用者速率限制 + 每租戶月度 LLM token 配額）
 - ✅ 表單 Designer：admin 後台 [`FormDesignerPage`](admin/src/pages/FormDesignerPage.tsx) 建立／編輯／匯出租戶表單（走 `/api/admin/tenants/:id/forms`）
 - ✅ OpenAI provider：[`lib/llm/openai.provider.ts`](server/src/lib/llm/openai.provider.ts)（Chat Completions + function calling；`local` 端點重用之）
-- 🔜 延後（架構留 seam）：真 OA HTTP 連接器（含真實簽核狀態查詢）、報告產出
+- ✅ 報告：依知識庫檢索彙整成可下載文件（`md` / `html`），對話觸發、非同步產生，需另外授予 `service:report` scope（見「報告」一節）
+- 🔜 延後（架構留 seam）：真 OA HTTP 連接器（含真實簽核狀態查詢）
 
 ## 可抽換層
 
