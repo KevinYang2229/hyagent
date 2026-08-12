@@ -5,6 +5,7 @@ import {
   degradedNoticeText,
   dedupeSources,
   emptySectionText,
+  safeUrl,
   sourcesHeading,
 } from '../report.strings';
 import type { ReportDoc, ReportSection } from '../report.types';
@@ -26,7 +27,8 @@ export function renderMarkdown(doc: ReportDoc): string {
   if (sources.length > 0) {
     lines.push(`## ${sourcesHeading(doc.locale)}`, '');
     for (const source of sources) {
-      lines.push(source.url ? `- [${source.title}](${source.url})` : `- ${source.title}`);
+      const validUrl = safeUrl(source.url);
+      lines.push(validUrl ? `- [${source.title}](${validUrl})` : `- ${source.title}`);
     }
     lines.push('');
   }

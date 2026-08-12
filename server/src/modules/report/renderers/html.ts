@@ -4,10 +4,12 @@
  * 零外部資源（無 CDN、無字型連結），確保離線與內網可開、可直接列印成 PDF。
  * 所有動態字串一律 escape：報告內容來自被爬取的外部網站與 LLM 輸出，屬不可信輸入。
  */
+import { normalizeLocale } from '@/lib/locale';
 import {
   degradedNoticeText,
   dedupeSources,
   emptySectionText,
+  safeUrl,
   sourcesHeading,
 } from '../report.strings';
 import type { ReportDoc, ReportSection } from '../report.types';
@@ -52,17 +54,19 @@ export function renderHtml(doc: ReportDoc): string {
       : [
           `<h2>${escapeHtml(sourcesHeading(doc.locale))}</h2>`,
           '<ul>',
-          ...sources.map((s) =>
-            s.url
-              ? `<li><a href="${escapeHtml(s.url)}">${escapeHtml(s.title)}</a></li>`
-              : `<li>${escapeHtml(s.title)}</li>`,
-          ),
+          ...sources.map((s) => {
+            const validUrl = safeUrl(s.url);
+            return validUrl
+              ? `<li><a href="${escapeHtml(validUrl)}">${escapeHtml(s.title)}</a></li>`
+              : `<li>${escapeHtml(s.title)}</li>`;
+          }),
           '</ul>',
         ].join('\n');
 
+  const normalizedLocale = normalizeLocale(doc.locale);
   return [
     '<!doctype html>',
-    `<html lang="${doc.locale === 'en' ? 'en' : 'zh-Hant'}">`,
+    `<html lang="${normalizedLocale === 'en' ? 'en' : 'zh-Hant'}">`,
     '<head>',
     '<meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width,initial-scale=1">',

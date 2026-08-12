@@ -149,6 +149,46 @@ describe('html renderer', () => {
     expect(out).toContain('知識庫查無相關資料。');
     expect(out).toContain('本節彙整未完成，以下為檢索到的原始片段');
   });
+
+  it('lang 屬性與固定語句 locale 一致（normalizeLocale 處理各種語言標籤）', async () => {
+    const doc = makeDoc({
+      locale: 'en-US',
+      sections: [{ heading: 'Amount', query: 'How much?', body: '', sources: [{ title: 'Guide' }], hits: 0 }],
+    });
+    const out = await renderHtml(doc);
+    expect(out).toContain('lang="en"');
+    expect(out).toContain('No relevant information found in the knowledge base.');
+  });
+
+  it('javascript: scheme 的 url 被攔截，該來源輸出純文字不產生連結', async () => {
+    const doc = makeDoc({
+      sections: [
+        {
+          heading: '惡意來源',
+          query: 'q',
+          body: '內容',
+          sources: [{ title: '惡意網站', url: 'javascript:alert(1)' }],
+          hits: 1,
+        },
+      ],
+    });
+    const htmlOut = await renderHtml(doc);
+    const mdOut = await renderMd(makeDoc({
+      sections: [
+        {
+          heading: '惡意來源',
+          query: 'q',
+          body: '內容',
+          sources: [{ title: '惡意網站', url: 'javascript:alert(1)' }],
+          hits: 1,
+        },
+      ],
+    }));
+    expect(htmlOut).not.toContain('javascript:');
+    expect(mdOut).not.toContain('](javascript:');
+    expect(htmlOut).toContain('惡意網站');
+    expect(mdOut).toContain('惡意網站');
+  });
 });
 
 describe('renderer 登錄表契約', () => {

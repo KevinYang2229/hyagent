@@ -40,3 +40,18 @@ export function dedupeSources(sections: ReportSection[]): SectionSource[] {
   }
   return [...seen.values()];
 }
+
+/**
+ * URL scheme 白名單檢查：只允許 http: / https:，防止 javascript: 等注入。
+ * 報告內容來自被爬取的網站與 LLM 輸出，屬不可信輸入。
+ * 回傳 undefined 表示 scheme 不合法，renderer 應改為輸出純文字而非連結。
+ */
+export function safeUrl(url?: string): string | undefined {
+  if (!url) return undefined;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? url : undefined;
+  } catch {
+    return undefined;
+  }
+}
