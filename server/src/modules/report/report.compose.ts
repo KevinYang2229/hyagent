@@ -35,9 +35,12 @@ function sectionSystem(locale?: string): string {
   ].join('\n');
 }
 
-/** 彙整失敗時的降級內文：直接列出片段（比照知識庫問答的 fallbackReply） */
-function fallbackBody(chunks: KnowledgeChunk[]): string {
-  return chunks.map((c) => `・${c.title}：${c.content}`).join('\n');
+/** 彙整失敗時的降級內文：直接列出片段（比照知識庫問答的 fallbackReply，依語系加前綴） */
+function fallbackBody(chunks: KnowledgeChunk[], locale?: string): string {
+  const prefix = normalizeLocale(locale) === 'en'
+    ? 'Based on available information:'
+    : '依現有資料：';
+  return `${prefix}\n${chunks.map((c) => `・${c.title}：${c.content}`).join('\n')}`;
 }
 
 function toSources(chunks: KnowledgeChunk[]): SectionSource[] {
@@ -90,14 +93,14 @@ export async function composeSection(
     usageStore.recordLLMUsage(tenantId, result);
     const body = (result.text ?? '').trim();
     if (body === '') {
-      return { ...base, body: fallbackBody(chunks), sources: toSources(chunks), hits: chunks.length, degraded: true };
+      return { ...base, body: fallbackBody(chunks, locale), sources: toSources(chunks), hits: chunks.length, degraded: true };
     }
     return { ...base, body, sources: toSources(chunks), hits: chunks.length };
   } catch (err) {
     logger.warn({ err, tenantId, heading: section.heading }, 'report section synthesis failed');
     return {
       ...base,
-      body: fallbackBody(chunks),
+      body: fallbackBody(chunks, locale),
       sources: toSources(chunks),
       hits: chunks.length,
       degraded: true,
