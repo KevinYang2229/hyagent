@@ -27,6 +27,35 @@ const writeQueue = new DbWriteQueue('report-docs');
 
 const keyOf = (reportId: string, format: string): string => `${reportId}:${format}`;
 
+/**
+ * formatsOf / filesOf 共用的查詢邏輯：記憶體與 db（DATA_BACKEND=db 時）取聯集，
+ * 依 format 去重（記憶體命中優先），避免兩個公開方法各自重寫一次同樣的過期比對與併集規則。
+ */
+async function queryFiles(reportId: string): Promise<{ format: string; filename: string }[]> {
+  const now = Date.now();
+  const inMemory = [...docs.values()]
+    .filter((d) => d.reportId === reportId && new Date(d.expiresAt).getTime() > now)
+    .map((d) => ({ format: d.format, filename: d.filename }));
+
+  if (env.DATA_BACKEND !== 'db') return inMemory;
+  const db = getDb();
+  if (!db) return inMemory;
+
+  const rows = await db.reportDocRow.findMany({
+    where: { reportId, expiresAt: { gt: new Date(now) } },
+    select: { format: true, filename: true },
+  });
+  const seen = new Set(inMemory.map((f) => f.format));
+  const merged = [...inMemory];
+  for (const row of rows) {
+    if (!seen.has(row.format)) {
+      merged.push({ format: row.format, filename: row.filename });
+      seen.add(row.format);
+    }
+  }
+  return merged;
+}
+
 export const reportStore = {
   save(input: {
     reportId: string;
@@ -100,20 +129,16 @@ export const reportStore = {
    * 判斷 404，會與同時可成功的下載互相矛盾）。db 模式下改為記憶體與 db 兩邊查詢後取聯集。
    */
   async formatsOf(reportId: string): Promise<string[]> {
-    const now = Date.now();
-    const inMemory = [...docs.values()]
-      .filter((d) => d.reportId === reportId && new Date(d.expiresAt).getTime() > now)
-      .map((d) => d.format);
+    return (await queryFiles(reportId)).map((f) => f.format);
+  },
 
-    if (env.DATA_BACKEND !== 'db') return inMemory;
-    const db = getDb();
-    if (!db) return inMemory;
-
-    const rows = await db.reportDocRow.findMany({
-      where: { reportId, expiresAt: { gt: new Date(now) } },
-      select: { format: true },
-    });
-    return [...new Set([...inMemory, ...rows.map((r) => r.format)])];
+  /**
+   * 同 formatsOf，多附上每個格式對應的檔名——狀態端點用它讓前端設定下載檔名
+   * （<a download="…">），檔名來源與下載端點的 reportStore.get(...).filename 是同一份，
+   * 不各自算一次，避免兩邊算出的檔名不一致。
+   */
+  async filesOf(reportId: string): Promise<{ format: string; filename: string }[]> {
+    return queryFiles(reportId);
   },
 
   /** 清除過期產出物，回傳清除筆數 */

@@ -106,7 +106,7 @@ describe('GET /api/reports/:id/download', () => {
 });
 
 describe('GET /api/reports/:id', () => {
-  it('已產檔的報告回 done 與可下載格式清單', async () => {
+  it('已產檔的報告回 done 與可下載格式清單（含檔名）', async () => {
     save('r1', 'kevin', 'md', '# 報告');
     save('r1', 'kevin', 'html', '<h1>報告</h1>');
     const res = await request(app)
@@ -114,7 +114,28 @@ describe('GET /api/reports/:id', () => {
       .set('authorization', `Bearer ${await loginToken()}`);
     expect(res.status).toBe(200);
     expect(res.body.data.status).toBe('done');
-    expect(res.body.data.formats.sort()).toEqual(['html', 'md']);
+    const files = res.body.data.files as { format: string; filename: string }[];
+    expect(files.map((f) => f.format).sort()).toEqual(['html', 'md']);
+    expect(files.find((f) => f.format === 'md')?.filename).toBe('report.md');
+    expect(files.find((f) => f.format === 'html')?.filename).toBe('report.html');
+  });
+
+  it('狀態端點帶得出中文標題檔名——前端下載連結須用它，不能自行拼 `${id}.${format}`', async () => {
+    const filename = '請假規定彙整報告.md';
+    reportStore.save({
+      reportId: 'r3',
+      tenantId: 'default',
+      userId: 'kevin',
+      format: 'md',
+      filename,
+      content: Buffer.from('# 報告', 'utf8'),
+    });
+    const res = await request(app)
+      .get('/api/reports/r3')
+      .set('authorization', `Bearer ${await loginToken()}`);
+    expect(res.status).toBe(200);
+    const files = res.body.data.files as { format: string; filename: string }[];
+    expect(files.find((f) => f.format === 'md')?.filename).toBe(filename);
   });
 
   it('查無此報告回 404', async () => {

@@ -117,19 +117,25 @@ describe('reportStore（db 後端）', () => {
   });
 
   it('formatsOf：記憶體是空的，db 模式下仍能取得格式清單', async () => {
-    findMany.mockResolvedValueOnce([{ format: 'md' }, { format: 'html' }]);
+    findMany.mockResolvedValueOnce([
+      { format: 'md', filename: 'report.md' },
+      { format: 'html', filename: 'report.html' },
+    ]);
     const { reportStore } = loadStoreInDbMode();
 
     const formats = await reportStore.formatsOf('r1');
     expect(formats.sort()).toEqual(['html', 'md']);
     expect(findMany).toHaveBeenCalledWith({
       where: { reportId: 'r1', expiresAt: { gt: expect.any(Date) } },
-      select: { format: true },
+      select: { format: true, filename: true },
     });
   });
 
   it('formatsOf：記憶體與 db 各有資料時取聯集且去重', async () => {
-    findMany.mockResolvedValueOnce([{ format: 'md' }, { format: 'pdf' }]);
+    findMany.mockResolvedValueOnce([
+      { format: 'md', filename: 'report.md' },
+      { format: 'pdf', filename: 'report.pdf' },
+    ]);
     const { reportStore } = loadStoreInDbMode();
 
     reportStore.save({
@@ -144,5 +150,37 @@ describe('reportStore（db 後端）', () => {
 
     const formats = await reportStore.formatsOf('r1');
     expect(formats.sort()).toEqual(['md', 'pdf']);
+  });
+
+  it('filesOf：記憶體是空的，db 模式下仍能取得格式＋檔名清單（狀態端點設定下載檔名用）', async () => {
+    findMany.mockResolvedValueOnce([{ format: 'md', filename: '請假規定彙整報告.md' }]);
+    const { reportStore } = loadStoreInDbMode();
+
+    const files = await reportStore.filesOf('r1');
+    expect(files).toEqual([{ format: 'md', filename: '請假規定彙整報告.md' }]);
+  });
+
+  it('filesOf：記憶體與 db 各有資料時取聯集且去重，同格式以記憶體命中優先', async () => {
+    findMany.mockResolvedValueOnce([
+      { format: 'md', filename: 'db-算出的檔名.md' },
+      { format: 'pdf', filename: 'report.pdf' },
+    ]);
+    const { reportStore } = loadStoreInDbMode();
+
+    reportStore.save({
+      reportId: 'r1',
+      tenantId: 't1',
+      userId: 'u1',
+      format: 'md',
+      filename: '記憶體算出的檔名.md',
+      content: Buffer.from('# md', 'utf8'),
+    });
+    await Promise.resolve();
+
+    const files = await reportStore.filesOf('r1');
+    expect(files.sort((a, b) => a.format.localeCompare(b.format))).toEqual([
+      { format: 'md', filename: '記憶體算出的檔名.md' },
+      { format: 'pdf', filename: 'report.pdf' },
+    ]);
   });
 });

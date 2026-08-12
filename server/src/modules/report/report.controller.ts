@@ -34,9 +34,11 @@ export const reportController = {
     const id = String(req.params.id);
     const tenantId = resolveTenantId(req);
     const userId = resolveUserId(req);
-    // formatsOf 是 async 且 db-aware：重啟後 job 已消失、記憶體也空，仍要能從 db 得知有哪些格式，
-    // 否則會出現「狀態查詢 404、下載卻打得到」的矛盾
-    const formats = await reportStore.formatsOf(id);
+    // filesOf 是 async 且 db-aware：重啟後 job 已消失、記憶體也空，仍要能從 db 得知有哪些格式，
+    // 否則會出現「狀態查詢 404、下載卻打得到」的矛盾。回傳格式連同檔名——與下載端點同一份
+    // filename（reportStore 內部儲存值），前端才能把 <a download> 設成正確的中文檔名，
+    // 而不是退化成只有 UUID 的 `${id}.${format}`。
+    const files = await reportStore.filesOf(id);
     const job = getReportJob(id);
 
     if (job && (job.tenantId !== tenantId || job.userId !== userId)) {
@@ -44,15 +46,15 @@ export const reportController = {
     }
 
     if (!job) {
-      if (formats.length === 0) throw AppError.notFound('報告不存在');
+      if (files.length === 0) throw AppError.notFound('報告不存在');
       // job 已隨行程重啟消失，改以產出物的擁有者為準做同一套「一律 404」授權判斷——
-      // formatsOf 不分租戶／使用者，若不在這裡補查 reportStore.get 核對擁有者，
+      // filesOf 不分租戶／使用者，若不在這裡補查 reportStore.get 核對擁有者，
       // 就會讓「重啟後任何登入者都能查到別人報告的狀態」悄悄繞過下載端點同樣守的門檻
-      const owner = await reportStore.get(id, formats[0]);
+      const owner = await reportStore.get(id, files[0].format);
       if (!owner || owner.tenantId !== tenantId || owner.userId !== userId) {
         throw AppError.notFound('報告不存在');
       }
-      res.json({ data: { id, status: 'done', doneSections: 0, formats } });
+      res.json({ data: { id, status: 'done', doneSections: 0, files } });
       return;
     }
 
@@ -63,7 +65,7 @@ export const reportController = {
         topic: job.topic,
         doneSections: job.doneSections,
         ...(job.totalSections !== undefined ? { totalSections: job.totalSections } : {}),
-        formats,
+        files,
         ...(job.error ? { error: job.error } : {}),
       },
     });

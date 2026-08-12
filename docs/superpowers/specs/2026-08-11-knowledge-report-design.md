@@ -207,7 +207,7 @@ chunks = await rerankChunks(tenantId, section.query, pool, FINAL_K)   // FINAL_K
 | GET | `/api/reports/:id` | job 狀態 + 進度（`doneSections` / `totalSections`） |
 | GET | `/api/reports/:id/download?format=<format>` | 下載；`format` 預設 `md` |
 
-`format` 的合法值由**格式登錄表**決定（zod enum 由登錄表的 key 生成，而非另外手寫一份），檔名副檔名與 `Content-Type` 也一併取自登錄表。`GET /api/reports/:id` 的回應帶 `formats: string[]`，前端據此渲染下載連結——前端不得寫死 `['md','html']`，否則之後補格式要動兩處。
+`format` 的合法值由**格式登錄表**決定（zod enum 由登錄表的 key 生成，而非另外手寫一份），檔名副檔名與 `Content-Type` 也一併取自登錄表。`GET /api/reports/:id` 的回應帶 `files: { format: string; filename: string }[]`，前端據此渲染下載連結——前端不得寫死 `['md','html']`，否則之後補格式要動兩處。附上 `filename` 是因為下載走 `blob:` URL（無 header，瀏覽器只認 `<a download>` 的字面值），前端必須用後端算好的實際檔名（含中文標題），不能自行拼 `${id}.${format}`；這個 `filename` 與下載端點 `Content-Disposition` 用的是同一份（`reportStore` 內部儲存值），不各自算一次。
 
 ### HTML 渲染
 

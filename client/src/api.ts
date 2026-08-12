@@ -35,14 +35,21 @@ export interface TurnData {
   report?: ReportRef;
 }
 
+/** 一種可下載格式：format 供 API 呼叫用，filename 是後端算好的實際檔名（含中文標題），供 <a download> 用 */
+export interface ReportFile {
+  format: string;
+  filename: string;
+}
+
 export interface ReportData {
   id: string;
   status: 'queued' | 'outlining' | 'composing' | 'done' | 'empty' | 'failed';
   topic?: string;
   doneSections: number;
   totalSections?: number;
-  /** 後端登錄表決定的可下載格式；前端不得自行寫死清單 */
-  formats: string[];
+  /** 後端登錄表決定的可下載格式與檔名；前端不得自行寫死格式清單，也不得自己拼檔名
+   * （下載的 blob: URL 沒有 header，瀏覽器只認 <a download> 的字面值） */
+  files: ReportFile[];
   error?: string;
 }
 
@@ -339,8 +346,12 @@ export async function fetchReport(id: string): Promise<ReportData> {
  *
  * 不能用 <a href="/api/reports/..."> 直接連——瀏覽器的一般導覽不會帶 Authorization header，
  * 而該路由掛了 requireAuth，點下去只會拿到 401。因此改為帶 token 取回 blob 後觸發下載。
+ *
+ * filename 必須由呼叫端帶入（來自狀態端點 ReportData.files[].filename），不可在此自行拼
+ * `${id}.${format}`——下載走 blob: URL，blob 沒有 header，瀏覽器只採用 <a download> 的字面值，
+ * 伺服器算好的 Content-Disposition（含中文標題的 RFC 5987 編碼）在這條路徑上根本不會被讀到。
  */
-export async function downloadReport(id: string, format: string): Promise<void> {
+export async function downloadReport(id: string, format: string, filename: string): Promise<void> {
   const res = await fetch(
     `${API_ORIGIN}/api/reports/${id}/download?format=${encodeURIComponent(format)}`,
     withAuth({}),
@@ -351,7 +362,7 @@ export async function downloadReport(id: string, format: string): Promise<void> 
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
-  anchor.download = `${id}.${format}`;
+  anchor.download = filename;
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
