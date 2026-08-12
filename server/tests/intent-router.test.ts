@@ -207,6 +207,29 @@ describe('intentRouter.route', () => {
     expect(mockCreate).not.toHaveBeenCalled();
   });
 
+  it('非點黏流程：出差報告關鍵字不 0-token 直接路由到 report，需 Haiku 二次確認（非點黏才是知識問答主場）', async () => {
+    // 需另建租戶並同時授予 service:report 與 service:knowledge：
+    // 「上個月的出差報告要附什麼單據？」命中 report 關鍵字「報告」且唯一最高分，
+    // 若非點黏快徑忘了排除 report，會被 0-token 直接誤導向報告產線而非回答問題。
+    const t = tenantStore.createTenant('router-report-nonsticky');
+    tenantStore.updateTenant(t.id, {
+      grantedScopes: ['service:form', 'service:report', 'service:knowledge', 'form:leave-request'],
+    });
+    mockCreate.mockResolvedValue({
+      text: '{"intent":"kb.query","confidence":0.9}',
+      toolCalls: [],
+      stopReason: 'end_turn',
+    });
+    const r = await intentRouter.route(
+      makeSession({ tenantId: t.id, activeServiceId: undefined }),
+      '上個月的出差報告要附什麼單據？',
+    );
+    expect(mockCreate).toHaveBeenCalledTimes(1);
+    expect(r.serviceId).not.toBe('report');
+    expect(r.serviceId).toBe('knowledge');
+    expect(r.viaLLM).toBe(true);
+  });
+
   it('停用 form 服務後，填表請求不會因點黏被路由回 form', async () => {
     const t = tenantStore.createTenant('router-noform');
     tenantStore.updateTenant(t.id, { disabledServices: ['form'] });

@@ -166,9 +166,16 @@ export const intentRouter = {
       return { serviceId: classified ?? activeId, viaLLM: true };
     }
 
-    // 非點黏流程：關鍵字先行，模糊才 Haiku；fallback 一律落在啟用中的服務
+    // 非點黏流程：關鍵字先行，模糊才 Haiku；fallback 一律落在啟用中的服務。
+    // report 在此同樣要排除在 0-token 快徑外（理由同上方點黏分支 :144-146）：非點黏才是知識問答
+    // 的主場，而報告關鍵字（報告/總結/彙整）與知識問句的用詞高度重疊，keywordRoute 只比分數、
+    // 不看 intent description，會讓「上個月的出差報告要附什麼單據？」這類知識提問被 0-token
+    // 誤導向成本高出數倍的報告產線（1 次主題抽取 + 1 次大綱 + N 次檢索 + N 次彙整）。
+    // 改落到下方 classify，交由 Haiku 二次確認。
     const kw = keywordRoute(session, text);
-    if (kw.confident && enabledIds.has(kw.serviceId)) return { serviceId: kw.serviceId, viaLLM: false };
+    if (kw.confident && kw.serviceId !== 'report' && enabledIds.has(kw.serviceId)) {
+      return { serviceId: kw.serviceId, viaLLM: false };
+    }
     const classified = await classify(session, text);
     return { serviceId: classified ?? fallbackId, viaLLM: true };
   },
