@@ -33,6 +33,7 @@ export const conversationController = {
         values: session.values,
         reply: turn?.reply ?? null,
         suggestions: turn?.suggestions ?? [],
+        ...(turn?.report ? { report: turn.report } : {}),
       },
     });
   },
@@ -48,6 +49,7 @@ export const conversationController = {
       message,
       lang,
     );
+    // turn 已是 runTurn 回傳的完整 TurnResult，report 若有值已隨物件帶入，這裡不需另外挑欄位
     res.status(200).json({ data: turn });
   },
 

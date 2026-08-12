@@ -15,6 +15,7 @@ import { tenantService } from '@/modules/tenant/tenant.service';
 import { authRouter } from '@/modules/auth/auth.routes';
 import { conversationRouter } from '@/modules/conversation/conversation.routes';
 import { formRouter } from '@/modules/form/form.routes';
+import { reportRouter } from '@/modules/report/report.routes';
 import { leaveRouter } from '@/modules/leave/leave.routes';
 import { adminRouter } from '@/modules/admin/admin.routes';
 import { widgetRouter } from '@/modules/widget/widget.routes';
@@ -102,6 +103,10 @@ export function createApp(): Express {
   // conversations 會觸發 LLM 計費，再加 tenantMonthlyQuota 月配額守門
   app.use('/api/conversations', resolveTenant, requireAuth, tenantRateLimit, tenantMonthlyQuota, conversationRouter);
   app.use('/api/forms', resolveTenant, requireAuth, tenantRateLimit, formRouter);
+
+  // 報告：狀態查詢與下載。不掛 tenantMonthlyQuota——那是對話輪次額度，
+  // 報告的成本已由同租戶單一任務與節數上限守住
+  app.use('/api/reports', resolveTenant, requireAuth, tenantRateLimit, reportRouter);
   app.use('/api/leave', requireAuth, leaveRouter);
 
   // 公開 widget 設定：resolveTenant 以 ?key=pk_ 解租戶，無 requireAuth（widget 載入即可讀外觀）

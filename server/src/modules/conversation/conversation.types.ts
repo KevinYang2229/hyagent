@@ -1,4 +1,4 @@
-import type { SessionStatus, SubmissionInfo } from '@oa-agent/shared';
+import type { ReportRef, SessionStatus, SubmissionInfo } from '@oa-agent/shared';
 import type { LLMMessage } from '@/lib/llm/types';
 import type { FormValues } from '@/modules/form/form.types';
 
@@ -31,4 +31,6 @@ export interface TurnResult {
   submission?: SubmissionInfo;
   /** 給前端 UI 的建議回覆（使用者最可能的接續回應），best-effort，可能為空 */
   suggestions: string[];
+  /** 本回合啟動的報告（僅 report 服務會帶） */
+  report?: ReportRef;
 }
