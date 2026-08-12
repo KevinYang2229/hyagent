@@ -106,6 +106,8 @@ export const envSchema = z.object({
   REPORT_MAX_SECTIONS: z.coerce.number().int().min(1).max(12).default(6),
   // 報告：每節交給彙整 LLM 的片段數（與知識庫問答的 FINAL_K 同量級）
   REPORT_SECTION_TOP_K: z.coerce.number().int().min(1).max(20).default(5),
+  // 報告：產出物保存時數。附件靠對話結束清理，報告沒有對應的生命週期終點，只能靠 TTL
+  REPORT_TTL_HOURS: z.coerce.number().int().min(1).max(720).default(24),
 
   // ---- OA 連接器（MVP 預設 stub；http 為真 OA 連接器）----
   OA_CONNECTOR: z.enum(['stub', 'http']).default('stub'),

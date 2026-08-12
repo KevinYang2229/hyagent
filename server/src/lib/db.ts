@@ -20,6 +20,11 @@ export async function connectDb(): Promise<PrismaClient> {
   return client;
 }
 
+/** 取得已連線的 Prisma client；未連線（file 模式）回 undefined */
+export function getDb(): PrismaClient | undefined {
+  return client ?? undefined;
+}
+
 export class DbWriteQueue {
   private chain: Promise<void> = Promise.resolve();
 

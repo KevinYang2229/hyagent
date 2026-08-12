@@ -162,3 +162,19 @@ model KnowledgeIndexRow {
 
 /// 註：knowledge_chunks 刻意不建 model——embedding 欄位為 pgvector 的 halfvec(3072)，
 /// Prisma schema 無對應型別。該表的讀寫一律經 lib/db 的 $queryRaw / $executeRaw。
+
+model ReportDocRow {
+  reportId  String   @map("report_id")
+  format    String
+  tenantId  String   @map("tenant_id")
+  userId    String   @map("user_id")
+  filename  String
+  /// 報告產出物內容（Markdown / HTML bytes）
+  content   Bytes
+  createdAt DateTime @default(now()) @map("created_at")
+  expiresAt DateTime @map("expires_at")
+
+  @@id([reportId, format])
+  @@index([expiresAt])
+  @@map("report_docs")
+}
