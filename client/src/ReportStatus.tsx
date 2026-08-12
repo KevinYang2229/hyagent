@@ -54,6 +54,7 @@ export function ReportStatus({ reportId }: { reportId: string }): JSX.Element {
           <button
             key={format}
             type="button"
+            className="report-download"
             onClick={() => void downloadReport(data.id, format)}
           >
             {format.toUpperCase()}

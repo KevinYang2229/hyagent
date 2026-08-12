@@ -354,6 +354,21 @@
       color-mix(in srgb, var(--text-primary) 18%, transparent);
   }
 
+  /* ---- 報告產生進度／下載列（訊息串下方，本回合觸發報告產生時顯示；ReportStatus.tsx） ---- */
+  /* 版面比照 .quick-bar / .suggest-bar：與訊息串同寬的一條狀態列，px-5 對齊 msg-list 的內距 */
+  .report-status {
+    @apply flex flex-wrap items-center gap-2 bg-[var(--bg-secondary)] px-5 py-2.5 text-sm text-[var(--text-secondary)];
+  }
+  /* 失敗狀態：沿用既有的危險色 badge 配色（.form-error 同一組變數），不自創顏色 */
+  .report-status--error {
+    @apply bg-[var(--badge-danger-bg)] text-[var(--badge-danger-text)];
+  }
+  /* 下載鈕：直接沿用 .quick-chip 的可點擊圓角膠囊樣式與 hover 動效，維持與其他快捷鈕一致的手感 */
+  .report-download {
+    @apply cursor-pointer rounded-2xl border border-[var(--border-color)] bg-[var(--card-bg)] px-3 py-1.5 text-xs font-medium text-[var(--text-primary)] transition-all duration-200 hover:border-[var(--primary-color)] hover:bg-[var(--nav-hover)] hover:text-[var(--primary-color)];
+    @apply hover:-translate-y-0.5 hover:shadow-[0_4px_12px_-4px_rgba(var(--primary-color-rgb),0.35)];
+  }
+
   /* ---- 輸入列 ---- */
   .composer {
     @apply flex shrink-0 items-end gap-2.5 border-t border-[var(--border-color)] bg-[var(--card-bg)] px-5 pt-3.5;
