@@ -61,8 +61,14 @@ export const reportStore = {
 
   /** 先讀記憶體，未命中且為 db 模式時回資料庫撈（重啟後的下載走這條） */
   async get(reportId: string, format: string): Promise<StoredReport | undefined> {
-    const hit = docs.get(keyOf(reportId, format));
-    if (hit) return hit;
+    const key = keyOf(reportId, format);
+    const hit = docs.get(key);
+    if (hit) {
+      // 沒有排程呼叫 purgeExpired()：記憶體命中也要自行比對過期，
+      // 否則沒人手動觸發回收時，TTL 只在「剛好被 purge 過」的窗口內成立
+      if (new Date(hit.expiresAt).getTime() > Date.now()) return hit;
+      docs.delete(key);
+    }
     if (env.DATA_BACKEND !== 'db') return undefined;
 
     const db = getDb();
@@ -85,9 +91,29 @@ export const reportStore = {
     return stored;
   },
 
-  /** 該報告目前有哪些格式可下載（狀態端點回給前端，前端據此渲染連結） */
-  formatsOf(reportId: string): string[] {
-    return [...docs.values()].filter((d) => d.reportId === reportId).map((d) => d.format);
+  /**
+   * 該報告目前有哪些格式可下載（狀態端點回給前端，前端據此渲染連結）。
+   *
+   * 與 brief 原稿的同步簽名不同——特意改成 async 且 db-aware：純讀記憶體的話，
+   * 重啟後、在任一 format 被 get() 撈回填之前，formatsOf 會回空陣列，但 get() 本身
+   * 早就能從 db 補回內容，造成「下載打得到、狀態查不到」的矛盾（狀態端點若據此
+   * 判斷 404，會與同時可成功的下載互相矛盾）。db 模式下改為記憶體與 db 兩邊查詢後取聯集。
+   */
+  async formatsOf(reportId: string): Promise<string[]> {
+    const now = Date.now();
+    const inMemory = [...docs.values()]
+      .filter((d) => d.reportId === reportId && new Date(d.expiresAt).getTime() > now)
+      .map((d) => d.format);
+
+    if (env.DATA_BACKEND !== 'db') return inMemory;
+    const db = getDb();
+    if (!db) return inMemory;
+
+    const rows = await db.reportDocRow.findMany({
+      where: { reportId, expiresAt: { gt: new Date(now) } },
+      select: { format: true },
+    });
+    return [...new Set([...inMemory, ...rows.map((r) => r.format)])];
   },
 
   /** 清除過期產出物，回傳清除筆數 */

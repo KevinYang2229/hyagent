@@ -102,6 +102,7 @@ export const envSchema = z.object({
   // 兩階段檢索：先向量取候選池，再用 LLM（LLM_ROUTER_MODEL/Haiku）重排出最相關前幾筆
   KNOWLEDGE_RERANK: z.coerce.boolean().default(true),
 
+  // ---- 報告（依知識庫檢索彙整成可下載的報告）----
   // 報告：大綱節數上限。每節各一次檢索 + 一次彙整 LLM，節數直接決定一份報告的成本
   REPORT_MAX_SECTIONS: z.coerce.number().int().min(1).max(12).default(6),
   // 報告：每節交給彙整 LLM 的片段數（與知識庫問答的 FINAL_K 同量級）

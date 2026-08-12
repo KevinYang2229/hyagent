@@ -22,14 +22,14 @@ describe('reportStore', () => {
     save('r1', 'html', '<h1>html</h1>');
     expect((await reportStore.get('r1', 'md'))?.content.toString()).toBe('# md');
     expect((await reportStore.get('r1', 'html'))?.content.toString()).toBe('<h1>html</h1>');
-    expect(reportStore.formatsOf('r1').sort()).toEqual(['html', 'md']);
+    expect((await reportStore.formatsOf('r1')).sort()).toEqual(['html', 'md']);
   });
 
   it('未存過的報告或格式回 undefined', async () => {
     save('r1', 'md', '# md');
     expect(await reportStore.get('r1', 'pdf')).toBeUndefined();
     expect(await reportStore.get('nope', 'md')).toBeUndefined();
-    expect(reportStore.formatsOf('nope')).toEqual([]);
+    expect(await reportStore.formatsOf('nope')).toEqual([]);
   });
 
   it('帶回租戶與建立者，供下載時授權比對（job 記憶體狀態可能已因重啟消失）', async () => {
@@ -51,5 +51,18 @@ describe('reportStore', () => {
     save('r1', 'md', '# md');
     expect(reportStore.purgeExpired(new Date())).toBe(0);
     expect(await reportStore.get('r1', 'md')).toBeDefined();
+  });
+
+  it('過期後即使沒人呼叫 purgeExpired，get 也不會照回記憶體中的內容', async () => {
+    const realNow = Date.now;
+    try {
+      Date.now = () => new Date('2026-01-01T00:00:00.000Z').getTime();
+      save('r1', 'md', '# md');
+      // 沒有呼叫 reportStore.purgeExpired()：時間推過 TTL（預設 24h）後直接 get
+      Date.now = () => new Date('2026-01-02T01:00:00.000Z').getTime();
+      expect(await reportStore.get('r1', 'md')).toBeUndefined();
+    } finally {
+      Date.now = realNow;
+    }
   });
 });
