@@ -104,6 +104,8 @@ export const envSchema = z.object({
 
   // 報告：大綱節數上限。每節各一次檢索 + 一次彙整 LLM，節數直接決定一份報告的成本
   REPORT_MAX_SECTIONS: z.coerce.number().int().min(1).max(12).default(6),
+  // 報告：每節交給彙整 LLM 的片段數（與知識庫問答的 FINAL_K 同量級）
+  REPORT_SECTION_TOP_K: z.coerce.number().int().min(1).max(20).default(5),
 
   // ---- OA 連接器（MVP 預設 stub；http 為真 OA 連接器）----
   OA_CONNECTOR: z.enum(['stub', 'http']).default('stub'),
