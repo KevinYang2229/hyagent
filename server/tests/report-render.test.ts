@@ -33,6 +33,8 @@ describe('markdown renderer', () => {
     expect(out).toContain('# 馬太鞍溪災害補助報告');
     expect(out).toContain('## 申請資格');
     expect(out).toContain('設籍於受災區域之住戶。');
+    // 表頭應同時含主題與產生時間
+    expect(out).toContain('> 馬太鞍溪災害補助 · 2026-08-11T00:00:00.000Z');
   });
 
   it('查無資料的節保留標題，內文為固定語句', async () => {
@@ -115,6 +117,8 @@ describe('html renderer', () => {
     expect(out).not.toMatch(/https?:\/\/[^"']*\.(css|js)/);
     expect(out).not.toContain('<link');
     expect(out).not.toContain('<script');
+    // 表頭應同時含主題與產生時間
+    expect(out).toContain('馬太鞍溪災害補助 · 2026-08-11T00:00:00.000Z');
   });
 
   it('escape 標題與內文——內容來自被爬取的外部網站，屬不可信輸入', async () => {

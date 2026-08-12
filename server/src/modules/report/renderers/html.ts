@@ -75,7 +75,7 @@ export function renderHtml(doc: ReportDoc): string {
     '</head>',
     '<body>',
     `<h1>${escapeHtml(doc.title)}</h1>`,
-    `<p class="meta">${escapeHtml(doc.topic)}　${escapeHtml(doc.generatedAt)}</p>`,
+    `<p class="meta">${escapeHtml(doc.topic)} · ${escapeHtml(doc.generatedAt)}</p>`,
     ...doc.sections.map((s) => sectionHtml(s, doc.locale)),
     sourcesBlock,
     '</body>',
