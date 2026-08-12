@@ -102,3 +102,63 @@ describe('markdown renderer', () => {
     expect(out).toContain('## Sources');
   });
 });
+
+describe('html renderer', () => {
+  async function renderHtml(doc: ReportDoc): Promise<string> {
+    return (await renderers.html.render(doc)).toString('utf8');
+  }
+
+  it('輸出完整 HTML 文件且不引用任何外部資源', async () => {
+    const out = await renderHtml(makeDoc());
+    expect(out).toContain('<!doctype html>');
+    expect(out).toContain('<style>');
+    expect(out).not.toMatch(/https?:\/\/[^"']*\.(css|js)/);
+    expect(out).not.toContain('<link');
+    expect(out).not.toContain('<script');
+  });
+
+  it('escape 標題與內文——內容來自被爬取的外部網站，屬不可信輸入', async () => {
+    const doc = makeDoc({
+      title: '<script>alert(1)</script>',
+      sections: [
+        {
+          heading: '<img onerror=alert(1)>',
+          query: 'q',
+          body: 'a & b < c',
+          sources: [{ title: '"引號"', url: 'https://example.gov.tw/?a=1&b=2' }],
+          hits: 1,
+        },
+      ],
+    });
+    const out = await renderHtml(doc);
+    expect(out).not.toContain('<script>alert(1)</script>');
+    expect(out).not.toContain('<img onerror');
+    expect(out).toContain('&lt;script&gt;');
+    expect(out).toContain('a &amp; b &lt; c');
+    expect(out).toContain('https://example.gov.tw/?a=1&amp;b=2');
+  });
+
+  it('查無資料節與降級節的標註與 Markdown 一致', async () => {
+    const doc = makeDoc({
+      sections: [
+        { heading: '金額', query: 'q', body: '', sources: [], hits: 0 },
+        { heading: '期限', query: 'q', body: '片段', sources: [], hits: 1, degraded: true },
+      ],
+    });
+    const out = await renderHtml(doc);
+    expect(out).toContain('知識庫查無相關資料。');
+    expect(out).toContain('本節彙整未完成，以下為檢索到的原始片段');
+  });
+});
+
+describe('renderer 登錄表契約', () => {
+  // 對每一個登錄的 renderer 跑同一份 doc：之後新增格式會自動被這條涵蓋
+  it.each(Object.keys(renderers))('%s renderer 產出非空內容且有 contentType', async (format) => {
+    const renderer = renderers[format];
+    expect(renderer.format).toBe(format);
+    expect(renderer.contentType).toMatch(/charset=utf-8/);
+    const out = await renderer.render(makeDoc());
+    expect(Buffer.isBuffer(out)).toBe(true);
+    expect(out.length).toBeGreaterThan(0);
+  });
+});

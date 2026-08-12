@@ -6,6 +6,7 @@
  * 多一份就多一個會漏改的地方。
  */
 import type { ReportDoc } from './report.types';
+import { htmlRenderer } from './renderers/html';
 import { markdownRenderer } from './renderers/markdown';
 
 export interface ReportRenderer {
@@ -18,6 +19,7 @@ export interface ReportRenderer {
 
 export const renderers: Record<string, ReportRenderer> = {
   [markdownRenderer.format]: markdownRenderer,
+  [htmlRenderer.format]: htmlRenderer,
 };
 
 export const REPORT_FORMATS: string[] = Object.keys(renderers);
