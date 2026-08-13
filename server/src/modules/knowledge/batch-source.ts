@@ -9,6 +9,7 @@
  */
 import { mkdir, readdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import { extname, join } from 'node:path';
+import { logger } from '@/lib/logger';
 import { SUPPORTED_EXTENSIONS } from './doc-parse';
 
 /** 一個待處理的匯入項目 */
@@ -51,13 +52,33 @@ export class LocalFolderSource implements BatchSource {
   constructor(private readonly root: string) {}
 
   async list(): Promise<PendingItem[]> {
-    const tenantDirs = await readdir(this.root, { withFileTypes: true }).catch(() => []);
+    // root 層：ENOENT 是正常情況（資料夾還沒建），其他錯誤是設定問題必須拋出
+    let tenantDirs;
+    try {
+      tenantDirs = await readdir(this.root, { withFileTypes: true });
+    } catch (err) {
+      const e = err as NodeJS.ErrnoException;
+      if (e.code === 'ENOENT') return [];
+      throw err;
+    }
+
     const items: PendingItem[] = [];
 
     for (const dir of tenantDirs) {
       if (!dir.isDirectory() || isReserved(dir.name)) continue;
       const tenantPath = join(this.root, dir.name);
-      const entries = await readdir(tenantPath, { withFileTypes: true }).catch(() => []);
+
+      // 租戶層：ENOENT / ENOTDIR 屬於掃描期間的競態（資料夾被刪或被替換成檔案），靜默略過
+      // 其他錯誤（如權限）必須記錄，但不中斷整輪掃描
+      let entries;
+      try {
+        entries = await readdir(tenantPath, { withFileTypes: true });
+      } catch (err) {
+        const e = err as NodeJS.ErrnoException;
+        if (e.code === 'ENOENT' || e.code === 'ENOTDIR') continue;
+        logger.warn({ err: e, path: tenantPath }, '租戶資料夾讀取失敗，略過該租戶');
+        continue;
+      }
 
       for (const entry of entries) {
         // 不遞迴：租戶資料夾底下的子目錄一律略過（_done/_failed 也在此被擋掉）
@@ -65,8 +86,16 @@ export class LocalFolderSource implements BatchSource {
         if (!SUPPORTED.has(extname(entry.name).toLowerCase())) continue;
 
         const ref = join(tenantPath, entry.name);
-        const st = await stat(ref).catch(() => null);
-        if (!st) continue; // 掃描期間被刪掉／搬走，下一輪自然不會再出現
+        // stat 失敗通常是掃描期間被刪掉，靜默略過；其他錯誤記錄但不中斷
+        let st;
+        try {
+          st = await stat(ref);
+        } catch (err) {
+          const e = err as NodeJS.ErrnoException;
+          if (e.code === 'ENOENT') continue; // 掃描期間被刪掉，下一輪自然不會再出現
+          logger.warn({ err: e, path: ref }, '檔案 stat 失敗，略過');
+          continue;
+        }
         items.push({ tenantId: dir.name, name: entry.name, ref, size: st.size, mtimeMs: st.mtimeMs });
       }
     }
