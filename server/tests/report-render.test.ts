@@ -206,3 +206,89 @@ describe('renderer 登錄表契約', () => {
     expect(out.length).toBeGreaterThan(0);
   });
 });
+
+/**
+ * 章節內文是 Markdown（LLM 輸出的既有慣例，client 也用 react-markdown 渲染聊天訊息）。
+ * 兩個 renderer 都必須把它當 Markdown 處理，而不是純文字：
+ * HTML 要轉成真正的標籤，Markdown 要讓內文標題正確巢狀在章節標題底下。
+ */
+describe('章節內文的 Markdown 處理', () => {
+  const MD_BODY = [
+    '# 目標市場與客戶定位',
+    '',
+    '凌網資訊的目標市場涵蓋三大領域。',
+    '',
+    '## 政府機關市場',
+    '',
+    '提供**電子化政府**解決方案，包括：',
+    '',
+    '- HyCMS 網站管理平台',
+    '- HyEIP 員工入口網',
+  ].join('\n');
+
+  function docWithBody(body: string): ReportDoc {
+    return makeDoc({
+      sections: [
+        {
+          heading: '目標市場與客戶定位',
+          query: 'q？',
+          body,
+          sources: [{ title: '產品' }],
+          hits: 3,
+        },
+      ],
+    });
+  }
+
+  it('HTML：Markdown 語法轉成標籤，不留字面的 ## 與 **', async () => {
+    const out = (await renderers.html.render(docWithBody(MD_BODY))).toString('utf8');
+    expect(out).toContain('<strong>電子化政府</strong>');
+    expect(out).toContain('<li>HyCMS 網站管理平台</li>');
+    expect(out).not.toMatch(/^##\s/m);
+    expect(out).not.toContain('**電子化政府**');
+  });
+
+  it('HTML：內文標題降級為 h3，巢狀在章節的 h2 底下', async () => {
+    const out = (await renderers.html.render(docWithBody(MD_BODY))).toString('utf8');
+    expect(out).toContain('<h2>目標市場與客戶定位</h2>');
+    expect(out).toContain('<h3>政府機關市場</h3>');
+    // 內文不得產生與章節同級或更高的標題，否則報告階層會壞掉
+    expect(out).not.toContain('<h1>目標市場與客戶定位</h1>');
+    expect(out.match(/<h2>/g) ?? []).toHaveLength(2); // 章節標題 + 來源標題
+  });
+
+  it('HTML：內文開頭重複章節標題時剔除，不重複顯示', async () => {
+    const out = (await renderers.html.render(docWithBody(MD_BODY))).toString('utf8');
+    expect(out.match(/目標市場與客戶定位/g) ?? []).toHaveLength(1);
+  });
+
+  it('HTML：內文裡的 raw HTML 仍被 escape，不得放行', async () => {
+    const out = (
+      await renderers.html.render(docWithBody('正常內容 <script>alert(1)</script>'))
+    ).toString('utf8');
+    expect(out).not.toContain('<script>alert(1)</script>');
+    expect(out).toContain('&lt;script&gt;');
+  });
+
+  it('HTML：內文裡的 javascript: 連結不得變成可點連結', async () => {
+    const out = (
+      await renderers.html.render(docWithBody('[點我](javascript:alert(1))'))
+    ).toString('utf8');
+    expect(out).not.toContain('href="javascript:');
+  });
+
+  it('Markdown：內文標題降級到章節（##）底下，且剔除重複的章節標題', async () => {
+    const out = (await renderers.md.render(docWithBody(MD_BODY))).toString('utf8');
+    expect(out).toContain('## 目標市場與客戶定位');
+    expect(out).toContain('### 政府機關市場');
+    // 內文原本的 H1 會讓 H2 底下冒出更高階層，必須被降級掉
+    expect(out).not.toMatch(/^# 目標市場與客戶定位$/m);
+    expect(out.match(/^## 目標市場與客戶定位$/gm) ?? []).toHaveLength(1);
+  });
+
+  it('Markdown：粗體與清單原樣保留（本來就是 Markdown）', async () => {
+    const out = (await renderers.md.render(docWithBody(MD_BODY))).toString('utf8');
+    expect(out).toContain('**電子化政府**');
+    expect(out).toContain('- HyCMS 網站管理平台');
+  });
+});

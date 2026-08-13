@@ -5,6 +5,7 @@ import {
   degradedNoticeText,
   dedupeSources,
   emptySectionText,
+  normalizeSectionBody,
   safeUrl,
   sourcesHeading,
 } from '../report.strings';
@@ -12,8 +13,10 @@ import type { ReportDoc, ReportSection } from '../report.types';
 
 function sectionBody(section: ReportSection, locale: string): string {
   if (section.hits === 0) return emptySectionText(locale);
-  if (section.degraded) return `> ${degradedNoticeText(locale)}\n\n${section.body}`;
-  return section.body;
+  // 內文是 LLM 產生的 Markdown，標題層級要先正規化到章節（##）底下
+  const body = normalizeSectionBody(section.body, section.heading);
+  if (section.degraded) return `> ${degradedNoticeText(locale)}\n\n${body}`;
+  return body;
 }
 
 export function renderMarkdown(doc: ReportDoc): string {

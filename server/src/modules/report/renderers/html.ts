@@ -4,15 +4,27 @@
  * 零外部資源（無 CDN、無字型連結），確保離線與內網可開、可直接列印成 PDF。
  * 所有動態字串一律 escape：報告內容來自被爬取的外部網站與 LLM 輸出，屬不可信輸入。
  */
+import MarkdownIt from 'markdown-it';
 import { normalizeLocale } from '@/lib/locale';
 import {
   degradedNoticeText,
   dedupeSources,
   emptySectionText,
+  normalizeSectionBody,
   safeUrl,
   sourcesHeading,
 } from '../report.strings';
 import type { ReportDoc, ReportSection } from '../report.types';
+
+/**
+ * 章節內文的 Markdown → HTML 轉換器。
+ *
+ * `html: false`（預設）是這裡的安全支點：原始碼中的 raw HTML 會被 escape 而非放行，
+ * 因此不需要另外接 sanitizer，「任何 raw HTML 都活不下來」這個不變式依然成立。
+ * markdown-it 內建的 validateLink 也會擋掉 javascript: / vbscript: / file: 等 scheme。
+ * linkify 關閉：不要把知識庫內文裡的裸網址自動變成可點連結。
+ */
+const markdown = new MarkdownIt({ html: false, linkify: false, breaks: false });
 
 export function escapeHtml(value: string): string {
   return value
@@ -28,10 +40,22 @@ const STYLE = [
   'font-family:system-ui,"Noto Sans TC",sans-serif;line-height:1.7;color:#1a1a1a}',
   'h1{font-size:1.6rem;margin-bottom:.25rem}',
   'h2{font-size:1.2rem;margin-top:2rem;border-bottom:1px solid #e5e5e5;padding-bottom:.25rem}',
+  // 內文標題由 normalizeSectionBody 保證從 h3 起跳，巢狀在章節的 h2 底下
+  'h3{font-size:1.05rem;margin-top:1.5rem;margin-bottom:.25rem}',
+  'h4,h5,h6{font-size:1rem;margin-top:1.25rem;margin-bottom:.25rem}',
   '.meta{color:#666;font-size:.85rem;margin-bottom:2rem}',
   '.notice{background:#fff8e1;border-left:3px solid #f0b429;padding:.5rem .75rem;margin:.5rem 0}',
   '.empty{color:#666}',
-  'p{white-space:pre-wrap}',
+  // 內文改由 markdown-it 產生真正的區塊標籤，不再需要 pre-wrap 保留換行
+  'p{margin:.75rem 0}',
+  'ul,ol{margin:.75rem 0;padding-left:1.5rem}',
+  'li{margin:.25rem 0}',
+  'blockquote{margin:.75rem 0;padding-left:.75rem;border-left:3px solid #e5e5e5;color:#555}',
+  'code{background:#f5f5f5;padding:.1rem .3rem;border-radius:3px;font-size:.9em}',
+  'pre{background:#f5f5f5;padding:.75rem;border-radius:4px;overflow-x:auto}',
+  'pre code{background:none;padding:0}',
+  'table{border-collapse:collapse;margin:.75rem 0}',
+  'th,td{border:1px solid #e5e5e5;padding:.35rem .6rem;text-align:left}',
   'a{color:#0b6bcb}',
 ].join('');
 
@@ -43,7 +67,10 @@ function sectionHtml(section: ReportSection, locale: string): string {
   const notice = section.degraded
     ? `<p class="notice">${escapeHtml(degradedNoticeText(locale))}</p>\n`
     : '';
-  return `${heading}\n${notice}<p>${escapeHtml(section.body)}</p>`;
+  // 內文是 Markdown：先把標題層級正規化到章節（h2）底下，再交給 markdown-it 轉標籤。
+  // 這裡不能用 escapeHtml——那會讓 ## 與 ** 原樣顯示，正是本來的 bug。
+  const body = markdown.render(normalizeSectionBody(section.body, section.heading));
+  return `${heading}\n${notice}${body.trim()}`;
 }
 
 export function renderHtml(doc: ReportDoc): string {

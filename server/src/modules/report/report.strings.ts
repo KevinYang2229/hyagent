@@ -55,3 +55,65 @@ export function safeUrl(url?: string): string | undefined {
     return undefined;
   }
 }
+
+/** ATX 標題行：`## 標題`。setext（底線式）標題 LLM 幾乎不用，刻意不處理。 */
+const ATX_HEADING = /^(#{1,6})\s+(.*)$/;
+
+/** 章節內文中，標題允許的最淺層級——報告的章節標題本身是 h2，內文必須從 h3 起跳 */
+const MIN_BODY_HEADING_LEVEL = 3;
+
+/**
+ * 章節內文的正規化。內文是 LLM 產生的 Markdown（與聊天訊息同一慣例，client 用
+ * react-markdown 渲染），但模型有兩個穩定的壞習慣，靠 prompt 擋不住：
+ *
+ * 1. 重複輸出章節標題——prompt 已明寫「不要重複章節標題」，模型照樣輸出。
+ * 2. 自己從 `#` 或 `##` 開子標題——與報告章節（h2）同級甚至更高，階層會壞掉。
+ *
+ * prompt 會漂移，renderer 不會，所以防線放在這裡。兩種輸出格式都需要，故不屬於任一
+ * renderer：放進其中一個會讓另一個反向依賴它。
+ *
+ * 降級採「相對位移」而非一律壓成 h3，保留內文自己的階層關係。
+ */
+export function normalizeSectionBody(body: string, heading: string): string {
+  const lines = body.split('\n');
+  const wantedHeading = heading.trim();
+
+  // 逐行掃描時要略過程式碼區塊——裡面的 # 是內容，不是標題
+  let inFence = false;
+  const headingAt: { index: number; level: number; text: string }[] = [];
+  lines.forEach((line, index) => {
+    if (/^\s*```/.test(line)) {
+      inFence = !inFence;
+      return;
+    }
+    if (inFence) return;
+    const match = ATX_HEADING.exec(line);
+    if (match) headingAt.push({ index, level: match[1].length, text: match[2].trim() });
+  });
+
+  if (headingAt.length === 0) return body.trim();
+
+  // 開頭若是與章節同名的標題就剔除（含其後緊接的空行），避免同一個標題出現兩次
+  const first = headingAt[0];
+  const onlyBlankBefore = lines.slice(0, first.index).every((l) => l.trim() === '');
+  const dropIndex = onlyBlankBefore && first.text === wantedHeading ? first.index : -1;
+
+  const remaining = dropIndex === -1 ? headingAt : headingAt.slice(1);
+  const shallowest = remaining.reduce((min, h) => Math.min(min, h.level), 6);
+  // 只降不升：內文本來就從 h3 以下開始時維持原樣，不要把它往上拉
+  const shift = Math.max(0, MIN_BODY_HEADING_LEVEL - shallowest);
+
+  const shiftByIndex = new Map(remaining.map((h) => [h.index, h]));
+  const out = lines
+    .filter((_, index) => index !== dropIndex)
+    .map((line, indexAfterDrop) => {
+      // filter 之後 index 會位移，改用原始索引查表
+      const originalIndex = dropIndex !== -1 && indexAfterDrop >= dropIndex ? indexAfterDrop + 1 : indexAfterDrop;
+      const found = shiftByIndex.get(originalIndex);
+      if (!found || shift === 0) return line;
+      const level = Math.min(6, found.level + shift);
+      return `${'#'.repeat(level)} ${found.text}`;
+    });
+
+  return out.join('\n').trim();
+}

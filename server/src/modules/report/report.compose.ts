@@ -22,6 +22,7 @@ function sectionSystem(locale?: string): string {
       '- Use ONLY the reference material below; for anything not covered, say "Not mentioned in the materials." Never fabricate.',
       '- Write the body of this section only. Do NOT repeat the section heading.',
       '- Do NOT write conclusions, summaries, or transitions to other sections.',
+      '- Output Markdown. Sub-headings, if any, MUST start at level 3 (###) — the section heading is already level 2.',
       '- Cite sources inline as (Source: title) where helpful.',
     ].join('\n');
   }
@@ -31,6 +32,7 @@ function sectionSystem(locale?: string): string {
     '- 只根據下方「參考資料」撰寫；資料未提到的部分明說「資料中未提及」，切勿杜撰。',
     '- 只寫這一節的內文，不要重複章節標題。',
     '- 不要寫結論、總結或銜接其他章節的過渡句（章節銜接由排版負責）。',
+    '- 以 Markdown 輸出。若要分小節，標題一律從第三級（###）起跳——章節標題本身已經是第二級。',
     '- 必要時於句末以（來源：標題）標註引用。',
   ].join('\n');
 }
