@@ -354,19 +354,45 @@
       color-mix(in srgb, var(--text-primary) 18%, transparent);
   }
 
-  /* ---- 報告產生進度／下載列（訊息串下方，本回合觸發報告產生時顯示；ReportStatus.tsx） ---- */
-  /* 版面比照 .quick-bar / .suggest-bar：與訊息串同寬的一條狀態列，px-5 對齊 msg-list 的內距 */
-  .report-status {
-    @apply flex flex-wrap items-center gap-2 bg-[var(--bg-secondary)] px-5 py-2.5 text-sm text-[var(--text-secondary)];
+  /* ---- 報告入口（訊息動作列的圖示按鈕；ReportStatus.tsx） ---- */
+  /*
+   * 沿用 .msg-action 的尺寸與配色（同一列視覺一致），但覆寫 opacity：
+   * 複製鈕 hover 才浮現是合理的（想複製時才去找它），報告鈕卻帶狀態——
+   * 產生中／已完成／失敗都要讓使用者一眼看到，藏起來就失去意義。
+   */
+  .report-action {
+    @apply opacity-100;
   }
-  /* 失敗狀態：沿用既有的危險色 badge 配色（.form-error 同一組變數），不自創顏色 */
-  .report-status--error {
-    @apply bg-[var(--badge-danger-bg)] text-[var(--badge-danger-text)];
+  .report-action--error {
+    @apply text-[var(--status-danger)] hover:text-[var(--status-danger)];
   }
-  /* 下載鈕：直接沿用 .quick-chip 的可點擊圓角膠囊樣式與 hover 動效，維持與其他快捷鈕一致的手感 */
+  /* 產生中：弧線持續旋轉 */
+  .report-action-spin {
+    animation: spin 1s linear infinite;
+  }
+
+  /* 彈窗內：產生中提示與格式選擇 */
+  .report-chip-dots {
+    @apply inline-flex items-center gap-0.5;
+  }
+  .report-chip-dots .typing-dot {
+    @apply h-1 w-1;
+  }
+  .report-dialog-working {
+    @apply flex items-center gap-2;
+  }
+  .report-formats {
+    @apply mt-3 flex flex-col gap-2;
+  }
   .report-download {
-    @apply cursor-pointer rounded-2xl border border-[var(--border-color)] bg-[var(--card-bg)] px-3 py-1.5 text-xs font-medium text-[var(--text-primary)] transition-all duration-200 hover:border-[var(--primary-color)] hover:bg-[var(--nav-hover)] hover:text-[var(--primary-color)];
-    @apply hover:-translate-y-0.5 hover:shadow-[0_4px_12px_-4px_rgba(var(--primary-color-rgb),0.35)];
+    @apply flex w-full cursor-pointer items-center justify-between gap-3 rounded-xl border border-[var(--border-color)] bg-[var(--card-bg)] px-3.5 py-2.5 text-left;
+    @apply transition-all duration-200 hover:border-[var(--primary-color)] hover:bg-[var(--nav-hover)];
+  }
+  .report-format-name {
+    @apply text-sm font-semibold text-[var(--text-primary)];
+  }
+  .report-format-file {
+    @apply truncate text-xs text-[var(--text-secondary)];
   }
 
   /* ---- 輸入列 ---- */
@@ -637,7 +663,9 @@
   .typing-dot,
   .type-caret,
   .msg,
-  .bubble-sys {
+  .bubble-sys,
+  .report-chip-dots .typing-dot,
+  .report-action-spin {
     animation: none;
   }
   .type-caret {

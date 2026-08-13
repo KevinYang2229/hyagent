@@ -161,6 +161,10 @@ const zhHant = {
     empty: "知識庫查無相關資料，未產生報告。",
     failed: "報告產生失敗，請稍後再試。",
     stale: "報告狀態已失效（可能是伺服器重新啟動），請重新產生報告。",
+    view: "檢視報告",  // 圖示按鈕的 title／aria-label，畫面上不顯示文字
+    dialogTitle: "知識庫報告",
+    pickFormat: "選擇要下載的格式：",
+    close: "關閉",
   },
 };
 
@@ -368,6 +372,10 @@ const en = {
     empty: "No relevant information in the knowledge base; no report generated.",
     failed: "Report generation failed. Please try again later.",
     stale: "Report status is no longer available (the server may have restarted). Please generate a new report.",
+    view: "View report",
+    dialogTitle: "Knowledge base report",
+    pickFormat: "Choose a format to download:",
+    close: "Close",
   },
 };
 

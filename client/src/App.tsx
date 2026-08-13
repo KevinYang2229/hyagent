@@ -38,6 +38,11 @@ interface ChatMessage {
   suggestions?: string[];
   /** 開場問候訊息：文字隨 AI 名稱即時重算（不存死字串），讓改名後／預覽即時反映 */
   greeting?: boolean;
+  /**
+   * 本回合啟動的報告 id（僅報告服務會帶）。掛在訊息上而非 App 層單一狀態：
+   * 一段對話可能產生多份報告，各自的進度與下載入口要跟著它所屬的那則回覆走。
+   */
+  reportId?: string;
 }
 
 // 氣泡下方時間：YYYY-MM-DD HH:mm:ss
@@ -134,8 +139,6 @@ export default function App() {
   const userId = authUser?.id ?? '';
   const [convId, setConvId] = useState<string | null>(null);
   const [status, setStatus] = useState<SessionStatus | null>(null);
-  // 最近一次回合帶回的報告 id（僅報告服務會帶 TurnData.report）；用來渲染下方的 ReportStatus 進度區塊
-  const [reportId, setReportId] = useState<string | null>(null);
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [submission, setSubmission] = useState<SubmissionInfo | null>(null);
   const [balances, setBalances] = useState<LeaveBalance[]>([]);
@@ -350,8 +353,11 @@ export default function App() {
     };
   }, [authUser]);
 
-  function pushMsg(role: Role, text: string, suggestions?: string[]) {
-    setMessages((prev) => [...prev, { id: nextId(), role, text, suggestions, at: Date.now() }]);
+  function pushMsg(role: Role, text: string, suggestions?: string[], reportId?: string) {
+    setMessages((prev) => [
+      ...prev,
+      { id: nextId(), role, text, suggestions, reportId, at: Date.now() },
+    ]);
   }
 
   // 訊息動作：複製（AI/使用者皆可）與編輯（僅使用者訊息：帶回輸入框改完再送）
@@ -393,7 +399,8 @@ export default function App() {
     setSubmission(null);
     setShowForm(false);
     setFormDef(null);
-    setReportId(null);
+    // 報告不在這裡清：它掛在觸發它的那則訊息上，逐字稿還在就代表下載入口還有效
+    // （切換表單 session 時訊息刻意保留，先前產生的報告仍應可再次開啟下載）
   }
 
   function handleLogin(user: Applicant) {
@@ -422,9 +429,9 @@ export default function App() {
     setStatus(data.status);
     setValues(data.values ?? {});
     setSubmission(data.submission ?? null);
-    // 本回合啟動了報告產生（僅報告服務會帶）：記下 id，下方渲染 ReportStatus 開始輪詢進度
-    if (data.report) setReportId(data.report.id);
-    if (data.reply) pushMsg('agent', data.reply, data.suggestions);
+    // 本回合啟動了報告產生（僅報告服務會帶）：把 id 掛在這則回覆上，
+    // 由該則訊息下方的膠囊按鈕負責輪詢與開啟下載彈窗
+    if (data.reply) pushMsg('agent', data.reply, data.suggestions, data.report?.id);
 
     // 只在「剛填寫完畢（→confirming）」或「剛送出（→submitted）」的轉變當下主動開表單；
     // 停留在同一狀態（例如 confirming 中繼續問話）不再強制彈出。
@@ -780,6 +787,9 @@ export default function App() {
                   {/* 送出日期時間 + 訊息動作（hover 顯示 icon：複製；使用者訊息另有編輯。tooltip/aria 保留文字語意） */}
                   <span className="msg-meta">
                     <span className="msg-time">{formatTime(m.at)}</span>
+                    {/* 報告入口：本則回覆啟動了報告產生時顯示，點開彈窗選格式下載。
+                        與複製鈕同列同風格，但不隨 hover 隱藏——它帶狀態，藏起來使用者不會知道報告好了 */}
+                    {m.reportId && <ReportStatus reportId={m.reportId} />}
                     <button
                       type="button"
                       className="msg-action"
@@ -832,9 +842,6 @@ export default function App() {
               </div>
             )}
           </div>
-
-          {/* 報告產生進度／下載：本回合起了報告產生時顯示，輪詢後端 job 狀態 */}
-          {reportId && <ReportStatus reportId={reportId} />}
 
           {/* 辦理項目選單：表單（選擇）+ 知識庫推薦用詞（直接詢問）；對話開始前顯示 */}
           {!convId &&
