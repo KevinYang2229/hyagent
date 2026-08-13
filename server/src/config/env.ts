@@ -109,6 +109,9 @@ export const envSchema = z.object({
   REPORT_SECTION_TOP_K: z.coerce.number().int().min(1).max(20).default(5),
   // 報告：產出物保存時數。附件靠對話結束清理，報告沒有對應的生命週期終點，只能靠 TTL
   REPORT_TTL_HOURS: z.coerce.number().int().min(1).max(720).default(24),
+  // 報告表頭產生時間的顯示時區（IANA 時區名）。不能用伺服器本地時間——正式環境跑在 UTC，
+  // 會把台北的 09:41 印成 01:41，而裸的日期字串看起來就像本地時間，比 ISO 更容易誤導讀者
+  REPORT_TIMEZONE: z.string().default('Asia/Taipei'),
 
   // ---- OA 連接器（MVP 預設 stub；http 為真 OA 連接器）----
   OA_CONNECTOR: z.enum(['stub', 'http']).default('stub'),

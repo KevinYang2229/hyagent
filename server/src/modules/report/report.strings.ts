@@ -4,6 +4,7 @@
  * 不放在任何一個 renderer 裡：這些是報告本身的性質（查無資料怎麼說、來源怎麼去重），
  * 不是某種格式的性質。放進 markdown.ts 會讓 html.ts 反向依賴 markdown.ts。
  */
+import { env } from '@/config/env';
 import { normalizeLocale } from '@/lib/locale';
 import type { ReportSection, SectionSource } from './report.types';
 
@@ -116,4 +117,35 @@ export function normalizeSectionBody(body: string, heading: string): string {
     });
 
   return out.join('\n').trim();
+}
+
+/**
+ * 報告表頭的產生時間：ISO 8601 是給機器看的，報告是給人讀的文件，改成 YYYY-MM-DD HH:mm:ss。
+ *
+ * 刻意不用伺服器本地時間（`toLocaleString()` 無 timeZone）：正式環境跑在 UTC，會把台北的
+ * 09:41 印成 01:41，而少了 Z 之後那串字看起來就是本地時間，比原本的 ISO 更容易誤導。
+ * 時區固定由 env.REPORT_TIMEZONE 決定（預設 Asia/Taipei）。
+ *
+ * 用 formatToParts 而非字串樣板：各 runtime 對 en-CA 一類 locale 的輸出細節不完全一致，
+ * 取 part 才能保證欄位順序與補零穩定。hourCycle h23 確保午夜是 00 而不是 24。
+ */
+export function formatReportTimestamp(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso; // 解析不了就原樣輸出，不要在報告裡顯示 Invalid Date
+
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: env.REPORT_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date);
+
+  const at = (type: Intl.DateTimeFormatPartTypes): string =>
+    parts.find((p) => p.type === type)?.value ?? '';
+
+  return `${at('year')}-${at('month')}-${at('day')} ${at('hour')}:${at('minute')}:${at('second')}`;
 }

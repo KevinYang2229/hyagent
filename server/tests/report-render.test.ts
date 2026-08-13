@@ -34,7 +34,8 @@ describe('markdown renderer', () => {
     expect(out).toContain('## 申請資格');
     expect(out).toContain('設籍於受災區域之住戶。');
     // 表頭應同時含主題與產生時間
-    expect(out).toContain('> 馬太鞍溪災害補助 · 2026-08-11T00:00:00.000Z');
+    // 表頭時間以 REPORT_TIMEZONE（預設 Asia/Taipei）呈現：UTC 00:00 ＝ 台北 08:00
+    expect(out).toContain('> 馬太鞍溪災害補助 · 2026-08-11 08:00:00');
   });
 
   it('查無資料的節保留標題，內文為固定語句', async () => {
@@ -118,7 +119,7 @@ describe('html renderer', () => {
     expect(out).not.toContain('<link');
     expect(out).not.toContain('<script');
     // 表頭應同時含主題與產生時間
-    expect(out).toContain('馬太鞍溪災害補助 · 2026-08-11T00:00:00.000Z');
+    expect(out).toContain('馬太鞍溪災害補助 · 2026-08-11 08:00:00');
   });
 
   it('escape 標題與內文——內容來自被爬取的外部網站，屬不可信輸入', async () => {
@@ -290,5 +291,45 @@ describe('章節內文的 Markdown 處理', () => {
     const out = (await renderers.md.render(docWithBody(MD_BODY))).toString('utf8');
     expect(out).toContain('**電子化政府**');
     expect(out).toContain('- HyCMS 網站管理平台');
+  });
+});
+
+/**
+ * 報告表頭的產生時間：ISO 8601（2026-08-13T01:41:29.850Z）是給機器看的，
+ * 報告是給人讀的文件，要 YYYY-MM-DD HH:mm:ss。
+ *
+ * 時區不能用伺服器本地時間——正式環境跑在 UTC，會把台北的 09:41 印成 01:41，
+ * 而裸的日期字串看起來就像本地時間，比原本帶 Z 的 ISO 更容易誤導。
+ */
+describe('產生時間的呈現', () => {
+  // 2026-08-13T01:41:29.850Z ＝ 台北時間 2026-08-13 09:41:29
+  const doc = makeDoc({ generatedAt: '2026-08-13T01:41:29.850Z' });
+
+  it('Markdown：輸出 YYYY-MM-DD HH:mm:ss，不留 T 與 Z', async () => {
+    const out = (await renderers.md.render(doc)).toString('utf8');
+    expect(out).toContain('2026-08-13 09:41:29');
+    expect(out).not.toContain('2026-08-13T01:41:29.850Z');
+  });
+
+  it('HTML：同樣格式', async () => {
+    const out = (await renderers.html.render(doc)).toString('utf8');
+    expect(out).toContain('2026-08-13 09:41:29');
+    expect(out).not.toContain('T01:41:29');
+  });
+
+  it('跨日的 UTC 時間換算到台北不會錯日期', async () => {
+    // 2026-08-12T16:30:00Z ＝ 台北 2026-08-13 00:30:00（日期要進位）
+    const out = (
+      await renderers.md.render(makeDoc({ generatedAt: '2026-08-12T16:30:00.000Z' }))
+    ).toString('utf8');
+    expect(out).toContain('2026-08-13 00:30:00');
+  });
+
+  it('小時用 24 小時制，午後不得出現 01:xx PM 這種形式', async () => {
+    const out = (
+      await renderers.md.render(makeDoc({ generatedAt: '2026-08-13T13:05:07.000Z' }))
+    ).toString('utf8');
+    expect(out).toContain('2026-08-13 21:05:07');
+    expect(out).not.toMatch(/PM|AM/);
   });
 });

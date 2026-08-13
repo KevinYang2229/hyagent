@@ -5,6 +5,7 @@ import {
   degradedNoticeText,
   dedupeSources,
   emptySectionText,
+  formatReportTimestamp,
   normalizeSectionBody,
   safeUrl,
   sourcesHeading,
@@ -20,7 +21,7 @@ function sectionBody(section: ReportSection, locale: string): string {
 }
 
 export function renderMarkdown(doc: ReportDoc): string {
-  const lines: string[] = [`# ${doc.title}`, '', `> ${doc.topic} · ${doc.generatedAt}`, ''];
+  const lines: string[] = [`# ${doc.title}`, '', `> ${doc.topic} · ${formatReportTimestamp(doc.generatedAt)}`, ''];
 
   for (const section of doc.sections) {
     lines.push(`## ${section.heading}`, '', sectionBody(section, doc.locale), '');
