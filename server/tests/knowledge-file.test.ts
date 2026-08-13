@@ -29,6 +29,11 @@ import { knowledgeStore } from '@/modules/knowledge/knowledge.store';
 import type { IndexedChunk, KnowledgeIndexFile } from '@/modules/knowledge/knowledge-index.types';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 import { makeDocx, para, table } from './helpers/make-docx';
+import { refreshSuggestedPrompts } from '@/modules/knowledge/knowledge.suggest';
+
+const mockRefreshSuggestions = refreshSuggestedPrompts as jest.MockedFunction<
+  typeof refreshSuggestedPrompts
+>;
 
 function readIndex(tenantId: string): KnowledgeIndexFile {
   return JSON.parse(readFileSync(indexPathFor(tenantId), 'utf8')) as KnowledgeIndexFile;
@@ -165,5 +170,54 @@ describe('carryOverFileChunks（網站重爬保留檔案 chunks）', () => {
     const merged = carryOverFileChunks(existing, [newWeb]);
     expect(merged.map((c) => c.id).sort()).toEqual(['f1', 'w-new']); // 舊 web 丟棄、檔案保留
     expect(carryOverFileChunks(null, [newWeb])).toEqual([newWeb]);
+  });
+});
+
+describe('append-only 寫入與 deferSuggestions', () => {
+  it('連續匯入兩個檔案，先前檔案的 chunks 仍在', async () => {
+    const t = tenantStore.createTenant('kfile-append');
+    const long = '公司規章內容說明，適用於全體員工。'.repeat(20);
+
+    const first = await ingestFile(t.id, '規章一.txt', Buffer.from(long));
+    const second = await ingestFile(t.id, '規章二.txt', Buffer.from(long));
+
+    const idx = readIndex(t.id);
+    const fileIds = new Set(idx.chunks.map((c) => c.fileId));
+    expect(fileIds.has(first.fileId)).toBe(true);
+    expect(fileIds.has(second.fileId)).toBe(true);
+    expect(idx.chunks.length).toBe(first.chunks + second.chunks);
+  });
+
+  it('刪除其中一個檔案不影響另一個檔案的 chunks', async () => {
+    const t = tenantStore.createTenant('kfile-append-del');
+    const long = '公司規章內容說明，適用於全體員工。'.repeat(20);
+    const first = await ingestFile(t.id, '規章一.txt', Buffer.from(long));
+    const second = await ingestFile(t.id, '規章二.txt', Buffer.from(long));
+
+    await expect(removeFile(t.id, first.fileId)).resolves.toBe(true);
+
+    const idx = readIndex(t.id);
+    expect(idx.chunks.every((c) => c.fileId === second.fileId)).toBe(true);
+    expect(idx.chunks.length).toBe(second.chunks);
+  });
+
+  it('不傳 opts 時仍觸發推薦問句重生（admin 單檔上傳行為未變）', async () => {
+    const t = tenantStore.createTenant('kfile-suggest-default');
+    mockRefreshSuggestions.mockClear();
+
+    await ingestFile(t.id, '規章.txt', Buffer.from('公司規章內容說明。'.repeat(20)));
+
+    expect(mockRefreshSuggestions).toHaveBeenCalledTimes(1);
+  });
+
+  it('deferSuggestions=true 時不觸發推薦問句重生', async () => {
+    const t = tenantStore.createTenant('kfile-suggest-defer');
+    mockRefreshSuggestions.mockClear();
+
+    await ingestFile(t.id, '規章.txt', Buffer.from('公司規章內容說明。'.repeat(20)), {
+      deferSuggestions: true,
+    });
+
+    expect(mockRefreshSuggestions).not.toHaveBeenCalled();
   });
 });

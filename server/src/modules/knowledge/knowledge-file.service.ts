@@ -11,7 +11,7 @@ import { env } from '@/config/env';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 import { usageStore } from '@/modules/usage/usage.store';
 import { AppError } from '@/utils/app-error';
-import { loadIndex, saveIndex } from './knowledge.index.repo';
+import { appendChunks, loadIndex, removeFileChunks } from './knowledge.index.repo';
 // carryOverFileChunks 從 ingest.service 匯入（而非本檔自行定義），維持單向依賴：
 // 本檔已需要 ingest.service 的 chunkText/squash，若 ingest.service 反過來 import 本檔會形成循環引用。
 import {
@@ -22,13 +22,23 @@ import {
   squash,
 } from './ingest.service';
 import { parseDocument } from './doc-parse';
-import type { IndexedChunk, KnowledgeIndexFile } from './knowledge-index.types';
+import type { IndexedChunk } from './knowledge-index.types';
 import { knowledgeStore, type KnowledgeFileMeta } from './knowledge.store';
 import { refreshSuggestedPrompts } from './knowledge.suggest';
 import { countBySource } from './prompt-slots';
 
 export type { KnowledgeFileMeta };
 export { carryOverFileChunks };
+
+export interface IngestFileOptions {
+  /**
+   * true 時跳過結尾的推薦問句重生觸發。
+   *
+   * 批次匯入專用：`refreshSuggestedPrompts` 每次都會打 LLM，而它的世代編號機制會讓
+   * 早發動的呼叫放棄寫入——N 個檔連續匯入等於白花 N-1 次呼叫。改由批次跑完統一觸發一次。
+   */
+  deferSuggestions?: boolean;
+}
 
 const MIN_TEXT_CHARS = 20;
 
@@ -78,6 +88,7 @@ export async function ingestFile(
   tenantId: string,
   name: string,
   buf: Buffer,
+  opts?: IngestFileOptions,
 ): Promise<KnowledgeFileMeta> {
   const parsed = await parseDocument(name, buf);
   // normalizeDocText（而非 squash）：保留段落與 Markdown 標題行，切塊才切得到語意邊界
@@ -122,21 +133,23 @@ export async function ingestFile(
     });
   }
 
-  const idx: KnowledgeIndexFile = existing
-    ? { ...existing, generatedAt: new Date().toISOString(), chunks: [...existing.chunks, ...fileChunks] }
-    : {
-        generatedAt: new Date().toISOString(),
-        model,
-        source: `file://${name}`,
-        chunks: fileChunks,
-      };
-  await saveIndex(tenantId, idx);
+  // 點狀附加：只寫本檔的 chunks，不重寫整份索引（見 knowledge.index.repo 的 appendChunks 註解）
+  await appendChunks(tenantId, fileChunks, {
+    model,
+    source: existing?.source ?? `file://${name}`,
+  });
+
+  // meta 的計數與推薦問句素材需要「整份索引」的視角。這裡用 existing 快照加上本次新增
+  // 就地算出，而不是回讀（db 後端回讀整份索引是 9MB 級的操作，而計數僅供顯示）。
+  // 併發匯入時計數可能短暫偏低，下一次任何索引異動即自我修正。
+  const allChunks = [...(existing?.chunks ?? []), ...fileChunks];
+  const generatedAt = new Date().toISOString();
 
   const fileMeta: KnowledgeFileMeta = {
     fileId,
     name,
     chunks: fileChunks.length,
-    ingestedAt: new Date().toISOString(),
+    ingestedAt: generatedAt,
     format: parsed.format,
     fidelity: parsed.fidelity,
   };
@@ -144,33 +157,45 @@ export async function ingestFile(
   knowledgeStore.setMeta(tenantId, {
     ...meta,
     status: 'ready',
-    chunkCount: idx.chunks.length,
-    generatedAt: idx.generatedAt,
-    model: idx.model,
+    chunkCount: allChunks.length,
+    generatedAt,
+    model,
     files: [...(meta.files ?? []), fileMeta],
-    chunkCountBySource: countBySource(idx.chunks),
+    chunkCountBySource: countBySource(allChunks),
   });
-  void refreshSuggestedPrompts(tenantId, idx).catch(() => {});
+
+  if (!opts?.deferSuggestions) {
+    void refreshSuggestedPrompts(tenantId, {
+      generatedAt,
+      model,
+      source: existing?.source ?? `file://${name}`,
+      chunks: allChunks,
+    }).catch(() => {});
+  }
   return fileMeta;
 }
 
-/** 刪除檔案：索引剔除該 fileId 的 chunks + meta 移除；查無回 false。 */
+/** 刪除已上傳檔案：索引剔除該 fileId 的 chunks + meta 移除；查無回 false。 */
 export async function removeFile(tenantId: string, fileId: string): Promise<boolean> {
   const meta = knowledgeStore.getMeta(tenantId);
   if (!meta.files?.some((f) => f.fileId === fileId)) return false;
+
+  // 先讀一份快照供計數與推薦問句素材使用；實際刪除走點狀 SQL，不把整份索引寫回去
   const existing = await loadIndex(tenantId);
+  await removeFileChunks(tenantId, fileId);
+
+  const files = meta.files.filter((f) => f.fileId !== fileId);
   if (existing) {
     const chunks = existing.chunks.filter((c) => c.fileId !== fileId);
-    await saveIndex(tenantId, { ...existing, generatedAt: new Date().toISOString(), chunks });
     knowledgeStore.setMeta(tenantId, {
       ...meta,
       chunkCount: chunks.length,
-      files: meta.files.filter((f) => f.fileId !== fileId),
+      files,
       chunkCountBySource: countBySource(chunks),
     });
     void refreshSuggestedPrompts(tenantId, { ...existing, chunks }).catch(() => {});
   } else {
-    knowledgeStore.setMeta(tenantId, { ...meta, files: meta.files.filter((f) => f.fileId !== fileId) });
+    knowledgeStore.setMeta(tenantId, { ...meta, files });
   }
   return true;
 }
