@@ -53,6 +53,34 @@ function deleteIndexFromFile(tenantId: string): void {
   if (existsSync(path)) rmSync(path);
 }
 
+/**
+ * file 後端的附加：JSON 單檔無法點狀更新，仍為 read-modify-write。
+ * 該模式下不存在跨 process 寫入者（server 與 watcher 不共用檔案系統），故可接受。
+ */
+function appendChunksToFile(
+  tenantId: string,
+  chunks: IndexedChunk[],
+  meta: { model: string; source: string },
+): void {
+  const existing = loadIndexFromFile(tenantId);
+  saveIndexToFile(
+    tenantId,
+    existing
+      ? { ...existing, generatedAt: new Date().toISOString(), chunks: [...existing.chunks, ...chunks] }
+      : { generatedAt: new Date().toISOString(), model: meta.model, source: meta.source, chunks },
+  );
+}
+
+/** file 後端的點狀刪除；該 fileId 沒有任何 chunk 時回 false 且不寫檔 */
+function removeFileChunksFromFile(tenantId: string, fileId: string): boolean {
+  const existing = loadIndexFromFile(tenantId);
+  if (!existing) return false;
+  const chunks = existing.chunks.filter((c) => c.fileId !== fileId);
+  if (chunks.length === existing.chunks.length) return false;
+  saveIndexToFile(tenantId, { ...existing, generatedAt: new Date().toISOString(), chunks });
+  return true;
+}
+
 // ---- db 後端 ----
 
 interface IndexMetaRow {
@@ -159,6 +187,63 @@ async function deleteIndexFromDb(tenantId: string): Promise<void> {
   await db.$executeRaw`delete from knowledge_indexes where tenant_id = ${tenantId}`;
 }
 
+/**
+ * db 後端的附加：**只 INSERT，不 delete**。
+ *
+ * 這是與 saveIndexToDb 的關鍵差異，也是本設計不需要任何鎖的原因——
+ * 兩個 process 同時匯入不同檔案寫的是不同的列，天然不衝突。
+ * saveIndexToDb 的「刪光再塞回」語意保留給全站重爬（那才真的要整份取代）。
+ *
+ * knowledge_indexes 的 upsert **不更新 model 與 source**：既有索引的 embedding 模型
+ * 一旦定型就不能被後續附加改掉（同一份索引只能用同一個模型）。
+ */
+async function appendChunksToDb(
+  tenantId: string,
+  chunks: IndexedChunk[],
+  meta: { model: string; source: string },
+): Promise<void> {
+  const db = await connectDb();
+  await db.$transaction(
+    async (tx) => {
+      for (let i = 0; i < chunks.length; i += CHUNK_INSERT_BATCH) {
+        const batch = chunks.slice(i, i + CHUNK_INSERT_BATCH);
+        const values = batch.map(
+          (c) => Prisma.sql`(${tenantId}, ${c.id}, ${c.url}, ${c.title}, ${c.text}, ${c.fileId ?? null},
+                            ${toVectorLiteral(c.vector)}::halfvec(3072))`,
+        );
+        await tx.$executeRaw`
+          insert into knowledge_chunks (tenant_id, id, url, title, text, file_id, embedding)
+          values ${Prisma.join(values)}
+          on conflict (tenant_id, id) do update set
+            url = excluded.url, title = excluded.title, text = excluded.text,
+            file_id = excluded.file_id, embedding = excluded.embedding
+        `;
+      }
+
+      await tx.$executeRaw`
+        insert into knowledge_indexes (tenant_id, generated_at, model, source, updated_at)
+        values (${tenantId}, ${new Date()}, ${meta.model}, ${meta.source}, now())
+        on conflict (tenant_id) do update set
+          generated_at = excluded.generated_at, updated_at = now()
+      `;
+    },
+    { timeout: SAVE_TX_TIMEOUT_MS },
+  );
+}
+
+/** db 後端的點狀刪除；受影響列數為 0 時回 false */
+async function removeFileChunksFromDb(tenantId: string, fileId: string): Promise<boolean> {
+  const db = await connectDb();
+  const deleted = await db.$executeRaw`
+    delete from knowledge_chunks where tenant_id = ${tenantId} and file_id = ${fileId}
+  `;
+  if (deleted === 0) return false;
+  await db.$executeRaw`
+    update knowledge_indexes set generated_at = now(), updated_at = now() where tenant_id = ${tenantId}
+  `;
+  return true;
+}
+
 // ---- 對外介面 ----
 
 /** 讀取整份索引；不存在回 null */
@@ -180,4 +265,36 @@ export async function deleteIndex(tenantId: string): Promise<void> {
   else deleteIndexFromFile(tenantId);
   invalidateIndexCache(tenantId);
   invalidatePgvectorModelCache(tenantId);
+}
+
+/**
+ * 附加 chunks 並 upsert 索引 metadata；**不觸碰其他 chunks**。索引不存在時一併建立。
+ *
+ * 與 saveIndex 的分工：saveIndex 是「整份取代」（全站重爬用），本函式是「點狀附加」
+ * （單檔匯入用）。單檔匯入走 saveIndex 會刪光整個租戶的向量再塞回，既是效能浪費，
+ * 也讓並行的另一次匯入互相覆寫。
+ */
+export async function appendChunks(
+  tenantId: string,
+  chunks: IndexedChunk[],
+  meta: { model: string; source: string },
+): Promise<void> {
+  if (chunks.length === 0) return;
+  if (env.DATA_BACKEND === 'db') await appendChunksToDb(tenantId, chunks, meta);
+  else appendChunksToFile(tenantId, chunks, meta);
+  invalidateIndexCache(tenantId);
+  invalidatePgvectorModelCache(tenantId);
+}
+
+/** 移除指定 fileId 的所有 chunks；該檔本來就沒有 chunk 時回 false（不失效快取） */
+export async function removeFileChunks(tenantId: string, fileId: string): Promise<boolean> {
+  const removed =
+    env.DATA_BACKEND === 'db'
+      ? await removeFileChunksFromDb(tenantId, fileId)
+      : removeFileChunksFromFile(tenantId, fileId);
+  if (removed) {
+    invalidateIndexCache(tenantId);
+    invalidatePgvectorModelCache(tenantId);
+  }
+  return removed;
 }
