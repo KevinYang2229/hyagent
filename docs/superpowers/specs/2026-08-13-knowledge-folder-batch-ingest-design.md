@@ -46,7 +46,7 @@ server 不需要在跑。這使本機 CLI 成為成本最低且效果等同的�
 - **消化後搬檔**：成功搬 `_done/`，失敗搬 `_failed/`。資料夾本身即狀態，去重自動成立。
 - **輪詢而非 fs 事件**：不引入 `chokidar`；以 mtime + size 連續兩輪穩定判定「寫完」。
 - **來源抽介面**：本機 fs 為第一個實作，上線形態未定時保留替換空間。
-- **跨 process 的鎖用 Postgres advisory lock**（見「併發與競態」，此為對初版設計的更正）。
+- **以 append-only 寫入消滅競態，不引入任何鎖**（見「併發與競態」，此為對初版設計的更正）。
 - **RAG 邏輯與 admin 上傳完全一致**：共用 `ingestFile`，不另闢分支（見「與 admin 上傳的一致性」）。
 - **批次時延後推薦問句重生**：`ingestFile` 加 `deferSuggestions` 選項，整輪跑完統一觸發一次。
 
@@ -85,12 +85,12 @@ scripts/knowledge-watch.ts      ← CLI 殼：參數、迴圈、log、訊號處�
         ▼
 modules/knowledge/folder-ingest.service.ts   ← 純邏輯，可測
         │  1. scan   → PendingItem[]（過濾、穩定性判定）
-        │  2. 取 advisory lock（每租戶）
-        │  3. 同名檔先 removeFile()
-        │  4. ingestFile(tenantId, name, buf)   ← 既有管線，未修改
-        │  5. 搬 _done/ 或 _failed/
+        │  2. 同名檔先 removeFile()
+        │  3. ingestFile(tenantId, name, buf, { deferSuggestions: true })
+        │  4. 搬 _done/ 或 _failed/
+        │  5. 整輪結束：refreshSuggestedPrompts 一次
         ▼
-        既有：解析 → 切塊 → 摘要 → embedding → Supabase knowledge_chunks
+        既有：解析 → 切塊 → 摘要 → embedding → appendChunks → knowledge_chunks
 ```
 
 `_` 前綴讓 `_done` / `_failed` 不會被誤判成 tenantId。
@@ -117,7 +117,10 @@ batch 與 admin 單檔上傳呼叫**同一個 `ingestFile`**，不是兩份平�
 
 1. **單檔上限**：admin 10MB（HTTP 請求體保護）vs batch `--max-mb`（預設 50）。
 2. **同名檔**：admin 累加成兩份 chunks；batch 先 `removeFile` 再 ingest（見「同名檔視為更新」）。
-3. **鎖機制**：in-memory job Map vs Postgres advisory lock（見「併發與競態」）。
+3. **推薦問句重生時機**：admin 每檔即時觸發；batch 整輪結束統一觸發一次（見「併發與競態 §3」）。
+
+`appendChunks` / `removeFileChunks` 的改動兩條路共用（`ingestFile` 與 `removeFile` 內部），
+故 admin 上傳同樣受益於點狀寫入，兩條路的寫入語意仍然一致。
 
 ### embedding 模型不由 batch 決定
 
@@ -192,31 +195,64 @@ export interface PendingItem {
 一次處理一個檔，`await` 完才下一個。平行處理必然互相覆寫。
 不做平行化——瓶頸在 embedding API，而 `embedInBatches` 內部已分批。
 
-### 2. 批次 vs server：Postgres advisory lock
+### 2. 批次 vs server：append-only 寫入（不用鎖）
 
-**初版設計此處有誤，這是更正。** 原本打算把 watcher 登記進 `knowledge.job.ts` 的 job Map，
-讓後台既有的 409 守門保護批次。這行不通：那個 Map 是 process 內記憶體
-（`const jobs = new Map<string, IngestJob>()`），而 watcher 是獨立 CLI process，
-兩邊的 Map 互相看不見。
+**初版設計此處經過兩次更正，以下為最終結論。**
 
-能跨 process 的只有雙方都連得到的 Supabase。改用 Postgres advisory lock：
+第一版打算把 watcher 登記進 `knowledge.job.ts` 的 job Map，讓後台既有的 409 守門保護批次。
+行不通：那個 Map 是 process 內記憶體（`const jobs = new Map<string, IngestJob>()`），
+watcher 是獨立 CLI process，兩邊互相看不見。
+
+第二版改用 Postgres advisory lock。**也不可行**：`pg_try_advisory_lock` 是**連線層級**的鎖，
+而 `PrismaClient` 有自己的連線池、Supabase 前面還有 pooler——上鎖與解鎖可能落在不同連線，
+解鎖失敗則該鎖留到連線回收為止，之後所有上傳一律 409。
+
+第三版（採用）：**根本不需要鎖，因為競態的根源是「整份取代」這個寫法，而非缺鎖。**
+
+`saveIndexToDb` 目前是「`delete from knowledge_chunks where tenant_id = ?` 刪光，
+再分批塞回全部」。但 `ingestFile` 語意上做的事只是「新增這個檔的 chunks」，
+`removeFile` 只是「移除這個檔的 chunks」——兩者都不需要重寫其他檔案的資料。
+改成點狀操作後，兩個 process 同時匯入不同檔案寫的是不同的列，**根本不會衝突**。
+
+`knowledge.index.repo.ts` 新增兩個對外函式（`saveIndex` / `loadIndex` / `deleteIndex` 保留不動，
+全站重爬仍需整份取代語意）：
 
 ```ts
-/** 以 tenantId hash 取每租戶的 advisory lock；取不到代表他處正在寫該租戶索引 */
-async function withTenantIndexLock<T>(tenantId: string, fn: () => Promise<T>): Promise<T | null>
+/** 附加 chunks 並 upsert 索引 metadata；不觸碰其他 chunks。索引不存在時一併建立 */
+export async function appendChunks(
+  tenantId: string,
+  chunks: IndexedChunk[],
+  meta: { model: string; source: string },
+): Promise<void>;
+
+/** 移除指定 fileId 的 chunks 並更新 generatedAt；查無該 fileId 回 false */
+export async function removeFileChunks(tenantId: string, fileId: string): Promise<boolean>;
 ```
 
-- 用 `pg_try_advisory_lock(key)` / `pg_advisory_unlock(key)`，`key` 取 `tenantId` 的
-  穩定 hash。**免建表、免 migration**，連線斷開自動釋放（process 崩潰不會留下死鎖）。
-- watcher **每檔取一次、放一次**（不是整批持鎖）——後台操作最多等一個檔，不會被鎖住整批。
-  某檔取不到鎖時，該租戶本輪剩餘檔案一併跳過（他處正在寫，繼續嘗試無意義），下一輪重來。
-- **server 端一併改用同一把鎖**：`uploadFile` / `deleteFile` / `refreshSuggestion` 三處
-  現有的 `getRunningJobForTenant` 409 守門，改為「既有 job 檢查 **或** 取不到 advisory lock」
-  時回 409。既有的 job Map 檢查保留（它擋的是同 process 內的爬網，仍然有效）。
-- `DATA_BACKEND=file` 時無 DB 連線，鎖退化為 no-op 並在啟動時印一行 warn。
-  該模式下 watcher 是唯一寫入者，本來就無競態。
+- **db 後端**：`appendChunks` 為單一交易內的分批 INSERT（沿用既有的 `CHUNK_INSERT_BATCH`
+  與 `on conflict do update`）+ `knowledge_indexes` upsert，**無 delete**。
+  `removeFileChunks` 為 `delete from knowledge_chunks where tenant_id = ? and file_id = ?`。
+- **file 後端**：JSON 單檔無法點狀更新，仍為 read-modify-write。可接受——該模式下
+  watcher 是唯一寫入者（server 不共用同一份檔案系統），本來就無跨 process 競態。
+- 兩者皆須沿用 `saveIndex` 既有的快取失效（`invalidateIndexCache` +
+  `invalidatePgvectorModelCache`），否則檢索器會撈到舊資料。
 
-這是修改既有程式碼的**兩處之一**（另一處見下節），其餘皆為新增檔案。
+**順帶解決的效能問題**：現行每次上傳／刪檔都會「刪 1470 列再塞回」（程式碼註解自述）。
+批次匯入 50 個檔即重寫全表 50 次。改點狀操作後只寫新增的數十列。
+
+**server 端無須任何守門改動**——既有的 `getRunningJobForTenant` 409 檢查原封不動保留
+（它擋的是同 process 內的爬網，仍然有效且仍然必要）。
+
+### 2.1 剩餘的競態：批次匯入 vs 全站重爬
+
+`runIngest`（爬網）本質就是整份取代，這是它的正確語意；`carryOverFileChunks` 讀的是
+爬取開始當下的快照，故批次在爬網期間 append 的 chunks 會被爬網結束時的整份取代抹掉。
+
+**本輪不為此建基礎設施**。重爬是 admin 手動觸發的低頻破壞性操作，處置方式為文件與提示：
+
+- watcher 啟動時印出提醒：重爬期間請勿執行批次匯入。
+- 若之後此情境真的發生，正解是把爬網的「進行中」狀態寫進 `knowledge_indexes`
+  使其跨 process 可見，而非引入鎖。列入「風險與未決」。
 
 ### 3. 批次時延後推薦問句重生
 
@@ -235,8 +271,6 @@ async function withTenantIndexLock<T>(tenantId: string, fn: () => Promise<T>): P
 - **admin 單檔上傳不傳此參數，行為完全不變**（預設 false）。
 - 本輪未處理任何檔案的租戶不觸發。
 
-這是修改既有程式碼的第二處，也是最後一處。
-
 ### 4. 同名檔視為更新
 
 `ingestFile` 不檢查檔名重複——同名檔會在索引留下兩份 chunks 與兩筆 `meta.files`。
@@ -245,6 +279,18 @@ async function withTenantIndexLock<T>(tenantId: string, fn: () => Promise<T>): P
 
 此行為僅作用於批次路徑，不改變 admin 單檔上傳的既有語意（該處保持原樣，避免影響既有操作預期）。
 
+### 既有程式碼的改動清單
+
+本設計會修改的既有檔案僅以下三處，皆為加法，不改變任何既有呼叫端的行為：
+
+| 檔案 | 改動 |
+|---|---|
+| `knowledge.index.repo.ts` | 新增 `appendChunks` / `removeFileChunks`（§2）；既有三個函式不動 |
+| `knowledge-file.service.ts` | `ingestFile` 改用 `appendChunks`、`removeFile` 改用 `removeFileChunks`（§2）；`ingestFile` 加 `opts.deferSuggestions`（§3） |
+| `package.json`（server） | 新增 `watch:knowledge` script |
+
+`knowledge.admin.controller.ts` **不需改動**。
+
 ## 錯誤處理
 
 錯誤分兩類，處置**不同**——這是本設計最容易做錯的地方：
@@ -252,7 +298,7 @@ async function withTenantIndexLock<T>(tenantId: string, fn: () => Promise<T>): P
 | 類別 | 例子 | 處置 |
 |---|---|---|
 | **永久性** | 掃描檔無文字、空檔、不支援格式、magic bytes 不符、超過大小上限 | 搬 `_failed/` + 同名 `.error.txt` 記原因。重試不會有不同結果 |
-| **暫時性** | embedding API 逾時、額度用罄、DB 連線中斷、取不到 advisory lock | **不搬檔**。retry 一次（間隔 5s），仍失敗就留在原地，下一輪重試，印 warn |
+| **暫時性** | embedding API 逾時、額度用罄、DB 連線中斷或交易失敗 | **不搬檔**。retry 一次（間隔 5s），仍失敗就留在原地，下一輪重試，印 warn |
 
 判定依據：`AppError` 的 `unprocessable` / `badRequest` 視為永久性，其餘（含未預期例外）
 視為暫時性。保守方向正確——把暫時性誤判為永久性會丟掉檔案，反之只是多試幾輪。
@@ -311,7 +357,6 @@ N 個檔從 N~2N 次 LLM 呼叫降為每租戶每輪 1~2 次。摘要呼叫則�
 - 成功 → 搬進 `_done/`；永久性失敗 → 搬進 `_failed/` 且產出 `.error.txt`
 - 暫時性失敗 → 檔案留在原地、未搬動，且下一輪會重試
 - 同名檔已存在於 `meta.files` → 先呼叫 `removeFile` 再 `ingestFile`
-- 取不到 advisory lock → 該租戶整輪跳過，檔案不動
 - 超過 `--max-mb` → 判永久性失敗
 - `--dry-run` → `ingestFile` 零呼叫、檔案零搬動
 - 逐檔皆以 `deferSuggestions: true` 呼叫；整輪結束後 `refreshSuggestedPrompts` 恰觸發一次
@@ -320,13 +365,25 @@ N 個檔從 N~2N 次 LLM 呼叫降為每租戶每輪 1~2 次。摘要呼叫則�
 `server/tests/knowledge-file.test.ts`（既有）需補：
 `ingestFile` 不傳 `opts` 時仍會觸發 `refreshSuggestedPrompts`（確保 admin 行為未變）。
 
-`server/tests/knowledge-file-admin.test.ts`（既有）需補：advisory lock 被他處持有時，
-`uploadFile` / `deleteFile` 回 409。
+`server/tests/knowledge-index-repo.test.ts`（新增）：
+
+- `appendChunks` 只新增指定 chunks，既有 chunks 原封不動
+- 對不存在的租戶 `appendChunks` 會一併建立索引 metadata
+- `removeFileChunks` 只移除該 `fileId` 的 chunks，其他檔案與網站 chunks 保留
+- `removeFileChunks` 對不存在的 fileId 回 `false`
+- 兩者皆會呼叫 `invalidateIndexCache` 與 `invalidatePgvectorModelCache`
+
+`server/tests/knowledge-file.test.ts`（既有）需補：
+`ingestFile` 不傳 `opts` 時仍會觸發 `refreshSuggestedPrompts`（確保 admin 行為未變）；
+連續兩次 `ingestFile` 不同檔案後，先前檔案的 chunks 仍在（append-only 回歸測試）。
 
 ## 風險與未決
 
-- **advisory lock 的 key 碰撞**：不同 tenantId hash 到同一個 bigint 會造成不必要的互斥
-  （不會造成資料錯誤，只會多等）。取 64-bit hash，實務碰撞機率可忽略。
+- **批次匯入 vs 全站重爬**（見「併發與競態 §2.1」）：爬網的整份取代會抹掉批次在
+  爬網期間 append 的 chunks。本輪以文件與 watcher 啟動提示處理，不建基礎設施。
+  若真的發生，正解是把爬網的「進行中」狀態寫進 `knowledge_indexes` 使其跨 process 可見。
+- **`DATA_BACKEND=file` 下 `appendChunks` 仍是 read-modify-write**：JSON 單檔無法點狀更新。
+  該模式下 watcher 是唯一寫入者，無跨 process 競態，可接受。
 - **watcher 只在執行時運作**：本輪明確接受。若之後「必須 24/7 無人值守」成真，
   升級路徑是把 `folder-ingest.service` 整塊搬進 server 進程 + Zeabur volume，
   service 層不需改寫（`--once` 與 `BatchSource` 介面就是為此留的接縫）。
