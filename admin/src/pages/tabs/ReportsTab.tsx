@@ -1,13 +1,21 @@
 import { useCallback, useEffect, useState, type CSSProperties } from 'react';
+import { DatePicker } from '@oa-agent/ui';
 import { api, type ReportListItem } from '../../api';
 
 const th: CSSProperties = { textAlign: 'left', padding: '8px 10px', borderBottom: '1px solid var(--border-color)', fontWeight: 500, whiteSpace: 'nowrap' };
 const td: CSSProperties = { padding: '6px 10px', borderBottom: '1px solid var(--border-color)', verticalAlign: 'top' };
 
-/** datetime-local 的值（本地時間、無時區）→ ISO；空字串回 undefined */
-function toIso(local: string): string | undefined {
-  if (!local) return undefined;
-  const d = new Date(local);
+/**
+ * DatePicker 的 YYYY-MM-DD → ISO。
+ *
+ * 兩個坑都在這裡處理掉：
+ * 1. `new Date('2026-08-13')` 依規範解析為 **UTC** 午夜，對台北使用者等於當天早上 8 點，
+ *    03:00 產生的報告會被錯誤排除。改為明確組出「本地」時間再轉 ISO。
+ * 2. 結束日必須含當天整日（到 23:59:59.999），否則起訖選同一天會查不到任何東西。
+ */
+function toIso(date: string, edge: 'start' | 'end'): string | undefined {
+  if (!date) return undefined;
+  const d = new Date(`${date}T${edge === 'start' ? '00:00:00.000' : '23:59:59.999'}`);
   return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
 }
 
@@ -37,7 +45,7 @@ export default function ReportsTab({ tenantId, onError }: { tenantId: string; on
   }, [load]);
 
   function search() {
-    void load({ q: q.trim() || undefined, from: toIso(from), to: toIso(to) });
+    void load({ q: q.trim() || undefined, from: toIso(from, 'start'), to: toIso(to, 'end') });
   }
 
   function reset() {
@@ -82,23 +90,13 @@ export default function ReportsTab({ tenantId, onError }: { tenantId: string; on
             <span className="field-hint">報告主題未落地，故只比對檔名與使用者。</span>
           </div>
           <div className="field">
-            <label className="field-label">產生時間</label>
+            <label className="field-label">產生日期</label>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <input
-                className="input"
-                type="datetime-local"
-                value={from}
-                onChange={(e) => setFrom(e.target.value)}
-              />
+              <DatePicker value={from} onChange={setFrom} placeholder="起始日" />
               <span className="field-hint">至</span>
-              <input
-                className="input"
-                type="datetime-local"
-                value={to}
-                onChange={(e) => setTo(e.target.value)}
-              />
+              <DatePicker value={to} onChange={setTo} placeholder="結束日" />
             </div>
-            <span className="field-hint">留空表示不限。</span>
+            <span className="field-hint">含起訖當日；留空表示不限。</span>
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, marginTop: 18 }}>
