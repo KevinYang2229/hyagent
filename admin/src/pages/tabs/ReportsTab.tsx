@@ -68,31 +68,47 @@ export default function ReportsTab({ tenantId, onError }: { tenantId: string; on
         </div>
       </div>
 
-      <div className="card-body" style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end' }}>
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13 }}>
-          關鍵字
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && search()}
-            placeholder="檔名或使用者"
-            style={{ padding: '6px 8px' }}
-          />
-        </label>
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13 }}>
-          起始時間
-          <input type="datetime-local" value={from} onChange={(e) => setFrom(e.target.value)} style={{ padding: '6px 8px' }} />
-        </label>
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13 }}>
-          結束時間
-          <input type="datetime-local" value={to} onChange={(e) => setTo(e.target.value)} style={{ padding: '6px 8px' }} />
-        </label>
-        <button className="btn" onClick={search} disabled={busy}>
-          {busy ? '查詢中…' : '查詢'}
-        </button>
-        <button className="btn btn-ghost" onClick={reset} disabled={busy}>
-          清除
-        </button>
+      <div className="card-body">
+        <div className="form-grid">
+          <div className="field">
+            <label className="field-label">關鍵字</label>
+            <input
+              className="input"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && search()}
+              placeholder="檔名或使用者"
+            />
+            <span className="field-hint">報告主題未落地，故只比對檔名與使用者。</span>
+          </div>
+          <div className="field">
+            <label className="field-label">產生時間</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input
+                className="input"
+                type="datetime-local"
+                value={from}
+                onChange={(e) => setFrom(e.target.value)}
+              />
+              <span className="field-hint">至</span>
+              <input
+                className="input"
+                type="datetime-local"
+                value={to}
+                onChange={(e) => setTo(e.target.value)}
+              />
+            </div>
+            <span className="field-hint">留空表示不限。</span>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 18 }}>
+          <button className="btn btn-primary btn-sm" onClick={search} disabled={busy}>
+            {busy ? '查詢中…' : '查詢'}
+          </button>
+          <button className="btn btn-ghost btn-sm" onClick={reset} disabled={busy}>
+            清除
+          </button>
+        </div>
       </div>
 
       <div className="card-body" style={{ overflowX: 'auto' }}>
@@ -124,7 +140,7 @@ export default function ReportsTab({ tenantId, onError }: { tenantId: string; on
                       {r.files.map((f) => (
                         <button
                           key={f.format}
-                          className="btn btn-ghost"
+                          className="btn btn-ghost btn-sm"
                           onClick={() => void download(r, f.format, f.filename)}
                         >
                           {f.format.toUpperCase()}
