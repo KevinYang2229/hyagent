@@ -1,6 +1,7 @@
 /**
  * 報告 job：狀態流轉、全零命中 → empty 且不產檔、大綱失敗 → failed、同租戶併發 409。
  */
+import { env } from '@/config/env';
 import type { LLMProvider } from '@/lib/llm/types';
 import type { Outline, ReportSection } from '@/modules/report/report.types';
 import { reportStore } from '@/modules/report/report.store';
@@ -170,7 +171,8 @@ describe('purgeFinishedReportJobs', () => {
     expect(getReportJob(job.id)?.status).toBe('done');
 
     // finishedAt 為剛剛，用 25 小時後的「now」模擬已過 24 小時 TTL
-    const later = new Date(Date.now() + 25 * 60 * 60 * 1000);
+    // 不寫死小時數：TTL 預設調整時測試不必跟著改
+    const later = new Date(Date.now() + (env.REPORT_TTL_HOURS + 1) * 3600_000);
     const purged = purgeFinishedReportJobs(later);
     expect(purged).toBe(1);
     expect(getReportJob(job.id)).toBeUndefined();
@@ -203,7 +205,8 @@ describe('purgeFinishedReportJobs', () => {
     );
     await waitForJobForTest(failedJob.id);
 
-    const later = new Date(Date.now() + 25 * 60 * 60 * 1000);
+    // 不寫死小時數：TTL 預設調整時測試不必跟著改
+    const later = new Date(Date.now() + (env.REPORT_TTL_HOURS + 1) * 3600_000);
     expect(purgeFinishedReportJobs(later)).toBe(2);
     expect(getReportJob(emptyJob.id)).toBeUndefined();
     expect(getReportJob(failedJob.id)).toBeUndefined();
@@ -224,7 +227,8 @@ describe('purgeFinishedReportJobs', () => {
     );
     expect(getReportJob(job.id)?.status).toBe('queued');
 
-    const later = new Date(Date.now() + 25 * 60 * 60 * 1000);
+    // 不寫死小時數：TTL 預設調整時測試不必跟著改
+    const later = new Date(Date.now() + (env.REPORT_TTL_HOURS + 1) * 3600_000);
     expect(purgeFinishedReportJobs(later)).toBe(0);
     expect(getReportJob(job.id)).toBeDefined();
 

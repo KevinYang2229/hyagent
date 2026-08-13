@@ -10,6 +10,22 @@ export interface FormSummary {
   editable: boolean;
 }
 
+/** 後台報告清單的一列：一份報告，多種格式收在 files */
+export interface ReportListItem {
+  reportId: string;
+  tenantId: string;
+  userId: string;
+  createdAt: string;
+  expiresAt: string;
+  files: { format: string; filename: string }[];
+}
+
+export interface ReportListFilter {
+  from?: string;
+  to?: string;
+  q?: string;
+}
+
 export interface FormExport {
   formId: string;
   files: Record<string, unknown>;
@@ -284,6 +300,41 @@ export const api = {
 
   getUsage: (id: string) => req<Usage>('GET', `/admin/tenants/${id}/usage`),
   getTenantAudit: (id: string) => req<AuditEntry[]>('GET', `/admin/tenants/${id}/audit`),
+
+  // ---- 報告 ----
+  listReports: (id: string, filter: ReportListFilter = {}) => {
+    const qs = new URLSearchParams();
+    if (filter.from) qs.set('from', filter.from);
+    if (filter.to) qs.set('to', filter.to);
+    if (filter.q) qs.set('q', filter.q);
+    const suffix = qs.toString() ? `?${qs}` : '';
+    return req<ReportListItem[]>('GET', `/admin/tenants/${id}/reports${suffix}`);
+  },
+  /**
+   * 下載報告。走 blob 而非 <a href>：後台 API 需要 Authorization header，
+   * 瀏覽器的一般導覽不會帶。檔名一律用後端算好的值（blob: URL 無 header，只認 <a download>）。
+   */
+  downloadReport: async (id: string, reportId: string, format: string, filename: string) => {
+    const token = tokenStore.get();
+    const res = await fetch(
+      `${API_ORIGIN}/api/admin/tenants/${id}/reports/${reportId}/download?format=${encodeURIComponent(format)}`,
+      { headers: { ...(token ? { authorization: `Bearer ${token}` } : {}) } },
+    );
+    if (res.status === 401) {
+      tokenStore.clear();
+      throw new UnauthorizedError('未授權');
+    }
+    if (!res.ok) throw new Error(`下載失敗（HTTP ${res.status}）`);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  },
 
   getLlmConfig: (id: string) => req<LLMConfigView>('GET', `/admin/tenants/${id}/llm-config`),
   putLlmConfig: (id: string, patch: LLMConfigPatch) =>

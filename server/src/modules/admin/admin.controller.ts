@@ -9,6 +9,9 @@ import { conversationStore } from '@/modules/conversation/conversation.store';
 import { webhookStore } from '@/modules/webhook/webhook.store';
 import { usageStore } from '@/modules/usage/usage.store';
 import { auditStore } from '@/modules/audit/audit.store';
+import { reportStore } from '@/modules/report/report.store';
+import { DEFAULT_REPORT_FORMAT, isReportFormat, renderers } from '@/modules/report/report.render';
+import { contentDispositionHeader } from '@/modules/report/report.http';
 import { submissionStore } from '@/modules/workflow/submission.store';
 import { formStore } from '@/modules/form/form.store';
 import { AppError } from '@/utils/app-error';
@@ -26,7 +29,7 @@ import type {
   PatchTenantInput,
   ToggleWebhookInput,
 } from './admin.schema';
-import type { PutPolicyInput } from './admin.schema';
+import type { AdminReportQuery, PutPolicyInput } from './admin.schema';
 
 function ensureTenant(id: string) {
   const tenant = tenantStore.getTenant(id);
@@ -146,6 +149,40 @@ export const adminController = {
   async getAudit(req: Request, res: Response): Promise<void> {
     const tenant = ensureTenant(String(req.params.id));
     res.status(200).json({ data: auditStore.list(tenant.id, 200) });
+  },
+
+  /** 後台報告清單：只回 metadata，不含內容 */
+  async listReports(req: Request, res: Response): Promise<void> {
+    const tenant = ensureTenant(String(req.params.id));
+    const { from, to, q } = req.query as AdminReportQuery;
+    res.status(200).json({ data: await reportStore.listByTenant(tenant.id, { from, to, q }) });
+  },
+
+  /**
+   * 後台下載：不做建立者比對——管理者本來就要能取得租戶內任何人的報告。
+   * 正因為少了那道門，每次下載都必須留稽核軌跡（誰、下載了誰的哪一份）。
+   */
+  async downloadReport(req: Request, res: Response): Promise<void> {
+    const tenant = ensureTenant(String(req.params.id));
+    const reportId = String(req.params.reportId);
+    const format = String(req.query.format ?? DEFAULT_REPORT_FORMAT);
+    if (!isReportFormat(format)) throw AppError.unprocessable('不支援的報告格式');
+
+    const stored = await reportStore.get(reportId, format);
+    // 跨租戶一律當作不存在：後台雖有較高權限，租戶隔離仍是硬邊界
+    if (!stored || stored.tenantId !== tenant.id) throw AppError.notFound('報告不存在');
+
+    auditStore.record(tenant.id, {
+      toolId: 'report.download',
+      userId: req.user?.sub ?? 'admin',
+      at: new Date().toISOString(),
+      ok: true,
+      summary: `下載 ${stored.userId} 的報告 ${stored.filename}`,
+    });
+
+    res.setHeader('Content-Type', renderers[format].contentType);
+    res.setHeader('Content-Disposition', contentDispositionHeader(stored.filename));
+    res.send(stored.content);
   },
 
   async listScopes(_req: Request, res: Response): Promise<void> {

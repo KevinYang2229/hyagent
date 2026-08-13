@@ -82,3 +82,12 @@ export type PatchTenantInput = z.infer<typeof patchTenantSchema>;
 export type CreateKeyInput = z.infer<typeof createKeySchema>;
 export type CreateWebhookInput = z.infer<typeof createWebhookSchema>;
 export type ToggleWebhookInput = z.infer<typeof toggleWebhookSchema>;
+
+/** 後台報告查詢：時間區間（ISO）與關鍵字皆為選填 */
+export const adminReportQuerySchema = z.object({
+  from: z.string().datetime().optional(),
+  to: z.string().datetime().optional(),
+  q: z.string().trim().max(200).optional(),
+});
+
+export type AdminReportQuery = z.infer<typeof adminReportQuerySchema>;

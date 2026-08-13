@@ -13,6 +13,7 @@ import FormsTab from './tabs/FormsTab';
 import KnowledgeTab from './tabs/KnowledgeTab';
 import PermissionsTab from './tabs/PermissionsTab';
 import AuditTab from './tabs/AuditTab';
+import ReportsTab from './tabs/ReportsTab';
 
 type TabKey =
   | 'appearance'
@@ -22,6 +23,7 @@ type TabKey =
   | 'settings'
   | 'webhook'
   | 'usage'
+  | 'reports'
   | 'audit';
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'settings', label: '設定' },
@@ -31,6 +33,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'knowledge', label: '知識庫' },
   { key: 'webhook', label: 'Webhook' },
   { key: 'usage', label: '用量' },
+  { key: 'reports', label: '報告' },
   { key: 'audit', label: '稽核' },
 ];
 
@@ -113,6 +116,7 @@ export default function TenantDetailPage() {
           {tab === 'settings' && <SettingsTab tenant={tenant} onSaved={handleSaved} onError={handleErr} />}
           {tab === 'webhook' && <WebhookTab tenantId={tenant.id} onError={handleErr} />}
           {tab === 'usage' && <UsageTab tenant={tenant} onError={handleErr} />}
+          {tab === 'reports' && <ReportsTab tenantId={tenant.id} onError={handleErr} />}
           {tab === 'audit' && <AuditTab tenantId={tenant.id} onError={handleErr} />}
         </>
       )}

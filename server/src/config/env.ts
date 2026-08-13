@@ -107,8 +107,10 @@ export const envSchema = z.object({
   REPORT_MAX_SECTIONS: z.coerce.number().int().min(1).max(12).default(6),
   // 報告：每節交給彙整 LLM 的片段數（與知識庫問答的 FINAL_K 同量級）
   REPORT_SECTION_TOP_K: z.coerce.number().int().min(1).max(20).default(5),
-  // 報告：產出物保存時數。附件靠對話結束清理，報告沒有對應的生命週期終點，只能靠 TTL
-  REPORT_TTL_HOURS: z.coerce.number().int().min(1).max(720).default(24),
+  // 報告：產出物保存時數。附件靠對話結束清理，報告沒有對應的生命週期終點，只能靠 TTL。
+  // 預設 30 天而非 24 小時：後台的報告查詢頁若只看得到一天內的資料就沒什麼好查的。
+  // 代價是 report_docs 的 bytea 會累積（一份約 25KB，md + html 兩列）
+  REPORT_TTL_HOURS: z.coerce.number().int().min(1).max(8760).default(720),
   // 報告表頭產生時間的顯示時區（IANA 時區名）。不能用伺服器本地時間——正式環境跑在 UTC，
   // 會把台北的 09:41 印成 01:41，而裸的日期字串看起來就像本地時間，比 ISO 更容易誤導讀者
   REPORT_TIMEZONE: z.string().default('Asia/Taipei'),

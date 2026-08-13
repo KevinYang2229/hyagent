@@ -98,6 +98,8 @@ npm run typecheck
 | GET    | `/api/forms` / `/api/forms/:formId` | 列出 / 取得表單 Definition                                  |
 | GET    | `/api/reports/:id`                        | 查報告產生進度與可下載格式                                  |
 | GET    | `/api/reports/:id/download?format=md`     | 下載報告（`format` 由後端登錄表決定，目前為 `md` / `html`） |
+| GET    | `/api/admin/tenants/:id/reports`          | 後台：查該租戶的報告（`from` / `to` / `q` 皆選填）           |
+| GET    | `/api/admin/tenants/:id/reports/:reportId/download?format=md` | 後台：下載報告（不比對建立者，改以稽核留軌跡） |
 
 > 對話 API 需 JWT：先 `POST /api/auth/login`（dev 環境為 mock 帳號 `kevin`/`hyweb` + `AUTH_DEV_PASSWORD`）取得 accessToken，之後帶 `Authorization: Bearer <token>`。widget/SDK 另可走租戶 `ssoSecret` 的 SSO handoff（`/api/auth/sso/exchange`）。`/api/reports/*` 同樣需要 JWT——`<a href>` 一般導覽不會帶 Authorization header，前端需改用 fetch 取 blob 後觸發下載。
 
@@ -130,7 +132,7 @@ Agent 會逐一問缺漏欄位 → 必填齊全後出摘要請你回「確認」
 2. **需要的 scope**：`service:report`。這是刻意的產品決定——報告成本較高，**不列入新租戶預設開通的服務**，須由 admin 於後台「權限」手動授予該租戶（或該租戶內特定使用者）後才能使用；未授予時對話會判定沒有此意圖可用。
 3. **非同步產生**：抽到主題後對話立即回覆「已開始產生」並附上 `report: { id, status }`，實際彙整在背景進行，前端輪詢 `GET /api/reports/:id` 取得進度（`status`：`queued` → `outlining` → `composing` → `done` / `failed` / `empty`，並回傳 `doneSections` / `totalSections`）；`status: done` 後 `formats` 欄位才會列出可下載的格式。同一租戶同時只允許一份報告在跑，併發時會直接以對話回覆說明，不當錯誤處理。
 4. **內容全部來自 RAG 檢索結果**：LLM 依主題先拆出章節大綱，再逐節各自查知識庫、彙整檢索到的片段——章節之間互不共享脈絡，杜絕拼湊出檢索之外的內容。**查無資料的章節會據實標示為查無相關資料，不臆測、不生內容**；若全部章節都零命中，整份報告視為 `empty` 終態，不產出任何檔案。
-5. **產出物保存 `REPORT_TTL_HOURS` 小時**（預設 24）後過期，下載會回 404；`DATA_BACKEND=db` 時產出物落地 Postgres（`report_docs`，見 `server/db/migrations/0007_report_docs.sql`），重啟後仍可下載，`file` 模式僅存於記憶體、重啟即失效。
+5. **產出物保存 `REPORT_TTL_HOURS` 小時**（預設 720，即 30 天）後過期，下載會回 404；`DATA_BACKEND=db` 時產出物落地 Postgres（`report_docs`，見 `server/db/migrations/0007_report_docs.sql`），重啟後仍可下載，`file` 模式僅存於記憶體、重啟即失效。
 6. **下載格式**：目前為 `md`（Markdown）與 `html`，由 `server/src/modules/report/report.render.ts` 的 renderer 登錄表決定；新增格式只需在該登錄表加一行，路由白名單、副檔名、Content-Type 皆由此推導。下載檔名為中文時走 RFC 5987（`Content-Disposition: ...; filename*=UTF-8''...`），並附 ASCII fallback 給不支援的舊瀏覽器。
 
 環境變數（`server/src/config/env.ts`）：
@@ -139,10 +141,19 @@ Agent 會逐一問缺漏欄位 → 必填齊全後出摘要請你回「確認」
 |------|------|------|------|
 | `REPORT_MAX_SECTIONS` | `6` | 1–12 | 大綱節數上限；每節各一次檢索＋一次彙整 LLM，節數直接決定一份報告的成本 |
 | `REPORT_SECTION_TOP_K` | `5` | 1–20 | 每節交給彙整 LLM 的檢索片段數（與知識庫問答的 `FINAL_K` 同量級） |
-| `REPORT_TTL_HOURS` | `24` | 1–720 | 產出物保存時數；報告沒有對應「對話結束」的生命週期終點，只能靠 TTL 回收 |
+| `REPORT_TTL_HOURS` | `720`（30 天） | 1–8760 | 產出物保存時數；報告沒有對應「對話結束」的生命週期終點，只能靠 TTL 回收。預設 30 天而非 24 小時，否則後台的報告查詢頁只看得到一天內的資料 |
 | `REPORT_TIMEZONE` | `Asia/Taipei` | IANA 時區名 | 報告表頭產生時間的顯示時區。刻意不用伺服器本地時間——正式環境跑在 UTC，會把台北的 09:41 印成 01:41 |
 
 報告表頭的產生時間以 `YYYY-MM-DD HH:mm:ss`（24 小時制）呈現，不用 ISO 8601——報告是給人讀的文件。
+
+### 後台查詢（租戶 → 「報告」頁籤）
+
+可依**時間區間**與**關鍵字**查詢該租戶留存的報告並下載。兩點使用上必須知道的限制：
+
+- **能搜的只有檔名與使用者**。報告主題（`topic`）與產生進度只活在記憶體的 job 裡，重啟即失、沒有落地，所以搜不到；檔名是報告標題的 slug（如「產品分析報告」），實務上已能對應到大部分需求。
+- **後台下載不比對建立者**——管理者本來就該能取得租戶內任何人的報告。正因為少了那道門，每次下載都會寫入稽核紀錄（誰、下載了誰的哪一份），可在「稽核」頁籤查到 `report.download`。跨租戶仍是硬邊界，一律 404。
+
+已過期的報告不會列出：使用者端已經拿不到，後台列成可下載只會製造「點了才發現失敗」。
 
 ## 架構
 

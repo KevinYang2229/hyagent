@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { z } from 'zod';
 import type { NextFunction, Request, Response } from 'express';
 import multer, { MulterError } from 'multer';
 import { validate } from '@/middlewares/validate';
@@ -27,6 +28,7 @@ import {
   adminLoginSchema,
   createKeySchema,
   createTenantSchema,
+  adminReportQuerySchema,
   createWebhookSchema,
   patchTenantSchema,
   putPolicySchema,
@@ -135,6 +137,18 @@ router.put(
   '/tenants/:id/llm-config',
   validate({ params: tenantParamSchema, body: putLlmConfigSchema }),
   asyncHandler(adminController.putLlmConfig),
+);
+
+// 報告：清單查詢（時間區間 + 關鍵字）與下載（不做建立者比對，改以稽核留軌跡）
+router.get(
+  '/tenants/:id/reports',
+  validate({ params: tenantParamSchema, query: adminReportQuerySchema }),
+  asyncHandler(adminController.listReports),
+);
+router.get(
+  '/tenants/:id/reports/:reportId/download',
+  validate({ params: tenantParamSchema.extend({ reportId: z.string().min(1) }) }),
+  asyncHandler(adminController.downloadReport),
 );
 
 // 權限：scopes 目錄 + 每租戶政策 GET/PUT

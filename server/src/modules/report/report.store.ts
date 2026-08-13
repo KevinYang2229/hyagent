@@ -19,7 +19,27 @@ export interface StoredReport {
   format: string;
   filename: string;
   content: Buffer;
+  createdAt: string;
   expiresAt: string;
+}
+
+/** 後台查詢用：一份報告一列，多種格式收在 files 裡 */
+export interface ReportListItem {
+  reportId: string;
+  tenantId: string;
+  userId: string;
+  createdAt: string;
+  expiresAt: string;
+  files: { format: string; filename: string }[];
+}
+
+export interface ReportListFilter {
+  /** 建立時間下界（ISO，含端點） */
+  from?: string;
+  /** 建立時間上界（ISO，含端點） */
+  to?: string;
+  /** 關鍵字：比對檔名與使用者，不分大小寫 */
+  q?: string;
 }
 
 const docs = new Map<string, StoredReport>();
@@ -65,8 +85,11 @@ export const reportStore = {
     filename: string;
     content: Buffer;
   }): void {
-    const expiresAt = new Date(Date.now() + env.REPORT_TTL_HOURS * 3600_000).toISOString();
-    const stored: StoredReport = { ...input, expiresAt };
+    // 一律以 Date.now() 取時間（而非 new Date()）：本模組其他地方也用它，
+    // 測試覆寫 Date.now 推進時間時兩者才會一致
+    const nowMs = Date.now();
+    const expiresAt = new Date(nowMs + env.REPORT_TTL_HOURS * 3600_000).toISOString();
+    const stored: StoredReport = { ...input, createdAt: new Date(nowMs).toISOString(), expiresAt };
     docs.set(keyOf(input.reportId, input.format), stored);
 
     if (env.DATA_BACKEND === 'db') {
@@ -114,10 +137,111 @@ export const reportStore = {
       format: row.format,
       filename: row.filename,
       content: Buffer.from(row.content),
+      createdAt: row.createdAt.toISOString(),
       expiresAt: row.expiresAt.toISOString(),
     };
     docs.set(keyOf(reportId, format), stored);
     return stored;
+  },
+
+  /**
+   * 後台查詢：列出該租戶未過期的報告，一份一列。
+   *
+   * 只回 metadata 不回 content——清單頁不需要 bytes，撈 bytea 只會讓回應肥大而無用。
+   * 能篩的欄位僅限 report_docs 實際存下來的：job 的 topic／status 純記憶體、重啟即失，
+   * 不在這裡（也不該在這裡）假裝查得到。
+   */
+  async listByTenant(
+    tenantId: string,
+    filter: ReportListFilter,
+    now: Date = new Date(),
+  ): Promise<ReportListItem[]> {
+    type Row = {
+      reportId: string;
+      userId: string;
+      format: string;
+      filename: string;
+      createdAt: string;
+      expiresAt: string;
+    };
+
+    const rows: Row[] = [...docs.values()]
+      .filter((d) => d.tenantId === tenantId)
+      .map((d) => ({
+        reportId: d.reportId,
+        userId: d.userId,
+        format: d.format,
+        filename: d.filename,
+        createdAt: d.createdAt,
+        expiresAt: d.expiresAt,
+      }));
+
+    if (env.DATA_BACKEND === 'db') {
+      const db = getDb();
+      if (db) {
+        const dbRows = await db.reportDocRow.findMany({
+          where: { tenantId, expiresAt: { gt: now } },
+          select: {
+            reportId: true,
+            userId: true,
+            format: true,
+            filename: true,
+            createdAt: true,
+            expiresAt: true,
+          },
+        });
+        const seen = new Set(rows.map((r) => keyOf(r.reportId, r.format)));
+        for (const row of dbRows) {
+          if (seen.has(keyOf(row.reportId, row.format))) continue;
+          rows.push({
+            reportId: row.reportId,
+            userId: row.userId,
+            format: row.format,
+            filename: row.filename,
+            createdAt: row.createdAt.toISOString(),
+            expiresAt: row.expiresAt.toISOString(),
+          });
+        }
+      }
+    }
+
+    const q = filter.q?.trim().toLowerCase();
+    const fromMs = filter.from ? new Date(filter.from).getTime() : undefined;
+    const toMs = filter.to ? new Date(filter.to).getTime() : undefined;
+
+    const grouped = new Map<string, ReportListItem>();
+    for (const row of rows) {
+      // 過期的不列：使用者端已經拿不到，後台列成可下載只會製造「點了才發現失敗」
+      if (new Date(row.expiresAt).getTime() <= now.getTime()) continue;
+
+      const createdMs = new Date(row.createdAt).getTime();
+      if (fromMs !== undefined && createdMs < fromMs) continue;
+      if (toMs !== undefined && createdMs > toMs) continue;
+      if (q && !`${row.filename} ${row.userId}`.toLowerCase().includes(q)) continue;
+
+      const item = grouped.get(row.reportId);
+      if (item) {
+        item.files.push({ format: row.format, filename: row.filename });
+        // 同一份報告的各格式寫入時間差幾毫秒，取最早的當建立時間
+        if (createdMs < new Date(item.createdAt).getTime()) item.createdAt = row.createdAt;
+      } else {
+        grouped.set(row.reportId, {
+          reportId: row.reportId,
+          tenantId,
+          userId: row.userId,
+          createdAt: row.createdAt,
+          expiresAt: row.expiresAt,
+          files: [{ format: row.format, filename: row.filename }],
+        });
+      }
+    }
+
+    return [...grouped.values()]
+      .map((item) => ({
+        ...item,
+        files: [...item.files].sort((a, b) => a.format.localeCompare(b.format)),
+      }))
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   },
 
   /**
