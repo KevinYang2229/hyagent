@@ -200,12 +200,14 @@ describe('runFolderIngestRound', () => {
     expect(source.settled[0].reason).toContain('上限');
   });
 
-  it('meta 已有同名檔時先 removeFile 再 ingestFile', async () => {
+  it('meta 已有同名檔時先 removeFile（帶 deferSuggestions）再 ingestFile', async () => {
     mockGetMeta.mockReturnValue({ files: [{ fileId: 'old-1', name: '規章.txt' }] });
     const source = new FakeSource([item('規章.txt', 100)]);
     await runTwice(source);
 
-    expect(mockRemoveFile).toHaveBeenCalledWith('default', 'old-1');
+    // deferSuggestions: true——批次重丟同名改版檔不該讓 removeFile 也各自觸發一次推薦問句重生，
+    // 否則 N 個同名檔就是 N 次白花的 LLM 呼叫，與 ingestFile 那頭的 deferSuggestions 想省的是同一件事
+    expect(mockRemoveFile).toHaveBeenCalledWith('default', 'old-1', { deferSuggestions: true });
     expect(mockRemoveFile.mock.invocationCallOrder[0]).toBeLessThan(
       mockIngestFile.mock.invocationCallOrder[0],
     );

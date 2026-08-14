@@ -83,6 +83,9 @@ export interface KnowledgeIndexMeta {
   chunkCountBySource?: Record<SourceKey, number>;
 }
 
+/** 索引 meta 的衍生欄位 patch；files 陣列本身走專屬的 delta 操作（見 addFileMeta / removeFileMeta），不走這裡 */
+export type KnowledgeMetaPatch = Partial<Omit<KnowledgeIndexMeta, 'files'>>;
+
 /** 回傳預設來源設定（以 env 為基準） */
 function defaultSource(): KnowledgeSource {
   return {
@@ -118,13 +121,17 @@ function persist(): void {
   }
 }
 
+/** undefined 欄位序列化剔除（與 file 後端同語意）；db 後端所有寫入路徑共用 */
+function toJson<T>(v: T): Prisma.InputJsonValue {
+  return JSON.parse(JSON.stringify(v)) as Prisma.InputJsonValue;
+}
+
 /**
  * db 後端：定向 upsert 單一租戶。
  * source 與 meta 兩個欄位分開寫——setMeta 不該覆蓋 saveSource 的內容，反之亦然。
  */
 function upsertToDb(tenantId: string, patch: { source?: KnowledgeSource; meta?: KnowledgeIndexMeta }): void {
-  // undefined 欄位序列化剔除（與 file 後端同語意）
-  const json = <T,>(v: T): Prisma.InputJsonValue => JSON.parse(JSON.stringify(v)) as Prisma.InputJsonValue;
+  const json = toJson;
   const create = {
     tenantId,
     source: patch.source ? json(patch.source) : {},
@@ -178,6 +185,33 @@ export async function initKnowledgeStore(): Promise<void> {
   logger.info({ count: rows.length }, 'knowledge config restored from db');
 }
 
+/** meta 的預設空狀態；DB 的 jsonb 欄位預設 '{}'，與「未設定」同義 */
+const EMPTY_META: KnowledgeIndexMeta = { status: 'none', chunkCount: 0 };
+
+/**
+ * db 後端的 files delta 寫入：在 writeQueue 的 task 內部重新 findUnique 讀回該租戶「當下」
+ * 的 meta，把 delta 套用在 DB 的最新值上（而非呼叫端手上的記憶體快照），再寫回、並同步記憶體 Map。
+ *
+ * 這是修正跨 process lost update 的關鍵：watcher CLI 與 server 是兩個 process，各自的記憶體
+ * 快照只在啟動時同步一次；若沿用記憶體快照做 files 增減再整包寫回，會把「另一個 process 這段
+ * 期間新增/刪除的檔案」蓋掉。寫入佇列本身是序列的（enqueue 內的 task 依序執行），同一 process
+ * 內排隊的多次呼叫不會互相競爭，故此處不需要額外的鎖。
+ */
+function enqueueFilesDelta(tenantId: string, applyFilesDelta: (base: KnowledgeIndexMeta) => KnowledgeIndexMeta): void {
+  writeQueue.enqueue(async (db) => {
+    const row = await db.knowledgeSourceRow.findUnique({ where: { tenantId } });
+    const dbMeta = row?.meta as unknown as KnowledgeIndexMeta | undefined;
+    const base = dbMeta && Object.keys(dbMeta).length ? dbMeta : EMPTY_META;
+    const merged = applyFilesDelta(base);
+    await db.knowledgeSourceRow.upsert({
+      where: { tenantId },
+      create: { tenantId, source: {}, meta: toJson(merged) },
+      update: { meta: toJson(merged) },
+    });
+    metas.set(tenantId, merged);
+  });
+}
+
 export const knowledgeStore = {
   /** 取得租戶的知識來源設定；未設定時回預設值 */
   getSource(tenantId: string): KnowledgeSource {
@@ -205,5 +239,50 @@ export const knowledgeStore = {
   setMeta(tenantId: string, meta: KnowledgeIndexMeta): void {
     metas.set(tenantId, meta);
     save(tenantId, { meta });
+  },
+
+  /**
+   * 新增一筆檔案 meta（delta 操作，取代「整包覆蓋」的 setMeta({ files: [...] })）。
+   *
+   * files 陣列的增減走「本次異動要套用在誰身上」的 delta 語意；patch 內其餘欄位
+   * （status/chunkCount/generatedAt/model/chunkCountBySource 等）維持 last-writer-wins，
+   * 直接採用呼叫端傳入的值——這些是顯示用衍生欄位，下一次任何索引異動就會自我修正。
+   *
+   * - file 後端：單一 process 寫檔，無跨 process 競態，直接對記憶體 Map 做 delta 即可。
+   * - db 後端：先同步更新記憶體 Map（讓同 process 內緊接著的 getMeta，例如批次匯入判斷
+   *   下一筆同名檔，能立即看到本次異動），再另外排入寫入佇列，於佇列 task 內部重讀 DB
+   *   最新值做 delta 合併，避免跨 process 的 lost update（見 enqueueFilesDelta 註解）。
+   */
+  addFileMeta(tenantId: string, file: KnowledgeFileMeta, patch: KnowledgeMetaPatch): void {
+    const current = metas.get(tenantId) ?? EMPTY_META;
+    const merged: KnowledgeIndexMeta = { ...current, ...patch, files: [...(current.files ?? []), file] };
+    metas.set(tenantId, merged);
+
+    if (env.DATA_BACKEND !== 'db') {
+      persist();
+      return;
+    }
+    enqueueFilesDelta(tenantId, (base) => ({ ...base, ...patch, files: [...(base.files ?? []), file] }));
+  },
+
+  /** 移除指定 fileId 的檔案 meta（delta 操作）；語意與 addFileMeta 對稱，見其註解 */
+  removeFileMeta(tenantId: string, fileId: string, patch: KnowledgeMetaPatch): void {
+    const current = metas.get(tenantId) ?? EMPTY_META;
+    const merged: KnowledgeIndexMeta = {
+      ...current,
+      ...patch,
+      files: (current.files ?? []).filter((f) => f.fileId !== fileId),
+    };
+    metas.set(tenantId, merged);
+
+    if (env.DATA_BACKEND !== 'db') {
+      persist();
+      return;
+    }
+    enqueueFilesDelta(tenantId, (base) => ({
+      ...base,
+      ...patch,
+      files: (base.files ?? []).filter((f) => f.fileId !== fileId),
+    }));
   },
 };
