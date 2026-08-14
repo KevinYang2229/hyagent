@@ -31,23 +31,48 @@ interface Args {
   tenant?: string;
 }
 
+const USAGE =
+  '用法：npm run watch:knowledge -w server -- --root=<path> [--interval=30] [--once] [--dry-run] [--max-mb=50] [--tenant=<id>]';
+
+function fail(message: string): never {
+  console.error(message);
+  console.error(USAGE);
+  process.exit(1);
+}
+
 function parseArgs(argv: string[]): Args {
   const get = (key: string): string | undefined =>
     argv.find((a) => a.startsWith(`--${key}=`))?.split('=').slice(1).join('=');
   const has = (key: string): boolean => argv.includes(`--${key}`);
 
   const root = get('root');
-  if (!root) {
-    console.error('缺少 --root=<path>');
-    console.error('用法：npm run watch:knowledge -w server -- --root=<path> [--interval=30] [--once] [--dry-run] [--max-mb=50] [--tenant=<id>]');
-    process.exit(1);
+  if (!root) fail('缺少 --root=<path>');
+
+  // 【R9 修正】Number(...) 對不合法輸入回 NaN，若不驗證會安靜地做錯事而非大聲失敗：
+  //   --interval=abc → setTimeout(fn, NaN*1000) 會被 Node 夾成約 1ms，輪詢迴圈變成
+  //     瘋狂空轉的 busy loop；
+  //   --max-mb=abc → maxBytes 為 NaN，而 JS 的 `item.size > NaN` 恆為 false，等於
+  //     大小上限這道安全閘直接失效、巨檔照樣送進 embedding API，成本直接反映在帳單上。
+  // 用 Number.isFinite（而非 !Number.isNaN）驗證，順便擋掉 Infinity。
+  const intervalRaw = get('interval') ?? '30';
+  const intervalSec = Number(intervalRaw);
+  if (!Number.isFinite(intervalSec) || intervalSec <= 0) {
+    fail(`--interval 必須是大於 0 的數字，收到：${intervalRaw}`);
   }
+
+  const maxMbRaw = get('max-mb') ?? '50';
+  const maxMb = Number(maxMbRaw);
+  // 0 代表「拒絕所有檔案」，是合法且有用的語意（例如不想真的呼叫付費 API 時拿來驗證用）
+  if (!Number.isFinite(maxMb) || maxMb < 0) {
+    fail(`--max-mb 必須是 >= 0 的數字，收到：${maxMbRaw}`);
+  }
+
   return {
     root,
-    intervalSec: Number(get('interval') ?? 30),
+    intervalSec,
     once: has('once'),
     dryRun: has('dry-run'),
-    maxMb: Number(get('max-mb') ?? 50),
+    maxMb,
     tenant: get('tenant'),
   };
 }
