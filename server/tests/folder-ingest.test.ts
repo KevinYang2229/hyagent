@@ -1,11 +1,41 @@
 /** 批次匯入執行器：穩定性判定、錯誤分類、單輪執行流程。 */
+const mockIngestFile = jest.fn();
+const mockRemoveFile = jest.fn();
+jest.mock('@/modules/knowledge/knowledge-file.service', () => ({
+  __esModule: true,
+  ingestFile: (...args: unknown[]) => mockIngestFile(...args),
+  removeFile: (...args: unknown[]) => mockRemoveFile(...args),
+}));
+const mockRefreshSuggestions = jest.fn();
+jest.mock('@/modules/knowledge/knowledge.suggest', () => ({
+  __esModule: true,
+  refreshSuggestedPrompts: (...args: unknown[]) => mockRefreshSuggestions(...args),
+}));
+const mockLoadIndex = jest.fn();
+jest.mock('@/modules/knowledge/knowledge.index.repo', () => ({
+  __esModule: true,
+  loadIndex: (...args: unknown[]) => mockLoadIndex(...args),
+}));
+const mockGetMeta = jest.fn();
+jest.mock('@/modules/knowledge/knowledge.store', () => ({
+  __esModule: true,
+  knowledgeStore: { getMeta: (...args: unknown[]) => mockGetMeta(...args) },
+}));
+jest.mock('@/lib/logger', () => ({
+  __esModule: true,
+  logger: { warn: jest.fn(), info: jest.fn(), error: jest.fn(), debug: jest.fn() },
+}));
+
 import {
+  createWatchState,
   describeError,
   isPermanentFailure,
+  runFolderIngestRound,
   selectStable,
+  type RoundOptions,
   type SeenEntry,
 } from '@/modules/knowledge/folder-ingest.service';
-import type { PendingItem } from '@/modules/knowledge/batch-source';
+import type { BatchSource, PendingItem, SettleOutcome } from '@/modules/knowledge/batch-source';
 import { AppError } from '@/utils/app-error';
 
 function item(name: string, size: number, mtimeMs: number | null = 1000): PendingItem {
@@ -76,5 +106,147 @@ describe('describeError', () => {
   it('非 Error 值也能轉成字串而不拋錯', () => {
     expect(typeof describeError('壞掉了')).toBe('string');
     expect(typeof describeError(undefined)).toBe('string');
+  });
+});
+
+/** 可程式化的假來源：list 回預設清單，settle 記錄呼叫 */
+class FakeSource implements BatchSource {
+  settled: { name: string; outcome: SettleOutcome; reason?: string }[] = [];
+  constructor(private items: PendingItem[]) {}
+  async list(): Promise<PendingItem[]> {
+    return this.items;
+  }
+  async read(): Promise<Buffer> {
+    return Buffer.from('內容');
+  }
+  async settle(item: PendingItem, outcome: SettleOutcome, reason?: string): Promise<void> {
+    this.settled.push({ name: item.name, outcome, reason });
+    this.items = this.items.filter((i) => i.ref !== item.ref);
+  }
+}
+
+const OPTS: RoundOptions = { maxBytes: 50 * 1024 * 1024, retryDelayMs: 0 };
+
+/** 跑兩輪：第一輪讓穩定性判定記錄指紋，第二輪才真的處理 */
+async function runTwice(source: BatchSource, opts: RoundOptions = OPTS) {
+  const state = createWatchState();
+  await runFolderIngestRound(source, state, opts);
+  return runFolderIngestRound(source, state, opts);
+}
+
+beforeEach(() => {
+  mockIngestFile.mockReset().mockResolvedValue({ fileId: 'f1', name: 'x', chunks: 3 });
+  mockRemoveFile.mockReset().mockResolvedValue(true);
+  mockRefreshSuggestions.mockReset().mockResolvedValue(undefined);
+  mockLoadIndex.mockReset().mockResolvedValue({ generatedAt: '', model: 'm', source: 's', chunks: [] });
+  mockGetMeta.mockReset().mockReturnValue({ files: [] });
+});
+
+describe('runFolderIngestRound', () => {
+  it('穩定後逐檔呼叫 ingestFile，並一律帶 deferSuggestions', async () => {
+    const source = new FakeSource([item('規章.txt', 100), item('手冊.txt', 200)]);
+    const result = await runTwice(source);
+
+    expect(result.done).toBe(2);
+    expect(mockIngestFile).toHaveBeenCalledTimes(2);
+    for (const call of mockIngestFile.mock.calls) {
+      expect(call[3]).toEqual({ deferSuggestions: true });
+    }
+  });
+
+  it('成功的檔案 settle done', async () => {
+    const source = new FakeSource([item('規章.txt', 100)]);
+    await runTwice(source);
+    expect(source.settled).toEqual([{ name: '規章.txt', outcome: 'done', reason: undefined }]);
+  });
+
+  it('永久性失敗 settle failed 並帶原因', async () => {
+    mockIngestFile.mockRejectedValue(AppError.unprocessable('無可抽取文字'));
+    const source = new FakeSource([item('壞檔.txt', 100)]);
+    const result = await runTwice(source);
+
+    expect(result.failed).toBe(1);
+    expect(source.settled[0].outcome).toBe('failed');
+    expect(source.settled[0].reason).toContain('無可抽取文字');
+  });
+
+  it('暫時性失敗不搬檔，重試一次後計入 retry', async () => {
+    mockIngestFile.mockRejectedValue(new Error('socket hang up'));
+    const source = new FakeSource([item('規章.txt', 100)]);
+    const result = await runTwice(source);
+
+    expect(result.retry).toBe(1);
+    expect(source.settled).toEqual([]);
+    expect(mockIngestFile).toHaveBeenCalledTimes(2); // 首次 + 重試一次
+  });
+
+  it('暫時性失敗的重試成功時計入 done', async () => {
+    mockIngestFile
+      .mockRejectedValueOnce(new Error('socket hang up'))
+      .mockResolvedValueOnce({ fileId: 'f1', name: 'x', chunks: 3 });
+    const source = new FakeSource([item('規章.txt', 100)]);
+    const result = await runTwice(source);
+
+    expect(result.done).toBe(1);
+    expect(source.settled[0].outcome).toBe('done');
+  });
+
+  it('超過 maxBytes 判永久性失敗，不呼叫 ingestFile', async () => {
+    const source = new FakeSource([item('巨檔.txt', 999)]);
+    const result = await runTwice(source, { ...OPTS, maxBytes: 500 });
+
+    expect(result.failed).toBe(1);
+    expect(mockIngestFile).not.toHaveBeenCalled();
+    expect(source.settled[0].reason).toContain('上限');
+  });
+
+  it('meta 已有同名檔時先 removeFile 再 ingestFile', async () => {
+    mockGetMeta.mockReturnValue({ files: [{ fileId: 'old-1', name: '規章.txt' }] });
+    const source = new FakeSource([item('規章.txt', 100)]);
+    await runTwice(source);
+
+    expect(mockRemoveFile).toHaveBeenCalledWith('default', 'old-1');
+    expect(mockRemoveFile.mock.invocationCallOrder[0]).toBeLessThan(
+      mockIngestFile.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('整輪結束後每個有處理過的租戶各觸發一次推薦問句重生', async () => {
+    const source = new FakeSource([item('規章.txt', 100), item('手冊.txt', 200)]);
+    await runTwice(source);
+    expect(mockRefreshSuggestions).toHaveBeenCalledTimes(1);
+  });
+
+  it('本輪未處理任何檔案時不觸發推薦問句重生', async () => {
+    const source = new FakeSource([item('規章.txt', 100)]);
+    const state = createWatchState();
+    await runFolderIngestRound(source, state, OPTS); // 只跑第一輪：尚未穩定
+    expect(mockRefreshSuggestions).not.toHaveBeenCalled();
+  });
+
+  it('dryRun 不呼叫 ingestFile 也不搬檔', async () => {
+    const source = new FakeSource([item('規章.txt', 100)]);
+    const result = await runTwice(source, { ...OPTS, dryRun: true });
+
+    expect(mockIngestFile).not.toHaveBeenCalled();
+    expect(source.settled).toEqual([]);
+    expect(result.done).toBe(0);
+  });
+
+  it('tenantFilter 只處理指定租戶', async () => {
+    const other: PendingItem = {
+      tenantId: 'acme',
+      name: '辦法.txt',
+      ref: '/tmp/acme/辦法.txt',
+      size: 100,
+      mtimeMs: 1000,
+    };
+    const source = new FakeSource([item('規章.txt', 100), other]);
+    const result = await runTwice(source, { ...OPTS, tenantFilter: 'acme' });
+
+    expect(result.done).toBe(1);
+    expect(mockIngestFile).toHaveBeenCalledWith('acme', '辦法.txt', expect.any(Buffer), {
+      deferSuggestions: true,
+    });
   });
 });
