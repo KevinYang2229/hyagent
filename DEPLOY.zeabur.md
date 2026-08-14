@@ -199,3 +199,40 @@ docker run --rm -p 8080:8080 oa-client   # 開 http://localhost:8080
 docker build -f Dockerfile.admin --build-arg VITE_API_BASE=http://localhost:3000 -t oa-admin .
 docker run --rm -p 8081:8080 oa-admin    # 開 http://localhost:8081
 ```
+
+## 七、知識庫資料夾批次匯入（選用）
+
+除了 admin 後台一次上傳一個檔，`server/scripts/knowledge-watch.ts` 提供另一支獨立 CLI，
+把整個資料夾的文件依序批次消化進知識庫索引，適合一次匯入幾十份規章文件的情境。
+消化邏輯與 admin 上傳共用同一條 `ingestFile` 管線，結果完全一致。
+
+把文件放進 `<root>/<tenantId>/`（子資料夾名即為 tenantId），執行：
+
+```bash
+npm run watch:knowledge -w server -- --root=/path/to/inbox
+```
+
+watcher 會依序消化每個檔案，成功搬進 `_done/`；永久性失敗（格式不支援、超過大小上限等）
+搬進 `_failed/` 並附同名 `.error.txt` 記錄原因；暫時性失敗（embedding API 逾時等）不搬檔，
+留在原地待下一輪重試。
+
+| 參數 | 預設 | 說明 |
+|---|---|---|
+| `--root` | 必填 | 監控的根目錄 |
+| `--interval` | 30 | 輪詢間隔（秒） |
+| `--once` | — | 單次呼叫內自足完成兩輪（掃描 → 等待 `--interval` 秒 → 再掃描，只在第二輪處理），**可掛 cron**。代價是單次執行至少要等一個 `--interval`，嫌久可用 `--once --interval=5` |
+| `--dry-run` | — | 只列出將處理什麼與預估規模，不呼叫任何 API、不搬檔；搭配 `--once` 同樣走完整兩輪 |
+| `--max-mb` | 50 | 單檔大小上限（MB）；`0` 為合法值，代表拒絕所有檔案 |
+| `--tenant` | — | 只處理指定租戶的子資料夾 |
+
+> `--interval` 與 `--max-mb` 會驗證輸入：非數字、`Infinity`、`--interval <= 0`、`--max-mb < 0`
+> 一律印出明確錯誤並以 exit code 1 結束，不會靜默改用預設值。
+
+**注意事項**
+
+- `server/.env` 需為 `DATA_BACKEND=db` 且 `DATABASE_URL` 指向正式 Supabase，
+  否則索引寫進本機 JSON、正式環境看不到（watcher 啟動時會印出目前的 `DATA_BACKEND`，非 `db` 模式下另有警告）。
+- 檔案需連續兩輪 `(size, mtime)` 相同才會被判定為「寫完」而處理，避免讀到傳輸中的半份檔案；
+  持續輪詢模式下這是自然發生的（第二輪起才看得到符合條件的檔案），`--once` 已在單次呼叫內把這兩輪都跑完，不需要額外操作。
+- 同名檔視為更新：會先移除既有同名檔的 chunks 再重新匯入。
+- **全站重爬期間請勿執行批次匯入**：重爬是整份取代，會抹掉期間新增的檔案 chunks。

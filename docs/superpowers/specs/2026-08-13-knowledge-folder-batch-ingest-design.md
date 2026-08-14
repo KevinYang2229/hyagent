@@ -312,7 +312,8 @@ npm run watch:knowledge -w server -- --root=<path> [options]
 
   --root=<path>      必填。要監控的根目錄
   --interval=<sec>   輪詢間隔，預設 30
-  --once             掃一輪就結束（可掛 cron，或手動批次）
+  --once             單次呼叫內自足完成兩輪（掃描 → 等待 --interval 秒 → 再掃描，只在
+                     第二輪處理），可掛 cron；代價是單次執行至少要等一個 --interval
   --dry-run          只列出將處理什麼與預估規模，不呼叫任何 API、不搬檔
   --max-mb=<n>       單檔上限，預設 50
   --tenant=<id>      只處理指定租戶的子資料夾

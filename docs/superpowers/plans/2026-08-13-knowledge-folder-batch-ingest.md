@@ -1624,8 +1624,9 @@ npx tsx scripts/knowledge-watch.ts --root=/tmp/kw-test --once --dry-run
 ```
 
 Expected: 列出 `default` 租戶與其模型、`[dry-run] 將匯入` 不含 `圖片.png`；不呼叫任何 API。
-（`--once` 只跑一輪，而穩定性判定需要兩輪，故第一次執行不會列出待匯入項目——
-再執行一次同樣的指令即可看到。這是預期行為，非缺陷。）
+（`--once` 在單次呼叫內自足完成兩輪——掃描 → 等待 `--interval` 秒 → 再掃描，只在第二輪
+處理——故單次執行即可看到結果，不需要重跑指令；預設 `--interval=30` 會使這步等約 30 秒，
+嫌久可加 `--interval=5`。）
 
 - [ ] **Step 5: 型別檢查與 lint**
 
