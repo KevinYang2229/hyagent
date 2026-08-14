@@ -219,6 +219,34 @@ describe('runFolderIngestRound', () => {
     expect(mockRefreshSuggestions).toHaveBeenCalledTimes(1);
   });
 
+  it('跨租戶批次：每個租戶各觸發一次推薦問句重生，且各自帶正確的 tenantId', async () => {
+    // 「子資料夾名 = tenantId」是本設計的核心命題；只用單一租戶測不出「tenantId 有沒有寫死」
+    // 這種缺陷（單租戶下即使實作整輪只呼叫一次、tenantId 寫死，斷言 toHaveBeenCalledTimes(1) 一樣會過）
+    const tenantAItem: PendingItem = {
+      tenantId: 'tenant-a',
+      name: 'a規章.txt',
+      ref: '/tmp/tenant-a/a規章.txt',
+      size: 100,
+      mtimeMs: 1000,
+    };
+    const tenantBItem: PendingItem = {
+      tenantId: 'tenant-b',
+      name: 'b規章.txt',
+      ref: '/tmp/tenant-b/b規章.txt',
+      size: 100,
+      mtimeMs: 1000,
+    };
+    const source = new FakeSource([tenantAItem, tenantBItem]);
+    const result = await runTwice(source);
+
+    expect(result.done).toBe(2);
+    expect(mockRefreshSuggestions).toHaveBeenCalledTimes(2);
+    const calledTenantIds = mockRefreshSuggestions.mock.calls.map((call) => call[0]).sort();
+    expect(calledTenantIds).toEqual(['tenant-a', 'tenant-b']);
+    expect(mockRefreshSuggestions).toHaveBeenCalledWith('tenant-a', expect.anything());
+    expect(mockRefreshSuggestions).toHaveBeenCalledWith('tenant-b', expect.anything());
+  });
+
   it('本輪未處理任何檔案時不觸發推薦問句重生', async () => {
     const source = new FakeSource([item('規章.txt', 100)]);
     const state = createWatchState();
