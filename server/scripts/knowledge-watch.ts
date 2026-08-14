@@ -125,7 +125,8 @@ async function main(): Promise<void> {
     });
   }
 
-  do {
+  /** 掃描待處理清單 + 跑一輪 + 印出結果；連續模式與 --once 的第二輪共用同一份報告邏輯 */
+  const runReportedRound = async (): Promise<void> => {
     const pending = await source.list();
     if (pending.length > 0) {
       const totalMb = pending.reduce((sum, i) => sum + i.size, 0) / 1024 / 1024;
@@ -138,9 +139,37 @@ async function main(): Promise<void> {
         `本輪：done ${result.done} / failed ${result.failed} / retry ${result.retry} / skipped ${result.skipped}`,
       );
     }
-    if (args.once || stopping) break;
-    await new Promise((resolve) => setTimeout(resolve, args.intervalSec * 1000));
-  } while (!stopping);
+  };
+
+  if (args.once) {
+    // 【R8 修正】--once 必須在單次呼叫內自行完成兩輪，否則永遠不會匯入任何檔案。
+    //
+    // WatchState（上面的 state）只存在於這個 process 的記憶體裡，從不落地；而穩定性判定
+    // （selectStable，見 folder-ingest.service.ts）要求同一個 state 連續兩輪看到相同的
+    // (size, mtime) 才會把檔案視為「寫完」。若 --once 只跑一輪，那一輪必然是每個檔案第一次
+    // 被觀測到，state 裡沒有上一輪的指紋可比對，結果永遠是 skipped、永遠不會處理任何檔案——
+    // 這不是「要跑兩次指令」的問題，跨 process 重跑一樣是全新的空 state，一樣看不到任何東西
+    // （這正是先前手動驗證時，同一個 --once 指令連跑四次結果都相同的原因）。連帶地，若把
+    // --once 掛到 cron 上，每次呼叫都是新 process，也一樣永遠不會匯入。
+    //
+    // 因此這裡改為：第一輪只用來建立指紋（掃描 + selectStable 記錄 seen，不會有任何檔案
+    // 通過穩定性判定，故不列印統計避免使用者誤讀成「done 0＝失敗」），等待 --interval 秒
+    // 讓寫入未完成的檔案有機會穩定下來，再跑第二輪——此時第一輪記錄的指紋就派得上用場，
+    // 真正符合條件的檔案才會被處理。兩輪共用同一個 state 與 opts（含 dryRun），
+    // 所以 --dry-run --once 也會照樣走兩輪，第二輪才列得出 [dry-run] 將匯入。
+    console.log(`第一輪掃描：僅記錄檔案指紋，等待 ${args.intervalSec}s 確認寫入已穩定…`);
+    await runFolderIngestRound(source, state, opts);
+    if (!stopping) {
+      await new Promise((resolve) => setTimeout(resolve, args.intervalSec * 1000));
+    }
+    if (!stopping) await runReportedRound();
+  } else {
+    do {
+      await runReportedRound();
+      if (stopping) break;
+      await new Promise((resolve) => setTimeout(resolve, args.intervalSec * 1000));
+    } while (!stopping);
+  }
 
   await closeDb();
   console.log('結束。');
