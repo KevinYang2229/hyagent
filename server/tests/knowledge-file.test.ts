@@ -220,4 +220,28 @@ describe('append-only 寫入與 deferSuggestions', () => {
 
     expect(mockRefreshSuggestions).not.toHaveBeenCalled();
   });
+
+  it('removeFile 不傳 opts 時仍觸發推薦問句重生（admin 刪檔行為未變）', async () => {
+    const t = tenantStore.createTenant('kfile-remove-suggest-default');
+    const meta = await ingestFile(t.id, '規章.txt', Buffer.from('公司規章內容說明。'.repeat(20)), {
+      deferSuggestions: true,
+    });
+    mockRefreshSuggestions.mockClear();
+
+    await expect(removeFile(t.id, meta.fileId)).resolves.toBe(true);
+
+    expect(mockRefreshSuggestions).toHaveBeenCalledTimes(1);
+  });
+
+  it('removeFile 傳 { deferSuggestions: true } 時不觸發推薦問句重生（批次同名檔替換省呼叫）', async () => {
+    const t = tenantStore.createTenant('kfile-remove-suggest-defer');
+    const meta = await ingestFile(t.id, '規章.txt', Buffer.from('公司規章內容說明。'.repeat(20)), {
+      deferSuggestions: true,
+    });
+    mockRefreshSuggestions.mockClear();
+
+    await expect(removeFile(t.id, meta.fileId, { deferSuggestions: true })).resolves.toBe(true);
+
+    expect(mockRefreshSuggestions).not.toHaveBeenCalled();
+  });
 });

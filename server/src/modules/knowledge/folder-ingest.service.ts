@@ -106,7 +106,8 @@ function sleep(ms: number): Promise<void> {
 /** 同名檔視為更新：先移除既有的同名檔，否則索引會留下兩份 chunks */
 async function replaceSameName(tenantId: string, name: string): Promise<void> {
   const existing = knowledgeStore.getMeta(tenantId).files?.find((f) => f.name === name);
-  if (existing) await removeFile(tenantId, existing.fileId);
+  // deferSuggestions：批次重丟同名改版檔不必逐檔重生推薦問句，整輪結束後統一觸發一次即可
+  if (existing) await removeFile(tenantId, existing.fileId, { deferSuggestions: true });
 }
 
 /**

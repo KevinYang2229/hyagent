@@ -139,8 +139,10 @@ export async function ingestFile(
     source: existing?.source ?? `file://${name}`,
   });
 
-  // meta 的計數與推薦問句素材需要「整份索引」的視角。這裡用 existing 快照加上本次新增
-  // 就地算出，而不是回讀（db 後端回讀整份索引是 9MB 級的操作，而計數僅供顯示）。
+  // meta 的計數與推薦問句素材需要「整份索引」的視角。上面的 loadIndex 是取得 model/source
+  // 所必須、避不開的一次整份讀取；這裡避開的只是「寫入後」的第二次回讀——allChunks 直接用
+  // existing 快照加上本次新增就地拼出（db 後端回讀整份索引是 9MB 級的操作，而計數僅供顯示）。
+  // 代價：批次匯入 N 個檔仍是 N 次全量索引載入（上面那次），這是本功能已知的效能瓶頸，留待後續處理。
   // 併發匯入時計數可能短暫偏低，下一次任何索引異動即自我修正。
   const allChunks = [...(existing?.chunks ?? []), ...fileChunks];
   const generatedAt = new Date().toISOString();
@@ -153,14 +155,14 @@ export async function ingestFile(
     format: parsed.format,
     fidelity: parsed.fidelity,
   };
-  const meta = knowledgeStore.getMeta(tenantId);
-  knowledgeStore.setMeta(tenantId, {
-    ...meta,
+  // files 走 delta 操作（而非整包覆蓋的 setMeta）：watcher CLI 與 server 是兩個 process，
+  // 各自的記憶體快照只在啟動時同步一次，整包覆蓋會把另一個 process 期間新增的檔案蓋掉
+  // （db 後端見 knowledge.store.ts 的 addFileMeta／enqueueFilesDelta 註解）。
+  knowledgeStore.addFileMeta(tenantId, fileMeta, {
     status: 'ready',
     chunkCount: allChunks.length,
     generatedAt,
     model,
-    files: [...(meta.files ?? []), fileMeta],
     chunkCountBySource: countBySource(allChunks),
   });
 
@@ -175,8 +177,23 @@ export async function ingestFile(
   return fileMeta;
 }
 
+export interface RemoveFileOptions {
+  /**
+   * true 時跳過推薦問句重生觸發。
+   *
+   * 批次匯入「同名檔視為更新」會先 removeFile 舊檔再 ingestFile 新檔；removeFile 若無條件
+   * 觸發 refreshSuggestedPrompts，重丟 N 個同名改版檔就等於白花 N 次 LLM 呼叫（世代編號防護
+   * 只讓最後一次生效），與 ingestFile 的 deferSuggestions 想省下的浪費是同一件事。
+   */
+  deferSuggestions?: boolean;
+}
+
 /** 刪除已上傳檔案：索引剔除該 fileId 的 chunks + meta 移除；查無回 false。 */
-export async function removeFile(tenantId: string, fileId: string): Promise<boolean> {
+export async function removeFile(
+  tenantId: string,
+  fileId: string,
+  opts?: RemoveFileOptions,
+): Promise<boolean> {
   const meta = knowledgeStore.getMeta(tenantId);
   if (!meta.files?.some((f) => f.fileId === fileId)) return false;
 
@@ -184,18 +201,19 @@ export async function removeFile(tenantId: string, fileId: string): Promise<bool
   const existing = await loadIndex(tenantId);
   await removeFileChunks(tenantId, fileId);
 
-  const files = meta.files.filter((f) => f.fileId !== fileId);
+  // files 走 delta 操作（而非整包覆蓋的 setMeta）：理由同 ingestFile 的 addFileMeta，
+  // 見 knowledge.store.ts 的 removeFileMeta／enqueueFilesDelta 註解。
   if (existing) {
     const chunks = existing.chunks.filter((c) => c.fileId !== fileId);
-    knowledgeStore.setMeta(tenantId, {
-      ...meta,
+    knowledgeStore.removeFileMeta(tenantId, fileId, {
       chunkCount: chunks.length,
-      files,
       chunkCountBySource: countBySource(chunks),
     });
-    void refreshSuggestedPrompts(tenantId, { ...existing, chunks }).catch(() => {});
+    if (!opts?.deferSuggestions) {
+      void refreshSuggestedPrompts(tenantId, { ...existing, chunks }).catch(() => {});
+    }
   } else {
-    knowledgeStore.setMeta(tenantId, { ...meta, files });
+    knowledgeStore.removeFileMeta(tenantId, fileId, {});
   }
   return true;
 }
