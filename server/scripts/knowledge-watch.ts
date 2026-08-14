@@ -9,18 +9,21 @@
  *
  * 前提：DATA_BACKEND=db 且 DATABASE_URL 指向正式 Supabase，否則寫進本機 JSON、正式環境看不到。
  */
-import { env } from '@/config/env';
-import { closeDb, connectDb } from '@/lib/db';
-import { LocalFolderSource } from '@/modules/knowledge/batch-source';
+import { env } from "@/config/env";
+import { closeDb, connectDb } from "@/lib/db";
+import { LocalFolderSource } from "@/modules/knowledge/batch-source";
 import {
   createWatchState,
   runFolderIngestRound,
   type RoundOptions,
-} from '@/modules/knowledge/folder-ingest.service';
-import { loadIndex } from '@/modules/knowledge/knowledge.index.repo';
-import { initKnowledgeStore, knowledgeStore } from '@/modules/knowledge/knowledge.store';
-import { initTenantStore } from '@/modules/tenant/tenant.store';
-import { initUsageStore } from '@/modules/usage/usage.store';
+} from "@/modules/knowledge/folder-ingest.service";
+import { loadIndex } from "@/modules/knowledge/knowledge.index.repo";
+import {
+  initKnowledgeStore,
+  knowledgeStore,
+} from "@/modules/knowledge/knowledge.store";
+import { initTenantStore } from "@/modules/tenant/tenant.store";
+import { initUsageStore } from "@/modules/usage/usage.store";
 
 interface Args {
   root: string;
@@ -32,7 +35,7 @@ interface Args {
 }
 
 const USAGE =
-  '用法：npm run watch:knowledge -w server -- --root=<path> [--interval=30] [--once] [--dry-run] [--max-mb=50] [--tenant=<id>]';
+  "用法：npm run watch:knowledge -w server -- --root=<path> [--interval=30] [--once] [--dry-run] [--max-mb=50] [--tenant=<id>]";
 
 function fail(message: string): never {
   console.error(message);
@@ -42,11 +45,15 @@ function fail(message: string): never {
 
 function parseArgs(argv: string[]): Args {
   const get = (key: string): string | undefined =>
-    argv.find((a) => a.startsWith(`--${key}=`))?.split('=').slice(1).join('=');
+    argv
+      .find((a) => a.startsWith(`--${key}=`))
+      ?.split("=")
+      .slice(1)
+      .join("=");
   const has = (key: string): boolean => argv.includes(`--${key}`);
 
-  const root = get('root');
-  if (!root) fail('缺少 --root=<path>');
+  const root = get("root");
+  if (!root) fail("缺少 --root=<path>");
 
   // 【R9 修正】Number(...) 對不合法輸入回 NaN，若不驗證會安靜地做錯事而非大聲失敗：
   //   --interval=abc → setTimeout(fn, NaN*1000) 會被 Node 夾成約 1ms，輪詢迴圈變成
@@ -54,13 +61,13 @@ function parseArgs(argv: string[]): Args {
   //   --max-mb=abc → maxBytes 為 NaN，而 JS 的 `item.size > NaN` 恆為 false，等於
   //     大小上限這道安全閘直接失效、巨檔照樣送進 embedding API，成本直接反映在帳單上。
   // 用 Number.isFinite（而非 !Number.isNaN）驗證，順便擋掉 Infinity。
-  const intervalRaw = get('interval') ?? '30';
+  const intervalRaw = get("interval") ?? "30";
   const intervalSec = Number(intervalRaw);
   if (!Number.isFinite(intervalSec) || intervalSec <= 0) {
     fail(`--interval 必須是大於 0 的數字，收到：${intervalRaw}`);
   }
 
-  const maxMbRaw = get('max-mb') ?? '50';
+  const maxMbRaw = get("max-mb") ?? "50";
   const maxMb = Number(maxMbRaw);
   // 0 代表「拒絕所有檔案」，是合法且有用的語意（例如不想真的呼叫付費 API 時拿來驗證用）
   if (!Number.isFinite(maxMb) || maxMb < 0) {
@@ -70,10 +77,10 @@ function parseArgs(argv: string[]): Args {
   return {
     root,
     intervalSec,
-    once: has('once'),
-    dryRun: has('dry-run'),
+    once: has("once"),
+    dryRun: has("dry-run"),
     maxMb,
-    tenant: get('tenant'),
+    tenant: get("tenant"),
   };
 }
 
@@ -85,10 +92,14 @@ function parseArgs(argv: string[]): Args {
  */
 async function printPreflight(tenantIds: string[]): Promise<void> {
   console.log(`DATA_BACKEND=${env.DATA_BACKEND}`);
-  if (env.DATA_BACKEND !== 'db') {
-    console.warn('⚠️  非 db 模式：索引會寫進本機 server/data/*.json，正式環境看不到。');
+  if (env.DATA_BACKEND !== "db") {
+    console.warn(
+      "⚠️  非 db 模式：索引會寫進本機 server/data/*.json，正式環境看不到。",
+    );
   }
-  console.warn('⚠️  全站重爬期間請勿執行批次匯入——重爬是整份取代，會抹掉期間新增的檔案 chunks。');
+  console.warn(
+    "⚠️  網站正在重新爬取資料時，請不要同時批次匯入文件，否則這段期間匯入的內容可能會被清除。",
+  );
 
   for (const tenantId of tenantIds) {
     const idx = await loadIndex(tenantId);
@@ -96,14 +107,16 @@ async function printPreflight(tenantIds: string[]): Promise<void> {
       console.log(`  ${tenantId}：沿用既有索引，模型 ${idx.model}`);
     } else {
       const model = knowledgeStore.getSource(tenantId).embeddingModel;
-      console.log(`  ${tenantId}：★ 將建立新索引，模型 ${model}（一經建立即定型）`);
+      console.log(
+        `  ${tenantId}：★ 將建立新索引，模型 ${model}（一經建立即定型）`,
+      );
     }
   }
 }
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
-  if (env.DATA_BACKEND === 'db') await connectDb();
+  if (env.DATA_BACKEND === "db") await connectDb();
 
   // 【R1 修正】CLI 是獨立進程，不會跑過 src/index.ts 的開機流程。
   //
@@ -132,21 +145,23 @@ async function main(): Promise<void> {
     tenantFilter: args.tenant,
   };
 
-  console.log(`監控 ${args.root}（間隔 ${args.intervalSec}s${args.once ? '，單輪' : ''}${args.dryRun ? '，dry-run' : ''}）`);
+  console.log(
+    `監控 ${args.root}（間隔 ${args.intervalSec}s${args.once ? "，單輪" : ""}${args.dryRun ? "，dry-run" : ""}）`,
+  );
   const initial = await source.list();
   await printPreflight([...new Set(initial.map((i) => i.tenantId))]);
 
   // 完成當前檔案後才退出：中途硬殺可能留下「chunks 已寫入但檔案未歸檔」的狀態，
   // 下一輪會重跑該檔（同名檔會先 removeFile，故不會重複），但仍以乾淨收尾為佳。
   let stopping = false;
-  for (const sig of ['SIGINT', 'SIGTERM'] as const) {
+  for (const sig of ["SIGINT", "SIGTERM"] as const) {
     process.on(sig, () => {
       if (stopping) {
-        console.log('\n強制退出。');
+        console.log("\n強制退出。");
         process.exit(130);
       }
       stopping = true;
-      console.log('\n收到中斷訊號，完成當前輪次後退出（再按一次強制退出）…');
+      console.log("\n收到中斷訊號，完成當前輪次後退出（再按一次強制退出）…");
     });
   }
 
@@ -182,22 +197,28 @@ async function main(): Promise<void> {
     // 讓寫入未完成的檔案有機會穩定下來，再跑第二輪——此時第一輪記錄的指紋就派得上用場，
     // 真正符合條件的檔案才會被處理。兩輪共用同一個 state 與 opts（含 dryRun），
     // 所以 --dry-run --once 也會照樣走兩輪，第二輪才列得出 [dry-run] 將匯入。
-    console.log(`第一輪掃描：僅記錄檔案指紋，等待 ${args.intervalSec}s 確認寫入已穩定…`);
+    console.log(
+      `第一輪掃描：僅記錄檔案指紋，等待 ${args.intervalSec}s 確認寫入已穩定…`,
+    );
     await runFolderIngestRound(source, state, opts);
     if (!stopping) {
-      await new Promise((resolve) => setTimeout(resolve, args.intervalSec * 1000));
+      await new Promise((resolve) =>
+        setTimeout(resolve, args.intervalSec * 1000),
+      );
     }
     if (!stopping) await runReportedRound();
   } else {
     do {
       await runReportedRound();
       if (stopping) break;
-      await new Promise((resolve) => setTimeout(resolve, args.intervalSec * 1000));
+      await new Promise((resolve) =>
+        setTimeout(resolve, args.intervalSec * 1000),
+      );
     } while (!stopping);
   }
 
   await closeDb();
-  console.log('結束。');
+  console.log("結束。");
 }
 
 main().catch(async (err) => {

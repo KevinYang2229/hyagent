@@ -24,30 +24,33 @@
 
 ## File Structure
 
-| 檔案 | 責任 | 動作 |
-|---|---|---|
-| `server/src/modules/knowledge/knowledge.index.repo.ts` | 索引持久化層 | **修改**：新增 `appendChunks` / `removeFileChunks` |
-| `server/src/modules/knowledge/knowledge-file.service.ts` | 檔案 ingest 管線 | **修改**：改用點狀寫入 + `opts.deferSuggestions` |
-| `server/src/modules/knowledge/batch-source.ts` | `BatchSource` / `PendingItem` 型別 + `LocalFolderSource` | 新增 |
-| `server/src/modules/knowledge/folder-ingest.service.ts` | 穩定性判定、錯誤分類、單輪執行 | 新增 |
-| `server/scripts/knowledge-watch.ts` | CLI 殼：參數、迴圈、log、訊號處理 | 新增 |
-| `server/package.json` | `watch:knowledge` script | **修改** |
-| `server/tests/knowledge-index-repo.test.ts` | Task 1 測試 | 新增 |
-| `server/tests/batch-source.test.ts` | Task 3 測試 | 新增 |
-| `server/tests/folder-ingest.test.ts` | Task 4、5 測試 | 新增 |
-| `server/tests/knowledge-file.test.ts` | 既有 | **修改**：補 append-only 與 `deferSuggestions` 回歸測試 |
+| 檔案                                                     | 責任                                                     | 動作                                                    |
+| -------------------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------- |
+| `server/src/modules/knowledge/knowledge.index.repo.ts`   | 索引持久化層                                             | **修改**：新增 `appendChunks` / `removeFileChunks`      |
+| `server/src/modules/knowledge/knowledge-file.service.ts` | 檔案 ingest 管線                                         | **修改**：改用點狀寫入 + `opts.deferSuggestions`        |
+| `server/src/modules/knowledge/batch-source.ts`           | `BatchSource` / `PendingItem` 型別 + `LocalFolderSource` | 新增                                                    |
+| `server/src/modules/knowledge/folder-ingest.service.ts`  | 穩定性判定、錯誤分類、單輪執行                           | 新增                                                    |
+| `server/scripts/knowledge-watch.ts`                      | CLI 殼：參數、迴圈、log、訊號處理                        | 新增                                                    |
+| `server/package.json`                                    | `watch:knowledge` script                                 | **修改**                                                |
+| `server/tests/knowledge-index-repo.test.ts`              | Task 1 測試                                              | 新增                                                    |
+| `server/tests/batch-source.test.ts`                      | Task 3 測試                                              | 新增                                                    |
+| `server/tests/folder-ingest.test.ts`                     | Task 4、5 測試                                           | 新增                                                    |
+| `server/tests/knowledge-file.test.ts`                    | 既有                                                     | **修改**：補 append-only 與 `deferSuggestions` 回歸測試 |
 
 ---
 
 ## Task 1: 索引持久化層的點狀寫入
 
 **Files:**
+
 - Modify: `server/src/modules/knowledge/knowledge.index.repo.ts`
 - Test: `server/tests/knowledge-index-repo.test.ts`
 
 **Interfaces:**
+
 - Consumes: 既有 `loadIndexFromFile` / `saveIndexToFile` / `connectDb` / `CHUNK_INSERT_BATCH` / `toVectorLiteral` / `SAVE_TX_TIMEOUT_MS` / `invalidateIndexCache` / `invalidatePgvectorModelCache`（皆已存在於該檔）
 - Produces:
+
   ```ts
   export async function appendChunks(
     tenantId: string,
@@ -55,7 +58,10 @@
     meta: { model: string; source: string },
   ): Promise<void>;
 
-  export async function removeFileChunks(tenantId: string, fileId: string): Promise<boolean>;
+  export async function removeFileChunks(
+    tenantId: string,
+    fileId: string,
+  ): Promise<boolean>;
   ```
 
 - [ ] **Step 1: 寫失敗的測試**
@@ -64,15 +70,19 @@
 
 ```ts
 /** 索引持久化層的點狀寫入：appendChunks 只加、removeFileChunks 只刪該檔，皆不動其他 chunks。 */
-import { existsSync, rmSync } from 'node:fs';
-import { appendChunks, loadIndex, removeFileChunks } from '@/modules/knowledge/knowledge.index.repo';
-import { indexPathFor } from '@/modules/knowledge/index-path';
-import type { IndexedChunk } from '@/modules/knowledge/knowledge-index.types';
+import { existsSync, rmSync } from "node:fs";
+import {
+  appendChunks,
+  loadIndex,
+  removeFileChunks,
+} from "@/modules/knowledge/knowledge.index.repo";
+import { indexPathFor } from "@/modules/knowledge/index-path";
+import type { IndexedChunk } from "@/modules/knowledge/knowledge-index.types";
 
 function chunk(id: string, fileId?: string): IndexedChunk {
   return {
     id,
-    url: fileId ? `file://${fileId}` : 'https://example.com/a',
+    url: fileId ? `file://${fileId}` : "https://example.com/a",
     title: id,
     text: `內容 ${id}`,
     vector: [0.1, 0.2, 0.3],
@@ -88,70 +98,88 @@ function freshTenant(name: string): string {
   return tenantId;
 }
 
-describe('appendChunks', () => {
-  it('索引不存在時一併建立 metadata', async () => {
-    const t = freshTenant('create');
-    await appendChunks(t, [chunk('a-0', 'a')], { model: 'test-embed', source: 'file://a.txt' });
+describe("appendChunks", () => {
+  it("索引不存在時一併建立 metadata", async () => {
+    const t = freshTenant("create");
+    await appendChunks(t, [chunk("a-0", "a")], {
+      model: "test-embed",
+      source: "file://a.txt",
+    });
 
     const idx = await loadIndex(t);
     expect(idx).not.toBeNull();
-    expect(idx!.model).toBe('test-embed');
-    expect(idx!.source).toBe('file://a.txt');
-    expect(idx!.chunks.map((c) => c.id)).toEqual(['a-0']);
+    expect(idx!.model).toBe("test-embed");
+    expect(idx!.source).toBe("file://a.txt");
+    expect(idx!.chunks.map((c) => c.id)).toEqual(["a-0"]);
   });
 
-  it('只新增指定 chunks，既有 chunks 原封不動', async () => {
-    const t = freshTenant('append');
-    await appendChunks(t, [chunk('a-0', 'a')], { model: 'test-embed', source: 'file://a.txt' });
-    await appendChunks(t, [chunk('b-0', 'b'), chunk('b-1', 'b')], { model: 'test-embed', source: 'file://b.txt' });
+  it("只新增指定 chunks，既有 chunks 原封不動", async () => {
+    const t = freshTenant("append");
+    await appendChunks(t, [chunk("a-0", "a")], {
+      model: "test-embed",
+      source: "file://a.txt",
+    });
+    await appendChunks(t, [chunk("b-0", "b"), chunk("b-1", "b")], {
+      model: "test-embed",
+      source: "file://b.txt",
+    });
 
     const idx = await loadIndex(t);
-    expect(idx!.chunks.map((c) => c.id).sort()).toEqual(['a-0', 'b-0', 'b-1']);
+    expect(idx!.chunks.map((c) => c.id).sort()).toEqual(["a-0", "b-0", "b-1"]);
   });
 
-  it('既有索引的 model 不因後續 append 而改變', async () => {
-    const t = freshTenant('model');
-    await appendChunks(t, [chunk('a-0', 'a')], { model: 'first-model', source: 'file://a.txt' });
-    await appendChunks(t, [chunk('b-0', 'b')], { model: 'second-model', source: 'file://b.txt' });
+  it("既有索引的 model 不因後續 append 而改變", async () => {
+    const t = freshTenant("model");
+    await appendChunks(t, [chunk("a-0", "a")], {
+      model: "first-model",
+      source: "file://a.txt",
+    });
+    await appendChunks(t, [chunk("b-0", "b")], {
+      model: "second-model",
+      source: "file://b.txt",
+    });
 
     const idx = await loadIndex(t);
-    expect(idx!.model).toBe('first-model');
+    expect(idx!.model).toBe("first-model");
   });
 
-  it('空陣列為 no-op，不建立索引', async () => {
-    const t = freshTenant('empty');
-    await appendChunks(t, [], { model: 'test-embed', source: 'file://x.txt' });
+  it("空陣列為 no-op，不建立索引", async () => {
+    const t = freshTenant("empty");
+    await appendChunks(t, [], { model: "test-embed", source: "file://x.txt" });
     await expect(loadIndex(t)).resolves.toBeNull();
   });
 });
 
-describe('removeFileChunks', () => {
-  it('只移除該 fileId 的 chunks，其他檔案與網站 chunks 保留', async () => {
-    const t = freshTenant('remove');
+describe("removeFileChunks", () => {
+  it("只移除該 fileId 的 chunks，其他檔案與網站 chunks 保留", async () => {
+    const t = freshTenant("remove");
     await appendChunks(
       t,
-      [chunk('site-0'), chunk('a-0', 'a'), chunk('b-0', 'b')],
-      { model: 'test-embed', source: 'https://example.com' },
+      [chunk("site-0"), chunk("a-0", "a"), chunk("b-0", "b")],
+      { model: "test-embed", source: "https://example.com" },
     );
 
-    await expect(removeFileChunks(t, 'a')).resolves.toBe(true);
+    await expect(removeFileChunks(t, "a")).resolves.toBe(true);
 
     const idx = await loadIndex(t);
-    expect(idx!.chunks.map((c) => c.id).sort()).toEqual(['b-0', 'site-0']);
+    expect(idx!.chunks.map((c) => c.id).sort()).toEqual(["b-0", "site-0"]);
   });
 
-  it('查無該 fileId 回 false 且不動索引', async () => {
-    const t = freshTenant('remove-miss');
-    await appendChunks(t, [chunk('a-0', 'a')], { model: 'test-embed', source: 'file://a.txt' });
+  it("查無該 fileId 回 false 且不動索引", async () => {
+    const t = freshTenant("remove-miss");
+    await appendChunks(t, [chunk("a-0", "a")], {
+      model: "test-embed",
+      source: "file://a.txt",
+    });
 
-    await expect(removeFileChunks(t, 'nope')).resolves.toBe(false);
+    await expect(removeFileChunks(t, "nope")).resolves.toBe(false);
     const idx = await loadIndex(t);
     expect(idx!.chunks).toHaveLength(1);
   });
 
-  it('索引不存在回 false', async () => {
-    const t = freshTenant('remove-none');
-    await expect(removeFileChunks(t, 'a')).resolves.toBe(false);
+  it("索引不存在回 false", async () => {
+    const t = freshTenant("remove-none");
+    await expect(removeFileChunks(t, "a")).resolves.toBe(false);
   });
 });
 ```
@@ -182,8 +210,17 @@ function appendChunksToFile(
   saveIndexToFile(
     tenantId,
     existing
-      ? { ...existing, generatedAt: new Date().toISOString(), chunks: [...existing.chunks, ...chunks] }
-      : { generatedAt: new Date().toISOString(), model: meta.model, source: meta.source, chunks },
+      ? {
+          ...existing,
+          generatedAt: new Date().toISOString(),
+          chunks: [...existing.chunks, ...chunks],
+        }
+      : {
+          generatedAt: new Date().toISOString(),
+          model: meta.model,
+          source: meta.source,
+          chunks,
+        },
   );
 }
 
@@ -193,7 +230,11 @@ function removeFileChunksFromFile(tenantId: string, fileId: string): boolean {
   if (!existing) return false;
   const chunks = existing.chunks.filter((c) => c.fileId !== fileId);
   if (chunks.length === existing.chunks.length) return false;
-  saveIndexToFile(tenantId, { ...existing, generatedAt: new Date().toISOString(), chunks });
+  saveIndexToFile(tenantId, {
+    ...existing,
+    generatedAt: new Date().toISOString(),
+    chunks,
+  });
   return true;
 }
 ```
@@ -224,7 +265,9 @@ async function appendChunksToDb(
       for (let i = 0; i < chunks.length; i += CHUNK_INSERT_BATCH) {
         const batch = chunks.slice(i, i + CHUNK_INSERT_BATCH);
         const values = batch.map(
-          (c) => Prisma.sql`(${tenantId}, ${c.id}, ${c.url}, ${c.title}, ${c.text}, ${c.fileId ?? null},
+          (
+            c,
+          ) => Prisma.sql`(${tenantId}, ${c.id}, ${c.url}, ${c.title}, ${c.text}, ${c.fileId ?? null},
                             ${toVectorLiteral(c.vector)}::halfvec(3072))`,
         );
         await tx.$executeRaw`
@@ -248,7 +291,10 @@ async function appendChunksToDb(
 }
 
 /** db 後端的點狀刪除；受影響列數為 0 時回 false */
-async function removeFileChunksFromDb(tenantId: string, fileId: string): Promise<boolean> {
+async function removeFileChunksFromDb(
+  tenantId: string,
+  fileId: string,
+): Promise<boolean> {
   const db = await connectDb();
   const deleted = await db.$executeRaw`
     delete from knowledge_chunks where tenant_id = ${tenantId} and file_id = ${fileId}
@@ -279,16 +325,19 @@ export async function appendChunks(
   meta: { model: string; source: string },
 ): Promise<void> {
   if (chunks.length === 0) return;
-  if (env.DATA_BACKEND === 'db') await appendChunksToDb(tenantId, chunks, meta);
+  if (env.DATA_BACKEND === "db") await appendChunksToDb(tenantId, chunks, meta);
   else appendChunksToFile(tenantId, chunks, meta);
   invalidateIndexCache(tenantId);
   invalidatePgvectorModelCache(tenantId);
 }
 
 /** 移除指定 fileId 的所有 chunks；該檔本來就沒有 chunk 時回 false（不失效快取） */
-export async function removeFileChunks(tenantId: string, fileId: string): Promise<boolean> {
+export async function removeFileChunks(
+  tenantId: string,
+  fileId: string,
+): Promise<boolean> {
   const removed =
-    env.DATA_BACKEND === 'db'
+    env.DATA_BACKEND === "db"
       ? await removeFileChunksFromDb(tenantId, fileId)
       : removeFileChunksFromFile(tenantId, fileId);
   if (removed) {
@@ -327,12 +376,15 @@ git commit -m "feat(knowledge): 索引持久化層新增點狀寫入 appendChunk
 ## Task 2: ingest 管線改用點狀寫入 + deferSuggestions
 
 **Files:**
+
 - Modify: `server/src/modules/knowledge/knowledge-file.service.ts`
 - Test: `server/tests/knowledge-file.test.ts`（既有，補測試）
 
 **Interfaces:**
+
 - Consumes: Task 1 的 `appendChunks(tenantId, chunks, meta)` 與 `removeFileChunks(tenantId, fileId)`
 - Produces:
+
   ```ts
   export interface IngestFileOptions {
     /** true 時跳過結尾的推薦問句重生觸發（批次匯入用，整輪結束再統一觸發一次） */
@@ -351,7 +403,7 @@ git commit -m "feat(knowledge): 索引持久化層新增點狀寫入 appendChunk
 在 `server/tests/knowledge-file.test.ts` 檔案**末尾**追加。該檔頂部已 mock 掉 `knowledge.suggest`，先取得該 mock 的參照——在既有的 `import` 區塊之後、`function readIndex` 之前插入：
 
 ```ts
-import { refreshSuggestedPrompts } from '@/modules/knowledge/knowledge.suggest';
+import { refreshSuggestedPrompts } from "@/modules/knowledge/knowledge.suggest";
 
 const mockRefreshSuggestions = refreshSuggestedPrompts as jest.MockedFunction<
   typeof refreshSuggestedPrompts
@@ -361,13 +413,13 @@ const mockRefreshSuggestions = refreshSuggestedPrompts as jest.MockedFunction<
 然後在檔案末尾追加：
 
 ```ts
-describe('append-only 寫入與 deferSuggestions', () => {
-  it('連續匯入兩個檔案，先前檔案的 chunks 仍在', async () => {
-    const t = tenantStore.createTenant('kfile-append');
-    const long = '公司規章內容說明，適用於全體員工。'.repeat(20);
+describe("append-only 寫入與 deferSuggestions", () => {
+  it("連續匯入兩個檔案，先前檔案的 chunks 仍在", async () => {
+    const t = tenantStore.createTenant("kfile-append");
+    const long = "公司規章內容說明，適用於全體員工。".repeat(20);
 
-    const first = await ingestFile(t.id, '規章一.txt', Buffer.from(long));
-    const second = await ingestFile(t.id, '規章二.txt', Buffer.from(long));
+    const first = await ingestFile(t.id, "規章一.txt", Buffer.from(long));
+    const second = await ingestFile(t.id, "規章二.txt", Buffer.from(long));
 
     const idx = readIndex(t.id);
     const fileIds = new Set(idx.chunks.map((c) => c.fileId));
@@ -376,11 +428,11 @@ describe('append-only 寫入與 deferSuggestions', () => {
     expect(idx.chunks.length).toBe(first.chunks + second.chunks);
   });
 
-  it('刪除其中一個檔案不影響另一個檔案的 chunks', async () => {
-    const t = tenantStore.createTenant('kfile-append-del');
-    const long = '公司規章內容說明，適用於全體員工。'.repeat(20);
-    const first = await ingestFile(t.id, '規章一.txt', Buffer.from(long));
-    const second = await ingestFile(t.id, '規章二.txt', Buffer.from(long));
+  it("刪除其中一個檔案不影響另一個檔案的 chunks", async () => {
+    const t = tenantStore.createTenant("kfile-append-del");
+    const long = "公司規章內容說明，適用於全體員工。".repeat(20);
+    const first = await ingestFile(t.id, "規章一.txt", Buffer.from(long));
+    const second = await ingestFile(t.id, "規章二.txt", Buffer.from(long));
 
     await expect(removeFile(t.id, first.fileId)).resolves.toBe(true);
 
@@ -389,22 +441,31 @@ describe('append-only 寫入與 deferSuggestions', () => {
     expect(idx.chunks.length).toBe(second.chunks);
   });
 
-  it('不傳 opts 時仍觸發推薦問句重生（admin 單檔上傳行為未變）', async () => {
-    const t = tenantStore.createTenant('kfile-suggest-default');
+  it("不傳 opts 時仍觸發推薦問句重生（admin 單檔上傳行為未變）", async () => {
+    const t = tenantStore.createTenant("kfile-suggest-default");
     mockRefreshSuggestions.mockClear();
 
-    await ingestFile(t.id, '規章.txt', Buffer.from('公司規章內容說明。'.repeat(20)));
+    await ingestFile(
+      t.id,
+      "規章.txt",
+      Buffer.from("公司規章內容說明。".repeat(20)),
+    );
 
     expect(mockRefreshSuggestions).toHaveBeenCalledTimes(1);
   });
 
-  it('deferSuggestions=true 時不觸發推薦問句重生', async () => {
-    const t = tenantStore.createTenant('kfile-suggest-defer');
+  it("deferSuggestions=true 時不觸發推薦問句重生", async () => {
+    const t = tenantStore.createTenant("kfile-suggest-defer");
     mockRefreshSuggestions.mockClear();
 
-    await ingestFile(t.id, '規章.txt', Buffer.from('公司規章內容說明。'.repeat(20)), {
-      deferSuggestions: true,
-    });
+    await ingestFile(
+      t.id,
+      "規章.txt",
+      Buffer.from("公司規章內容說明。".repeat(20)),
+      {
+        deferSuggestions: true,
+      },
+    );
 
     expect(mockRefreshSuggestions).not.toHaveBeenCalled();
   });
@@ -424,13 +485,17 @@ Expected: FAIL — `deferSuggestions=true` 那則仍會呼叫（參數尚未實�
 在 `knowledge-file.service.ts` 中，把既有的
 
 ```ts
-import { loadIndex, saveIndex } from './knowledge.index.repo';
+import { loadIndex, saveIndex } from "./knowledge.index.repo";
 ```
 
 改為
 
 ```ts
-import { appendChunks, loadIndex, removeFileChunks } from './knowledge.index.repo';
+import {
+  appendChunks,
+  loadIndex,
+  removeFileChunks,
+} from "./knowledge.index.repo";
 ```
 
 並在 `const MIN_TEXT_CHARS = 20;` 之前加入型別：
@@ -512,7 +577,10 @@ export async function ingestFile(
 
 ```ts
 /** 刪除已上傳檔案：索引剔除該 fileId 的 chunks + meta 移除；查無回 false。 */
-export async function removeFile(tenantId: string, fileId: string): Promise<boolean> {
+export async function removeFile(
+  tenantId: string,
+  fileId: string,
+): Promise<boolean> {
   const meta = knowledgeStore.getMeta(tenantId);
   if (!meta.files?.some((f) => f.fileId === fileId)) return false;
 
@@ -529,7 +597,9 @@ export async function removeFile(tenantId: string, fileId: string): Promise<bool
       files,
       chunkCountBySource: countBySource(chunks),
     });
-    void refreshSuggestedPrompts(tenantId, { ...existing, chunks }).catch(() => {});
+    void refreshSuggestedPrompts(tenantId, { ...existing, chunks }).catch(
+      () => {},
+    );
   } else {
     knowledgeStore.setMeta(tenantId, { ...meta, files });
   }
@@ -575,12 +645,15 @@ git commit -m "feat(knowledge): 檔案 ingest 改用點狀寫入，並支援 def
 ## Task 3: BatchSource 介面與本機資料夾實作
 
 **Files:**
+
 - Create: `server/src/modules/knowledge/batch-source.ts`
 - Test: `server/tests/batch-source.test.ts`
 
 **Interfaces:**
+
 - Consumes: `SUPPORTED_EXTENSIONS`（`./doc-parse` 既有 export）
 - Produces:
+
   ```ts
   export interface PendingItem {
     tenantId: string;
@@ -589,14 +662,18 @@ git commit -m "feat(knowledge): 檔案 ingest 改用點狀寫入，並支援 def
     size: number;
     mtimeMs: number | null;
   }
-  export type SettleOutcome = 'done' | 'failed';
+  export type SettleOutcome = "done" | "failed";
   export interface BatchSource {
     list(): Promise<PendingItem[]>;
     read(item: PendingItem): Promise<Buffer>;
-    settle(item: PendingItem, outcome: SettleOutcome, reason?: string): Promise<void>;
+    settle(
+      item: PendingItem,
+      outcome: SettleOutcome,
+      reason?: string,
+    ): Promise<void>;
   }
-  export const DONE_DIR = '_done';
-  export const FAILED_DIR = '_failed';
+  export const DONE_DIR = "_done";
+  export const FAILED_DIR = "_failed";
   export class LocalFolderSource implements BatchSource {
     constructor(root: string);
   }
@@ -608,21 +685,30 @@ git commit -m "feat(knowledge): 檔案 ingest 改用點狀寫入，並支援 def
 
 ```ts
 /** 本機資料夾來源：子資料夾名=tenantId，過濾保留目錄與不支援副檔名，settle 搬檔。 */
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { LocalFolderSource, type PendingItem } from '@/modules/knowledge/batch-source';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+  existsSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  LocalFolderSource,
+  type PendingItem,
+} from "@/modules/knowledge/batch-source";
 
 let root: string;
 
 beforeEach(() => {
-  root = mkdtempSync(join(tmpdir(), 'batch-source-'));
+  root = mkdtempSync(join(tmpdir(), "batch-source-"));
 });
 
-function write(rel: string, content = '內容'): string {
+function write(rel: string, content = "內容"): string {
   const path = join(root, rel);
-  mkdirSync(join(path, '..'), { recursive: true });
-  writeFileSync(path, content, 'utf8');
+  mkdirSync(join(path, ".."), { recursive: true });
+  writeFileSync(path, content, "utf8");
   return path;
 }
 
@@ -630,90 +716,100 @@ function byName(items: PendingItem[]): string[] {
   return items.map((i) => `${i.tenantId}/${i.name}`).sort();
 }
 
-describe('LocalFolderSource.list', () => {
-  it('子資料夾名成為 tenantId，收支援的副檔名', async () => {
-    write('default/規章.txt');
-    write('default/手冊.docx');
-    write('acme/辦法.pdf');
+describe("LocalFolderSource.list", () => {
+  it("子資料夾名成為 tenantId，收支援的副檔名", async () => {
+    write("default/規章.txt");
+    write("default/手冊.docx");
+    write("acme/辦法.pdf");
 
     const items = await new LocalFolderSource(root).list();
-    expect(byName(items)).toEqual(['acme/辦法.pdf', 'default/手冊.docx', 'default/規章.txt']);
+    expect(byName(items)).toEqual([
+      "acme/辦法.pdf",
+      "default/手冊.docx",
+      "default/規章.txt",
+    ]);
   });
 
-  it('忽略 _done / _failed / 點開頭 / 不支援副檔名', async () => {
-    write('default/規章.txt');
-    write('default/_done/舊檔.txt');
-    write('default/_failed/壞檔.txt');
-    write('default/.DS_Store');
-    write('default/圖片.png');
-    write('_done/不該被當成租戶.txt');
-    write('.hidden/也不該.txt');
+  it("忽略 _done / _failed / 點開頭 / 不支援副檔名", async () => {
+    write("default/規章.txt");
+    write("default/_done/舊檔.txt");
+    write("default/_failed/壞檔.txt");
+    write("default/.DS_Store");
+    write("default/圖片.png");
+    write("_done/不該被當成租戶.txt");
+    write(".hidden/也不該.txt");
 
     const items = await new LocalFolderSource(root).list();
-    expect(byName(items)).toEqual(['default/規章.txt']);
+    expect(byName(items)).toEqual(["default/規章.txt"]);
   });
 
-  it('不遞迴進租戶資料夾底下的子目錄', async () => {
-    write('default/規章.txt');
-    write('default/子目錄/深層.txt');
+  it("不遞迴進租戶資料夾底下的子目錄", async () => {
+    write("default/規章.txt");
+    write("default/子目錄/深層.txt");
 
     const items = await new LocalFolderSource(root).list();
-    expect(byName(items)).toEqual(['default/規章.txt']);
+    expect(byName(items)).toEqual(["default/規章.txt"]);
   });
 
-  it('回報 size 與 mtimeMs', async () => {
-    write('default/規章.txt', '一二三');
+  it("回報 size 與 mtimeMs", async () => {
+    write("default/規章.txt", "一二三");
     const [item] = await new LocalFolderSource(root).list();
     expect(item.size).toBeGreaterThan(0);
-    expect(typeof item.mtimeMs).toBe('number');
+    expect(typeof item.mtimeMs).toBe("number");
   });
 
-  it('root 不存在時回空陣列而非拋錯', async () => {
-    const items = await new LocalFolderSource(join(root, '不存在')).list();
+  it("root 不存在時回空陣列而非拋錯", async () => {
+    const items = await new LocalFolderSource(join(root, "不存在")).list();
     expect(items).toEqual([]);
   });
 });
 
-describe('LocalFolderSource.read / settle', () => {
-  it('read 讀回檔案內容', async () => {
-    write('default/規章.txt', '特休規定');
+describe("LocalFolderSource.read / settle", () => {
+  it("read 讀回檔案內容", async () => {
+    write("default/規章.txt", "特休規定");
     const source = new LocalFolderSource(root);
     const [item] = await source.list();
-    await expect(source.read(item)).resolves.toEqual(Buffer.from('特休規定', 'utf8'));
+    await expect(source.read(item)).resolves.toEqual(
+      Buffer.from("特休規定", "utf8"),
+    );
   });
 
-  it('settle done 把檔案搬進 _done，原位置消失', async () => {
-    write('default/規章.txt');
+  it("settle done 把檔案搬進 _done，原位置消失", async () => {
+    write("default/規章.txt");
     const source = new LocalFolderSource(root);
     const [item] = await source.list();
 
-    await source.settle(item, 'done');
+    await source.settle(item, "done");
 
     expect(existsSync(item.ref)).toBe(false);
-    expect(existsSync(join(root, 'default/_done/規章.txt'))).toBe(true);
+    expect(existsSync(join(root, "default/_done/規章.txt"))).toBe(true);
   });
 
-  it('settle failed 搬進 _failed 並寫 .error.txt', async () => {
-    write('default/壞檔.txt');
+  it("settle failed 搬進 _failed 並寫 .error.txt", async () => {
+    write("default/壞檔.txt");
     const source = new LocalFolderSource(root);
     const [item] = await source.list();
 
-    await source.settle(item, 'failed', '無可抽取文字（可能為掃描檔或空檔）');
+    await source.settle(item, "failed", "無可抽取文字（可能為掃描檔或空檔）");
 
     expect(existsSync(item.ref)).toBe(false);
-    expect(existsSync(join(root, 'default/_failed/壞檔.txt'))).toBe(true);
-    expect(readFileSync(join(root, 'default/_failed/壞檔.txt.error.txt'), 'utf8')).toContain('掃描檔');
+    expect(existsSync(join(root, "default/_failed/壞檔.txt"))).toBe(true);
+    expect(
+      readFileSync(join(root, "default/_failed/壞檔.txt.error.txt"), "utf8"),
+    ).toContain("掃描檔");
   });
 
-  it('settle 目標已有同名檔時直接覆蓋', async () => {
-    write('default/_done/規章.txt', '舊的');
-    write('default/規章.txt', '新的');
+  it("settle 目標已有同名檔時直接覆蓋", async () => {
+    write("default/_done/規章.txt", "舊的");
+    write("default/規章.txt", "新的");
     const source = new LocalFolderSource(root);
     const [item] = await source.list();
 
-    await source.settle(item, 'done');
+    await source.settle(item, "done");
 
-    expect(readFileSync(join(root, 'default/_done/規章.txt'), 'utf8')).toBe('新的');
+    expect(readFileSync(join(root, "default/_done/規章.txt"), "utf8")).toBe(
+      "新的",
+    );
   });
 });
 ```
@@ -740,9 +836,16 @@ Expected: FAIL — 找不到模組 `@/modules/knowledge/batch-source`
  * 穩定性判定（檔案有沒有寫完）刻意**不放這裡**：那需要跨輪次的狀態，屬於執行者的職責，
  * 放進來會讓每個 source 實作都得自己重做一次。見 folder-ingest.service 的 selectStable。
  */
-import { mkdir, readdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
-import { extname, join } from 'node:path';
-import { SUPPORTED_EXTENSIONS } from './doc-parse';
+import {
+  mkdir,
+  readdir,
+  readFile,
+  rename,
+  stat,
+  writeFile,
+} from "node:fs/promises";
+import { extname, join } from "node:path";
+import { SUPPORTED_EXTENSIONS } from "./doc-parse";
 
 /** 一個待處理的匯入項目 */
 export interface PendingItem {
@@ -757,26 +860,30 @@ export interface PendingItem {
   mtimeMs: number | null;
 }
 
-export type SettleOutcome = 'done' | 'failed';
+export type SettleOutcome = "done" | "failed";
 
 export interface BatchSource {
   /** 列出所有待處理項目；已過濾副檔名與保留目錄，不做穩定性判定 */
   list(): Promise<PendingItem[]>;
   read(item: PendingItem): Promise<Buffer>;
   /** 標記完成；failed 時 reason 會落地成 <name>.error.txt */
-  settle(item: PendingItem, outcome: SettleOutcome, reason?: string): Promise<void>;
+  settle(
+    item: PendingItem,
+    outcome: SettleOutcome,
+    reason?: string,
+  ): Promise<void>;
 }
 
 /** 消化成功的歸檔目錄名 */
-export const DONE_DIR = '_done';
+export const DONE_DIR = "_done";
 /** 永久性失敗的歸檔目錄名 */
-export const FAILED_DIR = '_failed';
+export const FAILED_DIR = "_failed";
 
 const SUPPORTED = new Set<string>(SUPPORTED_EXTENSIONS);
 
 /** `_` 開頭為保留目錄、`.` 開頭為系統或同步中繼檔，兩者都不是租戶也不是待處理檔 */
 function isReserved(name: string): boolean {
-  return name.startsWith('_') || name.startsWith('.');
+  return name.startsWith("_") || name.startsWith(".");
 }
 
 /** 本機（或已掛載的網路）資料夾來源：<root>/<tenantId>/<檔案> */
@@ -784,13 +891,17 @@ export class LocalFolderSource implements BatchSource {
   constructor(private readonly root: string) {}
 
   async list(): Promise<PendingItem[]> {
-    const tenantDirs = await readdir(this.root, { withFileTypes: true }).catch(() => []);
+    const tenantDirs = await readdir(this.root, { withFileTypes: true }).catch(
+      () => [],
+    );
     const items: PendingItem[] = [];
 
     for (const dir of tenantDirs) {
       if (!dir.isDirectory() || isReserved(dir.name)) continue;
       const tenantPath = join(this.root, dir.name);
-      const entries = await readdir(tenantPath, { withFileTypes: true }).catch(() => []);
+      const entries = await readdir(tenantPath, { withFileTypes: true }).catch(
+        () => [],
+      );
 
       for (const entry of entries) {
         // 不遞迴：租戶資料夾底下的子目錄一律略過（_done/_failed 也在此被擋掉）
@@ -800,7 +911,13 @@ export class LocalFolderSource implements BatchSource {
         const ref = join(tenantPath, entry.name);
         const st = await stat(ref).catch(() => null);
         if (!st) continue; // 掃描期間被刪掉／搬走，下一輪自然不會再出現
-        items.push({ tenantId: dir.name, name: entry.name, ref, size: st.size, mtimeMs: st.mtimeMs });
+        items.push({
+          tenantId: dir.name,
+          name: entry.name,
+          ref,
+          size: st.size,
+          mtimeMs: st.mtimeMs,
+        });
       }
     }
     return items;
@@ -810,13 +927,21 @@ export class LocalFolderSource implements BatchSource {
     return readFile(item.ref);
   }
 
-  async settle(item: PendingItem, outcome: SettleOutcome, reason?: string): Promise<void> {
-    const destDir = join(this.root, item.tenantId, outcome === 'done' ? DONE_DIR : FAILED_DIR);
+  async settle(
+    item: PendingItem,
+    outcome: SettleOutcome,
+    reason?: string,
+  ): Promise<void> {
+    const destDir = join(
+      this.root,
+      item.tenantId,
+      outcome === "done" ? DONE_DIR : FAILED_DIR,
+    );
     await mkdir(destDir, { recursive: true });
     // rename 在 POSIX 為原子操作且會覆蓋同名目標——重丟改版檔時直接取代舊的歸檔
     await rename(item.ref, join(destDir, item.name));
-    if (outcome === 'failed' && reason) {
-      await writeFile(join(destDir, `${item.name}.error.txt`), reason, 'utf8');
+    if (outcome === "failed" && reason) {
+      await writeFile(join(destDir, `${item.name}.error.txt`), reason, "utf8");
     }
   }
 }
@@ -842,14 +967,20 @@ git commit -m "feat(knowledge): 新增批次匯入的來源抽象與本機資料
 ## Task 4: 穩定性判定與錯誤分類（純函式）
 
 **Files:**
+
 - Create: `server/src/modules/knowledge/folder-ingest.service.ts`
 - Test: `server/tests/folder-ingest.test.ts`
 
 **Interfaces:**
+
 - Consumes: Task 3 的 `PendingItem`；既有 `AppError`
 - Produces:
+
   ```ts
-  export interface SeenEntry { size: number; mtimeMs: number | null }
+  export interface SeenEntry {
+    size: number;
+    mtimeMs: number | null;
+  }
   export function selectStable(
     items: PendingItem[],
     seen: Map<string, SeenEntry>,
@@ -869,78 +1000,99 @@ import {
   isPermanentFailure,
   selectStable,
   type SeenEntry,
-} from '@/modules/knowledge/folder-ingest.service';
-import type { PendingItem } from '@/modules/knowledge/batch-source';
-import { AppError } from '@/utils/app-error';
+} from "@/modules/knowledge/folder-ingest.service";
+import type { PendingItem } from "@/modules/knowledge/batch-source";
+import { AppError } from "@/utils/app-error";
 
-function item(name: string, size: number, mtimeMs: number | null = 1000): PendingItem {
-  return { tenantId: 'default', name, ref: `/tmp/default/${name}`, size, mtimeMs };
+function item(
+  name: string,
+  size: number,
+  mtimeMs: number | null = 1000,
+): PendingItem {
+  return {
+    tenantId: "default",
+    name,
+    ref: `/tmp/default/${name}`,
+    size,
+    mtimeMs,
+  };
 }
 
-describe('selectStable', () => {
-  it('第一次見到的檔案不處理，但記進 next', () => {
-    const { stable, next } = selectStable([item('a.txt', 100)], new Map());
+describe("selectStable", () => {
+  it("第一次見到的檔案不處理，但記進 next", () => {
+    const { stable, next } = selectStable([item("a.txt", 100)], new Map());
     expect(stable).toEqual([]);
-    expect(next.get('/tmp/default/a.txt')).toEqual({ size: 100, mtimeMs: 1000 });
+    expect(next.get("/tmp/default/a.txt")).toEqual({
+      size: 100,
+      mtimeMs: 1000,
+    });
   });
 
-  it('size 與 mtime 連續兩輪相同才視為寫完', () => {
-    const first = selectStable([item('a.txt', 100)], new Map());
-    const second = selectStable([item('a.txt', 100)], first.next);
-    expect(second.stable.map((i) => i.name)).toEqual(['a.txt']);
+  it("size 與 mtime 連續兩輪相同才視為寫完", () => {
+    const first = selectStable([item("a.txt", 100)], new Map());
+    const second = selectStable([item("a.txt", 100)], first.next);
+    expect(second.stable.map((i) => i.name)).toEqual(["a.txt"]);
   });
 
-  it('兩輪之間檔案還在變大 → 持續不處理', () => {
-    const first = selectStable([item('a.txt', 100)], new Map());
-    const second = selectStable([item('a.txt', 250)], first.next);
+  it("兩輪之間檔案還在變大 → 持續不處理", () => {
+    const first = selectStable([item("a.txt", 100)], new Map());
+    const second = selectStable([item("a.txt", 250)], first.next);
     expect(second.stable).toEqual([]);
 
-    const third = selectStable([item('a.txt', 400)], second.next);
+    const third = selectStable([item("a.txt", 400)], second.next);
     expect(third.stable).toEqual([]);
   });
 
-  it('size 相同但 mtime 變了 → 不處理（內容可能被覆寫）', () => {
-    const first = selectStable([item('a.txt', 100, 1000)], new Map());
-    const second = selectStable([item('a.txt', 100, 2000)], first.next);
+  it("size 相同但 mtime 變了 → 不處理（內容可能被覆寫）", () => {
+    const first = selectStable([item("a.txt", 100, 1000)], new Map());
+    const second = selectStable([item("a.txt", 100, 2000)], first.next);
     expect(second.stable).toEqual([]);
   });
 
-  it('mtimeMs 為 null 的來源視為永遠穩定，第一輪就處理', () => {
-    const { stable } = selectStable([item('a.txt', 100, null)], new Map());
-    expect(stable.map((i) => i.name)).toEqual(['a.txt']);
+  it("mtimeMs 為 null 的來源視為永遠穩定，第一輪就處理", () => {
+    const { stable } = selectStable([item("a.txt", 100, null)], new Map());
+    expect(stable.map((i) => i.name)).toEqual(["a.txt"]);
   });
 
-  it('next 不保留已消失的檔案，避免 Map 無限成長', () => {
-    const seen = new Map<string, SeenEntry>([['/tmp/default/舊檔.txt', { size: 1, mtimeMs: 1 }]]);
-    const { next } = selectStable([item('a.txt', 100)], seen);
-    expect(next.has('/tmp/default/舊檔.txt')).toBe(false);
+  it("next 不保留已消失的檔案，避免 Map 無限成長", () => {
+    const seen = new Map<string, SeenEntry>([
+      ["/tmp/default/舊檔.txt", { size: 1, mtimeMs: 1 }],
+    ]);
+    const { next } = selectStable([item("a.txt", 100)], seen);
+    expect(next.has("/tmp/default/舊檔.txt")).toBe(false);
   });
 });
 
-describe('isPermanentFailure', () => {
-  it('4xx AppError 視為永久性（重試不會有不同結果）', () => {
-    expect(isPermanentFailure(AppError.unprocessable('無可抽取文字'))).toBe(true);
-    expect(isPermanentFailure(AppError.badRequest('不支援的副檔名'))).toBe(true);
+describe("isPermanentFailure", () => {
+  it("4xx AppError 視為永久性（重試不會有不同結果）", () => {
+    expect(isPermanentFailure(AppError.unprocessable("無可抽取文字"))).toBe(
+      true,
+    );
+    expect(isPermanentFailure(AppError.badRequest("不支援的副檔名"))).toBe(
+      true,
+    );
   });
 
-  it('429 視為暫時性（rate limit 等一下就好）', () => {
+  it("429 視為暫時性（rate limit 等一下就好）", () => {
     expect(isPermanentFailure(AppError.tooManyRequests())).toBe(false);
   });
 
-  it('5xx AppError 與一般例外視為暫時性', () => {
+  it("5xx AppError 與一般例外視為暫時性", () => {
     expect(isPermanentFailure(AppError.internal())).toBe(false);
-    expect(isPermanentFailure(new Error('socket hang up'))).toBe(false);
+    expect(isPermanentFailure(new Error("socket hang up"))).toBe(false);
   });
 });
 
-describe('describeError', () => {
-  it('AppError 取其 message', () => {
-    expect(describeError(AppError.unprocessable('無可抽取文字'))).toContain('無可抽取文字');
+describe("describeError", () => {
+  it("AppError 取其 message", () => {
+    expect(describeError(AppError.unprocessable("無可抽取文字"))).toContain(
+      "無可抽取文字",
+    );
   });
 
-  it('非 Error 值也能轉成字串而不拋錯', () => {
-    expect(typeof describeError('壞掉了')).toBe('string');
-    expect(typeof describeError(undefined)).toBe('string');
+  it("非 Error 值也能轉成字串而不拋錯", () => {
+    expect(typeof describeError("壞掉了")).toBe("string");
+    expect(typeof describeError(undefined)).toBe("string");
   });
 });
 ```
@@ -964,8 +1116,8 @@ Expected: FAIL — 找不到模組 `@/modules/knowledge/folder-ingest.service`
  * 與 admin 單檔上傳共用同一條 ingestFile 管線——本檔不含任何解析、切塊或 embedding 邏輯，
  * 只負責「挑出該處理哪些檔、依序餵進去、把結果歸檔」。
  */
-import { AppError } from '@/utils/app-error';
-import type { PendingItem } from './batch-source';
+import { AppError } from "@/utils/app-error";
+import type { PendingItem } from "./batch-source";
 
 /** 上一輪看到的檔案指紋，用來判斷檔案是否已經寫完 */
 export interface SeenEntry {
@@ -998,7 +1150,8 @@ export function selectStable(
       continue;
     }
     const prev = seen.get(it.ref);
-    if (prev && prev.size === entry.size && prev.mtimeMs === entry.mtimeMs) stable.push(it);
+    if (prev && prev.size === entry.size && prev.mtimeMs === entry.mtimeMs)
+      stable.push(it);
   }
   return { stable, next };
 }
@@ -1042,12 +1195,15 @@ git commit -m "feat(knowledge): 批次匯入的穩定性判定與錯誤分類"
 ## Task 5: 單輪執行器
 
 **Files:**
+
 - Modify: `server/src/modules/knowledge/folder-ingest.service.ts`
 - Test: `server/tests/folder-ingest.test.ts`（Task 4 建立，補測試）
 
 **Interfaces:**
+
 - Consumes: Task 3 的 `BatchSource` / `PendingItem`；Task 4 的 `selectStable` / `isPermanentFailure` / `describeError`；Task 2 的 `ingestFile(tenantId, name, buf, opts)`；既有 `removeFile` / `loadIndex` / `knowledgeStore` / `refreshSuggestedPrompts`
 - Produces:
+
   ```ts
   export interface RoundOptions {
     dryRun?: boolean;
@@ -1057,10 +1213,15 @@ git commit -m "feat(knowledge): 批次匯入的穩定性判定與錯誤分類"
     retryDelayMs?: number;
   }
   export interface RoundResult {
-    done: number; failed: number; retry: number; skipped: number;
+    done: number;
+    failed: number;
+    retry: number;
+    skipped: number;
     tenants: string[];
   }
-  export interface WatchState { seen: Map<string, SeenEntry> }
+  export interface WatchState {
+    seen: Map<string, SeenEntry>;
+  }
   export function createWatchState(): WatchState;
   export async function runFolderIngestRound(
     source: BatchSource,
@@ -1078,23 +1239,24 @@ git commit -m "feat(knowledge): 批次匯入的穩定性判定與錯誤分類"
 ```ts
 const mockIngestFile = jest.fn();
 const mockRemoveFile = jest.fn();
-jest.mock('@/modules/knowledge/knowledge-file.service', () => ({
+jest.mock("@/modules/knowledge/knowledge-file.service", () => ({
   __esModule: true,
   ingestFile: (...args: unknown[]) => mockIngestFile(...args),
   removeFile: (...args: unknown[]) => mockRemoveFile(...args),
 }));
 const mockRefreshSuggestions = jest.fn();
-jest.mock('@/modules/knowledge/knowledge.suggest', () => ({
+jest.mock("@/modules/knowledge/knowledge.suggest", () => ({
   __esModule: true,
-  refreshSuggestedPrompts: (...args: unknown[]) => mockRefreshSuggestions(...args),
+  refreshSuggestedPrompts: (...args: unknown[]) =>
+    mockRefreshSuggestions(...args),
 }));
 const mockLoadIndex = jest.fn();
-jest.mock('@/modules/knowledge/knowledge.index.repo', () => ({
+jest.mock("@/modules/knowledge/knowledge.index.repo", () => ({
   __esModule: true,
   loadIndex: (...args: unknown[]) => mockLoadIndex(...args),
 }));
 const mockGetMeta = jest.fn();
-jest.mock('@/modules/knowledge/knowledge.store', () => ({
+jest.mock("@/modules/knowledge/knowledge.store", () => ({
   __esModule: true,
   knowledgeStore: { getMeta: (...args: unknown[]) => mockGetMeta(...args) },
 }));
@@ -1107,8 +1269,12 @@ import {
   createWatchState,
   runFolderIngestRound,
   type RoundOptions,
-} from '@/modules/knowledge/folder-ingest.service';
-import type { BatchSource, PendingItem, SettleOutcome } from '@/modules/knowledge/batch-source';
+} from "@/modules/knowledge/folder-ingest.service";
+import type {
+  BatchSource,
+  PendingItem,
+  SettleOutcome,
+} from "@/modules/knowledge/batch-source";
 
 /** 可程式化的假來源：list 回預設清單，settle 記錄呼叫 */
 class FakeSource implements BatchSource {
@@ -1118,9 +1284,13 @@ class FakeSource implements BatchSource {
     return this.items;
   }
   async read(): Promise<Buffer> {
-    return Buffer.from('內容');
+    return Buffer.from("內容");
   }
-  async settle(item: PendingItem, outcome: SettleOutcome, reason?: string): Promise<void> {
+  async settle(
+    item: PendingItem,
+    outcome: SettleOutcome,
+    reason?: string,
+  ): Promise<void> {
     this.settled.push({ name: item.name, outcome, reason });
     this.items = this.items.filter((i) => i.ref !== item.ref);
   }
@@ -1136,16 +1306,26 @@ async function runTwice(source: BatchSource, opts: RoundOptions = OPTS) {
 }
 
 beforeEach(() => {
-  mockIngestFile.mockReset().mockResolvedValue({ fileId: 'f1', name: 'x', chunks: 3 });
+  mockIngestFile
+    .mockReset()
+    .mockResolvedValue({ fileId: "f1", name: "x", chunks: 3 });
   mockRemoveFile.mockReset().mockResolvedValue(true);
   mockRefreshSuggestions.mockReset().mockResolvedValue(undefined);
-  mockLoadIndex.mockReset().mockResolvedValue({ generatedAt: '', model: 'm', source: 's', chunks: [] });
+  mockLoadIndex.mockReset().mockResolvedValue({
+    generatedAt: "",
+    model: "m",
+    source: "s",
+    chunks: [],
+  });
   mockGetMeta.mockReset().mockReturnValue({ files: [] });
 });
 
-describe('runFolderIngestRound', () => {
-  it('穩定後逐檔呼叫 ingestFile，並一律帶 deferSuggestions', async () => {
-    const source = new FakeSource([item('規章.txt', 100), item('手冊.txt', 200)]);
+describe("runFolderIngestRound", () => {
+  it("穩定後逐檔呼叫 ingestFile，並一律帶 deferSuggestions", async () => {
+    const source = new FakeSource([
+      item("規章.txt", 100),
+      item("手冊.txt", 200),
+    ]);
     const result = await runTwice(source);
 
     expect(result.done).toBe(2);
@@ -1155,25 +1335,27 @@ describe('runFolderIngestRound', () => {
     }
   });
 
-  it('成功的檔案 settle done', async () => {
-    const source = new FakeSource([item('規章.txt', 100)]);
+  it("成功的檔案 settle done", async () => {
+    const source = new FakeSource([item("規章.txt", 100)]);
     await runTwice(source);
-    expect(source.settled).toEqual([{ name: '規章.txt', outcome: 'done', reason: undefined }]);
+    expect(source.settled).toEqual([
+      { name: "規章.txt", outcome: "done", reason: undefined },
+    ]);
   });
 
-  it('永久性失敗 settle failed 並帶原因', async () => {
-    mockIngestFile.mockRejectedValue(AppError.unprocessable('無可抽取文字'));
-    const source = new FakeSource([item('壞檔.txt', 100)]);
+  it("永久性失敗 settle failed 並帶原因", async () => {
+    mockIngestFile.mockRejectedValue(AppError.unprocessable("無可抽取文字"));
+    const source = new FakeSource([item("壞檔.txt", 100)]);
     const result = await runTwice(source);
 
     expect(result.failed).toBe(1);
-    expect(source.settled[0].outcome).toBe('failed');
-    expect(source.settled[0].reason).toContain('無可抽取文字');
+    expect(source.settled[0].outcome).toBe("failed");
+    expect(source.settled[0].reason).toContain("無可抽取文字");
   });
 
-  it('暫時性失敗不搬檔，重試一次後計入 retry', async () => {
-    mockIngestFile.mockRejectedValue(new Error('socket hang up'));
-    const source = new FakeSource([item('規章.txt', 100)]);
+  it("暫時性失敗不搬檔，重試一次後計入 retry", async () => {
+    mockIngestFile.mockRejectedValue(new Error("socket hang up"));
+    const source = new FakeSource([item("規章.txt", 100)]);
     const result = await runTwice(source);
 
     expect(result.retry).toBe(1);
@@ -1181,52 +1363,57 @@ describe('runFolderIngestRound', () => {
     expect(mockIngestFile).toHaveBeenCalledTimes(2); // 首次 + 重試一次
   });
 
-  it('暫時性失敗的重試成功時計入 done', async () => {
+  it("暫時性失敗的重試成功時計入 done", async () => {
     mockIngestFile
-      .mockRejectedValueOnce(new Error('socket hang up'))
-      .mockResolvedValueOnce({ fileId: 'f1', name: 'x', chunks: 3 });
-    const source = new FakeSource([item('規章.txt', 100)]);
+      .mockRejectedValueOnce(new Error("socket hang up"))
+      .mockResolvedValueOnce({ fileId: "f1", name: "x", chunks: 3 });
+    const source = new FakeSource([item("規章.txt", 100)]);
     const result = await runTwice(source);
 
     expect(result.done).toBe(1);
-    expect(source.settled[0].outcome).toBe('done');
+    expect(source.settled[0].outcome).toBe("done");
   });
 
-  it('超過 maxBytes 判永久性失敗，不呼叫 ingestFile', async () => {
-    const source = new FakeSource([item('巨檔.txt', 999)]);
+  it("超過 maxBytes 判永久性失敗，不呼叫 ingestFile", async () => {
+    const source = new FakeSource([item("巨檔.txt", 999)]);
     const result = await runTwice(source, { ...OPTS, maxBytes: 500 });
 
     expect(result.failed).toBe(1);
     expect(mockIngestFile).not.toHaveBeenCalled();
-    expect(source.settled[0].reason).toContain('上限');
+    expect(source.settled[0].reason).toContain("上限");
   });
 
-  it('meta 已有同名檔時先 removeFile 再 ingestFile', async () => {
-    mockGetMeta.mockReturnValue({ files: [{ fileId: 'old-1', name: '規章.txt' }] });
-    const source = new FakeSource([item('規章.txt', 100)]);
+  it("meta 已有同名檔時先 removeFile 再 ingestFile", async () => {
+    mockGetMeta.mockReturnValue({
+      files: [{ fileId: "old-1", name: "規章.txt" }],
+    });
+    const source = new FakeSource([item("規章.txt", 100)]);
     await runTwice(source);
 
-    expect(mockRemoveFile).toHaveBeenCalledWith('default', 'old-1');
+    expect(mockRemoveFile).toHaveBeenCalledWith("default", "old-1");
     expect(mockRemoveFile.mock.invocationCallOrder[0]).toBeLessThan(
       mockIngestFile.mock.invocationCallOrder[0],
     );
   });
 
-  it('整輪結束後每個有處理過的租戶各觸發一次推薦問句重生', async () => {
-    const source = new FakeSource([item('規章.txt', 100), item('手冊.txt', 200)]);
+  it("整輪結束後每個有處理過的租戶各觸發一次推薦問句重生", async () => {
+    const source = new FakeSource([
+      item("規章.txt", 100),
+      item("手冊.txt", 200),
+    ]);
     await runTwice(source);
     expect(mockRefreshSuggestions).toHaveBeenCalledTimes(1);
   });
 
-  it('本輪未處理任何檔案時不觸發推薦問句重生', async () => {
-    const source = new FakeSource([item('規章.txt', 100)]);
+  it("本輪未處理任何檔案時不觸發推薦問句重生", async () => {
+    const source = new FakeSource([item("規章.txt", 100)]);
     const state = createWatchState();
     await runFolderIngestRound(source, state, OPTS); // 只跑第一輪：尚未穩定
     expect(mockRefreshSuggestions).not.toHaveBeenCalled();
   });
 
-  it('dryRun 不呼叫 ingestFile 也不搬檔', async () => {
-    const source = new FakeSource([item('規章.txt', 100)]);
+  it("dryRun 不呼叫 ingestFile 也不搬檔", async () => {
+    const source = new FakeSource([item("規章.txt", 100)]);
     const result = await runTwice(source, { ...OPTS, dryRun: true });
 
     expect(mockIngestFile).not.toHaveBeenCalled();
@@ -1234,21 +1421,26 @@ describe('runFolderIngestRound', () => {
     expect(result.done).toBe(0);
   });
 
-  it('tenantFilter 只處理指定租戶', async () => {
+  it("tenantFilter 只處理指定租戶", async () => {
     const other: PendingItem = {
-      tenantId: 'acme',
-      name: '辦法.txt',
-      ref: '/tmp/acme/辦法.txt',
+      tenantId: "acme",
+      name: "辦法.txt",
+      ref: "/tmp/acme/辦法.txt",
       size: 100,
       mtimeMs: 1000,
     };
-    const source = new FakeSource([item('規章.txt', 100), other]);
-    const result = await runTwice(source, { ...OPTS, tenantFilter: 'acme' });
+    const source = new FakeSource([item("規章.txt", 100), other]);
+    const result = await runTwice(source, { ...OPTS, tenantFilter: "acme" });
 
     expect(result.done).toBe(1);
-    expect(mockIngestFile).toHaveBeenCalledWith('acme', '辦法.txt', expect.any(Buffer), {
-      deferSuggestions: true,
-    });
+    expect(mockIngestFile).toHaveBeenCalledWith(
+      "acme",
+      "辦法.txt",
+      expect.any(Buffer),
+      {
+        deferSuggestions: true,
+      },
+    );
   });
 });
 ```
@@ -1266,12 +1458,12 @@ Expected: FAIL — `createWatchState is not a function`
 在 `folder-ingest.service.ts` 的 import 區塊補上：
 
 ```ts
-import { logger } from '@/lib/logger';
-import type { BatchSource, PendingItem } from './batch-source';
-import { ingestFile, removeFile } from './knowledge-file.service';
-import { loadIndex } from './knowledge.index.repo';
-import { knowledgeStore } from './knowledge.store';
-import { refreshSuggestedPrompts } from './knowledge.suggest';
+import { logger } from "@/lib/logger";
+import type { BatchSource, PendingItem } from "./batch-source";
+import { ingestFile, removeFile } from "./knowledge-file.service";
+import { loadIndex } from "./knowledge.index.repo";
+import { knowledgeStore } from "./knowledge.store";
+import { refreshSuggestedPrompts } from "./knowledge.suggest";
 ```
 
 並在檔案末尾加入：
@@ -1316,7 +1508,9 @@ function sleep(ms: number): Promise<void> {
 
 /** 同名檔視為更新：先移除既有的同名檔，否則索引會留下兩份 chunks */
 async function replaceSameName(tenantId: string, name: string): Promise<void> {
-  const existing = knowledgeStore.getMeta(tenantId).files?.find((f) => f.name === name);
+  const existing = knowledgeStore
+    .getMeta(tenantId)
+    .files?.find((f) => f.name === name);
   if (existing) await removeFile(tenantId, existing.fileId);
 }
 
@@ -1332,7 +1526,9 @@ export async function runFolderIngestRound(
   opts: RoundOptions,
 ): Promise<RoundResult> {
   const all = await source.list();
-  const scoped = opts.tenantFilter ? all.filter((i) => i.tenantId === opts.tenantFilter) : all;
+  const scoped = opts.tenantFilter
+    ? all.filter((i) => i.tenantId === opts.tenantFilter)
+    : all;
 
   const { stable, next } = selectStable(scoped, state.seen);
   state.seen = next;
@@ -1348,7 +1544,10 @@ export async function runFolderIngestRound(
 
   if (opts.dryRun) {
     for (const it of stable) {
-      logger.info({ tenantId: it.tenantId, name: it.name, size: it.size }, '[dry-run] 將匯入');
+      logger.info(
+        { tenantId: it.tenantId, name: it.name, size: it.size },
+        "[dry-run] 將匯入",
+      );
     }
     return result;
   }
@@ -1356,10 +1555,10 @@ export async function runFolderIngestRound(
   const touched = new Set<string>();
   for (const it of stable) {
     const outcome = await ingestOne(source, it, opts);
-    if (outcome === 'done') {
+    if (outcome === "done") {
       result.done += 1;
       touched.add(it.tenantId);
-    } else if (outcome === 'failed') {
+    } else if (outcome === "failed") {
       result.failed += 1;
     } else {
       result.retry += 1;
@@ -1380,45 +1579,53 @@ async function ingestOne(
   source: BatchSource,
   item: PendingItem,
   opts: RoundOptions,
-): Promise<'done' | 'failed' | 'retry'> {
+): Promise<"done" | "failed" | "retry"> {
   if (item.size > opts.maxBytes) {
     const reason = `檔案 ${(item.size / 1024 / 1024).toFixed(1)}MB 超過上限 ${(opts.maxBytes / 1024 / 1024).toFixed(0)}MB`;
-    await source.settle(item, 'failed', reason);
+    await source.settle(item, "failed", reason);
     logger.warn({ name: item.name }, reason);
-    return 'failed';
+    return "failed";
   }
 
   const attempt = async (): Promise<void> => {
     const buf = await source.read(item);
     await replaceSameName(item.tenantId, item.name);
     // deferSuggestions：推薦問句留到整輪結束統一重生
-    const meta = await ingestFile(item.tenantId, item.name, buf, { deferSuggestions: true });
-    logger.info({ tenantId: item.tenantId, name: item.name, chunks: meta.chunks }, '匯入完成');
+    const meta = await ingestFile(item.tenantId, item.name, buf, {
+      deferSuggestions: true,
+    });
+    logger.info(
+      { tenantId: item.tenantId, name: item.name, chunks: meta.chunks },
+      "匯入完成",
+    );
   };
 
   try {
     await attempt();
-    await source.settle(item, 'done');
-    return 'done';
+    await source.settle(item, "done");
+    return "done";
   } catch (err) {
     if (isPermanentFailure(err)) {
       const reason = describeError(err);
-      await source.settle(item, 'failed', reason);
-      logger.warn({ tenantId: item.tenantId, name: item.name, reason }, '匯入失敗（永久性）');
-      return 'failed';
+      await source.settle(item, "failed", reason);
+      logger.warn(
+        { tenantId: item.tenantId, name: item.name, reason },
+        "匯入失敗（永久性）",
+      );
+      return "failed";
     }
     // 暫時性：重試一次；仍失敗就留在原地，下一輪再來
     await sleep(opts.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS);
     try {
       await attempt();
-      await source.settle(item, 'done');
-      return 'done';
+      await source.settle(item, "done");
+      return "done";
     } catch (retryErr) {
       logger.warn(
         { tenantId: item.tenantId, name: item.name, err: retryErr },
-        '匯入失敗（暫時性），保留原檔待下輪重試',
+        "匯入失敗（暫時性），保留原檔待下輪重試",
       );
-      return 'retry';
+      return "retry";
     }
   }
 }
@@ -1452,10 +1659,12 @@ git commit -m "feat(knowledge): 批次匯入單輪執行器"
 ## Task 6: CLI watcher
 
 **Files:**
+
 - Create: `server/scripts/knowledge-watch.ts`
 - Modify: `server/package.json`
 
 **Interfaces:**
+
 - Consumes: Task 3 的 `LocalFolderSource`；Task 5 的 `createWatchState` / `runFolderIngestRound`；既有 `env` / `connectDb` / `closeDb` / `knowledgeStore` / `loadIndex`
 
 - [ ] **Step 1: 實作 CLI**
@@ -1474,16 +1683,16 @@ git commit -m "feat(knowledge): 批次匯入單輪執行器"
  *
  * 前提：DATA_BACKEND=db 且 DATABASE_URL 指向正式 Supabase，否則寫進本機 JSON、正式環境看不到。
  */
-import { env } from '../src/config/env';
-import { closeDb, connectDb } from '../src/lib/db';
-import { LocalFolderSource } from '../src/modules/knowledge/batch-source';
+import { env } from "../src/config/env";
+import { closeDb, connectDb } from "../src/lib/db";
+import { LocalFolderSource } from "../src/modules/knowledge/batch-source";
 import {
   createWatchState,
   runFolderIngestRound,
   type RoundOptions,
-} from '../src/modules/knowledge/folder-ingest.service';
-import { loadIndex } from '../src/modules/knowledge/knowledge.index.repo';
-import { knowledgeStore } from '../src/modules/knowledge/knowledge.store';
+} from "../src/modules/knowledge/folder-ingest.service";
+import { loadIndex } from "../src/modules/knowledge/knowledge.index.repo";
+import { knowledgeStore } from "../src/modules/knowledge/knowledge.store";
 
 interface Args {
   root: string;
@@ -1496,22 +1705,28 @@ interface Args {
 
 function parseArgs(argv: string[]): Args {
   const get = (key: string): string | undefined =>
-    argv.find((a) => a.startsWith(`--${key}=`))?.split('=').slice(1).join('=');
+    argv
+      .find((a) => a.startsWith(`--${key}=`))
+      ?.split("=")
+      .slice(1)
+      .join("=");
   const has = (key: string): boolean => argv.includes(`--${key}`);
 
-  const root = get('root');
+  const root = get("root");
   if (!root) {
-    console.error('缺少 --root=<path>');
-    console.error('用法：npm run watch:knowledge -w server -- --root=<path> [--interval=30] [--once] [--dry-run] [--max-mb=50] [--tenant=<id>]');
+    console.error("缺少 --root=<path>");
+    console.error(
+      "用法：npm run watch:knowledge -w server -- --root=<path> [--interval=30] [--once] [--dry-run] [--max-mb=50] [--tenant=<id>]",
+    );
     process.exit(1);
   }
   return {
     root,
-    intervalSec: Number(get('interval') ?? 30),
-    once: has('once'),
-    dryRun: has('dry-run'),
-    maxMb: Number(get('max-mb') ?? 50),
-    tenant: get('tenant'),
+    intervalSec: Number(get("interval") ?? 30),
+    once: has("once"),
+    dryRun: has("dry-run"),
+    maxMb: Number(get("max-mb") ?? 50),
+    tenant: get("tenant"),
   };
 }
 
@@ -1523,10 +1738,14 @@ function parseArgs(argv: string[]): Args {
  */
 async function printPreflight(tenantIds: string[]): Promise<void> {
   console.log(`DATA_BACKEND=${env.DATA_BACKEND}`);
-  if (env.DATA_BACKEND !== 'db') {
-    console.warn('⚠️  非 db 模式：索引會寫進本機 server/data/*.json，正式環境看不到。');
+  if (env.DATA_BACKEND !== "db") {
+    console.warn(
+      "⚠️  非 db 模式：索引會寫進本機 server/data/*.json，正式環境看不到。",
+    );
   }
-  console.warn('⚠️  全站重爬期間請勿執行批次匯入——重爬是整份取代，會抹掉期間新增的檔案 chunks。');
+  console.warn(
+    "⚠️  網站正在重新爬取資料時，請不要同時批次匯入文件，否則這段期間匯入的內容可能會被清除。",
+  );
 
   for (const tenantId of tenantIds) {
     const idx = await loadIndex(tenantId);
@@ -1534,14 +1753,16 @@ async function printPreflight(tenantIds: string[]): Promise<void> {
       console.log(`  ${tenantId}：沿用既有索引，模型 ${idx.model}`);
     } else {
       const model = knowledgeStore.getSource(tenantId).embeddingModel;
-      console.log(`  ${tenantId}：★ 將建立新索引，模型 ${model}（一經建立即定型）`);
+      console.log(
+        `  ${tenantId}：★ 將建立新索引，模型 ${model}（一經建立即定型）`,
+      );
     }
   }
 }
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
-  if (env.DATA_BACKEND === 'db') await connectDb();
+  if (env.DATA_BACKEND === "db") await connectDb();
 
   const source = new LocalFolderSource(args.root);
   const state = createWatchState();
@@ -1551,21 +1772,23 @@ async function main(): Promise<void> {
     tenantFilter: args.tenant,
   };
 
-  console.log(`監控 ${args.root}（間隔 ${args.intervalSec}s${args.once ? '，單輪' : ''}${args.dryRun ? '，dry-run' : ''}）`);
+  console.log(
+    `監控 ${args.root}（間隔 ${args.intervalSec}s${args.once ? "，單輪" : ""}${args.dryRun ? "，dry-run" : ""}）`,
+  );
   const initial = await source.list();
   await printPreflight([...new Set(initial.map((i) => i.tenantId))]);
 
   // 完成當前檔案後才退出：中途硬殺可能留下「chunks 已寫入但檔案未歸檔」的狀態，
   // 下一輪會重跑該檔（同名檔會先 removeFile，故不會重複），但仍以乾淨收尾為佳。
   let stopping = false;
-  for (const sig of ['SIGINT', 'SIGTERM'] as const) {
+  for (const sig of ["SIGINT", "SIGTERM"] as const) {
     process.on(sig, () => {
       if (stopping) {
-        console.log('\n強制退出。');
+        console.log("\n強制退出。");
         process.exit(130);
       }
       stopping = true;
-      console.log('\n收到中斷訊號，完成當前輪次後退出（再按一次強制退出）…');
+      console.log("\n收到中斷訊號，完成當前輪次後退出（再按一次強制退出）…");
     });
   }
 
@@ -1583,11 +1806,13 @@ async function main(): Promise<void> {
       );
     }
     if (args.once || stopping) break;
-    await new Promise((resolve) => setTimeout(resolve, args.intervalSec * 1000));
+    await new Promise((resolve) =>
+      setTimeout(resolve, args.intervalSec * 1000),
+    );
   } while (!stopping);
 
   await closeDb();
-  console.log('結束。');
+  console.log("結束。");
 }
 
 main().catch(async (err) => {
@@ -1654,6 +1879,7 @@ git commit -m "feat(knowledge): 新增資料夾批次匯入 watcher CLI"
 ## Task 7: 文件與收尾
 
 **Files:**
+
 - Modify: `README.md`（或 `docs/ARCHITECTURE.md`，依既有慣例擇一）
 
 - [ ] **Step 1: 確認既有文件慣例**
@@ -1678,14 +1904,14 @@ cd "$(git rev-parse --show-toplevel)" && grep -n "ingest:knowledge\|migrate:know
 npm run watch:knowledge -w server -- --root=/path/to/inbox
 ```
 
-| 參數 | 預設 | 說明 |
-|---|---|---|
-| `--root` | 必填 | 監控的根目錄 |
-| `--interval` | 30 | 輪詢間隔（秒） |
-| `--once` | — | 單次呼叫內自足完成兩輪（掃描 → 等待 `--interval` 秒 → 再掃描，只在第二輪處理），可掛 cron；代價是單次執行至少要等一個 `--interval` |
-| `--dry-run` | — | 只列出將處理什麼，不呼叫任何 API |
-| `--max-mb` | 50 | 單檔大小上限 |
-| `--tenant` | — | 只處理指定租戶 |
+| 參數         | 預設 | 說明                                                                                                                               |
+| ------------ | ---- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `--root`     | 必填 | 監控的根目錄                                                                                                                       |
+| `--interval` | 30   | 輪詢間隔（秒）                                                                                                                     |
+| `--once`     | —    | 單次呼叫內自足完成兩輪（掃描 → 等待 `--interval` 秒 → 再掃描，只在第二輪處理），可掛 cron；代價是單次執行至少要等一個 `--interval` |
+| `--dry-run`  | —    | 只列出將處理什麼，不呼叫任何 API                                                                                                   |
+| `--max-mb`   | 50   | 單檔大小上限                                                                                                                       |
+| `--tenant`   | —    | 只處理指定租戶                                                                                                                     |
 
 **注意事項**
 
@@ -1718,23 +1944,23 @@ git commit -m "docs(knowledge): 補上資料夾批次匯入的操作說明"
 
 **Spec 覆蓋檢查：**
 
-| Spec 章節 | 對應任務 |
-|---|---|
-| 資料夾約定（子資料夾=tenantId、`_done`/`_failed`） | Task 3 |
-| 來源介面 `BatchSource` | Task 3 |
-| 掃描與穩定性判定（不用 chokidar、mtime+size 兩輪） | Task 4 |
-| 併發 §1 嚴格序列 | Task 5（`runFolderIngestRound` 的 for-await） |
-| 併發 §2 append-only（`appendChunks`/`removeFileChunks`） | Task 1、Task 2 |
-| 併發 §2.1 重爬提示 | Task 6（`printPreflight`）、Task 7（文件） |
-| 併發 §3 `deferSuggestions` | Task 2（參數）、Task 5（整輪一次） |
-| 併發 §4 同名檔視為更新 | Task 5（`replaceSameName`） |
-| 與 admin 一致性（共用 `ingestFile`） | Task 2、Task 5 |
-| embedding 模型不由 batch 決定 + 新索引標示 | Task 6（`printPreflight`） |
-| 錯誤處理（永久 vs 暫時、retry 一次） | Task 4（分類）、Task 5（`ingestOne`） |
-| CLI 介面六個參數 | Task 6 |
-| 成本可見性（規模、dry-run、逐檔進度） | Task 5、Task 6 |
-| 前置條件警告（DATA_BACKEND） | Task 6 |
-| 測試計畫 | Task 1、3、4、5 的測試步驟 |
+| Spec 章節                                                | 對應任務                                      |
+| -------------------------------------------------------- | --------------------------------------------- |
+| 資料夾約定（子資料夾=tenantId、`_done`/`_failed`）       | Task 3                                        |
+| 來源介面 `BatchSource`                                   | Task 3                                        |
+| 掃描與穩定性判定（不用 chokidar、mtime+size 兩輪）       | Task 4                                        |
+| 併發 §1 嚴格序列                                         | Task 5（`runFolderIngestRound` 的 for-await） |
+| 併發 §2 append-only（`appendChunks`/`removeFileChunks`） | Task 1、Task 2                                |
+| 併發 §2.1 重爬提示                                       | Task 6（`printPreflight`）、Task 7（文件）    |
+| 併發 §3 `deferSuggestions`                               | Task 2（參數）、Task 5（整輪一次）            |
+| 併發 §4 同名檔視為更新                                   | Task 5（`replaceSameName`）                   |
+| 與 admin 一致性（共用 `ingestFile`）                     | Task 2、Task 5                                |
+| embedding 模型不由 batch 決定 + 新索引標示               | Task 6（`printPreflight`）                    |
+| 錯誤處理（永久 vs 暫時、retry 一次）                     | Task 4（分類）、Task 5（`ingestOne`）         |
+| CLI 介面六個參數                                         | Task 6                                        |
+| 成本可見性（規模、dry-run、逐檔進度）                    | Task 5、Task 6                                |
+| 前置條件警告（DATA_BACKEND）                             | Task 6                                        |
+| 測試計畫                                                 | Task 1、3、4、5 的測試步驟                    |
 
 無未覆蓋項目。
 
