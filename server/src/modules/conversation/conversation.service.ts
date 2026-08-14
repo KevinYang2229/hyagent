@@ -43,8 +43,11 @@ export const conversationService = {
     }
     const def = getDefinition(tenantId, formId ?? pickFormId(tenantId, userId, message));
     const session = conversationStore.create(tenantId, userId, def.formId);
-    // 開場即以 form 為點黏擁有者；後續每輪由 intent-router 決定是否讓知識問答旁路插入
-    session.activeServiceId = 'form';
+    // 這裡刻意不設 session.activeServiceId：formId 只是「這個對話若要填表，填哪張」的預選，
+    // 不等於 form 已經是流程擁有者。session 一建立 status 就是 'collecting'，若同時把
+    // activeServiceId 設成 'form'，intent-router 從第一輪起就判定為填表點黏中，第二輪起
+    // 沒踩到知識語氣詞的訊息會被 0-token 鎖回 form——使用者體感是同一句知識問句「第一次答得出來、
+    // 第二次就被請假助理婉拒」。點黏改由 runTurn 在 form 真的處理過一輪後才寫入。
     // 回覆語系：由前端 UI 語言決定（未帶時預設繁中）
     session.locale = normalizeLocale(lang);
     usageStore.increment(tenantId, 'conversations');
