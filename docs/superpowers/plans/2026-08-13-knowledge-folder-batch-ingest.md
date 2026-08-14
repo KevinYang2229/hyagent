@@ -1682,7 +1682,7 @@ npm run watch:knowledge -w server -- --root=/path/to/inbox
 |---|---|---|
 | `--root` | 必填 | 監控的根目錄 |
 | `--interval` | 30 | 輪詢間隔（秒） |
-| `--once` | — | 掃一輪就結束（可掛 cron） |
+| `--once` | — | 單次呼叫內自足完成兩輪（掃描 → 等待 `--interval` 秒 → 再掃描，只在第二輪處理），可掛 cron；代價是單次執行至少要等一個 `--interval` |
 | `--dry-run` | — | 只列出將處理什麼，不呼叫任何 API |
 | `--max-mb` | 50 | 單檔大小上限 |
 | `--tenant` | — | 只處理指定租戶 |
