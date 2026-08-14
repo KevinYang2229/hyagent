@@ -4,6 +4,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { LocalFolderSource, type PendingItem, DONE_DIR, FAILED_DIR } from '@/modules/knowledge/batch-source';
 
+jest.mock('@/lib/logger', () => ({
+  __esModule: true,
+  logger: { warn: jest.fn(), info: jest.fn(), error: jest.fn(), debug: jest.fn() },
+}));
+
+import { logger } from '@/lib/logger';
+
 let root: string;
 
 beforeEach(() => {
@@ -110,12 +117,17 @@ describe('LocalFolderSource.read / settle', () => {
 
 describe('LocalFolderSource.list - 錯誤處理', () => {
   afterEach(() => {
-    // 恢復權限以便清理暫時目錄
-    try {
-      chmodSync(join(root, 'no-perm'), 0o700);
-    } catch {
-      // ignore
-    }
+    // 恢復權限以便清理暫時目錄；兩個都可能不存在，故用 try/catch 且不假設哪個有
+    ['no-perm', 'bad'].forEach((dirName) => {
+      try {
+        const dirPath = join(root, dirName);
+        if (existsSync(dirPath)) {
+          chmodSync(dirPath, 0o700);
+        }
+      } catch {
+        // ignore
+      }
+    });
   });
 
   it('root 權限錯誤時拋出（非 ENOENT）', async () => {
@@ -127,6 +139,8 @@ describe('LocalFolderSource.list - 錯誤處理', () => {
   });
 
   it('租戶層權限錯誤時記錄警告但繼續處理其他租戶', async () => {
+    (logger.warn as jest.Mock).mockClear();
+
     write('good/檔案.txt');
     mkdirSync(join(root, 'bad'));
     chmodSync(join(root, 'bad'), 0o000);
@@ -137,7 +151,10 @@ describe('LocalFolderSource.list - 錯誤處理', () => {
     // 預期 good 租戶的檔案被處理，bad 租戶被略過（沒有拋錯，繼續處理其他租戶）
     expect(byName(items)).toEqual(['good/檔案.txt']);
 
-    // 恢復權限以便清理
-    chmodSync(join(root, 'bad'), 0o700);
+    // 驗證錯誤被記錄下來（R6 裁定的關鍵：錯誤必須可見）
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ path: join(root, 'bad') }),
+      expect.stringContaining('租戶資料夾讀取失敗')
+    );
   });
 });
