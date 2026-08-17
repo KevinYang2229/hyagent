@@ -59,6 +59,30 @@ describe('validateDefinition（單元）', () => {
     expect(issues.some((i) => i.field === 'field.category')).toBe(true);
     expect(issues.some((i) => i.field === 'validation.required')).toBe(true);
   });
+
+  it('Radio / MultiSelect 缺 options → 報 issue（與 Select 同一判準）', () => {
+    for (const component of ['Radio', 'MultiSelect'] as const) {
+      const bad = validDef();
+      bad.field.category.component = component;
+      bad.field.category.options = [];
+      const issues = validateDefinition(bad);
+      expect(issues.some((i) => i.field === 'field.category')).toBe(true);
+    }
+  });
+
+  it('Radio / MultiSelect / Password 帶齊設定時合法', () => {
+    const ok = validDef();
+    ok.field.category.component = 'Radio';
+    ok.data.properties.products = { type: 'array', items: { type: 'string' } };
+    ok.field.products = {
+      component: 'MultiSelect',
+      label: '有興趣項目',
+      options: [{ value: 'P001', label: '產品一' }],
+    };
+    ok.data.properties.password = { type: 'string' };
+    ok.field.password = { component: 'Password', label: '密碼' };
+    expect(validateDefinition(ok)).toEqual([]);
+  });
 });
 
 describe('Form Designer 管理 API', () => {

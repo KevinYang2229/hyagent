@@ -33,6 +33,9 @@ describe('defaultDataType', () => {
     expect(defaultDataType('Upload')).toBe('array');
     expect(defaultDataType('Input')).toBe('string');
     expect(defaultDataType('Select')).toBe('string');
+    expect(defaultDataType('Radio')).toBe('string');
+    expect(defaultDataType('Password')).toBe('string');
+    expect(defaultDataType('MultiSelect')).toBe('array');
   });
 });
 
@@ -44,6 +47,13 @@ describe('newField', () => {
 
     const date = newField('DatePicker', 1, 0);
     expect(date.format).toBe('date');
+  });
+
+  it('Radio / MultiSelect 同樣帶預設選項（缺 options 會被後端 validator 擋下）', () => {
+    expect(newField('Radio', 0, 0).options).toEqual([{ value: 'opt1', label: '選項一' }]);
+    const multi = newField('MultiSelect', 1, 0);
+    expect(multi.options).toEqual([{ value: 'opt1', label: '選項一' }]);
+    expect(multi.dataType).toBe('array');
   });
 
   it('key 依元件與索引生成、歸屬指定步驟', () => {
@@ -110,6 +120,52 @@ describe('toDefinition（存檔核心）', () => {
     expect(def.field.type.options).toHaveLength(2);
     expect(def.data.properties.attachments.type).toBe('array');
     expect(def.data.properties.attachments.items).toEqual({ type: 'object' });
+  });
+
+  it('Radio → enum + options（與 Select 同）；Password 就是一般 string 欄位', () => {
+    const d = draft({
+      fields: [
+        field({
+          key: 'q1',
+          component: 'Radio',
+          options: [
+            { value: 'option1', label: '單選1' },
+            { value: 'option2', label: '單選2' },
+          ],
+        }),
+        field({ key: 'password', component: 'Password' }),
+      ],
+    });
+    const def = toDefinition(d);
+    expect(def.data.properties.q1.enum).toEqual(['option1', 'option2']);
+    expect(def.field.q1.options).toHaveLength(2);
+    expect(def.data.properties.password).toEqual({ type: 'string' });
+    expect(def.field.password).toEqual({ component: 'Password', label: 'password' });
+  });
+
+  it('MultiSelect → array + items.enum（值為選項 value 的清單）', () => {
+    const d = draft({
+      fields: [
+        field({
+          key: 'products',
+          component: 'MultiSelect',
+          dataType: 'array',
+          options: [
+            { value: 'P001', label: '產品一' },
+            { value: 'P002', label: '產品二' },
+          ],
+        }),
+      ],
+    });
+    const def = toDefinition(d);
+    expect(def.data.properties.products.type).toBe('array');
+    expect(def.data.properties.products.items).toEqual({
+      type: 'string',
+      enum: ['P001', 'P002'],
+    });
+    // 多選的 enum 掛在 items 上，頂層不應有 enum
+    expect(def.data.properties.products.enum).toBeUndefined();
+    expect(def.field.products.options).toHaveLength(2);
   });
 
   it('askOrder 依步驟順序展平，跨步驟仍連續', () => {

@@ -553,6 +553,10 @@
   .form-field--full {
     @apply sm:col-span-full;
   }
+  /* 單選群組（Radio）：選項直式排列，與其他欄位的輸入區塊對齊 */
+  .field-radio-group {
+    @apply flex flex-col gap-1 py-0.5;
+  }
 
   /* ---- 齒輪設定選單 ---- */
   .settings {

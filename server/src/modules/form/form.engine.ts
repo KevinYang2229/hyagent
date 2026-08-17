@@ -32,8 +32,10 @@ function fieldValidator(formId: string, name: string, prop: JsonSchemaProperty):
   return fn;
 }
 
-/** 是否為「未填」（null / undefined / 空字串） */
+/** 是否為「未填」（null / undefined / 空字串 / 空陣列） */
 function isEmpty(v: unknown): boolean {
+  // 空陣列（多選未選、附件未上傳）等同未填，否則陣列型必填欄位形同虛設
+  if (Array.isArray(v)) return v.length === 0;
   return v === null || v === undefined || v === '';
 }
 

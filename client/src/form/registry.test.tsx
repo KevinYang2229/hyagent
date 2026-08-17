@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { describe, it, expect, vi } from 'vitest';
 import { render, fireEvent } from '@testing-library/react';
 import type { FieldComponent } from '@oa-agent/shared';
-import { fieldRegistry, resolveFieldRenderer } from './registry';
+import { fieldRegistry, resolveArrayFieldRenderer, resolveFieldRenderer } from './registry';
 import type { FieldControlProps } from './types';
 
 const SCHEMAS_DIR = join(__dirname, '../../../schemas');
@@ -37,6 +37,7 @@ describe('schema → registry 覆蓋', () => {
       ) as Record<string, { component: FieldComponent }>;
       for (const [key, spec] of Object.entries(fieldSchema)) {
         if (spec.component === 'Upload') continue; // FormView 特例（Attachment[]，非字串契約）
+        if (resolveArrayFieldRenderer(spec.component)) continue; // 陣列值 registry（string[]）
         if (!fieldRegistry[spec.component]) missing.push(`${form}.${key} → ${spec.component}`);
       }
     }
@@ -116,6 +117,57 @@ describe('adapter 契約（value 字串往返）', () => {
     }
   });
 
+  it('Radio：渲染每個 option、點選時以 option value 回呼', () => {
+    const onChange = vi.fn();
+    const renderer = resolveFieldRenderer('Radio');
+    const { container, getByLabelText } = render(
+      <>
+        {renderer(
+          renderProps({
+            spec: {
+              component: 'Radio',
+              label: '問卷第一題',
+              options: [
+                { value: 'option1', label: '單選1' },
+                { value: 'option2', label: '單選2' },
+              ],
+            },
+            value: 'option1',
+            onChange,
+          }),
+        )}
+      </>,
+    );
+    const radios = container.querySelectorAll('input[type="radio"]');
+    expect(radios.length).toBe(2);
+    expect((radios[0] as HTMLInputElement).checked).toBe(true);
+    // 同組 radio 需共用 name，否則同頁多組會互相干擾
+    expect((radios[0] as HTMLInputElement).name).toBe((radios[1] as HTMLInputElement).name);
+    fireEvent.click(getByLabelText('單選2'));
+    expect(onChange).toHaveBeenCalledWith('option2');
+  });
+
+  it('Password：渲染為 type=password 並照常回傳字串', () => {
+    const onChange = vi.fn();
+    const renderer = resolveFieldRenderer('Password');
+    const { container } = render(
+      <>
+        {renderer(
+          renderProps({
+            spec: { component: 'Password', label: '密碼' },
+            value: 'Abcd1234!',
+            onChange,
+          }),
+        )}
+      </>,
+    );
+    const input = container.querySelector('input') as HTMLInputElement;
+    expect(input.type).toBe('password');
+    expect(input.value).toBe('Abcd1234!');
+    fireEvent.change(input, { target: { value: 'Zxcv5678!' } });
+    expect(onChange).toHaveBeenCalledWith('Zxcv5678!');
+  });
+
   it('DatePicker / TimePicker 可渲染並顯示現值（自製元件，非原生 input）', () => {
     const date = resolveFieldRenderer('DatePicker');
     const { container: dateEl } = render(
@@ -130,5 +182,46 @@ describe('adapter 契約（value 字串往返）', () => {
     );
     // TimePicker 顯示為「09 : 00」（時/分分開呈現）
     expect(timeEl.textContent?.replace(/\s/g, '')).toContain('09:00');
+  });
+});
+
+describe('陣列值 adapter 契約（value 為 string[]）', () => {
+  const spec = {
+    component: 'MultiSelect' as FieldComponent,
+    label: '有興趣項目',
+    options: [
+      { value: 'P001', label: '產品一' },
+      { value: 'P002', label: '產品二' },
+    ],
+  };
+
+  it('MultiSelect 走陣列 registry，不在字串 registry 內', () => {
+    expect(resolveArrayFieldRenderer('MultiSelect')).toBeTypeOf('function');
+    expect(fieldRegistry.MultiSelect).toBeUndefined();
+    // 字串元件不會誤入陣列 registry
+    expect(resolveArrayFieldRenderer('Input')).toBeUndefined();
+  });
+
+  it('MultiSelect：已選值以標籤顯示，選取新項目時回傳「附加後的陣列」', () => {
+    const onChange = vi.fn();
+    const renderer = resolveArrayFieldRenderer('MultiSelect')!;
+    const { container, getByText } = render(
+      <>{renderer({ spec, value: ['P001'], disabled: false, onChange })}</>,
+    );
+    expect(container.textContent).toContain('產品一');
+
+    fireEvent.focus(container.querySelector('input')!);
+    fireEvent.click(getByText('產品二'));
+    expect(onChange).toHaveBeenCalledWith(['P001', 'P002']);
+  });
+
+  it('MultiSelect：移除標籤時回傳「移除後的陣列」', () => {
+    const onChange = vi.fn();
+    const renderer = resolveArrayFieldRenderer('MultiSelect')!;
+    const { getByLabelText } = render(
+      <>{renderer({ spec, value: ['P001', 'P002'], disabled: false, onChange })}</>,
+    );
+    fireEvent.click(getByLabelText('移除 產品一'));
+    expect(onChange).toHaveBeenCalledWith(['P002']);
   });
 });

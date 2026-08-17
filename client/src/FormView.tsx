@@ -2,7 +2,7 @@ import { useState, type CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button, FileUploader } from '@oa-agent/ui';
 import type { Attachment, Definition, FieldSpec, LeaveBalance, SubmissionInfo } from './api';
-import { resolveFieldRenderer } from './form/registry';
+import { resolveArrayFieldRenderer, resolveFieldRenderer } from './form/registry';
 
 /** 附件可接受的副檔名（與後端 MIME 白名單對應） */
 const ATTACHMENT_ACCEPT = '.pdf,.jpg,.jpeg,.png,.gif,.webp,.doc,.docx,.xls,.xlsx';
@@ -23,14 +23,24 @@ interface Props {
   onDeleteAttachment?: (attachmentId: string) => Promise<void>;
 }
 
-/** 唯讀顯示字串：enum 用 field options 的中文 label，布林顯示是/否，空值顯示破折號 */
+/** 以 field options 把值換成顯示 label（找不到對應時退回原值） */
+function optionLabel(spec: FieldSpec | undefined, raw: unknown): string {
+  const opt = spec?.options?.find((o) => o.value === String(raw));
+  return opt ? opt.label : String(raw);
+}
+
+/**
+ * 唯讀顯示字串：enum 用 field options 的中文 label，多選以「、」串接，
+ * 布林顯示是/否，密碼一律遮蔽，空值顯示破折號。
+ */
 function displayValue(spec: FieldSpec | undefined, raw: unknown): string {
   if (raw === null || raw === undefined || raw === '') return '—';
-  if (typeof raw === 'boolean') return raw ? '是' : '否';
-  if (spec?.options?.length) {
-    const opt = spec.options.find((o) => o.value === String(raw));
-    if (opt) return opt.label;
+  if (Array.isArray(raw)) {
+    return raw.length === 0 ? '—' : raw.map((v) => optionLabel(spec, v)).join('、');
   }
+  if (typeof raw === 'boolean') return raw ? '是' : '否';
+  if (spec?.component === 'Password') return '••••••';
+  if (spec?.options?.length) return optionLabel(spec, raw);
   return String(raw);
 }
 
@@ -187,9 +197,12 @@ export default function FormView({
     }
 
     // 依 schema 的 component 從 registry 取對應設計系統元件
+    const ArrayRenderer = resolveArrayFieldRenderer(spec.component);
     const Renderer = resolveFieldRenderer(spec.component);
     const raw = draft[key];
     const v = raw === null || raw === undefined ? '' : String(raw);
+    // 多選欄位的值是 string[]，原樣往返，不經字串化
+    const arrayValue = Array.isArray(raw) ? (raw as string[]) : [];
 
     // 假別欄位：依目前選取的假別顯示「今年度剩餘 N 小時」
     const balance = key === 'leaveType' && v ? balances?.find((b) => b.leaveType === v) : undefined;
@@ -203,9 +216,18 @@ export default function FormView({
         <dd className="form-value">
           {submitted ? (
             displayValue(spec, values[key])
+          ) : ArrayRenderer ? (
+            <ArrayRenderer
+              spec={spec}
+              name={key}
+              value={arrayValue}
+              disabled={busy}
+              onChange={(val) => setRawField(key, val)}
+            />
           ) : (
             <Renderer
               spec={spec}
+              name={key}
               value={v}
               disabled={busy}
               onChange={(val) => setField(key, val)}

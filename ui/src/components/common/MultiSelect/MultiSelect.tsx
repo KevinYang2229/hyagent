@@ -12,7 +12,7 @@ export interface MultiSelectOption {
   value: string;
 }
 
-interface MultiSelectProps {
+export interface MultiSelectProps {
   /** 候選項目；提供時會顯示下拉建議清單 */
   options?: MultiSelectOption[];
   /** 目前已選的 value 陣列 */

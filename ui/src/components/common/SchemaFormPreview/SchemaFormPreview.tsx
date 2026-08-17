@@ -3,6 +3,8 @@ import Input from "../Input/Input";
 import Textarea from "../Textarea/Textarea";
 import Select from "../Select/Select";
 import Checkbox from "../Checkbox/Checkbox";
+import Radio from "../Radio/Radio";
+import MultiSelect from "../MultiSelect/MultiSelect";
 import DatePicker from "../DatePicker/DatePicker";
 import TimePicker from "../TimePicker/TimePicker";
 import "./SchemaFormPreview.css";
@@ -18,9 +20,12 @@ import "./SchemaFormPreview.css";
  */
 export type PreviewFieldComponent =
   | "Input"
+  | "Password"
   | "Number"
   | "Textarea"
   | "Select"
+  | "Radio"
+  | "MultiSelect"
   | "DatePicker"
   | "TimePicker"
   | "Checkbox"
@@ -84,13 +89,20 @@ function sectionsOf(def: PreviewDefinition): RenderSection[] {
   return sections;
 }
 
+/**
+ * 預覽的欄位值一律為字串（狀態是 Record<string, string>）。
+ * 多選在此以逗號分隔字串暫存，只在元件邊界拆/併；真實表單（FormView）走的是原生 string[]。
+ */
 function FieldControl({
   spec,
+  name,
   value,
   disabled,
   onChange,
 }: {
   spec: PreviewFieldSpec;
+  /** 欄位 key；同組 Radio 用它當 DOM name */
+  name: string;
   value: string;
   disabled?: boolean;
   onChange: (v: string) => void;
@@ -106,6 +118,32 @@ function FieldControl({
             </option>
           ))}
         </Select>
+      );
+    case "Radio":
+      return (
+        <div className="schema-preview-radio-group" role="radiogroup" aria-label={spec.label}>
+          {spec.options?.map((o) => (
+            <Radio
+              key={o.value}
+              name={`radio-${name}`}
+              label={o.label}
+              value={o.value}
+              checked={value === o.value}
+              disabled={disabled}
+              onChange={() => onChange(o.value)}
+            />
+          ))}
+        </div>
+      );
+    case "MultiSelect":
+      return (
+        <MultiSelect
+          options={spec.options}
+          value={value ? value.split(",").filter(Boolean) : []}
+          placeholder={spec.placeholder}
+          disabled={disabled}
+          onChange={(next) => onChange(next.join(","))}
+        />
       );
     case "Textarea":
       return (
@@ -135,7 +173,13 @@ function FieldControl({
     default:
       return (
         <Input
-          type={spec.component === "Number" ? "number" : "text"}
+          type={
+            spec.component === "Number"
+              ? "number"
+              : spec.component === "Password"
+                ? "password"
+                : "text"
+          }
           value={value}
           placeholder={spec.placeholder}
           disabled={disabled}
@@ -233,6 +277,7 @@ export function SchemaFormPreview({
                         <div className="schema-preview-value">
                           <FieldControl
                             spec={spec}
+                            name={key}
                             value={current[key] ?? ""}
                             disabled={disabled}
                             onChange={(v) => setValue(key, v)}

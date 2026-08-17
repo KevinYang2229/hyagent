@@ -180,6 +180,14 @@
   color: #0f172a;
 }
 
+/* 單選群組：選項直式排列（與 client FormView 的 .field-radio-group 一致） */
+.schema-preview-radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 2px 0;
+}
+
 .schema-preview-upload {
   border: 1px dashed #cbd5e1;
   border-radius: 8px;

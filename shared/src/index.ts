@@ -37,9 +37,12 @@ export interface DataSchema {
 // ---- ② Field Schema（UI 元件 + 語意 metadata）----
 export type FieldComponent =
   | 'Input'
+  | 'Password'
   | 'Textarea'
   | 'Number'
   | 'Select'
+  | 'Radio'
+  | 'MultiSelect'
   | 'DatePicker'
   | 'TimePicker'
   | 'Upload'

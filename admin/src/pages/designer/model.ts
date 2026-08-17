@@ -59,11 +59,14 @@ export interface DraftForm {
   oa?: OASchema;
 }
 
+/** 需要 options 的元件（下拉、單選群組、多選）；與後端 form.validator 同一判準 */
+export const OPTION_COMPONENTS: FieldComponent[] = ['Select', 'Radio', 'MultiSelect'];
+
 /** 各元件的預設資料型別 */
 export function defaultDataType(component: FieldComponent): DraftDataType {
   if (component === 'Number') return 'number';
   if (component === 'Checkbox') return 'boolean';
-  if (component === 'Upload') return 'array';
+  if (component === 'Upload' || component === 'MultiSelect') return 'array';
   return 'string';
 }
 
@@ -76,7 +79,9 @@ export function newField(component: FieldComponent, index: number, stepIndex: nu
     required: false,
     dataType: defaultDataType(component),
     stepIndex,
-    ...(component === 'Select' ? { options: [{ value: 'opt1', label: '選項一' }] } : {}),
+    ...(OPTION_COMPONENTS.includes(component)
+      ? { options: [{ value: 'opt1', label: '選項一' }] }
+      : {}),
     ...(component === 'DatePicker' ? { format: 'date' } : {}),
   };
 }
@@ -112,7 +117,17 @@ export function toDefinition(d: DraftForm): Definition {
     if (f.description) prop.description = f.description;
     if (f.format) prop.format = f.format;
     if (f.pattern) prop.pattern = f.pattern;
-    if (f.component === 'Select' && f.options?.length) prop.enum = f.options.map((o) => o.value);
+    if ((f.component === 'Select' || f.component === 'Radio') && f.options?.length) {
+      prop.enum = f.options.map((o) => o.value);
+    }
+    // 多選：值是 string[]，可選值掛在 items.enum（頂層 enum 會誤擋整個陣列）
+    if (f.component === 'MultiSelect') {
+      prop.type = 'array';
+      prop.items = {
+        type: 'string',
+        ...(f.options?.length ? { enum: f.options.map((o) => o.value) } : {}),
+      };
+    }
     if (f.component === 'Upload') {
       prop.type = 'array';
       prop.items = { type: 'object' };
@@ -124,7 +139,7 @@ export function toDefinition(d: DraftForm): Definition {
       label: f.label,
       ...(f.placeholder ? { placeholder: f.placeholder } : {}),
       ...(f.help ? { help: f.help } : {}),
-      ...(f.component === 'Select' && f.options ? { options: f.options } : {}),
+      ...(OPTION_COMPONENTS.includes(f.component) && f.options ? { options: f.options } : {}),
     };
   }
 

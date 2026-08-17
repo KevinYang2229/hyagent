@@ -14,6 +14,8 @@ const ajv = new Ajv({ allErrors: true, strict: false });
 addFormats(ajv);
 
 const RULE_OPS = new Set(['>=', '>', '<=', '<', '==', '!=']);
+/** 需要 options 才有意義的元件（下拉、單選群組、多選） */
+const OPTION_COMPONENTS = new Set(['Select', 'Radio', 'MultiSelect']);
 /** fieldMap 來源允許的「非 data 欄位」衍生值（由 domain service 在送出時注入） */
 const DERIVED_SOURCES = new Set(['userId', 'hours', 'region']);
 const FORM_ID_RE = /^[a-z0-9][a-z0-9-]*$/;
@@ -55,8 +57,8 @@ export function validateDefinition(def: Definition): FieldIssue[] {
     }
     if (!spec.component) add(`field.${k}`, `欄位 ${k} 缺少 component`);
     if (!spec.label) add(`field.${k}`, `欄位 ${k} 缺少 label`);
-    if (spec.component === 'Select' && !(spec.options && spec.options.length > 0)) {
-      add(`field.${k}`, `Select 欄位 ${k} 需提供 options`);
+    if (OPTION_COMPONENTS.has(spec.component) && !(spec.options && spec.options.length > 0)) {
+      add(`field.${k}`, `${spec.component} 欄位 ${k} 需提供 options`);
     }
   }
 

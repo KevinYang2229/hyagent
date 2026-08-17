@@ -25,6 +25,8 @@
     "src/components/common/DatePicker",
     "src/components/common/TimePicker",
     "src/components/common/Checkbox",
+    "src/components/common/Radio",
+    "src/components/common/MultiSelect",
     "src/components/common/FileUploader"
   ]
 }

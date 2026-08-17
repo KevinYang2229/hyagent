@@ -19,6 +19,7 @@ import { useAuth } from '../auth';
 import AppLayout from '../components/AppLayout';
 import { IconClose, IconCog } from '../components/icons';
 import {
+  OPTION_COMPONENTS,
   emptyDraft,
   fieldsOfStep,
   fromDefinition,
@@ -36,6 +37,9 @@ const PALETTE: { component: FieldComponent; label: string; icon: string }[] = [
   { component: 'Textarea', label: '多行文字', icon: '📝' },
   { component: 'Number', label: '數字', icon: '🔢' },
   { component: 'Select', label: '下拉選單', icon: '▾' },
+  { component: 'Radio', label: '單選', icon: '🔘' },
+  { component: 'MultiSelect', label: '多選', icon: '🏷️' },
+  { component: 'Password', label: '密碼', icon: '🔒' },
   { component: 'DatePicker', label: '日期', icon: '📅' },
   { component: 'TimePicker', label: '時間', icon: '⏰' },
   { component: 'Checkbox', label: '勾選', icon: '☑️' },
@@ -691,7 +695,7 @@ function Inspector({
         />
       </label>
 
-      {field.component === 'Select' && (
+      {OPTION_COMPONENTS.includes(field.component) && (
         <div className="options-editor">
           <span className="options-title">選項（value / label）</span>
           {(field.options ?? []).map((o, i) => (

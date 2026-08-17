@@ -115,6 +115,23 @@ describe('computeStatus', () => {
     expect(s.missing).toHaveLength(0);
     expect(s.invalid).toHaveLength(0);
   });
+
+  // 陣列欄位（多選 MultiSelect、附件 Upload）給空陣列等同沒填，否則必填形同虛設
+  it('必填的陣列欄位給空陣列仍算 missing，有元素才算填了', () => {
+    const arrayDef = {
+      formId: 'array-form',
+      data: {
+        type: 'object',
+        properties: { products: { type: 'array', items: { type: 'string' } } },
+      },
+      field: { products: { component: 'MultiSelect', label: '有興趣項目' } },
+      validation: { required: ['products'] },
+      agent: { intent: 'array-form', description: '多選測試' },
+    } as unknown as typeof def;
+
+    expect(computeStatus(arrayDef, { products: [] }).missing).toContain('products');
+    expect(computeStatus(arrayDef, { products: ['P001'] }).missing).toHaveLength(0);
+  });
 });
 
 describe('validateAll', () => {
