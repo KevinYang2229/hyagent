@@ -160,6 +160,56 @@ function pieSvg(chart: SectionChart): string {
 }
 
 /**
+ * 分組長條：同一類別下並排數列。
+ *
+ * 用同色相由深到淺區分數列（而非彩虹），並強制附圖例——顏色是唯一區分數列的線索，
+ * 單靠色相對色覺障礙不友善，圖例的文字才是可靠的那一份。
+ */
+function groupedSvg(chart: SectionChart): string {
+  const series = chart.series ?? [];
+  const rows = chart.points.map((p) => p.values ?? [p.value]);
+  const max = Math.max(...rows.flat(), 0);
+  const labelW = 120;
+  const trackW = CHART_W - labelW - 84;
+  const barH = 14;
+  const gapIn = 3;
+  const gapOut = 14;
+  const groupH = series.length * (barH + gapIn) + gapOut;
+  const legendH = 26;
+  const height = chart.points.length * groupH + legendH;
+
+  const body = chart.points
+    .map((p, gi) => {
+      const top = legendH + gi * groupH;
+      const bars = (p.values ?? [p.value])
+        .map((v, si) => {
+          const y = top + si * (barH + gapIn);
+          const w = max > 0 ? Math.max(1, Math.round((v / max) * trackW)) : 0;
+          return (
+            `<rect x="${labelW}" y="${y}" width="${w}" height="${barH}" fill="${PIE_SHADES[si % PIE_SHADES.length]}"/>` +
+            `<text x="${labelW + w + 6}" y="${y + barH - 3}" font-size="10.5" fill="#333">${escapeHtml(v.toLocaleString('en-US'))}</text>`
+          );
+        })
+        .join('');
+      const mid = top + (series.length * (barH + gapIn)) / 2;
+      return `<text x="0" y="${mid}" font-size="12" fill="#333">${escapeHtml(p.label)}</text>${bars}`;
+    })
+    .join('');
+
+  const legend = series
+    .map((name, i) => {
+      const x = i * 150;
+      return (
+        `<rect x="${x}" y="4" width="11" height="11" fill="${PIE_SHADES[i % PIE_SHADES.length]}"/>` +
+        `<text x="${x + 16}" y="14" font-size="11" fill="#555">${escapeHtml(name)}</text>`
+      );
+    })
+    .join('');
+
+  return `<svg viewBox="0 0 ${CHART_W} ${height}" role="img" aria-label="${escapeHtml(chart.title)}">${legend}${body}</svg>`;
+}
+
+/**
  * 長條圖 → inline SVG。
  *
  * 手寫 SVG 而非引第三方圖表庫：這份 HTML 的不變式是「零外部資源、可離線開、可直接列印」，
@@ -194,7 +244,9 @@ function chartSvg(section: ReportSection, locale: string): string {
     ? lineSvg(chart)
     : chart.kind === 'pie'
       ? pieSvg(chart)
-      : `<svg viewBox="0 0 ${CHART_W} ${height}" role="img" aria-label="${escapeHtml(chart.title)}">${rows.join('')}</svg>`;
+      : chart.kind === 'grouped'
+        ? groupedSvg(chart)
+        : `<svg viewBox="0 0 ${CHART_W} ${height}" role="img" aria-label="${escapeHtml(chart.title)}">${rows.join('')}</svg>`;
 
   return [
     '<div class="chart">',

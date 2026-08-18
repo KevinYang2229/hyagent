@@ -27,6 +27,11 @@ export interface SectionSource {
 export interface ChartPoint {
   label: string;
   value: number;
+  /**
+   * grouped 專用：同一類別下各數列的值，順序對應 SectionChart.series。
+   * 其餘類型不存在此欄，value 就是唯一的值。
+   */
+  values?: number[];
 }
 
 /**
@@ -47,8 +52,10 @@ export interface ChartPoint {
  * bar  量值比較（各國人數、各展區家數）——最通用，也是所有覆寫的落點
  * line 隨時間變化（歷年預登總數）——標籤須為年份序列，且依年份而非數值排序
  * pie  部分佔整體（台灣／海外）——扇形數必須夠少，否則角度根本比不出大小
+ * grouped 同一類別下的多個數列（今年預登／今年報到／上屆預登／上屆報到）——
+ *      這批資料裡資訊密度最高的表是「一列多欄」的形狀，兩欄的 label/value 抓不到它
  */
-export type ChartKind = 'bar' | 'line' | 'pie';
+export type ChartKind = 'bar' | 'line' | 'pie' | 'grouped';
 
 export interface SectionChart {
   kind: ChartKind;
@@ -56,6 +63,8 @@ export interface SectionChart {
   /** 數值的單位（人數、家數…），標在資料點旁 */
   unit?: string;
   points: ChartPoint[];
+  /** grouped 專用：各數列的名稱（即被選中的數值欄名），與 ChartPoint.values 同序 */
+  series?: string[];
   /**
    * true = 數字由程式從結構化表的完整資料列算出；false = LLM 從檢索片段讀出的節錄。
    * renderer 依此決定說明文字——兩者的可信度差很多，不能用同一句話帶過。

@@ -43,6 +43,8 @@ function sectionSystem(locale?: string): string {
       '- If one answers this section, append a block naming the table and the two columns:',
       '  ```chart-ref',
       '  {"table":"<id>","label":"<column>","value":"<column>","kind":"bar|line|pie","title":"...","unit":"..."}',
+      '- When one row holds several comparable numeric columns, give "values":["A","B",...] (max 4) instead',
+      '  of "value"; the system renders a grouped bar chart.',
       '- If the section discusses ANY comparable numbers, attach a chart. Do not settle for prose.',
       '- Pick kind by intent: bar for magnitude, line for change across years, pie for a few parts of a whole.',
       '  ```',
@@ -72,6 +74,8 @@ function sectionSystem(locale?: string): string {
     '- 若其中一張能回答本節，附上一個區塊，指名該表與要用的兩個欄位：',
     '  ```chart-ref',
     '  {"table":"<id>","label":"<欄位名>","value":"<欄位名>","kind":"bar|line|pie","title":"標題","unit":"人數"}',
+    '- 若同一列有多個值得並排比較的數值欄（例如「今年預登／今年報到／上屆預登／上屆報到」），',
+    '  改給 "values":["欄位A","欄位B",...]（最多 4 個），系統會畫成分組長條；此時 value 可省略。',
     '- **只要本節談到任何可比較的數字，就該附圖**；資料表在上面列著，不要只寫文字。',
     '- kind 依這一節在講什麼選：比大小用 bar、隨年度變化用 line、少數幾塊構成整體用 pie。',
     '  選不定就給 bar；系統會依實際資料形狀驗證，不合適會自動改成 bar。',
@@ -97,6 +101,16 @@ function sectionSystem(locale?: string): string {
  */
 const MIN_CHART_POINTS = 3;
 const MAX_CHART_POINTS = 12;
+
+/**
+ * 圓餅的下限是 2 而非 3。
+ *
+ * 「台灣 128／海外 232」這種兩分佔比本來就是圓餅最典型的用法，一律要求 3 點是把
+ * 長條的門檻硬套到圓餅上。長條仍維持 3：兩條長條沒有比一句話多說什麼。
+ */
+function minPointsFor(kind: ChartKind): number {
+  return kind === 'pie' ? 2 : MIN_CHART_POINTS;
+}
 
 /**
  * 抽出所有 ```<tag> 區塊，回傳「移除全部區塊後的內文」與各區塊的內容。
@@ -137,15 +151,17 @@ function parseInlineChart(payload: string): SectionChart | undefined {
       (pt): pt is { label: string; value: number } =>
         typeof pt?.label === 'string' && pt.label.trim() !== '' && Number.isFinite(pt?.value),
     );
-    if (clean.length < MIN_CHART_POINTS || clean.length > MAX_CHART_POINTS) return undefined;
+    if (clean.length > MAX_CHART_POINTS) return undefined;
     if (typeof parsed.title !== 'string' || parsed.title.trim() === '') return undefined;
     const pts = clean.map((pt) => ({ label: pt.label.trim(), value: pt.value }));
+    const kind = resolveChartKind(
+      typeof parsed.kind === 'string' ? parsed.kind : undefined,
+      pts.map((x) => x.label),
+      pts.map((x) => x.value),
+    );
+    if (pts.length < minPointsFor(kind)) return undefined;
     return {
-      kind: resolveChartKind(
-        typeof parsed.kind === 'string' ? parsed.kind : undefined,
-        pts.map((x) => x.label),
-        pts.map((x) => x.value),
-      ),
+      kind,
       complete: false, // LLM 從檢索片段讀出的節錄
       title: parsed.title.trim(),
       ...(typeof parsed.unit === 'string' && parsed.unit.trim() !== '' ? { unit: parsed.unit.trim() } : {}),
@@ -164,6 +180,8 @@ interface ChartRef {
   table: string;
   label: string;
   value: string;
+  /** grouped 專用：多個數值欄名。給了它就走分組長條，value 忽略 */
+  values?: string[];
   title?: string;
   unit?: string;
   /** 模型提出的類型；最終仍由 resolveChartKind 依資料形狀決定 */
@@ -172,6 +190,16 @@ interface ChartRef {
 
 /** 圓餅的扇形上限。超過就分不出角度，長條至少排得出高低 */
 const MAX_PIE_SLICES = 6;
+
+/**
+ * 分組長條的數列上限。
+ *
+ * 超過四組之後同一類別下的長條會細到看不出差異，圖例也開始搶版面——
+ * 真的需要比較更多維度時，正解是拆成幾張小圖而不是把一張塞爆。
+ */
+const MAX_SERIES = 4;
+/** 分組長條的類別上限：類別 × 數列才是實際的長條數 */
+const MAX_GROUPED_CATEGORIES = 8;
 
 /** 標籤是否為年份序列（1900–2099）——折線只在時間序列上成立 */
 function looksLikeYears(labels: string[]): boolean {
@@ -312,6 +340,46 @@ export function parseCellNumber(raw: string): number | null {
 }
 
 /**
+ * 分組長條：一列多欄的表（類型 | 今年預登 | 今年報到 | 上屆預登 | 上屆報到）。
+ *
+ * 這批資料裡資訊密度最高的幾張表就是這個形狀，而兩欄的 label/value 只抓得到其中一欄，
+ * 等於把四個數字丟掉三個。數值同樣由程式讀出，LLM 只挑欄位。
+ */
+function buildGroupedChart(
+  table: StoredTable,
+  ref: ChartRef,
+  cols: string[],
+): SectionChart | undefined {
+  const li = table.headers.indexOf(ref.label);
+  const idx = cols.map((c) => table.headers.indexOf(c));
+  if (li < 0 || idx.some((i) => i < 0 || i === li)) return undefined;
+
+  const points: { label: string; value: number; values: number[] }[] = [];
+  for (const row of table.rows) {
+    const label = (row[li] ?? '').trim();
+    if (label === '' || TOTAL_LABELS.has(label)) continue;
+    const values = idx.map((i) => parseCellNumber(row[i] ?? ''));
+    // 任一數列缺值就整列略過：補 0 會在圖上生出一根不存在的長條
+    if (values.some((v) => v === null)) continue;
+    const nums = values as number[];
+    points.push({ label, value: nums[0], values: nums });
+  }
+  if (points.length < 2 || points.length > MAX_GROUPED_CATEGORIES) return undefined;
+
+  const where = `${table.source} / ${table.sheet}${table.caption ? `（${table.caption}）` : ''}`;
+  return {
+    kind: 'grouped',
+    complete: true,
+    title: ref.title?.trim() || table.sheet,
+    ...(ref.unit?.trim() ? { unit: ref.unit.trim() } : {}),
+    points,
+    series: cols,
+    sourceLabel: where,
+    totalRows: points.length,
+  };
+}
+
+/**
  * 依 LLM 的挑選，從結構化表算出圖表。**數值全部由此處讀出，LLM 只負責挑表與欄位。**
  *
  * 這是 B 案的重點：讓模型做它擅長的（理解「這一節在問各國人數」對應到哪張表的哪兩欄），
@@ -323,6 +391,12 @@ export async function buildExactChart(
 ): Promise<SectionChart | undefined> {
   const table = await loadTable(tenantId, ref.table);
   if (!table) return undefined;
+
+  // values 給了多個欄位就走分組長條；只有一個或沒給則沿用單數列路徑
+  const cols = Array.isArray(ref.values) ? ref.values.filter((c) => typeof c === 'string') : [];
+  if (cols.length >= 2) {
+    return buildGroupedChart(table, ref, cols.slice(0, MAX_SERIES));
+  }
 
   const li = table.headers.indexOf(ref.label);
   const vi = table.headers.indexOf(ref.value);
@@ -338,10 +412,11 @@ export async function buildExactChart(
     if (TOTAL_LABELS.has(label)) continue; // 合計列不是資料點
     points.push({ label, value });
   }
-  if (points.length < MIN_CHART_POINTS) return undefined;
+  // 先決類型再套下限：下限因類型而異（圓餅 2、其餘 3），順序反過來會把合法的兩分佔比擋掉
+  const kind = resolveChartKind(ref.kind, points.map((p) => p.label), points.map((p) => p.value));
+  if (points.length < minPointsFor(kind)) return undefined;
 
   const totalRows = points.length;
-  const kind = resolveChartKind(ref.kind, points.map((p) => p.label), points.map((p) => p.value));
   /*
    * 排序方式由類型決定：長條與圓餅比大小，依數值遞減才讀得出高低；
    * 折線是時間軸，必須依年份遞增，否則折線的走向毫無意義。

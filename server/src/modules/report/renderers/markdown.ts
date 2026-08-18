@@ -34,13 +34,18 @@ function chartTable(section: ReportSection, locale: string): string {
   const caption = chart.complete
     ? exactChartCaptionText(locale, chart.points.length, chart.totalRows ?? chart.points.length, chart.sourceLabel ?? '')
     : chartCaptionText(locale, chart.points.length, section.hits);
-  const valueHeader = chart.unit ?? '';
+  // 分組長條有多個數列，表格要跟著多開幾欄，否則等於只呈現第一個數列
+  const cols = chart.kind === 'grouped' && chart.series?.length ? chart.series : [chart.unit ?? ''];
+  const cells = (pt: { value: number; values?: number[] }): string =>
+    (chart.kind === 'grouped' ? (pt.values ?? [pt.value]) : [pt.value])
+      .map((v) => v.toLocaleString('en-US'))
+      .join(' | ');
   return [
     `**${chart.title}**`,
     '',
-    `| | ${valueHeader} |`,
-    '| --- | ---: |',
-    ...chart.points.map((pt) => `| ${pt.label} | ${pt.value.toLocaleString('en-US')} |`),
+    `| | ${cols.join(' | ')} |`,
+    `| --- | ${cols.map(() => '---:').join(' | ')} |`,
+    ...chart.points.map((pt) => `| ${pt.label} | ${cells(pt)} |`),
     '',
     `_${caption}_`,
   ].join('\n');
