@@ -5,7 +5,7 @@ import { getEmbeddingProvider, type EmbeddingProvider } from '@/lib/embedding';
 import { logger } from '@/lib/logger';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 import { usageStore } from '@/modules/usage/usage.store';
-import { loadIndex, saveIndex } from './knowledge.index.repo';
+import { replaceWebsiteChunks } from './knowledge.index.repo';
 import type { IndexedChunk, KnowledgeIndexFile } from './knowledge-index.types';
 
 // 注意：carryOverFileChunks 定義於本檔（而非 knowledge-file.service.ts），
@@ -360,16 +360,28 @@ export async function runIngest(
   );
   const chunks: IndexedChunk[] = pending.map((c, i) => ({ ...c, vector: vectors[i] }));
 
-  // 重爬會整批重建網站 chunks；寫回前併入既有索引中帶 fileId 的檔案來源 chunks，避免蓋掉上傳檔內容
-  const existing = await loadIndex(params.tenantId);
-  const mergedChunks = carryOverFileChunks(existing, chunks);
+  /*
+   * 重爬只整批重建「網站」chunks，檔案來源的 chunks 由 replaceWebsiteChunks 在資料層原地保留。
+   *
+   * 原本是「loadIndex 整份撈回 → carryOverFileChunks 併起來 → saveIndex 全部寫回」。
+   * 那條路在檔案來源變多之後會從兩端一起崩：8.8k 個 chunk 的向量約 238MB，讀會撞
+   * statement timeout、寫會撞交易逾時；而 saveIndex 先刪後寫，失敗時使用者上傳文件的
+   * 向量已經沒了，重爬也產不回來。改成資料層只動網站那一半，這些風險全部不存在。
+   *
+   * 回傳的 index 因此只含本次爬到的網站 chunks（不再是「整份索引」）——需要全租戶視角的
+   * 呼叫端請自行向資料層要（countChunksBySource / loadIndexText），見 knowledge.job。
+   */
   const index: KnowledgeIndexFile = {
     generatedAt: new Date().toISOString(),
     model: params.embeddingModel,
     source: params.startUrl,
-    chunks: mergedChunks,
+    chunks,
   };
-  await saveIndex(params.tenantId, index);
+  await replaceWebsiteChunks(params.tenantId, chunks, {
+    generatedAt: index.generatedAt,
+    model: index.model,
+    source: index.source,
+  });
   onProgress?.({ phase: 'done', pagesCrawled: pages.length, chunks: pending.length, embedded: chunks.length });
   return index;
 }

@@ -12,7 +12,9 @@ import { getLLMProvider } from '@/lib/llm';
 import { logger } from '@/lib/logger';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 import { usageStore } from '@/modules/usage/usage.store';
-import type { KnowledgeIndexFile } from './knowledge-index.types';
+// KnowledgeIndexText（不含向量）而非 KnowledgeIndexFile：本模組只讀 text/title/fileId，
+// 收窄型別讓呼叫端可以省下整份向量的傳輸；完整索引仍可直接指派進來
+import type { KnowledgeIndexText } from './knowledge-index.types';
 import { knowledgeStore } from './knowledge.store';
 import type { SuggestedPrompts } from './knowledge.store';
 import {
@@ -52,7 +54,7 @@ export function stripCommonPrefix(titles: string[]): string[] {
 }
 
 /** 從索引抽出餵給 LLM 的素材：等距文字摘錄 ＋（多 title 時）主題清單 */
-export function sampleIndexForSuggestion(idx: KnowledgeIndexFile): string {
+export function sampleIndexForSuggestion(idx: KnowledgeIndexText): string {
   const chunks = idx.chunks;
   if (chunks.length === 0) return '';
 
@@ -191,7 +193,7 @@ async function generateOne(tenantId: string, material: string): Promise<Suggeste
  */
 export async function refreshSuggestedPrompts(
   tenantId: string,
-  idx: KnowledgeIndexFile,
+  idx: KnowledgeIndexText,
 ): Promise<SuggestedPromptSlots | undefined> {
   const gen = beginGeneration(tenantId);
 
@@ -258,7 +260,7 @@ export async function refreshSuggestedPrompts(
 export async function regenerateSlot(
   tenantId: string,
   source: SourceKey,
-  idx: KnowledgeIndexFile,
+  idx: KnowledgeIndexText,
 ): Promise<SuggestedPrompts | undefined> {
   const gen = beginGeneration(tenantId);
   try {

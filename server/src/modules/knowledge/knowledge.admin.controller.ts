@@ -5,8 +5,8 @@
 import type { Request, Response } from 'express';
 import { AppError } from '@/utils/app-error';
 import type { IngestParams } from './ingest.service';
-import { deleteIndex } from './knowledge.index.repo';
-import { ingestFile, loadIndexFile, removeFile } from './knowledge-file.service';
+import { deleteIndex, loadIndexText } from './knowledge.index.repo';
+import { ingestFile, removeFile } from './knowledge-file.service';
 import { getJob, getRunningJobForTenant, startIngestJob } from './knowledge.job';
 import { knowledgeStore, type KnowledgeSource } from './knowledge.store';
 import { regenerateSlot } from './knowledge.suggest';
@@ -108,7 +108,8 @@ export const knowledgeAdminController = {
     if (getRunningJobForTenant(tenantId)) {
       throw AppError.conflict('解析任務進行中，請待完成後再重新生成');
     }
-    const idx = await loadIndexFile(tenantId);
+    // loadIndexText：重生推薦問句只需要文字，載入向量會在 chunks 上千時撞 statement timeout
+    const idx = await loadIndexText(tenantId);
     if (!idx || splitChunksBySource(idx.chunks)[source].length === 0) {
       throw AppError.unprocessable('該來源尚無索引內容');
     }

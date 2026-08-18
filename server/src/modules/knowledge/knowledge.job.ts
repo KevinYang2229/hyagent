@@ -7,7 +7,7 @@ import { knowledgeStore } from './knowledge.store';
 import { refreshSuggestedPrompts } from './knowledge.suggest';
 import { invalidatePgvectorModelCache } from './retriever.pgvector';
 import { invalidateIndexCache } from './retriever.staticIndex';
-import { countBySource } from './prompt-slots';
+import { countChunksBySource, loadIndexText } from './knowledge.index.repo';
 
 /** 單一 ingest job 的狀態快照 */
 export interface IngestJob {
@@ -97,19 +97,25 @@ export function startIngestJob(
       //   void refreshSuggestedPrompts(...) 會讀到已清空的 meta，兩格都判定「無 manual」
       //   而重新生成，manual 因此永久消失（而非暫時被蓋過）。
       const { files, suggestedPrompts } = knowledgeStore.getMeta(params.tenantId);
+      // 計數向資料層要：runIngest 回傳的 idx 只含本次爬到的網站 chunks，檔案來源的 chunks
+      // 由 replaceWebsiteChunks 原地保留、從不經過這裡，拿 idx.chunks 算會漏掉它們
+      const counts = await countChunksBySource(params.tenantId);
       knowledgeStore.setMeta(params.tenantId, {
         status: 'ready',
-        chunkCount: idx.chunks.length,
+        chunkCount: counts.website + counts.file,
         generatedAt: idx.generatedAt,
         model: idx.model,
         source: idx.source,
-        chunkCountBySource: countBySource(idx.chunks),
+        chunkCountBySource: counts,
         ...(files ? { files } : {}),
         ...(suggestedPrompts ? { suggestedPrompts } : {}),
       });
 
-      // 推薦問句生成：不阻塞、不影響索引狀態。失敗時前端就不顯示推薦 chip
-      void refreshSuggestedPrompts(params.tenantId, idx).catch(() => {});
+      // 推薦問句生成：不阻塞、不影響索引狀態。失敗時前端就不顯示推薦 chip。
+      // 同樣要全租戶視角——只餵網站 chunks 的話，檔案那一格會因「該來源已無內容」被清空。
+      void loadIndexText(params.tenantId)
+        .then((full) => (full ? refreshSuggestedPrompts(params.tenantId, full) : undefined))
+        .catch(() => {});
 
       job.status = 'done';
       job.finishedAt = new Date().toISOString();

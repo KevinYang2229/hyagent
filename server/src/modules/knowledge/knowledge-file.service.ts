@@ -11,7 +11,14 @@ import { env } from '@/config/env';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 import { usageStore } from '@/modules/usage/usage.store';
 import { AppError } from '@/utils/app-error';
-import { appendChunks, loadIndex, removeFileChunks } from './knowledge.index.repo';
+import {
+  appendChunks,
+  countChunksBySource,
+  loadIndex,
+  loadIndexMeta,
+  loadIndexText,
+  removeFileChunks,
+} from './knowledge.index.repo';
 // carryOverFileChunks 從 ingest.service 匯入（而非本檔自行定義），維持單向依賴：
 // 本檔已需要 ingest.service 的 chunkText/squash，若 ingest.service 反過來 import 本檔會形成循環引用。
 import {
@@ -25,7 +32,6 @@ import { parseDocument } from './doc-parse';
 import type { IndexedChunk } from './knowledge-index.types';
 import { knowledgeStore, type KnowledgeFileMeta } from './knowledge.store';
 import { refreshSuggestedPrompts } from './knowledge.suggest';
-import { countBySource } from './prompt-slots';
 
 export type { KnowledgeFileMeta };
 export { carryOverFileChunks };
@@ -103,7 +109,10 @@ export async function ingestFile(
   const summary = pieces.length >= 2 ? await summarizeText(tenantId, name, text) : null;
   const toEmbed = summary ? [...pieces, summary] : pieces;
 
-  const existing = await loadIndex(tenantId);
+  // loadIndexMeta 而非 loadIndex：這裡只要 model/source 兩個字串，它們在 knowledge_indexes
+  // 的單列上。原本走整份載入等於為了兩個字串把該租戶所有向量拖過網路（每筆約 27KB），
+  // chunks 上千之後必然撞 Postgres 的 statement timeout（57014），且每匯入一個檔重演一次。
+  const existing = await loadIndexMeta(tenantId);
   // 模型一致性：同一份索引只能用同一個 embedding 模型
   const model = existing?.model ?? source.embeddingModel;
   const embedder = getEmbeddingProvider(tenantStore.getTenant(tenantId)?.llmConfig);
@@ -139,12 +148,9 @@ export async function ingestFile(
     source: existing?.source ?? `file://${name}`,
   });
 
-  // meta 的計數與推薦問句素材需要「整份索引」的視角。上面的 loadIndex 是取得 model/source
-  // 所必須、避不開的一次整份讀取；這裡避開的只是「寫入後」的第二次回讀——allChunks 直接用
-  // existing 快照加上本次新增就地拼出（db 後端回讀整份索引是 9MB 級的操作，而計數僅供顯示）。
-  // 代價：批次匯入 N 個檔仍是 N 次全量索引載入（上面那次），這是本功能已知的效能瓶頸，留待後續處理。
-  // 併發匯入時計數可能短暫偏低，下一次任何索引異動即自我修正。
-  const allChunks = [...(existing?.chunks ?? []), ...fileChunks];
+  // 計數在 DB 端聚合，不搬任何列回來。原本是「既有快照 + 本次新增」就地拼出，除了要先
+  // 付一次全量載入的代價，併發匯入時還會短暫偏低；寫入後直接 count 既便宜又是權威值。
+  const counts = await countChunksBySource(tenantId);
   const generatedAt = new Date().toISOString();
 
   const fileMeta: KnowledgeFileMeta = {
@@ -160,19 +166,18 @@ export async function ingestFile(
   // （db 後端見 knowledge.store.ts 的 addFileMeta／enqueueFilesDelta 註解）。
   knowledgeStore.addFileMeta(tenantId, fileMeta, {
     status: 'ready',
-    chunkCount: allChunks.length,
+    chunkCount: counts.website + counts.file,
     generatedAt,
     model,
-    chunkCountBySource: countBySource(allChunks),
+    chunkCountBySource: counts,
   });
 
   if (!opts?.deferSuggestions) {
-    void refreshSuggestedPrompts(tenantId, {
-      generatedAt,
-      model,
-      source: existing?.source ?? `file://${name}`,
-      chunks: allChunks,
-    }).catch(() => {});
+    // 推薦問句只吃文字，用 loadIndexText 讀（不含向量）；而且只在真的要重生時才讀，
+    // 批次匯入帶 deferSuggestions 時這一整段連碰都不會碰到
+    void loadIndexText(tenantId)
+      .then((idx) => (idx ? refreshSuggestedPrompts(tenantId, idx) : undefined))
+      .catch(() => {});
   }
   return fileMeta;
 }
@@ -197,20 +202,23 @@ export async function removeFile(
   const meta = knowledgeStore.getMeta(tenantId);
   if (!meta.files?.some((f) => f.fileId === fileId)) return false;
 
-  // 先讀一份快照供計數與推薦問句素材使用；實際刪除走點狀 SQL，不把整份索引寫回去
-  const existing = await loadIndex(tenantId);
-  await removeFileChunks(tenantId, fileId);
+  // 實際刪除走點狀 SQL，不把整份索引寫回去
+  const removed = await removeFileChunks(tenantId, fileId);
 
   // files 走 delta 操作（而非整包覆蓋的 setMeta）：理由同 ingestFile 的 addFileMeta，
   // 見 knowledge.store.ts 的 removeFileMeta／enqueueFilesDelta 註解。
-  if (existing) {
-    const chunks = existing.chunks.filter((c) => c.fileId !== fileId);
+  // 計數改為刪除後直接在 DB 聚合，不必為了算數字先把整份索引（含向量）載回來。
+  if (removed) {
+    const counts = await countChunksBySource(tenantId);
     knowledgeStore.removeFileMeta(tenantId, fileId, {
-      chunkCount: chunks.length,
-      chunkCountBySource: countBySource(chunks),
+      chunkCount: counts.website + counts.file,
+      chunkCountBySource: counts,
     });
     if (!opts?.deferSuggestions) {
-      void refreshSuggestedPrompts(tenantId, { ...existing, chunks }).catch(() => {});
+      // 只讀文字版索引：推薦問句用不到向量
+      void loadIndexText(tenantId)
+        .then((idx) => (idx ? refreshSuggestedPrompts(tenantId, idx) : undefined))
+        .catch(() => {});
     }
   } else {
     knowledgeStore.removeFileMeta(tenantId, fileId, {});

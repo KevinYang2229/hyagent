@@ -30,6 +30,7 @@ jest.mock('@/lib/llm', () => ({
 import { getJob, startIngestJob } from '@/modules/knowledge/knowledge.job';
 import { ingestFile, removeFile } from '@/modules/knowledge/knowledge-file.service';
 import { knowledgeStore } from '@/modules/knowledge/knowledge.store';
+import { replaceWebsiteChunks } from '@/modules/knowledge/knowledge.index.repo';
 import { refreshSuggestedPrompts } from '@/modules/knowledge/knowledge.suggest';
 import type { KnowledgeIndexFile } from '@/modules/knowledge/knowledge-index.types';
 
@@ -51,11 +52,44 @@ beforeEach(() => {
   (refreshSuggestedPrompts as jest.Mock).mockClear();
 });
 
-it('爬取完成後觸發生成，並帶入剛建好的索引', async () => {
-  startIngestJob(params, (async () => idx) as never);
-  await new Promise((r) => setTimeout(r, 20));
+it('爬取完成後觸發生成，帶入的是全租戶索引而非只有本次爬到的網站 chunks', async () => {
+  // 重爬只重建網站 chunks，檔案來源的 chunks 由資料層原地保留、不會經過 runIngest 的回傳值。
+  // 若把回傳值直接餵給 refreshSuggestedPrompts，檔案那一格會因「該來源已無內容」被判定成空，
+  // 使用者的檔案推薦問句會在每次重爬後靜默消失。
+  const tenantId = 'sug-trigger-carryover';
+  const file = await ingestFile(
+    tenantId,
+    '規章.txt',
+    Buffer.from('請假規定：特休依年資計算，請於系統提出申請並經主管簽核。'),
+  );
+  (refreshSuggestedPrompts as jest.Mock).mockClear();
 
-  expect(refreshSuggestedPrompts).toHaveBeenCalledWith(params.tenantId, idx);
+  const webChunk = { id: 'w1', url: 'https://x.com/a', title: 'A', text: '網站內容甲', vector: [1] };
+  const crawled: KnowledgeIndexFile = {
+    generatedAt: 't',
+    model: 'm',
+    source: 'https://x.com',
+    chunks: [webChunk],
+  };
+  // 假的 run 比照真實 runIngest：寫入資料層時只取代網站來源，然後回傳「只含網站 chunks」的索引
+  startIngestJob({ ...params, tenantId }, (async () => {
+    await replaceWebsiteChunks(tenantId, [webChunk], {
+      generatedAt: crawled.generatedAt,
+      model: crawled.model,
+      source: crawled.source,
+    });
+    return crawled;
+  }) as never);
+  await new Promise((r) => setTimeout(r, 30));
+
+  expect(refreshSuggestedPrompts).toHaveBeenCalledTimes(1);
+  const [calledTenantId, calledIdx] = (refreshSuggestedPrompts as jest.Mock).mock.calls[0] as [
+    string,
+    KnowledgeIndexFile,
+  ];
+  expect(calledTenantId).toBe(tenantId);
+  expect(calledIdx.chunks.some((c) => c.fileId === file.fileId)).toBe(true); // 檔案來源沒被重爬洗掉
+  expect(calledIdx.chunks.some((c) => c.id === 'w1')).toBe(true); // 新爬到的網站內容也在
 });
 
 it('生成拋錯時 ingest 仍為 done、meta 仍為 ready', async () => {

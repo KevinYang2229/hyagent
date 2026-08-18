@@ -32,6 +32,9 @@ jest.mock('@/lib/db', () => ({
   },
 }));
 
+const mockLogger = { error: jest.fn(), warn: jest.fn(), info: jest.fn(), debug: jest.fn() };
+jest.mock('@/lib/logger', () => ({ __esModule: true, logger: mockLogger }));
+
 import type { KnowledgeIndexFile } from '@/modules/knowledge/knowledge-index.types';
 
 function loadRepoInDbMode(): typeof import('@/modules/knowledge/knowledge.index.repo') {
@@ -45,10 +48,13 @@ function loadRepoInDbMode(): typeof import('@/modules/knowledge/knowledge.index.
 
 afterEach(() => {
   process.env.DATA_BACKEND = 'file';
-  executeRaw.mockClear();
-  txExecuteRaw.mockClear();
-  queryRaw.mockClear();
-  transaction.mockClear();
+  // mockReset 而非 mockClear：失敗路徑的測試用 mockRejectedValueOnce 排隊，只 clear 的話
+  // 未被消耗的 once 會外溢到後面的測試，變成難查的隨機失敗。重置後補回原本的預設回傳值。
+  executeRaw.mockReset().mockResolvedValue(0);
+  txExecuteRaw.mockReset().mockResolvedValue(0);
+  queryRaw.mockReset().mockResolvedValue([]);
+  transaction.mockClear(); // 保留自訂實作，只清呼叫紀錄
+  mockLogger.error.mockClear();
 });
 
 /** tagged template 的第一個參數是字串片段陣列；接回來就是靜態 SQL 模板 */
@@ -238,6 +244,204 @@ describe('loadIndex（db 後端）', () => {
     expect(got?.model).toBe('text-embedding-3-large');
     expect(got?.chunks[0].vector).toEqual([1, 0, 0]);
     expect(got?.chunks[0].fileId).toBeUndefined();
+  });
+});
+
+/**
+ * 輕量讀取：向量以文字字面值往返時每筆約 27KB，而「取 model/source」「算數量」「生推薦問句」
+ * 這三條路徑一個位元組都用不到。6k 個 chunk 就是 170MB，Supabase 會直接以 statement timeout
+ * 砍掉查詢（57014）——而且是每匯入一個檔重演一次，檔案越多越早撞牆。
+ */
+describe('輕量讀取（db 後端）', () => {
+  const METAROW = {
+    generated_at: new Date('2026-08-04T00:00:00.000Z'),
+    model: 'text-embedding-3-large',
+    source: 'file://人事規章.xlsx',
+  };
+
+  it('loadIndexMeta 只查 knowledge_indexes，完全不碰 knowledge_chunks', async () => {
+    queryRaw.mockResolvedValueOnce([METAROW]);
+    const { loadIndexMeta } = loadRepoInDbMode();
+    const got = await loadIndexMeta('t1');
+
+    expect(got).toEqual({
+      generatedAt: '2026-08-04T00:00:00.000Z',
+      model: 'text-embedding-3-large',
+      source: 'file://人事規章.xlsx',
+    });
+    // 為了兩個字串把整份向量拖過網路，正是 57014 的成因
+    expect(queryRaw.mock.calls.map(sqlTextOf).join(' ')).not.toContain('knowledge_chunks');
+  });
+
+  it('loadIndexMeta 查無索引列時回 null', async () => {
+    queryRaw.mockResolvedValueOnce([]);
+    const { loadIndexMeta } = loadRepoInDbMode();
+    expect(await loadIndexMeta('nobody')).toBeNull();
+  });
+
+  it('loadIndexText 讀得到文字，但 select 不含 embedding 欄', async () => {
+    queryRaw.mockResolvedValueOnce([METAROW]).mockResolvedValueOnce([
+      { id: 'a', url: 'file://x.xlsx', title: 'x.xlsx', text: '內容 A', file_id: 'F1' },
+    ]);
+    const { loadIndexText } = loadRepoInDbMode();
+    const got = await loadIndexText('t1');
+
+    expect(got?.chunks).toEqual([
+      { id: 'a', url: 'file://x.xlsx', title: 'x.xlsx', text: '內容 A', fileId: 'F1' },
+    ]);
+    const chunkQuery = queryRaw.mock.calls.map(sqlTextOf).find((s) => s.includes('knowledge_chunks'));
+    expect(chunkQuery).toBeDefined();
+    expect(chunkQuery).not.toContain('embedding'); // 少了這條斷言，退回整份載入不會被發現
+  });
+
+  it('countChunksBySource 在 DB 端聚合，不把任何列搬回來', async () => {
+    queryRaw.mockResolvedValueOnce([{ website: 12, file: 8004 }]);
+    const { countChunksBySource } = loadRepoInDbMode();
+    expect(await countChunksBySource('t1')).toEqual({ website: 12, file: 8004 });
+
+    const sql = queryRaw.mock.calls.map(sqlTextOf).join(' ');
+    expect(sql).toContain('count(*)');
+    expect(sql).not.toContain('embedding');
+  });
+
+  it('countChunksBySource 對無任何 chunk 的租戶回 0（不是 undefined）', async () => {
+    queryRaw.mockResolvedValueOnce([]);
+    const { countChunksBySource } = loadRepoInDbMode();
+    expect(await countChunksBySource('nobody')).toEqual({ website: 0, file: 0 });
+  });
+});
+
+/**
+ * appendChunks 與 saveIndex 語意不同：只 INSERT、不刪，且**刻意不包交易**。
+ *
+ * 互動式交易的逾時是牆鐘時間，涵蓋所有批次的網路傳輸——每列 halfvec(3072) 以文字字面值
+ * 送出約 27KB，1.5k 個 chunk 就是 40MB 要在同一個交易內推到 Supabase，大檔必定撞
+ * 30 秒上限（P2028），而且每次重試連 embedding 一起重跑，反覆付費卻永遠寫不進去。
+ * 少了交易也就沒有 rollback，因此失敗時的補償刪除是這條路徑的正確性關鍵。
+ */
+describe('appendChunks（db 後端）', () => {
+  const TOTAL = 205; // = CHUNK_INSERT_BATCH(200) + 5，強迫真的走到第二批
+  const chunks = Array.from({ length: TOTAL }, (_, i) => ({
+    id: `c${i}`,
+    url: 'file://人事規章.xlsx',
+    title: '人事規章.xlsx',
+    text: `內容 ${i}`,
+    vector: [i, 0.5, -1],
+    fileId: 'F1',
+  }));
+  const meta = { model: 'text-embedding-3-large', source: 'file://人事規章.xlsx' };
+
+  /** 取出補償刪除那一筆 $executeRaw 呼叫 */
+  function cleanupCall(): unknown[] | undefined {
+    return executeRaw.mock.calls.find((c) => sqlTextOf(c).includes('delete'));
+  }
+
+  it('不包交易——40MB 的跨網路傳輸放在交易裡必定撞 30 秒逾時', async () => {
+    const { appendChunks } = loadRepoInDbMode();
+    await appendChunks('t1', chunks, meta);
+    expect(transaction).not.toHaveBeenCalled();
+    expect(txExecuteRaw).not.toHaveBeenCalled();
+  });
+
+  it('chunks 分批 insert，metadata upsert 擺最後', async () => {
+    const { appendChunks } = loadRepoInDbMode();
+    await appendChunks('t1', chunks, meta);
+    const stmts = executeRaw.mock.calls.map(sqlTextOf);
+    expect(stmts.filter((s) => s.includes('insert into knowledge_chunks'))).toHaveLength(2);
+    // metadata 是「這批 chunks 已經好了」的宣告，提早寫會讓檢索器在資料還沒到齊時就當它是最新的
+    expect(stmts[stmts.length - 1]).toContain('knowledge_indexes');
+  });
+
+  it('成功路徑不下任何 delete——附加不得動到其他檔案的 chunks', async () => {
+    const { appendChunks } = loadRepoInDbMode();
+    await appendChunks('t1', chunks, meta);
+    expect(cleanupCall()).toBeUndefined();
+  });
+
+  it('insert 中途失敗 → 補償刪除本次寫入的所有 id，並拋回原始錯誤', async () => {
+    const { appendChunks } = loadRepoInDbMode();
+    const boom = new Error('Transaction already closed');
+    executeRaw.mockRejectedValueOnce(boom);
+
+    await expect(appendChunks('t1', chunks, meta)).rejects.toBe(boom);
+
+    // 沒有 rollback，殘骸只能自己收：漏掉就留下 meta.files 指不到、admin 刪不掉，
+    // 檢索卻照樣撈得到的孤兒 chunks（重試換一組 randomUUID，永遠不會覆寫到它們）
+    const del = cleanupCall();
+    expect(del).toBeDefined();
+    const bound = bindValuesOf(del as unknown[]);
+    expect(bound).toHaveLength(TOTAL + 1); // tenantId + 每個 chunk id
+    expect(bound).toEqual(expect.arrayContaining(['t1', 'c0', 'c204']));
+  });
+
+  it('metadata upsert 失敗一樣要補償，不能留下「chunks 在、meta 沒更新」', async () => {
+    const { appendChunks } = loadRepoInDbMode();
+    const boom = new Error('connection reset');
+    // 兩批 insert 過，第三個 statement（metadata upsert）才失敗
+    executeRaw.mockResolvedValueOnce(0).mockResolvedValueOnce(0).mockRejectedValueOnce(boom);
+
+    await expect(appendChunks('t1', chunks, meta)).rejects.toBe(boom);
+    expect(cleanupCall()).toBeDefined();
+  });
+
+  it('補償刪除本身也失敗時，往外拋的仍是原始錯誤，並留下可追查的紀錄', async () => {
+    const { appendChunks } = loadRepoInDbMode();
+    const boom = new Error('Transaction already closed');
+    executeRaw.mockRejectedValueOnce(boom).mockRejectedValueOnce(new Error('cleanup failed'));
+
+    // 改拋 cleanup 的錯會蓋掉真正的根因，P2028 這種關鍵訊息就此消失在日誌裡
+    await expect(appendChunks('t1', chunks, meta)).rejects.toBe(boom);
+    expect(mockLogger.error).toHaveBeenCalled();
+  });
+
+  it('chunks 為空時完全不打 DB', async () => {
+    const { appendChunks } = loadRepoInDbMode();
+    await appendChunks('t1', [], meta);
+    expect(executeRaw).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * 網站重爬的取代範圍。saveIndex 是「刪光整個租戶」，用在重爬上會逼呼叫端先把檔案 chunks
+ * 整份撈回來（8.8k 個約 238MB，直接撞 statement timeout），而且它先刪後寫——失敗時使用者
+ * 上傳文件的向量已經沒了，重爬產不回來。replaceWebsiteChunks 把範圍收斂到 file_id is null。
+ */
+describe('replaceWebsiteChunks（db 後端）', () => {
+  const meta = {
+    generatedAt: '2026-08-18T00:00:00.000Z',
+    model: 'text-embedding-3-large',
+    source: 'https://example.com',
+  };
+  const webChunks = [
+    { id: 'w1', url: 'https://example.com/a', title: 'A', text: '網站甲', vector: [1, 0, 0] },
+  ];
+
+  it('delete 帶 file_id is null 條件——不得刪到檔案來源的 chunks', async () => {
+    const { replaceWebsiteChunks } = loadRepoInDbMode();
+    await replaceWebsiteChunks('t1', webChunks, meta);
+
+    const del = txExecuteRaw.mock.calls.map(sqlTextOf).find((s) => s.includes('delete'));
+    expect(del).toBeDefined();
+    // 少了這個條件，重爬會連使用者上傳的文件一起清掉，而那些內容爬蟲永遠產不回來
+    expect(del).toContain('file_id is null');
+  });
+
+  it('仍包在交易內：這是整批取代，delete 後 insert 失敗會留下殘缺的網站內容', async () => {
+    const { replaceWebsiteChunks } = loadRepoInDbMode();
+    await replaceWebsiteChunks('t1', webChunks, meta);
+
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(executeRaw).not.toHaveBeenCalled(); // 沒有任何一段逃出交易
+  });
+
+  it('更新 knowledge_indexes 的 model 與 source（重爬即重新定義索引）', async () => {
+    const { replaceWebsiteChunks } = loadRepoInDbMode();
+    await replaceWebsiteChunks('t1', webChunks, meta);
+
+    // 與 appendChunks 相反：附加不得改動既有索引的模型，重爬才是重新定義的時機
+    const upsert = txExecuteRaw.mock.calls.map(sqlTextOf).find((s) => s.includes('knowledge_indexes'));
+    expect(upsert).toContain('model = excluded.model');
+    expect(upsert).toContain('source = excluded.source');
   });
 });
 

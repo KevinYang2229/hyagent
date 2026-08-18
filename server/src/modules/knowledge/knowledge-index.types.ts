@@ -21,3 +21,20 @@ export interface KnowledgeIndexFile {
   source: string;
   chunks: IndexedChunk[];
 }
+
+/** 索引層級 metadata，不含 chunks（db 後端只讀 knowledge_indexes 的單列） */
+export type KnowledgeIndexMetaOnly = Omit<KnowledgeIndexFile, 'chunks'>;
+
+/**
+ * 不含向量的 chunk。
+ *
+ * 向量以文字字面值往返時每筆約 27KB，而推薦問句、計數這些路徑一個位元組都用不到——
+ * 6k 個 chunk 就是 170MB 白搬，Supabase 的 statement timeout 會直接砍掉查詢（57014）。
+ * 用型別把「這條路徑拿不到向量」講明白，比註解可靠。
+ */
+export type ChunkText = Omit<IndexedChunk, 'vector'>;
+
+/** 不含向量的整份索引；KnowledgeIndexFile 可直接指派給它（多的 vector 欄無妨） */
+export interface KnowledgeIndexText extends KnowledgeIndexMetaOnly {
+  chunks: ChunkText[];
+}

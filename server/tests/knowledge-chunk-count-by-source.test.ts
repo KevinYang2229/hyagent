@@ -33,6 +33,7 @@ import { ingestFile, removeFile } from '@/modules/knowledge/knowledge-file.servi
 import { getJob, startIngestJob } from '@/modules/knowledge/knowledge.job';
 import { knowledgeStore } from '@/modules/knowledge/knowledge.store';
 import { indexPathFor } from '@/modules/knowledge/index-path';
+import { replaceWebsiteChunks } from '@/modules/knowledge/knowledge.index.repo';
 import type { KnowledgeIndexFile } from '@/modules/knowledge/knowledge-index.types';
 
 const app = createApp();
@@ -47,6 +48,7 @@ const FIXED_TENANT_IDS = [
   'chunk-count-remove-one-of-two',
   'chunk-count-remove-real',
   'chunk-count-ingest-fail-real',
+  'chunk-count-ingest-success-real',
 ];
 
 beforeAll(() => {
@@ -110,18 +112,31 @@ it('startIngestJob 失敗時 chunkCountBySource 歸零', async () => {
   expect(knowledgeStore.getMeta(tenantIdFail).chunkCountBySource).toEqual({ website: 0, file: 0 });
 });
 
-it('startIngestJob 成功時 chunkCountBySource 依索引內容分來源計數', async () => {
+it('startIngestJob 成功時 chunkCountBySource 取全租戶視角，重爬不得洗掉檔案來源的計數', async () => {
+  // 計數改由資料層聚合（而非 runIngest 的回傳值）：重爬只重建網站 chunks，檔案來源的
+  // chunks 從不經過回傳值。若沿用舊做法拿 idx.chunks 計數，每次重爬都會把 file 歸零。
   const tenantIdSuccess = 'chunk-count-ingest-success-real';
-  const idx: KnowledgeIndexFile = {
-    generatedAt: new Date().toISOString(),
-    model: 'm',
-    source: 'https://x.com',
-    chunks: [
-      { id: 'w1', url: 'https://x.com/a', title: 'A', text: '網站內容甲', vector: [1] },
-      { id: 'w2', url: 'https://x.com/b', title: 'B', text: '網站內容乙', vector: [1] },
-      { id: 'f1', url: 'file://c', title: 'C', text: '檔案內容丙', vector: [1], fileId: 'file-1' },
-    ],
+  const fileMeta = await ingestFile(
+    tenantIdSuccess,
+    '規章.txt',
+    Buffer.from('請假規定：特休依年資計算。'.repeat(80)),
+  );
+
+  const webChunks = [
+    { id: 'w1', url: 'https://x.com/a', title: 'A', text: '網站內容甲', vector: [1] },
+    { id: 'w2', url: 'https://x.com/b', title: 'B', text: '網站內容乙', vector: [1] },
+  ];
+  const generatedAt = new Date().toISOString();
+  // 假的 run 比照真實 runIngest：只取代網站來源，回傳「只含網站 chunks」的索引
+  const fakeRun = async (): Promise<KnowledgeIndexFile> => {
+    await replaceWebsiteChunks(tenantIdSuccess, webChunks, {
+      generatedAt,
+      model: 'm',
+      source: 'https://x.com',
+    });
+    return { generatedAt, model: 'm', source: 'https://x.com', chunks: webChunks };
   };
+
   const job = startIngestJob(
     {
       tenantId: tenantIdSuccess,
@@ -130,10 +145,13 @@ it('startIngestJob 成功時 chunkCountBySource 依索引內容分來源計數',
       chunkChars: 800,
       embeddingModel: 'm',
     },
-    (async () => idx) as never,
+    fakeRun as never,
   );
-  await new Promise((r) => setTimeout(r, 20));
+  await new Promise((r) => setTimeout(r, 30));
 
   expect(getJob(job.id)?.status).toBe('done');
-  expect(knowledgeStore.getMeta(tenantIdSuccess).chunkCountBySource).toEqual({ website: 2, file: 1 });
+  expect(knowledgeStore.getMeta(tenantIdSuccess).chunkCountBySource).toEqual({
+    website: 2,
+    file: fileMeta.chunks, // 上傳檔的 chunks 原封不動地留著
+  });
 });
