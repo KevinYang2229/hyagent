@@ -27,6 +27,15 @@ jest.mock('@/modules/tenant/tenant.store', () => ({
   __esModule: true,
   tenantStore: { getTenant: (...args: unknown[]) => mockGetTenant(...args) },
 }));
+const mockAcquire = jest.fn();
+const mockRenew = jest.fn();
+const mockRelease = jest.fn();
+jest.mock('@/modules/knowledge/knowledge.ingest-lock', () => ({
+  __esModule: true,
+  acquireIngestLock: (...a: unknown[]) => mockAcquire(...a),
+  renewIngestLock: (...a: unknown[]) => mockRenew(...a),
+  releaseIngestLock: (...a: unknown[]) => mockRelease(...a),
+}));
 jest.mock('@/lib/logger', () => ({
   __esModule: true,
   logger: { warn: jest.fn(), info: jest.fn(), error: jest.fn(), debug: jest.fn() },
@@ -148,6 +157,10 @@ beforeEach(() => {
   mockGetMeta.mockReset().mockReturnValue({ files: [] });
   // 預設每個資料夾名都對得上真租戶；查無租戶是各測試自行覆寫的例外情況
   mockGetTenant.mockReset().mockReturnValue({ id: 'default', name: '預設租戶' });
+  // 預設取得鎖；「被別人握著」是各測試自行覆寫的例外情況
+  mockAcquire.mockReset().mockImplementation(async (tenantId: string) => ({ tenantId, holder: 'me' }));
+  mockRenew.mockReset().mockResolvedValue(undefined);
+  mockRelease.mockReset().mockResolvedValue(undefined);
 });
 
 describe('runFolderIngestRound', () => {
@@ -268,6 +281,51 @@ describe('runFolderIngestRound', () => {
     expect(result.done).toBe(1);
     expect(mockRemoveFile).toHaveBeenCalledTimes(1);
     expect(mockRemoveFile).toHaveBeenCalledWith('default', 'old-1', { deferSuggestions: true });
+  });
+
+  it('租戶已被另一條流程鎖住時整個租戶略過，且完全不呼叫 ingestFile', async () => {
+    // 這是「兩支 watcher 跑同一個資料夾」的防線。少了它，兩邊各自完整匯入一份：
+    // appendChunks 只 INSERT、addFileMeta 是 delta 合併，兩份資料完美共存，
+    // 於是重複匯入與雙倍 embedding 費用完全無聲，一個錯誤訊息都沒有。
+    mockAcquire.mockResolvedValue(null);
+    const source = new FakeSource([item('規章.txt', 100), item('手冊.txt', 200)]);
+    const result = await runTwice(source);
+
+    expect(result.locked).toBe(2);
+    expect(result.done).toBe(0);
+    expect(mockIngestFile).not.toHaveBeenCalled();
+    expect(source.settled).toEqual([]); // 檔案留在原地，下輪再試
+    expect(mockRelease).not.toHaveBeenCalled(); // 沒拿到就不該去釋放
+  });
+
+  it('每處理完一個檔續期一次，結束時釋放鎖', async () => {
+    const source = new FakeSource([item('規章.txt', 100), item('手冊.txt', 200)]);
+    await runTwice(source);
+
+    expect(mockRenew).toHaveBeenCalledTimes(2); // 長匯入不續期會被 TTL 誤判成殘留
+    expect(mockRelease).toHaveBeenCalledTimes(1);
+  });
+
+  it('匯入拋錯時仍釋放鎖，否則該租戶會被鎖到 TTL 到期', async () => {
+    mockIngestFile.mockRejectedValue(new Error('socket hang up'));
+    const source = new FakeSource([item('規章.txt', 100)]);
+    await runTwice(source);
+    expect(mockRelease).toHaveBeenCalledTimes(1);
+  });
+
+  it('鎖是每租戶各自一把：一個租戶被鎖不影響另一個', async () => {
+    const a: PendingItem = { tenantId: 'tenant-a', name: 'a.txt', ref: '/tmp/a/a.txt', size: 100, mtimeMs: 1 };
+    const b: PendingItem = { tenantId: 'tenant-b', name: 'b.txt', ref: '/tmp/b/b.txt', size: 100, mtimeMs: 1 };
+    mockAcquire.mockImplementation(async (tenantId: string) =>
+      tenantId === 'tenant-a' ? null : { tenantId, holder: 'me' },
+    );
+    const source = new FakeSource([a, b]);
+    const result = await runTwice(source);
+
+    expect(result.locked).toBe(1);
+    expect(result.done).toBe(1);
+    expect(mockIngestFile).toHaveBeenCalledTimes(1);
+    expect(mockIngestFile.mock.calls[0][0]).toBe('tenant-b');
   });
 
   it('整輪結束後每個有處理過的租戶各觸發一次推薦問句重生', async () => {

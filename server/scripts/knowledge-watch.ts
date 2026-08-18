@@ -193,9 +193,16 @@ async function main(): Promise<void> {
     }
 
     const result = await runFolderIngestRound(source, state, opts);
-    if (result.done || result.failed || result.retry) {
+    if (result.done || result.failed || result.retry || result.locked) {
       console.log(
-        `本輪：done ${result.done} / failed ${result.failed} / retry ${result.retry} / skipped ${result.skipped}`,
+        `本輪：done ${result.done} / failed ${result.failed} / retry ${result.retry}` +
+          ` / skipped ${result.skipped} / locked ${result.locked}`,
+      );
+    }
+    if (result.locked > 0) {
+      console.warn(
+        `⚠️  有 ${result.locked} 個檔因該租戶正被另一條匯入流程處理而略過。` +
+          "同時跑兩支 watcher 會讓同一份資料被匯入兩次、embedding 付兩次錢，請確認只留一支。",
       );
     }
   };

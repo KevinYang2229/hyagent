@@ -11,6 +11,7 @@ import { ingestFile, removeFile } from './knowledge-file.service';
 import { loadIndexText } from './knowledge.index.repo';
 import { knowledgeStore, type KnowledgeFileMeta } from './knowledge.store';
 import { refreshSuggestedPrompts } from './knowledge.suggest';
+import { acquireIngestLock, releaseIngestLock, renewIngestLock } from './knowledge.ingest-lock';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 
 /** 上一輪看到的檔案指紋，用來判斷檔案是否已經寫完 */
@@ -85,6 +86,8 @@ export interface RoundResult {
   retry: number;
   /** 尚未穩定（可能還在寫入）而本輪略過 */
   skipped: number;
+  /** 該租戶正被另一條匯入流程處理，本輪整個租戶略過 */
+  locked: number;
   /** 本輪實際有成功匯入檔案的租戶 */
   tenants: string[];
 }
@@ -136,6 +139,7 @@ export async function runFolderIngestRound(
     failed: 0,
     retry: 0,
     skipped: scoped.length - stable.length,
+    locked: 0,
     tenants: [],
   };
   if (stable.length === 0) return result;
@@ -147,16 +151,47 @@ export async function runFolderIngestRound(
     return result;
   }
 
-  const touched = new Set<string>();
+  /*
+   * 依租戶分組後逐一取鎖，而不是逐檔取鎖。
+   *
+   * 逐檔取鎖擋得住重複寫入，但兩支流程會交錯搶檔：先跑完的把檔案搬進 _done，
+   * 另一支拿到鎖後 read 撲空，於是整輪都是錯誤。整個租戶一次鎖起來，第二支
+   * 直接跳過該租戶，下一輪檔案已經歸檔、清單自然是空的。
+   */
+  const byTenant = new Map<string, PendingItem[]>();
   for (const it of stable) {
-    const outcome = await ingestOne(source, it, opts);
-    if (outcome === 'done') {
-      result.done += 1;
-      touched.add(it.tenantId);
-    } else if (outcome === 'failed') {
-      result.failed += 1;
-    } else {
-      result.retry += 1;
+    const list = byTenant.get(it.tenantId);
+    if (list) list.push(it);
+    else byTenant.set(it.tenantId, [it]);
+  }
+
+  const touched = new Set<string>();
+  for (const [tenantId, items] of byTenant) {
+    const lock = await acquireIngestLock(tenantId);
+    if (!lock) {
+      result.locked += items.length;
+      logger.warn(
+        { tenantId, files: items.length },
+        '該租戶已有另一條匯入流程進行中，本輪略過（檔案留在原地，下輪再試）',
+      );
+      continue;
+    }
+    try {
+      for (const it of items) {
+        const outcome = await ingestOne(source, it, opts);
+        if (outcome === 'done') {
+          result.done += 1;
+          touched.add(tenantId);
+        } else if (outcome === 'failed') {
+          result.failed += 1;
+        } else {
+          result.retry += 1;
+        }
+        // 每個檔跑完就續期：單一檔案可能數分鐘，不續期會讓長匯入被 TTL 誤判成殘留
+        await renewIngestLock(lock);
+      }
+    } finally {
+      await releaseIngestLock(lock);
     }
   }
 

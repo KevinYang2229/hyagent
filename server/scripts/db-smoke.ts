@@ -17,6 +17,11 @@ import { attachmentStore } from '../src/modules/conversation/attachment.store';
 import { conversationStore, initConversationStore } from '../src/modules/conversation/conversation.store';
 import { formStore, initFormStore } from '../src/modules/form/form.store';
 import { getDefinition } from '../src/modules/form/form.registry';
+import {
+  acquireIngestLock,
+  releaseIngestLock,
+  renewIngestLock,
+} from '../src/modules/knowledge/knowledge.ingest-lock';
 import { initTenantStore, tenantStore } from '../src/modules/tenant/tenant.store';
 import { initUsageStore, usageStore } from '../src/modules/usage/usage.store';
 import { initWebhookStore, webhookStore } from '../src/modules/webhook/webhook.store';
@@ -144,6 +149,8 @@ async function verify(): Promise<void> {
     (await after.webhookRow.count({ where: { tenantId } })) +
     (await after.sessionRow.count({ where: { tenantId } }));
   check('刪租戶級聯清理無孤兒', orphans === 0);
+
+  await checkIngestLock();
   await closeDb();
 
   if (failures > 0) {
@@ -151,6 +158,41 @@ async function verify(): Promise<void> {
     process.exit(1);
   }
   console.log('db-smoke all green');
+}
+
+/**
+ * 批次匯入互斥鎖：對真實 Postgres 實跑一遍。
+ *
+ * 單元測試把 Prisma mock 掉，驗得到 SQL 的「形狀」卻驗不到它是否合法——
+ * `make_interval(mins => $1)` 就是這樣溜過去的（Prisma 綁 bigint、函式收 int，
+ * 42883 只有在真的送到 Postgres 才會出現）。凡是手寫 SQL 的路徑都要有一段實跑。
+ */
+async function checkIngestLock(): Promise<void> {
+  const t = 'db-smoke-lock-tenant';
+  const db = await connectDb();
+  await db.$executeRaw`delete from knowledge_ingest_locks where tenant_id = ${t}`;
+
+  const first = await acquireIngestLock(t);
+  check('匯入鎖：首次取得成功', first !== null);
+  if (!first) return;
+
+  check('匯入鎖：同租戶再取被擋下（這就是兩支 watcher 重複匯入的防線）',
+    (await acquireIngestLock(t)) === null);
+
+  await renewIngestLock(first);
+  const [row] = await db.$queryRaw<{ n: number }[]>`
+    select count(*)::int as n from knowledge_ingest_locks
+    where tenant_id = ${t} and holder = ${first.holder}`;
+  check('匯入鎖：續期後仍由自己持有', row.n === 1);
+
+  await releaseIngestLock(first);
+  const [gone] = await db.$queryRaw<{ n: number }[]>`
+    select count(*)::int as n from knowledge_ingest_locks where tenant_id = ${t}`;
+  check('匯入鎖：釋放後該列消失', gone.n === 0);
+
+  const again = await acquireIngestLock(t);
+  check('匯入鎖：釋放後可再次取得', again !== null);
+  if (again) await releaseIngestLock(again);
 }
 
 const phase = process.argv[2];
