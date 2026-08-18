@@ -11,7 +11,12 @@ jest.mock('@/modules/knowledge/knowledge.tables.repo', () => ({
   loadTable: (...a: unknown[]) => mockLoadTable(...a),
 }));
 
-import { buildExactChart, extractChartRef, parseCellNumber } from '@/modules/report/report.compose';
+import {
+  buildExactChart,
+  extractChartRef,
+  parseCellNumber,
+  selectCatalog,
+} from '@/modules/report/report.compose';
 import { renderHtml } from '@/modules/report/renderers/html';
 import { renderMarkdown } from '@/modules/report/renderers/markdown';
 import type { ReportDoc, ReportSection } from '@/modules/report/report.types';
@@ -134,5 +139,28 @@ describe('renderer：精確圖表的說明文字', () => {
     expect(renderHtml(doc(exact))).toContain('直接讀自原始資料');
     expect(renderHtml(doc({ ...exact, complete: false, sourceLabel: undefined, totalRows: undefined })))
       .toContain('節錄');
+  });
+});
+
+describe('selectCatalog', () => {
+  const entry = (sheet: string, caption: string) => ({
+    id: sheet + caption, source: 'x.xlsx', sheet, caption, headers: ['國家', '人數'], rowCount: 10,
+  });
+  const many = [
+    entry('4-TM-參觀者預登國家數', '展覽名稱:台北國際工具機展 展覽年度:2025'),
+    entry('9-TM-媒體統計', '展覽名稱:台北國際工具機展 展覽年度:2025'),
+    entry('1-CC-參觀者統計', '展覽名稱:台北國際自行車展覽會 展覽年度:2012'),
+    ...Array.from({ length: 40 }, (_, i) => entry(`雜訊表${i}`, `無關橫幅${i}`)),
+  ];
+
+  it('表數少於上限時原樣回傳', () => {
+    expect(selectCatalog(many.slice(0, 3), '任意', 20)).toHaveLength(3);
+  });
+
+  it('依查詢句把相關的表排到前面，並收斂到上限', () => {
+    // 目錄是每一節都要送一次的，165 張表約 10k token；不篩會讓模型在雜訊裡找針
+    const out = selectCatalog(many, '台北國際工具機展 2025 各國預登人數', 5);
+    expect(out).toHaveLength(5);
+    expect(out[0].sheet).toBe('4-TM-參觀者預登國家數');
   });
 });

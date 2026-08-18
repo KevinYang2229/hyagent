@@ -120,6 +120,44 @@ interface ChartRef {
   unit?: string;
 }
 
+/**
+ * 每節最多列出幾張表。
+ *
+ * 這批資料有 165 張子表、整份目錄約 10k token，而目錄是**每一節都要送一次**的——
+ * 六節就是六萬 token 的純清單，既貴，又讓模型在雜訊裡找針。先用查詢句篩過再送。
+ */
+const CATALOG_LIMIT = 20;
+
+/**
+ * 依查詢句挑出最可能相關的表。以字元 bigram 重疊度計分——中文沒有空白可切詞，
+ * 而表名與橫幅（「參觀者預登國家數」「展覽年度:2025」）本來就是短字串，
+ * bigram 足以把「問各國人數」對到「預登國家數」而不需要斷詞器或額外的 embedding 呼叫。
+ */
+export function selectCatalog(
+  catalog: TableCatalogEntry[],
+  query: string,
+  limit = CATALOG_LIMIT,
+): TableCatalogEntry[] {
+  if (catalog.length <= limit) return catalog;
+  const grams = (t: string): Set<string> => {
+    const clean = t.replace(/\s+/g, '');
+    const out = new Set<string>();
+    for (let i = 0; i + 2 <= clean.length; i++) out.add(clean.slice(i, i + 2));
+    return out;
+  };
+  const q = grams(query);
+  return [...catalog]
+    .map((t) => {
+      const text = grams(`${t.source}${t.sheet}${t.caption ?? ''}${t.headers.join('')}`);
+      let hit = 0;
+      for (const g of q) if (text.has(g)) hit += 1;
+      return { t, hit };
+    })
+    .sort((a, b) => b.hit - a.hit)
+    .slice(0, limit)
+    .map((x) => x.t);
+}
+
 /** 目錄摘要：只給表的「形狀」，不給資料列——幾千列塞進 prompt 既貴又沒必要 */
 function catalogPrompt(catalog: TableCatalogEntry[]): string {
   return catalog
@@ -253,7 +291,8 @@ export async function composeSection(
   } catch (err) {
     logger.warn({ err, tenantId }, 'table catalog lookup failed; section falls back to excerpts only');
   }
-  const catalogBlock = catalog.length > 0 ? `\n\n可用資料表：\n${catalogPrompt(catalog)}` : '';
+  const shortlist = selectCatalog(catalog, `${section.heading}${section.query}`);
+  const catalogBlock = shortlist.length > 0 ? `\n\n可用資料表：\n${catalogPrompt(shortlist)}` : '';
 
   try {
     const result = await llm.createMessage({
