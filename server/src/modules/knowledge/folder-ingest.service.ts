@@ -8,9 +8,10 @@ import { AppError } from '@/utils/app-error';
 import { logger } from '@/lib/logger';
 import type { BatchSource, PendingItem } from './batch-source';
 import { ingestFile, removeFile } from './knowledge-file.service';
-import { loadIndex } from './knowledge.index.repo';
-import { knowledgeStore } from './knowledge.store';
+import { loadIndexText } from './knowledge.index.repo';
+import { knowledgeStore, type KnowledgeFileMeta } from './knowledge.store';
 import { refreshSuggestedPrompts } from './knowledge.suggest';
+import { tenantStore } from '@/modules/tenant/tenant.store';
 
 /** 上一輪看到的檔案指紋，用來判斷檔案是否已經寫完 */
 export interface SeenEntry {
@@ -103,11 +104,14 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** 同名檔視為更新：先移除既有的同名檔，否則索引會留下兩份 chunks */
-async function replaceSameName(tenantId: string, name: string): Promise<void> {
-  const existing = knowledgeStore.getMeta(tenantId).files?.find((f) => f.name === name);
-  // deferSuggestions：批次重丟同名改版檔不必逐檔重生推薦問句，整輪結束後統一觸發一次即可
-  if (existing) await removeFile(tenantId, existing.fileId, { deferSuggestions: true });
+/**
+ * 同名檔視為更新：找出應被取代的舊檔。
+ *
+ * **必須在 ingestFile 之前呼叫**——匯入成功後 meta.files 會同時存在新舊兩筆同名項，
+ * 屆時再找就可能選中剛寫進去的那一筆，把新檔自己刪掉。
+ */
+function findSupersededFile(tenantId: string, name: string): KnowledgeFileMeta | undefined {
+  return knowledgeStore.getMeta(tenantId).files?.find((f) => f.name === name);
 }
 
 /**
@@ -156,10 +160,17 @@ export async function runFolderIngestRound(
     }
   }
 
-  // 推薦問句每租戶只重生一次：逐檔觸發會讓 N-1 次呼叫因世代防護而白花
+  // 推薦問句每租戶只重生一次：逐檔觸發會讓 N-1 次呼叫因世代防護而白花。
+  // loadIndexText（不含向量）：推薦問句只吃文字，載入向量在 chunks 上千時會撞 statement timeout。
   for (const tenantId of touched) {
-    const idx = await loadIndex(tenantId);
-    if (idx) await refreshSuggestedPrompts(tenantId, idx).catch(() => {});
+    try {
+      const idx = await loadIndexText(tenantId);
+      if (idx) await refreshSuggestedPrompts(tenantId, idx);
+    } catch (err) {
+      // 推薦問句是錦上添花，不該讓已經匯入成功的整輪連同歸檔結果一起崩掉——
+      // 這裡原本沒有 try：loadIndex 一逾時就整個 CLI 退出，done 的檔案也拿不到報告
+      logger.warn({ err, tenantId }, '推薦問句重生失敗，不影響本輪匯入結果');
+    }
   }
   result.tenants = [...touched];
   return result;
@@ -178,11 +189,37 @@ async function ingestOne(
     return 'failed';
   }
 
+  /*
+   * 資料夾名必須對應到真實租戶。少了這道閘，打錯字或拿租戶「名稱」當資料夾名
+   * （例如用 TTS 而非 5b6c6d6e8fec334c）都會安靜地建出一個幽靈租戶的索引：
+   * chunks 進了 knowledge_chunks、embedding 的錢也付了，但 tenants 表沒有這個 id，
+   * 於是後台看不到、檢索永遠不會用 tenant_id 查到它——完全沒有任何錯誤訊號。
+   *
+   * 判永久性失敗而非重試：資料夾名不會自己變對，重試只是把同一筆錢再燒一次。
+   * 搬進 _failed/ 並附 .error.txt，使用者才看得到原因。
+   */
+  if (!tenantStore.getTenant(item.tenantId)) {
+    const reason = `查無租戶 ${item.tenantId}：資料夾名必須是租戶 id，不是租戶名稱`;
+    await source.settle(item, 'failed', reason);
+    logger.warn({ tenantId: item.tenantId, name: item.name }, reason);
+    return 'failed';
+  }
+
   const attempt = async (): Promise<void> => {
     const buf = await source.read(item);
-    await replaceSameName(item.tenantId, item.name);
+    const superseded = findSupersededFile(item.tenantId, item.name);
     // deferSuggestions：推薦問句留到整輪結束統一重生
     const meta = await ingestFile(item.tenantId, item.name, buf, { deferSuggestions: true });
+    /*
+     * 舊檔在新檔匯入成功「之後」才刪。反過來的話，匯入一失敗（P2028 交易逾時、embedding
+     * 中斷）舊檔的 chunks 已經沒了、新的又沒進來，那個檔會整個從索引消失到某次重試成功
+     * 為止——而重試每輪都要重付 embedding 費用，失敗期間機器人則完全查不到這份資料。
+     * 現在的失敗代價只是舊檔仍在（等同沒做過這次匯入）。
+     *
+     * 反向風險是刪除失敗會留下兩份同名 chunks，但那在 admin 的檔案列表看得見、也刪得掉，
+     * 遠好過靜默的資料消失。
+     */
+    if (superseded) await removeFile(item.tenantId, superseded.fileId, { deferSuggestions: true });
     logger.info({ tenantId: item.tenantId, name: item.name, chunks: meta.chunks }, '匯入完成');
   };
 

@@ -17,12 +17,12 @@ import {
   runFolderIngestRound,
   type RoundOptions,
 } from "@/modules/knowledge/folder-ingest.service";
-import { loadIndex } from "@/modules/knowledge/knowledge.index.repo";
+import { loadIndexMeta } from "@/modules/knowledge/knowledge.index.repo";
 import {
   initKnowledgeStore,
   knowledgeStore,
 } from "@/modules/knowledge/knowledge.store";
-import { initTenantStore } from "@/modules/tenant/tenant.store";
+import { initTenantStore, tenantStore } from "@/modules/tenant/tenant.store";
 import { initUsageStore } from "@/modules/usage/usage.store";
 
 interface Args {
@@ -89,6 +89,10 @@ function parseArgs(argv: string[]): Args {
  *
  * 全新租戶的第一次匯入會定型該租戶的 embedding 模型（之後改設定也不會影響既有索引），
  * 所以要特別標示——這是唯一一個事後只能清空重建的決定。
+ *
+ * 每個資料夾同時印出它對應到的租戶名稱：資料夾名就是 tenantId，而「拿租戶名稱當資料夾名」
+ * 是最容易犯也最難自己發現的錯（匯入會成功、錢會付掉，但那份索引沒有任何人讀得到）。
+ * 對得上名稱才代表資料夾名沒寫錯。
  */
 async function printPreflight(tenantIds: string[]): Promise<void> {
   console.log(`DATA_BACKEND=${env.DATA_BACKEND}`);
@@ -102,13 +106,28 @@ async function printPreflight(tenantIds: string[]): Promise<void> {
   );
 
   for (const tenantId of tenantIds) {
-    const idx = await loadIndex(tenantId);
+    const tenant = tenantStore.getTenant(tenantId);
+    if (!tenant) {
+      console.warn(
+        `  ⚠️  ${tenantId}：查無此租戶，該資料夾的檔案會全部判為失敗並搬進 _failed/。\n` +
+          `      資料夾名必須是租戶 id，不是租戶名稱。目前可用的租戶：\n` +
+          tenantStore
+            .listTenants()
+            .map((t) => `        ${t.id}  （${t.name}）`)
+            .join("\n"),
+      );
+      continue;
+    }
+    // loadIndexMeta：這裡只要印出 model，不需要（也不該）把整份向量撈回來
+    const idx = await loadIndexMeta(tenantId);
     if (idx) {
-      console.log(`  ${tenantId}：沿用既有索引，模型 ${idx.model}`);
+      console.log(
+        `  ${tenantId}（${tenant.name}）：沿用既有索引，模型 ${idx.model}`,
+      );
     } else {
       const model = knowledgeStore.getSource(tenantId).embeddingModel;
       console.log(
-        `  ${tenantId}：★ 將建立新索引，模型 ${model}（一經建立即定型）`,
+        `  ${tenantId}（${tenant.name}）：★ 將建立新索引，模型 ${model}（一經建立即定型）`,
       );
     }
   }

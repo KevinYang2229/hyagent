@@ -11,15 +11,21 @@ jest.mock('@/modules/knowledge/knowledge.suggest', () => ({
   __esModule: true,
   refreshSuggestedPrompts: (...args: unknown[]) => mockRefreshSuggestions(...args),
 }));
-const mockLoadIndex = jest.fn();
+const mockLoadIndexText = jest.fn();
 jest.mock('@/modules/knowledge/knowledge.index.repo', () => ({
   __esModule: true,
-  loadIndex: (...args: unknown[]) => mockLoadIndex(...args),
+  // loadIndexText（不含向量）：推薦問句只吃文字，載入向量會在 chunks 上千時撞 statement timeout
+  loadIndexText: (...args: unknown[]) => mockLoadIndexText(...args),
 }));
 const mockGetMeta = jest.fn();
 jest.mock('@/modules/knowledge/knowledge.store', () => ({
   __esModule: true,
   knowledgeStore: { getMeta: (...args: unknown[]) => mockGetMeta(...args) },
+}));
+const mockGetTenant = jest.fn();
+jest.mock('@/modules/tenant/tenant.store', () => ({
+  __esModule: true,
+  tenantStore: { getTenant: (...args: unknown[]) => mockGetTenant(...args) },
 }));
 jest.mock('@/lib/logger', () => ({
   __esModule: true,
@@ -138,8 +144,10 @@ beforeEach(() => {
   mockIngestFile.mockReset().mockResolvedValue({ fileId: 'f1', name: 'x', chunks: 3 });
   mockRemoveFile.mockReset().mockResolvedValue(true);
   mockRefreshSuggestions.mockReset().mockResolvedValue(undefined);
-  mockLoadIndex.mockReset().mockResolvedValue({ generatedAt: '', model: 'm', source: 's', chunks: [] });
+  mockLoadIndexText.mockReset().mockResolvedValue({ generatedAt: '', model: 'm', source: 's', chunks: [] });
   mockGetMeta.mockReset().mockReturnValue({ files: [] });
+  // 預設每個資料夾名都對得上真租戶；查無租戶是各測試自行覆寫的例外情況
+  mockGetTenant.mockReset().mockReturnValue({ id: 'default', name: '預設租戶' });
 });
 
 describe('runFolderIngestRound', () => {
@@ -191,6 +199,30 @@ describe('runFolderIngestRound', () => {
     expect(source.settled[0].outcome).toBe('done');
   });
 
+  it('資料夾名對不到真實租戶時判永久性失敗，且完全不呼叫 ingestFile', async () => {
+    // 這是「拿租戶名稱當資料夾名」的形態。少了這道閘會安靜建出幽靈租戶的索引：
+    // chunks 寫進去了、embedding 的錢也付了，但 tenants 表沒這個 id，
+    // 後台看不到、檢索也永遠不會用該 tenant_id 查詢——沒有任何錯誤訊號。
+    mockGetTenant.mockReturnValue(undefined);
+    const source = new FakeSource([item('規章.txt', 100)]);
+    const result = await runTwice(source);
+
+    expect(result.failed).toBe(1);
+    expect(mockIngestFile).not.toHaveBeenCalled(); // 錢不能先付下去
+    expect(source.settled[0].outcome).toBe('failed');
+    expect(source.settled[0].reason).toContain('default'); // 錯誤訊息要點出是哪個資料夾
+    expect(source.settled[0].reason).toContain('租戶 id');
+  });
+
+  it('查無租戶不重試——資料夾名不會自己變對，重試只是再燒一次錢', async () => {
+    mockGetTenant.mockReturnValue(undefined);
+    const source = new FakeSource([item('規章.txt', 100)]);
+    const result = await runTwice(source);
+
+    expect(result.retry).toBe(0);
+    expect(result.failed).toBe(1);
+  });
+
   it('超過 maxBytes 判永久性失敗，不呼叫 ingestFile', async () => {
     const source = new FakeSource([item('巨檔.txt', 999)]);
     const result = await runTwice(source, { ...OPTS, maxBytes: 500 });
@@ -200,7 +232,7 @@ describe('runFolderIngestRound', () => {
     expect(source.settled[0].reason).toContain('上限');
   });
 
-  it('meta 已有同名檔時先 removeFile（帶 deferSuggestions）再 ingestFile', async () => {
+  it('meta 已有同名檔時，ingestFile 成功後才 removeFile（帶 deferSuggestions）', async () => {
     mockGetMeta.mockReturnValue({ files: [{ fileId: 'old-1', name: '規章.txt' }] });
     const source = new FakeSource([item('規章.txt', 100)]);
     await runTwice(source);
@@ -208,9 +240,34 @@ describe('runFolderIngestRound', () => {
     // deferSuggestions: true——批次重丟同名改版檔不該讓 removeFile 也各自觸發一次推薦問句重生，
     // 否則 N 個同名檔就是 N 次白花的 LLM 呼叫，與 ingestFile 那頭的 deferSuggestions 想省的是同一件事
     expect(mockRemoveFile).toHaveBeenCalledWith('default', 'old-1', { deferSuggestions: true });
-    expect(mockRemoveFile.mock.invocationCallOrder[0]).toBeLessThan(
-      mockIngestFile.mock.invocationCallOrder[0],
+    expect(mockIngestFile.mock.invocationCallOrder[0]).toBeLessThan(
+      mockRemoveFile.mock.invocationCallOrder[0],
     );
+  });
+
+  it('同名檔匯入失敗時不刪舊檔——舊資料必須留在索引裡，不能靜默消失', async () => {
+    // 先刪後匯的順序下，一次逾時就會讓這個檔從索引整個不見，且每輪重試都重付 embedding 費用
+    mockGetMeta.mockReturnValue({ files: [{ fileId: 'old-1', name: '規章.txt' }] });
+    mockIngestFile.mockRejectedValue(new Error('Transaction already closed'));
+    const source = new FakeSource([item('規章.txt', 100)]);
+    const result = await runTwice(source);
+
+    expect(result.retry).toBe(1);
+    expect(mockRemoveFile).not.toHaveBeenCalled();
+  });
+
+  it('同名檔重試成功時仍只刪掉舊檔，不會誤刪剛寫進去的新檔', async () => {
+    // 舊檔的 fileId 必須在 ingestFile 之前就取好：匯入成功後 meta.files 會同時有新舊兩筆同名項
+    mockGetMeta.mockReturnValue({ files: [{ fileId: 'old-1', name: '規章.txt' }] });
+    mockIngestFile
+      .mockRejectedValueOnce(new Error('socket hang up'))
+      .mockResolvedValueOnce({ fileId: 'new-1', name: '規章.txt', chunks: 3 });
+    const source = new FakeSource([item('規章.txt', 100)]);
+    const result = await runTwice(source);
+
+    expect(result.done).toBe(1);
+    expect(mockRemoveFile).toHaveBeenCalledTimes(1);
+    expect(mockRemoveFile).toHaveBeenCalledWith('default', 'old-1', { deferSuggestions: true });
   });
 
   it('整輪結束後每個有處理過的租戶各觸發一次推薦問句重生', async () => {
