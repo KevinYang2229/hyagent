@@ -5,6 +5,7 @@ import { env } from '@/config/env';
 import type { LLMProvider } from '@/lib/llm/types';
 import type { Outline, ReportSection } from '@/modules/report/report.types';
 import { reportStore } from '@/modules/report/report.store';
+import { REPORT_FORMATS, renderers } from '@/modules/report/report.render';
 import {
   _resetJobsForTest,
   getReportJob,
@@ -48,8 +49,47 @@ describe('startReportJob', () => {
     expect(done.totalSections).toBe(2);
     expect(done.doneSections).toBe(2);
     expect(done.finishedAt).toBeDefined();
-    expect((await reportStore.formatsOf(job.id)).sort()).toEqual(['html', 'md']);
+    const formats = (await reportStore.formatsOf(job.id)).sort();
+    // pdf 要有 Chromium；環境沒有就會被跳過，但 md 與 html 一定要在
+    expect(formats).toEqual(expect.arrayContaining(['html', 'md']));
+    expect([...REPORT_FORMATS].sort()).toEqual(expect.arrayContaining(formats));
     expect((await reportStore.get(job.id, 'md'))?.content.toString()).toContain('## A');
+  });
+
+  /*
+   * 單一格式渲染失敗不得讓整份報告作廢。PDF 要有 Chromium 才印得出來，那是部署環境的
+   * 條件而不是報告本身的問題——缺了它，md 與 html 仍然是完整可用的產出。
+   */
+  it('一種格式渲染失敗時，其餘照存、狀態仍是 done', async () => {
+    const spy = jest.spyOn(renderers.html, 'render').mockRejectedValue(new Error('沒有瀏覽器'));
+    try {
+      const job = startReportJob(
+        { tenantId: 't1', userId: 'u1', topic: '主題', llm },
+        { outline: async () => outline, compose: sectionWith(2) },
+      );
+      const done = await waitForJobForTest(job.id);
+      expect(done.status).toBe('done');
+      expect(await reportStore.formatsOf(job.id)).toEqual(['md']);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('所有格式都失敗才算 failed——不能標成 done 讓使用者下載到空氣', async () => {
+    const spies = Object.values(renderers).map((r) =>
+      jest.spyOn(r, 'render').mockRejectedValue(new Error('沒有瀏覽器')),
+    );
+    try {
+      const job = startReportJob(
+        { tenantId: 't1', userId: 'u1', topic: '主題', llm },
+        { outline: async () => outline, compose: sectionWith(2) },
+      );
+      const done = await waitForJobForTest(job.id);
+      expect(done.status).toBe('failed');
+      expect(await reportStore.formatsOf(job.id)).toEqual([]);
+    } finally {
+      spies.forEach((s) => s.mockRestore());
+    }
   });
 
   it('全部節零命中 → empty，且不產檔', async () => {

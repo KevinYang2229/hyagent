@@ -70,7 +70,7 @@ describe('GET /api/reports/:id/download', () => {
   it('登錄表外的格式回 422（zod 驗證失敗，與全站 validate middleware 慣例一致）', async () => {
     save('r1', 'kevin', 'md', '# 報告');
     const res = await request(app)
-      .get('/api/reports/r1/download?format=pdf')
+      .get('/api/reports/r1/download?format=docx')
       .set('authorization', `Bearer ${await loginToken()}`);
     expect(res.status).toBe(422);
   });

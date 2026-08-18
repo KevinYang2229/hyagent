@@ -117,6 +117,9 @@ export const envSchema = z.object({
   // 報告表頭產生時間的顯示時區（IANA 時區名）。不能用伺服器本地時間——正式環境跑在 UTC，
   // 會把台北的 09:41 印成 01:41，而裸的日期字串看起來就像本地時間，比 ISO 更容易誤導讀者
   REPORT_TIMEZONE: z.string().default('Asia/Taipei'),
+  // 報告：輸出 PDF 用的 Chromium 執行檔路徑。未設時依序探測常見位置（容器裡的
+  // /usr/bin/chromium、本機的 Google Chrome）。找不到就只是少一種格式，md 與 html 照常產出。
+  REPORT_PDF_BROWSER: z.string().optional(),
 
   // ---- OA 連接器（MVP 預設 stub；http 為真 OA 連接器）----
   OA_CONNECTOR: z.enum(['stub', 'http']).default('stub'),

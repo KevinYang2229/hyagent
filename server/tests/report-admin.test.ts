@@ -145,7 +145,7 @@ describe('GET /api/admin/tenants/:id/reports/:reportId/download', () => {
     const t = tenantStore.createTenant('rep-admin-badformat');
     saveReport(t.id, 'r1', 'kevin', '產品分析報告');
     const res = await request(app)
-      .get(`/api/admin/tenants/${t.id}/reports/r1/download?format=pdf`)
+      .get(`/api/admin/tenants/${t.id}/reports/r1/download?format=docx`)
       .set('x-admin-key', ADMIN_KEY);
     expect(res.status).toBe(422);
   });

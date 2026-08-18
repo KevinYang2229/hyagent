@@ -110,16 +110,32 @@ export function startReportJob(params: StartReportParams, deps: ReportJobDeps = 
       };
 
       const slug = slugify(plan.title);
+      /*
+       * 單一格式失敗不得讓整份報告作廢。PDF 要有 Chromium 才印得出來，而那是部署環境的
+       * 條件、不是報告本身的問題——缺了它，md 與 html 仍然是完整可用的產出。
+       * 但一種都沒成功就是真的失敗了，不能標成 done 讓使用者下載到空氣。
+       */
+      let saved = 0;
       for (const renderer of Object.values(renderers)) {
-        reportStore.save({
-          reportId: job.id,
-          tenantId: params.tenantId,
-          userId: params.userId,
-          format: renderer.format,
-          filename: `${slug}.${renderer.format}`,
-          content: await renderer.render(doc),
-        });
+        try {
+          const content = await renderer.render(doc);
+          reportStore.save({
+            reportId: job.id,
+            tenantId: params.tenantId,
+            userId: params.userId,
+            format: renderer.format,
+            filename: `${slug}.${renderer.format}`,
+            content,
+          });
+          saved += 1;
+        } catch (err) {
+          logger.warn(
+            { err, jobId: job.id, tenantId: params.tenantId, format: renderer.format },
+            'report render failed for one format',
+          );
+        }
       }
+      if (saved === 0) throw new Error('所有輸出格式都渲染失敗');
 
       job.status = 'done';
       job.finishedAt = new Date().toISOString();

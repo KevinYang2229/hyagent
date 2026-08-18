@@ -8,6 +8,7 @@
 import type { ReportDoc } from './report.types';
 import { htmlRenderer } from './renderers/html';
 import { markdownRenderer } from './renderers/markdown';
+import { pdfRenderer, resolveBrowserPath } from './renderers/pdf';
 
 export interface ReportRenderer {
   /** URL 與儲存用的 key，同時是副檔名 */
@@ -17,9 +18,17 @@ export interface ReportRenderer {
   render(doc: ReportDoc): Buffer | Promise<Buffer>;
 }
 
+/*
+ * pdf 依賴外部的 Chromium，探測不到就不登錄。
+ *
+ * 與其讓 API 宣告一個必定失敗的格式，不如讓 format 白名單誠實反映這個部署實際做得到什麼：
+ * 沒有瀏覽器時 ?format=pdf 得到的是 422「不支援的格式」而不是 500，前端的下載清單也不會
+ * 出現一個按了就壞的連結。代價是裝好瀏覽器後要重啟才會生效——登錄表是啟動時決定的。
+ */
 export const renderers: Record<string, ReportRenderer> = {
   [markdownRenderer.format]: markdownRenderer,
   [htmlRenderer.format]: htmlRenderer,
+  ...(resolveBrowserPath() ? { [pdfRenderer.format]: pdfRenderer } : {}),
 };
 
 export const REPORT_FORMATS: string[] = Object.keys(renderers);

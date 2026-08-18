@@ -118,6 +118,7 @@ Zeabur 連上 GitHub repo 後，會 watch 指定分支；**每次 `git push` 到
 | `ADMIN_PASSWORD` | 後台必填 | admin 後台登入密碼；**留空＝後台登入回 403**（停用）。與 `ADMIN_API_KEY` 分開 |
 | `AUTH_DEV_PASSWORD` | 視需要 | MVP 登入共用密碼，預設 `oa1234`，正式環境請改 |
 | `LLM_MODEL` | 選填 | 預設 `claude-sonnet-4-5` |
+| `REPORT_PDF_BROWSER` | 不用填 | Dockerfile 已設為 `/usr/bin/chromium`（報告的 PDF 輸出）。**探測不到瀏覽器時 pdf 不會出現在下載格式裡**，md 與 html 照常產出；指到不存在的路徑會留一筆警告並停用 pdf |
 | `PORT` | 不用填 | Zeabur 自動注入，server 會自動聽 |
 
 > 產生隨機 secret 可用：`node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`

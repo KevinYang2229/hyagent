@@ -201,11 +201,15 @@ describe('renderer 登錄表契約', () => {
   it.each(Object.keys(renderers))('%s renderer 產出非空內容且有 contentType', async (format) => {
     const renderer = renderers[format];
     expect(renderer.format).toBe(format);
-    expect(renderer.contentType).toMatch(/charset=utf-8/);
+    expect(renderer.contentType).toMatch(/^[a-z]+\/[a-z.+-]+/);
+    // 文字格式必須宣告 charset：少了它，瀏覽器改用系統預設解碼，中文就是一片亂碼
+    if (renderer.contentType.startsWith('text/')) {
+      expect(renderer.contentType).toMatch(/charset=utf-8/);
+    }
     const out = await renderer.render(makeDoc());
     expect(Buffer.isBuffer(out)).toBe(true);
     expect(out.length).toBeGreaterThan(0);
-  });
+  }, 30_000);
 });
 
 /**

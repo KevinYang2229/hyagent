@@ -25,9 +25,14 @@ RUN npm run build -w server
 FROM node:20-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
+# chromium：報告的 PDF 輸出（server 直接叫執行檔印，沒有 puppeteer 依賴）。
+# fonts-noto-cjk 不能省——slim 映像不含任何中日韓字體，缺了它整份 PDF 會印成一排豆腐字。
+# 這兩個套件讓映像大上約 400MB；不裝也跑得起來，只是 pdf 格式不會出現在白名單裡
+# （見 report.render.ts：探測不到瀏覽器就不登錄該格式），md 與 html 照常產出。
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends openssl \
+  && apt-get install -y --no-install-recommends openssl chromium fonts-noto-cjk \
   && rm -rf /var/lib/apt/lists/*
+ENV REPORT_PDF_BROWSER=/usr/bin/chromium
 # Zeabur 的 Git/Dockerfile 服務只路由「一個」埠＝Dockerfile EXPOSE。
 # server 讀 env.PORT，所以讓 PORT 與 EXPOSE 對齊到 3000，兩邊一致才路由得到。
 # 註：若 Zeabur 後台另外注入了 PORT，會蓋掉這裡的 ENV；那就把後台的 PORT 也設成 3000。

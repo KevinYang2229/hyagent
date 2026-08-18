@@ -21,6 +21,10 @@ process.env.DATA_BACKEND ??= 'file';
 // 測試需確定性的明文預設；要驗證加密的測試自行以 isolateModules 注入金鑰。
 process.env.DATA_ENCRYPTION_KEY ??= '';
 
+// PDF 輸出固定關閉：開發機上探測得到 Chrome 的話，每個報告 job 測試都會真的去印一份，
+// 整套測試多花二十幾秒還可能逾時。真正驗證 PDF 輸出的是 report-pdf.test.ts，它自行探測。
+process.env.REPORT_PDF_BROWSER ??= join(tmpdir(), 'oa-agent-no-such-browser');
+
 process.env.ANTHROPIC_API_KEY ??= 'test-anthropic-key';
 // 啟用管理 API（Form Designer 端點測試用）
 process.env.ADMIN_API_KEY ??= 'test-admin-key';
