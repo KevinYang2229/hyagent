@@ -124,3 +124,34 @@ describe('折線 y 軸', () => {
     expect(html).toContain('>-20<');
   });
 });
+
+/**
+ * 列印與 PDF 輸出。這份 HTML 的不變式之一就是「可直接列印成 PDF」，但先前完全沒有
+ * 列印規則——實測一份六節的報告，加上分頁規則後由 5 頁變成 6 頁，差的那一頁就是
+ * 原本被分頁線攔腰切開、現在整塊推到下一頁的圖表。
+ */
+describe('列印與 PDF 輸出', () => {
+  const html = (): string => renderHtml(doc({
+    kind: 'bar', complete: false, title: 't',
+    points: [{ label: 'a', value: 1 }, { label: 'b', value: 2 }, { label: 'c', value: 3 }],
+  }));
+
+  it('頁面邊界交給 @page，列印時 body 不再自行留白', () => {
+    expect(html()).toContain('@page{margin:16mm 14mm}');
+    expect(html()).toContain('body{max-width:none;margin:0;padding:0}');
+  });
+
+  it('圖表是一個整體，不得被分頁線切開', () => {
+    // .chart 涵蓋標題、SVG 與說明；三者被拆到不同頁比沒有圖還難讀
+    expect(html()).toContain('.chart{break-inside:avoid}');
+  });
+
+  it('整張表不設 break-inside——長表被迫整塊換頁會超出頁高而被裁掉', () => {
+    expect(html()).toContain('tr,li{break-inside:avoid}');
+    expect(html()).not.toContain('table{break-inside:avoid}');
+  });
+
+  it('標題不得落在頁尾，與內文分家', () => {
+    expect(html()).toContain('h1,h2,h3,h4{break-after:avoid}');
+  });
+});

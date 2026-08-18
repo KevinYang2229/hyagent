@@ -109,6 +109,22 @@ const STYLE = [
   '.chart-title{font-weight:600;margin:0 0 .5rem}',
   '.chart-cap{color:#666;font-size:.8rem;margin:.4rem 0 0}',
   '.chart svg{max-width:100%;height:auto;display:block}',
+  /*
+   * 列印與輸出 PDF。這份 HTML 的不變式之一就是「可直接列印成 PDF」，但先前完全沒有
+   * 列印規則：頁面邊界由螢幕用的 body margin 兼任，圖表也會被分頁線攔腰切開——
+   * 一半在上一頁、一半在下一頁的長條圖，比沒有圖還難讀。
+   *
+   * break-inside 只加在 .chart（標題、SVG、說明是一個整體）與 tr/li；整張表不加，
+   * 否則一張長表會被迫整塊推到下一頁、超過頁高的部分直接被裁掉。
+   */
+  '@page{margin:16mm 14mm}',
+  '@media print{',
+  'body{max-width:none;margin:0;padding:0}',
+  '.chart{break-inside:avoid}',
+  'tr,li{break-inside:avoid}',
+  'h1,h2,h3,h4{break-after:avoid}',
+  'p{orphans:3;widows:3}',
+  '}',
 ].join('');
 
 /** 長條圖列高與版面常數；SVG 座標系與這些數字一致 */
