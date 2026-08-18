@@ -52,10 +52,11 @@ export interface ChartPoint {
  * bar  量值比較（各國人數、各展區家數）——最通用，也是所有覆寫的落點
  * line 隨時間變化（歷年預登總數）——標籤須為年份序列，且依年份而非數值排序
  * pie  部分佔整體（台灣／海外）——扇形數必須夠少，否則角度根本比不出大小
+ * donut 同 pie，中央留白；規則與限制完全一致，差別只在畫法
  * grouped 同一類別下的多個數列（今年預登／今年報到／上屆預登／上屆報到）——
  *      這批資料裡資訊密度最高的表是「一列多欄」的形狀，兩欄的 label/value 抓不到它
  */
-export type ChartKind = 'bar' | 'line' | 'pie' | 'grouped';
+export type ChartKind = 'bar' | 'line' | 'pie' | 'donut' | 'grouped';
 
 export interface SectionChart {
   kind: ChartKind;

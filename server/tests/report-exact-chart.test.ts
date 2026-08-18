@@ -205,3 +205,36 @@ describe('tablePreview', () => {
     expect(() => tablePreview(text)).not.toThrow();
   });
 });
+
+/**
+ * 候選清單的多樣性。這批資料每個工作表都有逐年複本（8-CC-參展商展區 有 16 份），
+ * 名稱與欄位完全相同、只有橫幅的年度不同——bigram 分不出它們，於是 20 個名額被同一張表
+ * 佔掉十幾個，結構不同的表（畫佔比需要的兩列統計表）根本擠不進清單，模型不可能選它。
+ */
+describe('selectCatalog 的多樣性收斂', () => {
+  const dup = (sheet: string, year: number) => ({
+    id: `${sheet}-${year}`, source: 'x.xlsx', sheet,
+    caption: `展覽年度:${year}`, headers: ['展區', '家數'], rowCount: 25,
+  });
+  const catalog = [
+    ...Array.from({ length: 16 }, (_, i) => dup('8-CC-參展商展區', 2010 + i)),
+    { id: 'stats', source: 'x.xlsx', sheet: '5-CC-參展商統計', caption: '展覽年度:2025',
+      headers: ['類型', '今年家數'], rowCount: 3 },
+    { id: 'counts', source: 'x.xlsx', sheet: '6-CC-參展商家數', caption: '',
+      headers: ['年度', '參展總家數'], rowCount: 17 },
+  ];
+
+  it('同一工作表名不佔滿名額，結構不同的表擠得進來', () => {
+    const out = selectCatalog(catalog, '參展商的國內外組成比例', 6);
+    const sheets = out.map((t) => t.sheet);
+    expect(sheets.filter((s) => s === '8-CC-參展商展區').length).toBeLessThanOrEqual(2);
+    expect(sheets).toContain('5-CC-參展商統計'); // 少了這張就永遠畫不出佔比圖
+    expect(sheets).toContain('6-CC-參展商家數');
+  });
+
+  it('不足名額寧可回傳短清單，也不用複本填滿——那正是原本的問題', () => {
+    const out = selectCatalog(catalog, '展區', 12);
+    expect(out.length).toBeLessThan(12);
+    expect(out.filter((t) => t.sheet === '8-CC-參展商展區')).toHaveLength(2);
+  });
+});

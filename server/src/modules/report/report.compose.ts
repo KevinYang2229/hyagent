@@ -42,7 +42,7 @@ function sectionSystem(locale?: string): string {
       '- The tables listed under "Available tables" hold the original spreadsheet rows.',
       '- If one answers this section, append a block naming the table and the two columns:',
       '  ```chart-ref',
-      '  {"table":"<id>","label":"<column>","value":"<column>","kind":"bar|line|pie","title":"...","unit":"..."}',
+      '  {"table":"<id>","label":"<column>","value":"<column>","kind":"bar|line|pie|donut","title":"...","unit":"..."}',
       '- When one row holds several comparable numeric columns, give "values":["A","B",...] (max 4) instead',
       '  of "value"; the system renders a grouped bar chart.',
       '- If the section discusses ANY comparable numbers, attach a chart. Do not settle for prose.',
@@ -73,12 +73,13 @@ function sectionSystem(locale?: string): string {
     '- 「可用資料表」列出的是試算表的原始資料列。',
     '- 若其中一張能回答本節，附上一個區塊，指名該表與要用的兩個欄位：',
     '  ```chart-ref',
-    '  {"table":"<id>","label":"<欄位名>","value":"<欄位名>","kind":"bar|line|pie","title":"標題","unit":"人數"}',
+    '  {"table":"<id>","label":"<欄位名>","value":"<欄位名>","kind":"bar|line|pie|donut","title":"標題","unit":"人數"}',
     '- 若同一列有多個值得並排比較的數值欄（例如「今年預登／今年報到／上屆預登／上屆報到」），',
     '  改給 "values":["欄位A","欄位B",...]（最多 4 個），系統會畫成分組長條；此時 value 可省略。',
     '- **只要本節談到任何可比較的數字，就該附圖**；資料表在上面列著，不要只寫文字。',
     '- kind 依這一節在講什麼選：比大小用 bar、隨年度變化用 line、少數幾塊構成整體用 pie。',
-    '  選不定就給 bar；系統會依實際資料形狀驗證，不合適會自動改成 bar。',
+    '  選不定就給 bar；donut 與 pie 規則相同，只是中央留白。',
+'  系統會依實際資料形狀驗證，不合適會自動改成 bar。',
     '  ```',
     '- 欄位名必須與清單中的「欄位」完全一致。**這個區塊裡不要放任何數字**——',
     '  數值由系統直接從該表讀出，你只負責挑表與挑欄位。',
@@ -109,7 +110,7 @@ const MAX_CHART_POINTS = 12;
  * 長條的門檻硬套到圓餅上。長條仍維持 3：兩條長條沒有比一句話多說什麼。
  */
 function minPointsFor(kind: ChartKind): number {
-  return kind === 'pie' ? 2 : MIN_CHART_POINTS;
+  return kind === 'pie' || kind === 'donut' ? 2 : MIN_CHART_POINTS;
 }
 
 /**
@@ -217,14 +218,15 @@ export function resolveChartKind(
   labels: string[],
   values: number[],
 ): ChartKind {
-  const want = requested === 'line' || requested === 'pie' ? requested : 'bar';
+  const want =
+    requested === 'line' || requested === 'pie' || requested === 'donut' ? requested : 'bar';
   // 折線要求時間序列：拿它畫類別資料會暗示不存在的連續性
   if (want === 'line') return looksLikeYears(labels) ? 'line' : 'bar';
-  // 圓餅要求「少數幾塊構成一個整體」：負值無法構成佔比，太多扇形則角度比不出大小
-  if (want === 'pie') {
+  // 圓餅／甜甜圈要求「少數幾塊構成一個整體」：負值無法構成佔比，太多扇形則角度比不出大小
+  if (want === 'pie' || want === 'donut') {
     if (labels.length > MAX_PIE_SLICES) return 'bar';
     if (values.some((v) => v < 0)) return 'bar';
-    return 'pie';
+    return want;
   }
   // 模型沒提但標籤就是年份序列時，主動用折線——趨勢用長條看不出走向
   return looksLikeYears(labels) ? 'line' : 'bar';
@@ -239,9 +241,23 @@ export function resolveChartKind(
 const CATALOG_LIMIT = 20;
 
 /**
+ * 同一個工作表名在清單中最多保留幾份。
+ *
+ * 這批資料每個工作表都有逐年的複本（8-CC-參展商展區 有 16 份），名稱與欄位完全相同、
+ * 只有橫幅的年度不同——bigram 分不出它們，於是 20 個名額被同一張表的複本佔掉十幾個，
+ * 結構不同的表（例如畫佔比需要的兩列統計表）根本擠不進清單，模型自然不可能選它。
+ *
+ * 保留 2 份而非 1：同名表之間確實有「今年 vs 某個歷史年度」的差別，留一份備選才有得挑。
+ */
+const MAX_PER_SHEET = 2;
+
+/**
  * 依查詢句挑出最可能相關的表。以字元 bigram 重疊度計分——中文沒有空白可切詞，
  * 而表名與橫幅（「參觀者預登國家數」「展覽年度:2025」）本來就是短字串，
  * bigram 足以把「問各國人數」對到「預登國家數」而不需要斷詞器或額外的 embedding 呼叫。
+ *
+ * 計分之後再依工作表名做多樣性收斂：清單的價值在於呈現有哪些**不同形狀**的資料可用，
+ * 同一張表的十幾個年度複本佔滿名額只是把選擇權從模型手上拿走。
  */
 export function selectCatalog(
   catalog: TableCatalogEntry[],
@@ -256,16 +272,27 @@ export function selectCatalog(
     return out;
   };
   const q = grams(query);
-  return [...catalog]
+  const scored = [...catalog]
     .map((t) => {
       const text = grams(`${t.source}${t.sheet}${t.caption ?? ''}${t.headers.join('')}`);
       let hit = 0;
       for (const g of q) if (text.has(g)) hit += 1;
       return { t, hit };
     })
-    .sort((a, b) => b.hit - a.hit)
-    .slice(0, limit)
-    .map((x) => x.t);
+    .sort((a, b) => b.hit - a.hit);
+
+  // 第一輪：每個工作表名最多取 MAX_PER_SHEET 份，讓不同形狀的表都有機會出現
+  const perSheet = new Map<string, number>();
+  const picked: TableCatalogEntry[] = [];
+  for (const { t } of scored) {
+    if (picked.length >= limit) break;
+    const n = perSheet.get(t.sheet) ?? 0;
+    if (n >= MAX_PER_SHEET) continue;
+    perSheet.set(t.sheet, n + 1);
+    picked.push(t);
+  }
+  // 不足名額也不補：清單短而多樣，勝過用同一張表的複本填滿——那正是原本的問題
+  return picked;
 }
 
 /**
@@ -337,6 +364,34 @@ export function parseCellNumber(raw: string): number | null {
   if (cleaned === '') return null;
   const n = Number(cleaned);
   return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * 沒有模型挑選時，直接從最相關的表自動產圖。
+ *
+ * 實測命中率只有一半上下：同一次呼叫裡模型既要寫文又要挑表，常常寫完就忘了附圖，
+ * 而且那是注意力分配問題，把 prompt 講得更用力換不到穩定改善。既然候選清單已經是用
+ * 查詢句排序過的，最相關那張表的「第一個文字欄 vs 第一個數值欄」就是合理的預設圖。
+ *
+ * 只在模型完全沒挑時才用，絕不覆蓋它的選擇——它看得到章節的語意，這裡只看得到欄位型別。
+ */
+async function autoChart(
+  tenantId: string,
+  entry: TableCatalogEntry,
+): Promise<SectionChart | undefined> {
+  const table = await loadTable(tenantId, entry.id);
+  if (!table) return undefined;
+  const vi = firstNumericColumn(table);
+  if (vi < 0) return undefined;
+  // 標籤取第一個不是數值欄的欄位；沒有就放棄（整張表都是數字，沒有東西可以當類別）
+  const li = table.headers.findIndex((_, i) => i !== vi);
+  if (li < 0) return undefined;
+  return buildExactChart(tenantId, {
+    table: entry.id,
+    label: table.headers[li],
+    value: table.headers[vi],
+    title: `${table.sheet}${table.caption ? `（${table.caption}）` : ''}`,
+  });
 }
 
 /**
@@ -550,7 +605,17 @@ export async function composeSection(
       }
     }
     const { body, chart: inline } = extractChart(refOut.body);
-    const chart = exact ?? inline;
+    let chart = exact ?? inline;
+
+    // 模型沒挑就自動補：加再多圖型，模型不選也看不到
+    if (!chart && shortlist.length > 0) {
+      try {
+        chart = await autoChart(tenantId, shortlist[0]);
+        if (chart) logger.info({ tenantId, heading: section.heading }, '章節圖表由系統自動補上');
+      } catch (err) {
+        logger.warn({ err, tenantId }, 'auto chart failed');
+      }
+    }
     if (body === '') {
       return { ...base, body: fallbackBody(chunks, locale), sources: toSources(chunks), hits: chunks.length, degraded: true };
     }

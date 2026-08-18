@@ -118,7 +118,12 @@ function lineSvg(chart: SectionChart): string {
   );
 }
 
-/** 圓餅圖：扇形數已由 resolveChartKind 限制在 6 以內，才畫得出可比的角度 */
+/**
+ * 圓餅／甜甜圈：扇形數已由 resolveChartKind 限制在 6 以內，才畫得出可比的角度。
+ *
+ * 甜甜圈以「畫完扇形再蓋一個與底色同色的圓」達成，而非改用內外雙弧的路徑：
+ * 這份 HTML 的底色是固定的白，蓋圓在視覺上完全等價，卻省掉一整段容易畫錯的路徑計算。
+ */
 function pieSvg(chart: SectionChart): string {
   const total = chart.points.reduce((n, p) => n + p.value, 0);
   if (total <= 0) return '';
@@ -156,7 +161,10 @@ function pieSvg(chart: SectionChart): string {
       );
     })
     .join('');
-  return `<svg viewBox="0 0 ${PLOT_W} 224" role="img" aria-label="${escapeHtml(chart.title)}">${slices}${legend}</svg>`;
+  const hole = chart.kind === 'donut'
+    ? `<circle cx="${cx}" cy="${cy}" r="${(r * 0.55).toFixed(1)}" fill="#fff"/>`
+    : '';
+  return `<svg viewBox="0 0 ${PLOT_W} 224" role="img" aria-label="${escapeHtml(chart.title)}">${slices}${hole}${legend}</svg>`;
 }
 
 /**
@@ -242,7 +250,7 @@ function chartSvg(section: ReportSection, locale: string): string {
 
   const svg = chart.kind === 'line'
     ? lineSvg(chart)
-    : chart.kind === 'pie'
+    : chart.kind === 'pie' || chart.kind === 'donut'
       ? pieSvg(chart)
       : chart.kind === 'grouped'
         ? groupedSvg(chart)

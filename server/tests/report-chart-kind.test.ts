@@ -39,9 +39,9 @@ describe('resolveChartKind', () => {
     expect(resolveChartKind('pie', ['甲', '乙', '丙'], [5, -3, 2])).toBe('bar');
   });
 
-  it('無法辨識的 kind 退回預設判斷', () => {
-    expect(resolveChartKind('donut', countries, v(3))).toBe('bar');
-    expect(resolveChartKind('donut', years, v(5))).toBe('line');
+  it('無法辨識的 kind 退回預設判斷（散佈圖、雷達圖等尚未支援）', () => {
+    expect(resolveChartKind('scatter', countries, v(3))).toBe('bar');
+    expect(resolveChartKind('radar', years, v(5))).toBe('line');
   });
 
   it('重複年份不算時間序列——那是分組資料，折線會把它畫成假的走勢', () => {
@@ -91,5 +91,32 @@ describe('renderer：三種圖各自畫得出來', () => {
     }));
     expect(html).toContain('<rect');
     expect(html).not.toMatch(/<script|https?:\/\/[^"']*\.(js|css)/i);
+  });
+});
+
+describe('甜甜圈與自動補圖', () => {
+  it('donut 與 pie 適用同一組規則', () => {
+    expect(resolveChartKind('donut', ['台灣', '海外'], [128, 232])).toBe('donut');
+    // 超過 6 塊或有負值時同樣退回 bar
+    expect(resolveChartKind('donut', Array.from({ length: 7 }, (_, i) => `x${i}`), v(7))).toBe('bar');
+    expect(resolveChartKind('donut', ['甲', '乙'], [5, -1])).toBe('bar');
+  });
+
+  it('donut 畫出中央的留白圓，且仍附含百分比的圖例', () => {
+    const html = renderHtml(doc({
+      ...base, kind: 'donut', title: '國內外組成', unit: '家',
+      points: [{ label: '國內', value: 757 }, { label: '國外', value: 197 }],
+    }));
+    expect(html).toContain('<circle cx="110" cy="110"'); // 中央留白
+    expect(html).toContain('79.4%');
+    expect(html).toContain('國內');
+  });
+
+  it('pie 不畫中央留白（兩者只差在這裡）', () => {
+    const html = renderHtml(doc({
+      ...base, kind: 'pie', title: 'x',
+      points: [{ label: 'a', value: 1 }, { label: 'b', value: 1 }],
+    }));
+    expect(html).not.toContain('<circle cx="110" cy="110"');
   });
 });
