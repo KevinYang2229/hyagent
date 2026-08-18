@@ -23,6 +23,18 @@ export function degradedNoticeText(locale: string): string {
 }
 
 /** 來源清單標題 */
+/**
+ * 圖表底下的說明，**兩個 renderer 都必須印**。
+ *
+ * 圖表的數值來自 top-k 檢索片段，必然是節錄。少了這句，一張長條圖看起來就像完整分布——
+ * 這是圖表相對於散文特別危險的地方：散文會說「根據檢索到的資料」，圖表不會自己聲明範圍。
+ */
+export function chartCaptionText(locale: string, points: number, hits: number): string {
+  return normalizeLocale(locale) === 'en'
+    ? `${points} data points drawn from ${hits} retrieved excerpts — a sample, not the full data set.`
+    : `依 ${hits} 個檢索片段整理出的 ${points} 筆資料，屬節錄而非完整母體。`;
+}
+
 export function sourcesHeading(locale: string): string {
   return normalizeLocale(locale) === 'en' ? 'Sources' : '來源';
 }

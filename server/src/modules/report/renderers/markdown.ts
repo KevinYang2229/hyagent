@@ -2,6 +2,7 @@
  * Markdown renderer：ReportDoc → .md bytes。純函式，不觸碰 IO。
  */
 import {
+  chartCaptionText,
   degradedNoticeText,
   dedupeSources,
   emptySectionText,
@@ -16,8 +17,28 @@ function sectionBody(section: ReportSection, locale: string): string {
   if (section.hits === 0) return emptySectionText(locale);
   // 內文是 LLM 產生的 Markdown，標題層級要先正規化到章節（##）底下
   const body = normalizeSectionBody(section.body, section.heading);
-  if (section.degraded) return `> ${degradedNoticeText(locale)}\n\n${body}`;
-  return body;
+  const withChart = section.chart ? `${body}\n\n${chartTable(section, locale)}` : body;
+  if (section.degraded) return `> ${degradedNoticeText(locale)}\n\n${withChart}`;
+  return withChart;
+}
+
+/**
+ * Markdown 沒有可靠的內嵌 SVG 支援（各 viewer 行為不一），所以畫成表格。
+ * 表格反而更誠實：數字原樣可讀、可複製核對，不會有「長條看起來差不多」的失真。
+ */
+function chartTable(section: ReportSection, locale: string): string {
+  const chart = section.chart;
+  if (!chart) return '';
+  const valueHeader = chart.unit ?? '';
+  return [
+    `**${chart.title}**`,
+    '',
+    `| | ${valueHeader} |`,
+    '| --- | ---: |',
+    ...chart.points.map((pt) => `| ${pt.label} | ${pt.value.toLocaleString('en-US')} |`),
+    '',
+    `_${chartCaptionText(locale, chart.points.length, section.hits)}_`,
+  ].join('\n');
 }
 
 export function renderMarkdown(doc: ReportDoc): string {

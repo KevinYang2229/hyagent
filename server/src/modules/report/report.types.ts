@@ -23,6 +23,29 @@ export interface SectionSource {
   url?: string;
 }
 
+/** 圖表的一個資料點 */
+export interface ChartPoint {
+  label: string;
+  value: number;
+}
+
+/**
+ * 該節的長條圖。**只在參考資料本身就是一組可比較的數列時才會有**。
+ *
+ * 刻意只支援長條（量值比較）：這批資料的問題形態是「各國多少人」「各年度多少家」，
+ * 長條就答得完。折線是另一套 mark 規格，等真的有時間序列需求再加，不預先擴張。
+ *
+ * 這裡的數值是 LLM 從檢索片段裡讀出來的，而檢索只取 top-k——所以它必然是**節錄而非母體**。
+ * renderer 有義務把這件事標在圖上（見 report.strings 的 chartCaptionText）：
+ * 散文說「根據檢索到的資料」讀者知道是節錄，長條圖不會這樣說話，它隱含「這就是全部」。
+ */
+export interface SectionChart {
+  title: string;
+  /** 數值的單位（人數、家數…），標在資料點旁 */
+  unit?: string;
+  points: ChartPoint[];
+}
+
 /** 彙整完成的一節 */
 export interface ReportSection {
   heading: string;
@@ -34,6 +57,8 @@ export interface ReportSection {
   hits: number;
   /** 該節彙整 LLM 失敗、已降級為片段列表；renderer 必須標註出來 */
   degraded?: boolean;
+  /** 該節材料構成一組數列時的長條圖；不符條件時不存在 */
+  chart?: SectionChart;
 }
 
 export interface ReportDoc {

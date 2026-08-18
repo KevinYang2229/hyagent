@@ -7,6 +7,7 @@
 import MarkdownIt from 'markdown-it';
 import { normalizeLocale } from '@/lib/locale';
 import {
+  chartCaptionText,
   degradedNoticeText,
   dedupeSources,
   emptySectionText,
@@ -58,7 +59,57 @@ const STYLE = [
   'table{border-collapse:collapse;margin:.75rem 0}',
   'th,td{border:1px solid #e5e5e5;padding:.35rem .6rem;text-align:left}',
   'a{color:#0b6bcb}',
+  // 圖表：純 SVG，無腳本無外部資源，離線與列印皆可
+  '.chart{margin:1.25rem 0}',
+  '.chart-title{font-weight:600;margin:0 0 .5rem}',
+  '.chart-cap{color:#666;font-size:.8rem;margin:.4rem 0 0}',
+  '.chart svg{max-width:100%;height:auto;display:block}',
 ].join('');
+
+/** 長條圖列高與版面常數；SVG 座標系與這些數字一致 */
+const BAR_H = 22;
+const BAR_GAP = 8;
+const LABEL_W = 150;
+const VALUE_W = 76;
+const CHART_W = 620;
+
+/**
+ * 長條圖 → inline SVG。
+ *
+ * 手寫 SVG 而非引第三方圖表庫：這份 HTML 的不變式是「零外部資源、可離線開、可直接列印」，
+ * 而長條圖只需要矩形與文字，不值得為它破壞那個不變式。
+ * 每條都直接標數值——長度只給得出概略比例，讀者要核對的是數字。
+ */
+function chartSvg(section: ReportSection, locale: string): string {
+  const chart = section.chart;
+  if (!chart) return '';
+  const max = Math.max(...chart.points.map((pt) => pt.value), 0);
+  const trackW = CHART_W - LABEL_W - VALUE_W;
+  const height = chart.points.length * (BAR_H + BAR_GAP);
+
+  const rows = chart.points.map((pt, i) => {
+    const y = i * (BAR_H + BAR_GAP);
+    // max 為 0（全部是 0）時不除以零，直接畫成空軌
+    const w = max > 0 ? Math.max(1, Math.round((pt.value / max) * trackW)) : 0;
+    const value = pt.value.toLocaleString('en-US') + (chart.unit ? ` ${chart.unit}` : '');
+    return [
+      `<text x="0" y="${y + BAR_H * 0.7}" font-size="12" fill="#333">${escapeHtml(pt.label)}</text>`,
+      `<rect x="${LABEL_W}" y="${y}" width="${trackW}" height="${BAR_H}" fill="#f0f0f0"/>`,
+      `<rect x="${LABEL_W}" y="${y}" width="${w}" height="${BAR_H}" fill="#0b6bcb"/>`,
+      `<text x="${LABEL_W + trackW + 8}" y="${y + BAR_H * 0.7}" font-size="12" fill="#333">${escapeHtml(value)}</text>`,
+    ].join('');
+  });
+
+  return [
+    '<div class="chart">',
+    `<p class="chart-title">${escapeHtml(chart.title)}</p>`,
+    `<svg viewBox="0 0 ${CHART_W} ${height}" role="img" aria-label="${escapeHtml(chart.title)}">`,
+    rows.join(''),
+    '</svg>',
+    `<p class="chart-cap">${escapeHtml(chartCaptionText(locale, chart.points.length, section.hits))}</p>`,
+    '</div>',
+  ].join('');
+}
 
 function sectionHtml(section: ReportSection, locale: string): string {
   const heading = `<h2>${escapeHtml(section.heading)}</h2>`;
@@ -71,7 +122,7 @@ function sectionHtml(section: ReportSection, locale: string): string {
   // 內文是 Markdown：先把標題層級正規化到章節（h2）底下，再交給 markdown-it 轉標籤。
   // 這裡不能用 escapeHtml——那會讓 ## 與 ** 原樣顯示，正是本來的 bug。
   const body = markdown.render(normalizeSectionBody(section.body, section.heading));
-  return `${heading}\n${notice}${body.trim()}`;
+  return `${heading}\n${notice}${body.trim()}${chartSvg(section, locale)}`;
 }
 
 export function renderHtml(doc: ReportDoc): string {
