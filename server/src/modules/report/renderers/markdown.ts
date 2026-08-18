@@ -32,7 +32,7 @@ function chartTable(section: ReportSection, locale: string): string {
   if (!chart) return '';
   // complete 與否的可信度差很多，說明必須分開講，不能用同一句帶過
   const caption = chart.complete
-    ? exactChartCaptionText(locale, chart.points.length, chart.totalRows ?? chart.points.length, chart.sourceLabel ?? '', chart.kind)
+    ? exactChartCaptionText(locale, chart)
     : chartCaptionText(locale, chart.points.length, section.hits);
   // 分組長條有多個數列，表格要跟著多開幾欄，否則等於只呈現第一個數列
   const cols = chart.kind === 'grouped' && chart.series?.length ? chart.series : [chart.unit ?? ''];

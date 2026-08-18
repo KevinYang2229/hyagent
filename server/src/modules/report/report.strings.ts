@@ -6,7 +6,7 @@
  */
 import { env } from '@/config/env';
 import { normalizeLocale } from '@/lib/locale';
-import type { ChartKind, ReportSection, SectionSource } from './report.types';
+import type { ReportSection, SectionChart, SectionSource } from './report.types';
 
 /** 查無資料節的固定語句（中英各一） */
 export function emptySectionText(locale: string): string {
@@ -40,13 +40,20 @@ export function chartCaptionText(locale: string, points: number, hits: number): 
  * 與 chartCaptionText 分成兩句而非共用一句：兩者的可信度差很多，
  * 讀者必須看得出手上這張圖是哪一種。
  */
-export function exactChartCaptionText(
-  locale: string,
-  points: number,
-  totalRows: number,
-  sourceLabel: string,
-  kind?: ChartKind,
-): string {
+export function exactChartCaptionText(locale: string, chart: SectionChart): string {
+  const points = chart.points.length;
+  const totalRows = chart.totalRows ?? points;
+  const sourceLabel = chart.sourceLabel ?? '';
+  const kind = chart.kind;
+  /*
+   * 切片型的每一片是一個**欄**、全部取自同一列，「共 N 列」的講法會誤導。
+   * 圖上的數字沒錯不代表描述它的句子可以將就。
+   */
+  if (chart.sliced) {
+    return normalizeLocale(locale) === 'en'
+      ? `${points} columns from the "${chart.sliced}" row of ${sourceLabel}, read directly from the source.`
+      : `取自 ${sourceLabel} 的「${chart.sliced}」一列共 ${points} 個項目，數值直接讀自原始資料。`;
+  }
   const partial = points < totalRows;
   /*
    * 節錄的方式因類型而異，說法必須跟著變：長條與圓餅依數值遞減取「前 N 筆」，

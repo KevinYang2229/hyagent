@@ -333,7 +333,7 @@ function chartSvg(section: ReportSection, locale: string): string {
   if (!chart) return '';
   // complete 與否的可信度差很多，說明必須分開講，不能用同一句帶過
   const caption = chart.complete
-    ? exactChartCaptionText(locale, chart.points.length, chart.totalRows ?? chart.points.length, chart.sourceLabel ?? '', chart.kind)
+    ? exactChartCaptionText(locale, chart)
     : chartCaptionText(locale, chart.points.length, section.hits);
   const max = Math.max(...chart.points.map((pt) => pt.value), 0);
   const trackW = CHART_W - LABEL_W - VALUE_W;

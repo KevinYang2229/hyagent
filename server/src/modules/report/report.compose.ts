@@ -49,6 +49,9 @@ function sectionSystem(locale?: string): string {
       '  {"table":"<id>","label":"<column>","value":"<column>","kind":"bar|line|pie|donut","title":"...","unit":"..."}',
       '- When one row holds several comparable numeric columns, give "values":["A","B",...] (max 4) instead',
       '  of "value"; the system renders a grouped bar chart.',
+      '- When those columns are the PARTS OF ONE WHOLE for a single row (e.g. visitor sources:',
+      '  self-registered / sponsored / self-funded / on-site), give "values" with kind pie or donut —',
+      '  the system turns each column into a slice, taking the total row (max 6 slices).',
       '- If the section discusses ANY comparable numbers, attach a chart. Do not settle for prose.',
       '- Pick kind by intent: bar for magnitude, line for change across years, pie for a few parts of a whole.',
       '  ```',
@@ -80,6 +83,9 @@ function sectionSystem(locale?: string): string {
     '  {"table":"<id>","label":"<欄位名>","value":"<欄位名>","kind":"bar|line|pie|donut","title":"標題","unit":"人數"}',
     '- 若同一列有多個值得並排比較的數值欄（例如「今年預登／今年報到／上屆預登／上屆報到」），',
     '  改給 "values":["欄位A","欄位B",...]（最多 4 個），系統會畫成分組長條；此時 value 可省略。',
+    '- 若那幾個欄是**同一列構成一個整體**（例如訪客來源：自行預登／駐外補助／駐外自費／',
+    '  廠商申請補助／現場報名），一樣給 "values" 但 kind 用 pie 或 donut——系統會取合計列，',
+    '  把每個欄畫成一塊切片（最多 6 塊）。這類構成資料用圓餅遠比長條清楚。',
     '- **只要本節談到任何可比較的數字，就該附圖**；資料表在上面列著，不要只寫文字。',
     '- kind 依這一節在講什麼選：比大小用 bar、隨年度變化用 line、少數幾塊構成整體用 pie。',
     '  選不定就給 bar；donut 與 pie 規則相同，只是中央留白。',
@@ -125,14 +131,22 @@ function minPointsFor(kind: ChartKind): number {
  * 目前一節只採用第一個有效區塊——一節多圖牽涉版面與各自的說明文字，是另一個設計問題。
  *
  * tag 後面要求緊接換行，所以 `chart` 不會誤吃 `chart-ref`（後者接的是 `-`）。
+ *
+ * 兩個實跑時踩到的漏網情形，兩者都會讓裸 JSON 原樣印給讀者看：
+ * - 行尾是 CRLF：`[ \t]*\n` 吃不掉中間的 `\r`。先把行尾正規化成 LF 一次解決。
+ * - 區塊沒有閉合的 ```：LLM 輸出被 maxTokens 截斷時就是這樣。收尾那一段照樣要移除——
+ *   沒有閉合的區塊在 markdown 裡本來就會把後面全部吃成程式碼區塊，留著只會更糟。
  */
 function stripBlocks(raw: string, tag: string): { body: string; payloads: string[] } {
-  const re = new RegExp('```' + tag + '[ \\t]*\\n([\\s\\S]*?)```', 'g');
+  const text = raw.replace(/\r\n/g, '\n');
   const payloads: string[] = [];
-  const body = raw.replace(re, (_m, inner: string) => {
+  const take = (_m: string, inner: string): string => {
     payloads.push(inner);
     return '';
-  });
+  };
+  const body = text
+    .replace(new RegExp('```' + tag + '[ \\t]*\\n([\\s\\S]*?)```', 'g'), take)
+    .replace(new RegExp('```' + tag + '[ \\t]*\\n([\\s\\S]*)$'), take);
   return { body: body.replace(/\n{3,}/g, '\n\n').trim(), payloads };
 }
 
@@ -515,7 +529,7 @@ async function autoChartFrom(
  * 對它要求圓餅只會因超過扇形上限而退回長條——想畫佔比就得找到那張兩三列的統計表。
  * 找不到就回到預設行為，不會因為挑不到理想形狀而整節沒圖。
  */
-async function autoChart(
+export async function autoChart(
   tenantId: string,
   shortlist: TableCatalogEntry[],
   query: string,
@@ -530,12 +544,21 @@ async function autoChart(
   const pool = fresh.length > 0 ? fresh : shortlist;
 
   if (looksLikeProportion(query)) {
+    /*
+     * 原本「第一張畫得出 donut 的就收工」，實測永遠選到那張只有兩列的參觀者統計
+     * （Taiwan／Overseas），於是整份報告的圓餅清一色兩片——那是資訊量最低的圓餅。
+     * 改成偏好切片較多的；找到三片以上就停手，不必為了挑最大的把候選全部載入。
+     */
+    let best: { id: string; chart: SectionChart } | undefined;
     for (const entry of pool.slice(0, AUTO_CHART_TRIES)) {
       const chart = await autoChartFrom(tenantId, entry, 'donut');
-      if (chart?.kind === 'donut') {
-        used.add(entry.id);
-        return chart;
-      }
+      if (chart?.kind !== 'donut') continue;
+      if (!best || chart.points.length > best.chart.points.length) best = { id: entry.id, chart };
+      if (best.chart.points.length >= 3) break;
+    }
+    if (best) {
+      used.add(best.id);
+      return best.chart;
     }
   }
   const chart = await autoChartFrom(tenantId, pool[0]);
@@ -584,6 +607,55 @@ function buildGroupedChart(
 }
 
 /**
+ * 一列跨欄的構成圖：把指定的那幾個**欄**變成圓餅的切片。
+ *
+ * 「自行預登／駐外補助／駐外自費／廠商申請補助／現場報名」這種來源構成，在試算表裡
+ * 是同一列的五個欄位；而 label/value 的形狀只讀得出「一欄當標籤、一欄當數值」，
+ * buildGroupedChart 又寫死了分組長條，於是這類最典型的佔比資料反而畫不出圓餅。
+ *
+ * 取哪一列有合計列就用合計列（那才是「整體」），否則只在整張表僅一列資料時用它。
+ * 多列又沒有合計列時不畫：要畫哪一列是語意問題，程式既不猜，也不自行加總——
+ * 加總出來的數字不在任何一個儲存格裡，就不再是「直接讀自原始資料」。
+ */
+function buildSlicedChart(
+  table: StoredTable,
+  ref: ChartRef,
+  cols: string[],
+): SectionChart | undefined {
+  const li = table.headers.indexOf(ref.label);
+  const idx = cols.map((c) => table.headers.indexOf(c));
+  if (li < 0 || idx.some((i) => i < 0 || i === li)) return undefined;
+
+  const named = table.rows.filter((r) => (r[li] ?? '').trim() !== '');
+  const total = named.find((r) => TOTAL_LABELS.has((r[li] ?? '').trim()));
+  const data = named.filter((r) => !TOTAL_LABELS.has((r[li] ?? '').trim()));
+  const row = total ?? (data.length === 1 ? data[0] : undefined);
+  if (!row) return undefined;
+
+  const points: { label: string; value: number }[] = [];
+  cols.forEach((name, k) => {
+    const value = parseCellNumber(row[idx[k]] ?? '');
+    // 缺值的欄不成切片：補 0 會在圓餅上生出一塊不存在的區塊
+    if (value !== null) points.push({ label: name, value });
+  });
+
+  const kind = resolveChartKind(ref.kind, points.map((p) => p.label), points.map((p) => p.value));
+  if (points.length < minPointsFor(kind)) return undefined;
+
+  const where = `${table.source} / ${table.sheet}${table.caption ? `（${table.caption}）` : ''}`;
+  return {
+    kind,
+    complete: true,
+    title: ref.title?.trim() || table.sheet,
+    ...(ref.unit?.trim() ? { unit: ref.unit.trim() } : {}),
+    points,
+    sourceLabel: where,
+    totalRows: points.length,
+    sliced: (row[li] ?? '').trim(),
+  };
+}
+
+/**
  * 依 LLM 的挑選，從結構化表算出圖表。**數值全部由此處讀出，LLM 只負責挑表與欄位。**
  *
  * 這是 B 案的重點：讓模型做它擅長的（理解「這一節在問各國人數」對應到哪張表的哪兩欄），
@@ -599,6 +671,12 @@ export async function buildExactChart(
   // values 給了多個欄位就走分組長條；只有一個或沒給則沿用單數列路徑
   const cols = Array.isArray(ref.values) ? ref.values.filter((c) => typeof c === 'string') : [];
   if (cols.length >= 2) {
+    /*
+     * 同樣是「多個欄」，要圓餅與要長條的意思完全不同：前者是一列的構成（欄變切片），
+     * 後者是多列的並排比較（欄變數列）。切片不套 MAX_SERIES——那個上限是為了分組長條
+     * 的可讀性，圓餅自有 MAX_PIE_SLICES 把關。
+     */
+    if (ref.kind === 'pie' || ref.kind === 'donut') return buildSlicedChart(table, ref, cols);
     return buildGroupedChart(table, ref, cols.slice(0, MAX_SERIES));
   }
 
@@ -647,13 +725,18 @@ export function extractChartRef(raw: string): { body: string; ref?: ChartRef } {
   for (const payload of payloads) {
     try {
       const parsed = JSON.parse(payload) as Partial<ChartRef>;
-      if (
-        typeof parsed.table === 'string' &&
-        typeof parsed.label === 'string' &&
-        typeof parsed.value === 'string'
-      ) {
-        return { body, ref: parsed as ChartRef };
-      }
+      if (typeof parsed.table !== 'string' || typeof parsed.label !== 'string') continue;
+      /*
+       * value 與 values 二擇一即可。prompt 明說「給了 values 時 value 可省略」，
+       * 但這裡原本硬性要求 value 是字串——模型照著 prompt 做，ref 就被整個丟掉，
+       * 於是分組長條與構成圖從 chart-ref 這條路根本走不到。
+       */
+      const cols = Array.isArray(parsed.values)
+        ? parsed.values.filter((c): c is string => typeof c === 'string')
+        : [];
+      const value = typeof parsed.value === 'string' && parsed.value !== '' ? parsed.value : cols[0];
+      if (value === undefined) continue;
+      return { body, ref: { ...parsed, value } as ChartRef };
     } catch {
       // 這一個壞掉，繼續看下一個
     }

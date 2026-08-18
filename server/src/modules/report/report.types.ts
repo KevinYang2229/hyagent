@@ -75,6 +75,13 @@ export interface SectionChart {
   sourceLabel?: string;
   /** complete 時：表的總列數。points 若少於它，代表只取了前幾名 */
   totalRows?: number;
+  /**
+   * 切片型圖表（一列跨欄的構成）取自哪一列的標籤。
+   *
+   * 這種圖的每一片是一個**欄**而不是一列，說明文字不能沿用「共 N 列」的講法——
+   * 一張取自「總計」列的五片甜甜圈被描述成「全部 5 列」，圖是對的、話是錯的。
+   */
+  sliced?: string;
 }
 
 /** 彙整完成的一節 */
