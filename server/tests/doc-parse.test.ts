@@ -1,6 +1,7 @@
 /** 上傳檔解析：格式判定以 magic bytes 為準；可取得結構者轉 Markdown（標題/表格保留）。 */
 import { detectFormat, htmlToMarkdown, parseDocument } from '@/modules/knowledge/doc-parse';
 import { makeDocx, para, table } from './helpers/make-docx';
+import { makeXlsx } from './helpers/make-xlsx';
 
 const OLE2 = Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1, 0x00, 0x00]);
 const ZIP = Buffer.concat([Buffer.from([0x50, 0x4b, 0x03, 0x04]), Buffer.alloc(8)]);
@@ -31,11 +32,26 @@ describe('detectFormat', () => {
   });
 
   it('宣稱二進位格式但無對應檔頭（損毀/誤標）→ 400，而非交給 parser 噴難解錯誤', () => {
-    for (const name of ['a.pdf', 'a.doc', 'a.docx']) {
+    for (const name of ['a.pdf', 'a.doc', 'a.docx', 'a.xlsx']) {
       expect(() => detectFormat(name, Buffer.from('這只是純文字'))).toThrow(
         expect.objectContaining({ statusCode: 400 }),
       );
     }
+  });
+
+  it('docx 與 xlsx 同為 PK zip，靠容器內的 part 名稱區分（副檔名誤標仍以內容為準）', async () => {
+    const xlsx = await makeXlsx({ name: '清單', rows: [['年資', '天數']] });
+    expect(detectFormat('表.xlsx', xlsx)).toBe('xlsx');
+    expect(detectFormat('表.docx', xlsx)).toBe('xlsx');
+
+    const docx = await makeDocx(para('內文'));
+    expect(detectFormat('文.xlsx', docx)).toBe('docx');
+  });
+
+  it('.xlsx 但內容是 OLE2（舊版 .xls 改副檔名）→ 400，而非交給 word-extractor 抽出雜訊', () => {
+    expect(() => detectFormat('舊表.xlsx', OLE2)).toThrow(
+      expect.objectContaining({ statusCode: 400 }),
+    );
   });
 });
 
@@ -132,5 +148,119 @@ describe('parseDocument', () => {
   it('md 視為已有結構', async () => {
     const out = await parseDocument('規章.md', Buffer.from('## 條文\n內容'));
     expect(out).toMatchObject({ format: 'md', fidelity: 'structured' });
+  });
+});
+
+describe('parseDocument — xlsx', () => {
+  it('每張工作表轉成 Markdown 表格，表名當標題（chunk 才帶得到「這張表在講什麼」）', async () => {
+    const buf = await makeXlsx(
+      {
+        name: '特休天數',
+        rows: [
+          ['年資', '天數'],
+          ['1年', 7],
+        ],
+      },
+      { name: '加班費率', rows: [['時段', '倍率'], ['平日', 1.34]] },
+    );
+    const out = await parseDocument('人事規章.xlsx', buf);
+
+    expect(out.format).toBe('xlsx');
+    expect(out.fidelity).toBe('structured');
+    expect(out.text).toContain('## 特休天數');
+    expect(out.text).toContain('| 年資 | 天數 |');
+    expect(out.text).toContain('| 1年 | 7 |');
+    expect(out.text).toContain('## 加班費率');
+    expect(out.text).toContain('| 平日 | 1.34 |');
+  });
+
+  it('合併儲存格填回每一列，欄位不位移（等同 HTML 表格展開 rowspan）', async () => {
+    const buf = await makeXlsx({
+      name: '管制表',
+      rows: [
+        ['管制代號', '主辦單位', '完成日期'],
+        ['430-04', '教育文化處', '2013/02/04'],
+        [null, '社會福利處', '2013/02/05'],
+        [null, '秘書室', '2013/02/06'],
+      ],
+      merges: ['A2:A4'],
+    });
+    const out = await parseDocument('管制.xlsx', buf);
+
+    expect(out.text).toContain('| 430-04 | 教育文化處 | 2013/02/04 |');
+    expect(out.text).toContain('| 430-04 | 社會福利處 | 2013/02/05 |');
+    expect(out.text).toContain('| 430-04 | 秘書室 | 2013/02/06 |');
+  });
+
+  it('公式取計算結果、超連結只留錨點文字（使用者問的是數字，不是 =SUM(...)）', async () => {
+    const buf = await makeXlsx({
+      name: '費用',
+      rows: [
+        ['項目', '金額'],
+        ['交通', 100],
+        ['住宿', 200],
+        ['合計', { formula: 'SUM(B2:B3)', result: 300 }],
+        ['依據', { text: '差旅辦法', hyperlink: 'https://x.test/rule' }],
+      ],
+    });
+    const out = await parseDocument('費用.xlsx', buf);
+
+    expect(out.text).toContain('| 合計 | 300 |');
+    expect(out.text).not.toContain('SUM(B2:B3)');
+    expect(out.text).toContain('| 依據 | 差旅辦法 |');
+    expect(out.text).not.toContain('https://x.test/rule');
+  });
+
+  it('日期輸出為日期字串，不拖著無意義的 T00:00:00.000Z', async () => {
+    const buf = await makeXlsx({
+      name: '期程',
+      rows: [
+        ['階段', '截止'],
+        ['初審', new Date(Date.UTC(2013, 1, 4))],
+      ],
+    });
+    const out = await parseDocument('期程.xlsx', buf);
+
+    // 不斷言確切日期：exceljs 的日期序號在寫入時會帶進執行環境時區，跨機器不穩定
+    expect(out.text).toMatch(/\| 初審 \| \d{4}-\d{2}-\d{2} \|/);
+    expect(out.text).not.toContain('T00:00:00.000Z');
+  });
+
+  it('略過全空列與尾端空欄（格式殘留會把 columnCount 撐大到超出資料範圍）', async () => {
+    const buf = await makeXlsx({
+      name: '規定',
+      rows: [['項目', '說明'], [], ['特休', '依年資計算']],
+      styledBlanks: ['F1'], // 只有樣式沒有值，columnCount 因此變成 6
+    });
+    const out = await parseDocument('規定.xlsx', buf);
+
+    expect(out.text).toContain('| 項目 | 說明 |');
+    expect(out.text).toContain('| 特休 | 依年資計算 |');
+    expect(out.text).not.toContain('|  |  |'); // 空列與空欄都不該留下
+  });
+
+  it('略過隱藏工作表（查表資料／計算暫存，不是給人讀的內容）', async () => {
+    const buf = await makeXlsx(
+      { name: '對外公告', rows: [['公告', '本年度特休依年資計算']] },
+      { name: '內部計算', rows: [['暫存', '請勿外流的試算欄位']], hidden: true },
+    );
+    const out = await parseDocument('公告.xlsx', buf);
+
+    expect(out.text).toContain('## 對外公告');
+    expect(out.text).not.toContain('## 內部計算');
+    expect(out.text).not.toContain('請勿外流的試算欄位');
+  });
+
+  it('儲存格內的管線符號會被跳脫，不會拆散表格結構', async () => {
+    const buf = await makeXlsx({
+      name: '代碼',
+      rows: [
+        ['欄位', '允許值'],
+        ['狀態', '待審|已核|退回'],
+      ],
+    });
+    const out = await parseDocument('代碼.xlsx', buf);
+
+    expect(out.text).toContain('| 狀態 | 待審\\|已核\\|退回 |');
   });
 });

@@ -5,6 +5,7 @@
  * 決定了切塊邊界對不對、chunk 帶不帶得到所屬章節。因此可取得結構的格式一律轉成 Markdown：
  *   docx  → mammoth 轉 HTML（原生 OOXML，樣式資訊完整）→ Markdown
  *   htm   → cheerio 清雜訊 → Markdown（涵蓋 Word「另存為網頁」的產物）
+ *   xlsx  → exceljs 逐張工作表轉 Markdown 表格（工作表名當標題）
  * 取不到結構的格式只能降級為純文字，並以 fidelity='text' 標示：
  *   doc   → word-extractor 讀 OLE2 二進位，僅有文字流
  *   pdf   → pdf-parse，版面固定格式無語意結構
@@ -13,6 +14,7 @@
  */
 import * as cheerio from 'cheerio';
 import type { AnyNode } from 'domhandler';
+import { Workbook, type CellValue, type Worksheet } from 'exceljs';
 import mammoth from 'mammoth';
 import { PDFParse } from 'pdf-parse';
 import TurndownService from 'turndown';
@@ -21,7 +23,7 @@ import WordExtractor from 'word-extractor';
 import { logger } from '@/lib/logger';
 import { AppError } from '@/utils/app-error';
 
-export type DocFormat = 'txt' | 'md' | 'html' | 'docx' | 'doc' | 'pdf';
+export type DocFormat = 'txt' | 'md' | 'html' | 'docx' | 'doc' | 'pdf' | 'xlsx';
 
 /** structured = 標題/清單/表格已保留為 Markdown；text = 僅有純文字流 */
 export type DocFidelity = 'structured' | 'text';
@@ -32,12 +34,21 @@ export interface ParsedDoc {
   fidelity: DocFidelity;
 }
 
-export const SUPPORTED_EXTENSIONS = ['.txt', '.md', '.htm', '.html', '.doc', '.docx', '.pdf'] as const;
+export const SUPPORTED_EXTENSIONS = [
+  '.txt',
+  '.md',
+  '.htm',
+  '.html',
+  '.doc',
+  '.docx',
+  '.pdf',
+  '.xlsx',
+] as const;
 
 const SUPPORTED = new Set<string>(SUPPORTED_EXTENSIONS);
 
 /** 副檔名宣稱是二進位容器者，內容必須通過 magic bytes 驗證 */
-const BINARY_EXT = new Set(['.doc', '.docx', '.pdf']);
+const BINARY_EXT = new Set(['.doc', '.docx', '.pdf', '.xlsx']);
 
 function extOf(name: string): string {
   const i = name.lastIndexOf('.');
@@ -161,6 +172,21 @@ function sniff(buf: Buffer): 'zip' | 'ole2' | 'pdf' | null {
   return null;
 }
 
+/**
+ * ZIP 容器內容判別：docx 與 xlsx 都是 OOXML，檔頭同樣是 PK\x03\x04，magic bytes 分不出來，
+ * 只能看容器裡有哪些 part。zip 的 entry 檔名在 local file header 中是未壓縮的明文，
+ * 直接掃 buffer 就找得到，不必真的解壓。
+ *
+ * word/document.xml 優先判定：內嵌 Excel 圖表的 docx 會夾帶 word/embeddings/*.xlsx，
+ * 但那是巢狀 zip（其內部檔名已被壓縮，掃不到），因此不會反被認成試算表。
+ * 兩者皆無（其他 zip，如 pptx 或改名的壓縮檔）時回 null，交由既有的 docx 預設路徑處理。
+ */
+function zipKind(buf: Buffer): 'docx' | 'xlsx' | null {
+  if (buf.includes('word/document.xml')) return 'docx';
+  if (buf.includes('xl/workbook.xml')) return 'xlsx';
+  return null;
+}
+
 /** 副檔名決定「意圖」，magic bytes 決定「事實」；兩者衝突時以內容為準。 */
 export function detectFormat(name: string, buf: Buffer): DocFormat {
   const ext = extOf(name);
@@ -172,8 +198,16 @@ export function detectFormat(name: string, buf: Buffer): DocFormat {
 
   const magic = sniff(buf);
   if (magic === 'pdf') return 'pdf';
-  if (magic === 'zip') return 'docx';
-  if (magic === 'ole2') return 'doc';
+  // 判不出種類的 zip 一律當 docx（維持既有行為）：mammoth 對非 docx 的 zip 會自己報錯
+  if (magic === 'zip') return zipKind(buf) === 'xlsx' ? 'xlsx' : 'docx';
+  if (magic === 'ole2') {
+    // Excel 97-2003 的 .xls 也是 OLE2，交給 word-extractor 只會抽出一堆二進位雜訊，
+    // 不如在這裡明講——這是「舊檔改個副檔名就上傳」最常見的失敗形態
+    if (ext === '.xlsx') {
+      throw AppError.badRequest('這是舊版 Excel（.xls）格式，請以 Excel 另存為 .xlsx 後再上傳');
+    }
+    return 'doc';
+  }
 
   // 無 magic 代表是文字檔；此時副檔名若宣稱是二進位格式，就是損毀或根本不是該格式
   if (BINARY_EXT.has(ext)) {
@@ -319,6 +353,110 @@ async function parsePdf(buf: Buffer): Promise<string> {
   }
 }
 
+/**
+ * 每張工作表最多取用的資料列數。
+ *
+ * xlsx 的壓縮率極高，10MB 的上限檔可以是數十萬列——全部灌進索引會炸開 embedding 成本，
+ * 而逐列切出的 chunk 對問答幾乎沒有檢索價值。超過就截斷，但必須在文中留下明示標記：
+ * 安靜地少掉一半資料，比直接失敗更難察覺。
+ */
+const MAX_SHEET_ROWS = 2000;
+
+/** Excel 的日期欄多半只有日期；帶時間才輸出完整時刻，免得整欄都拖著無意義的 T00:00:00.000Z */
+function formatCellDate(d: Date): string {
+  const iso = d.toISOString();
+  return iso.endsWith('T00:00:00.000Z') ? iso.slice(0, 10) : iso;
+}
+
+/**
+ * exceljs 的 CellValue 是聯集型別（公式、超連結、RichText 各有各的形狀），統一取其可讀文字。
+ * 公式取 result 而非算式本身——使用者問的是數字，不是 =SUM(B2:B9)。
+ */
+function cellText(value: CellValue): string {
+  if (value === null || value === undefined) return '';
+  if (value instanceof Date) return formatCellDate(value);
+  if (typeof value === 'object') {
+    if ('richText' in value) return value.richText.map((r) => r.text).join('');
+    if ('hyperlink' in value) return cellText(value.text); // 留錨點文字、丟 URL，比照 htmlToMarkdown
+    if ('formula' in value || 'sharedFormula' in value) return cellText(value.result ?? null);
+    if ('error' in value) return ''; // #REF! / #DIV/0! 不是內容，寫進索引只是雜訊
+    return '';
+  }
+  return String(value);
+}
+
+/** 儲存格 → Markdown 表格欄位：管線符號會拆散表格結構，換行會把整列撐破 */
+function mdCell(text: string): string {
+  return text.replace(/\|/g, '\\|').replace(/\s*[\r\n]+\s*/g, ' ').trim();
+}
+
+/** 一列中最後一個有內容的欄位索引（+1 即實際寬度）；全空回 0 */
+function usedWidth(cells: string[]): number {
+  for (let i = cells.length - 1; i >= 0; i--) {
+    if (cells[i] !== '') return i + 1;
+  }
+  return 0;
+}
+
+/**
+ * 單一工作表 → Markdown 表格；無內容回空字串。
+ * 首列當表頭：GFM 表格語法要求要有表頭列，而試算表的第一列實務上就是欄位名。
+ */
+function sheetToMarkdown(ws: Worksheet): string {
+  const width = ws.columnCount;
+  const height = Math.min(ws.rowCount, MAX_SHEET_ROWS);
+  if (width < 1 || height < 1) return '';
+
+  const rows: string[][] = [];
+  for (let r = 1; r <= height; r++) {
+    const cells: string[] = [];
+    for (let c = 1; c <= width; c++) {
+      // master：合併儲存格的內容只存在主格，其餘格回填相同值。等同 HTML 表格展開 rowspan，
+      // 不補的話被合併蓋住的列會少幾格，後面每一欄都往左位移，答案錯得理直氣壯
+      cells.push(mdCell(cellText(ws.getCell(r, c).master.value)));
+    }
+    if (usedWidth(cells) > 0) rows.push(cells); // 整列皆空 = 純排版留白，不進索引
+  }
+  if (rows.length === 0) return '';
+
+  // 收斂寬度：columnCount 取的是最右一個「曾被寫入」的欄，殘留的格式設定常讓它遠超實際
+  // 資料範圍，不裁掉會產出整片空欄的表格
+  const cols = Math.max(...rows.map(usedWidth));
+  const cells = rows.map((r) => r.slice(0, cols));
+
+  const lines = [
+    `| ${cells[0].join(' | ')} |`,
+    `| ${cells[0].map(() => '---').join(' | ')} |`,
+    ...cells.slice(1).map((r) => `| ${r.join(' | ')} |`),
+  ];
+  if (ws.rowCount > height) {
+    lines.push('', `（此工作表共 ${ws.rowCount} 列，僅擷取前 ${MAX_SHEET_ROWS} 列）`);
+  }
+  return lines.join('\n');
+}
+
+async function parseXlsx(buf: Buffer): Promise<string> {
+  const wb = new Workbook();
+  // exceljs 的型別宣告裡 `declare interface Buffer extends ArrayBuffer {}` 是其套件內的區域
+  // 型別，並非 Node 的 Buffer，因此與 @types/node 對不起來。執行期收的就是 Node Buffer，
+  // 這個轉型只是繞過該套件的型別瑕疵。
+  await wb.xlsx.load(buf as unknown as Parameters<typeof wb.xlsx.load>[0]);
+
+  const parts: string[] = [];
+  for (const ws of wb.worksheets) {
+    // 隱藏工作表通常是查表資料或計算暫存，不是給人讀的內容——比照 sanitizeHtml 移除非正文節點
+    if (ws.state === 'hidden' || ws.state === 'veryHidden') {
+      logger.warn({ sheet: ws.name }, 'xlsx hidden sheet skipped');
+      continue;
+    }
+    const md = sheetToMarkdown(ws);
+    if (!md) continue;
+    // 工作表名當標題：切塊後 chunk 才帶得到「這張表在講什麼」，否則只剩一堆無主的數字列
+    parts.push(`## ${ws.name}\n\n${md}`);
+  }
+  return parts.join('\n\n');
+}
+
 async function parseLegacyDoc(buf: Buffer): Promise<string> {
   const doc = await new WordExtractor().extract(buf);
   return doc.getBody();
@@ -338,6 +476,8 @@ export async function parseDocument(name: string, buf: Buffer): Promise<ParsedDo
       return { text: htmlToMarkdown(decodeText(buf, { html: true })), format, fidelity: 'structured' };
     case 'docx':
       return { text: await parseDocx(buf), format, fidelity: 'structured' };
+    case 'xlsx':
+      return { text: await parseXlsx(buf), format, fidelity: 'structured' };
     case 'doc':
       return { text: await parseLegacyDoc(buf), format, fidelity: 'text' };
     case 'pdf':

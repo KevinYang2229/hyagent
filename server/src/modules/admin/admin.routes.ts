@@ -41,7 +41,7 @@ const router = Router();
 
 /**
  * 知識庫檔案上傳限制：memoryStorage、單檔 10MB。
- * 格式白名單（.txt/.md/.htm/.html/.doc/.docx/.pdf）交由 knowledge/doc-parse 依副檔名＋magic bytes 把關（400），
+ * 格式白名單交由 knowledge/doc-parse 的 SUPPORTED_EXTENSIONS 依副檔名＋magic bytes 把關（400），
  * 這裡只把關檔案大小/數量，multer 的 MulterError 轉成統一 AppError（超限 413、其他 400）。
  */
 const KNOWLEDGE_FILE_MAX_MB = 10;

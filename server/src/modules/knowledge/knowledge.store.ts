@@ -43,7 +43,7 @@ export interface KnowledgeFileMeta {
   /** ingest 完成時間（ISO 8601） */
   ingestedAt: string;
   /** 實際解析採用的格式（依 magic bytes 判定，未必等同副檔名）；舊紀錄無此欄 */
-  format?: 'txt' | 'md' | 'html' | 'docx' | 'doc' | 'pdf';
+  format?: 'txt' | 'md' | 'html' | 'docx' | 'doc' | 'pdf' | 'xlsx';
   /**
    * 結構保真度：structured = 標題/表格已保留；text = 僅純文字。
    * text 者（doc/pdf）檢索準確度較低，admin 據此提示使用者改上傳 docx。

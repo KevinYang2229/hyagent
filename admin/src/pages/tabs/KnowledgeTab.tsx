@@ -15,6 +15,19 @@ import NumberField from "../../components/NumberField";
 const EMBEDDING_MODELS = ["text-embedding-3-large", "text-embedding-3-small"];
 type SourceKind = "website" | "file";
 
+/**
+ * 知識庫可上傳的副檔名，需與 server 端 doc-parse 的 SUPPORTED_EXTENSIONS 一致。
+ *
+ * accept、拖放白名單與提示文案共用這一份：三處分開寫必然漂移——只放寬 accept 的話，
+ * 檔案挑得到卻拖不進來，而且錯在前端，使用者連 server 的錯誤訊息都看不到。
+ */
+const KNOWLEDGE_EXTS = ["txt", "md", "htm", "html", "doc", "docx", "pdf", "xlsx"];
+const KNOWLEDGE_ACCEPT = KNOWLEDGE_EXTS.map((e) => `.${e}`).join(",");
+/** 顯示用：htm 與 html 對使用者是同一件事，只列一個 */
+const KNOWLEDGE_EXT_LABELS = KNOWLEDGE_EXTS.filter((e) => e !== "html").map((e) =>
+  e.toUpperCase(),
+);
+
 export default function KnowledgeTab({
   tenantId,
   onError,
@@ -283,7 +296,7 @@ export default function KnowledgeTab({
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".txt,.md,.htm,.html,.doc,.docx,.pdf"
+                  accept={KNOWLEDGE_ACCEPT}
                   style={{ display: "none" }}
                   onChange={(e) => {
                     const file = e.target.files?.[0];
@@ -317,10 +330,8 @@ export default function KnowledgeTab({
                     const ext = file.name
                       .slice(file.name.lastIndexOf(".") + 1)
                       .toLowerCase();
-                    if (
-                      !["txt", "md", "htm", "html", "doc", "docx", "pdf"].includes(ext)
-                    ) {
-                      toast.error("僅支援 TXT、MD、HTM、DOC、DOCX、PDF 檔案");
+                    if (!KNOWLEDGE_EXTS.includes(ext)) {
+                      toast.error(`僅支援 ${KNOWLEDGE_EXT_LABELS.join("、")} 檔案`);
                       return;
                     }
                     pickFile(file);
@@ -356,7 +367,9 @@ export default function KnowledgeTab({
                       <div className="kdrop-sub">
                         {pendingFile
                           ? `${Math.max(1, Math.round(pendingFile.size / 1024))} KB，支援重新點擊更換檔案`
-                          : "支援 TXT・MD・HTM・DOC・DOCX・PDF，單檔上限 10MB（DOCX 檢索準確度最佳）"}
+                          : // 括號內改點名弱的一端：xlsx 與 docx 同屬保留得到結構的格式，
+                            // 再寫「DOCX 準確度最佳」就不對了
+                            `支援 ${KNOWLEDGE_EXT_LABELS.join("・")}，單檔上限 10MB（DOC、PDF 取不到文件結構，檢索準確度較低）`}
                       </div>
                     </>
                   )}
