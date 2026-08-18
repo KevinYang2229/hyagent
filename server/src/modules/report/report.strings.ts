@@ -6,7 +6,7 @@
  */
 import { env } from '@/config/env';
 import { normalizeLocale } from '@/lib/locale';
-import type { ReportSection, SectionSource } from './report.types';
+import type { ChartKind, ReportSection, SectionSource } from './report.types';
 
 /** 查無資料節的固定語句（中英各一） */
 export function emptySectionText(locale: string): string {
@@ -45,16 +45,25 @@ export function exactChartCaptionText(
   points: number,
   totalRows: number,
   sourceLabel: string,
+  kind?: ChartKind,
 ): string {
   const partial = points < totalRows;
+  /*
+   * 節錄的方式因類型而異，說法必須跟著變：長條與圓餅依數值遞減取「前 N 筆」，
+   * 折線依年份遞增取**最後** N 筆（也就是最近的 N 年）。兩者都寫成「前 N 筆」的話，
+   * 一張 2014–2025 的折線會被說成「16 列中的前 12 筆」——那是不實的描述。
+   */
+  const recent = kind === 'line';
   if (normalizeLocale(locale) === 'en') {
-    return partial
-      ? `Top ${points} of ${totalRows} rows, read directly from ${sourceLabel}.`
-      : `All ${totalRows} rows, read directly from ${sourceLabel}.`;
+    if (!partial) return `All ${totalRows} rows, read directly from ${sourceLabel}.`;
+    return recent
+      ? `Most recent ${points} of ${totalRows} rows, read directly from ${sourceLabel}.`
+      : `Top ${points} of ${totalRows} rows, read directly from ${sourceLabel}.`;
   }
-  return partial
-    ? `取自 ${sourceLabel} 共 ${totalRows} 列中的前 ${points} 筆，數值直接讀自原始資料。`
-    : `取自 ${sourceLabel} 全部 ${totalRows} 列，數值直接讀自原始資料。`;
+  if (!partial) return `取自 ${sourceLabel} 全部 ${totalRows} 列，數值直接讀自原始資料。`;
+  return recent
+    ? `取自 ${sourceLabel} 共 ${totalRows} 列中最近的 ${points} 筆，數值直接讀自原始資料。`
+    : `取自 ${sourceLabel} 共 ${totalRows} 列中的前 ${points} 筆，數值直接讀自原始資料。`;
 }
 
 export function sourcesHeading(locale: string): string {

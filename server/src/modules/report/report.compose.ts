@@ -206,9 +206,12 @@ const MAX_SERIES = 4;
 /** 分組長條的類別上限：類別 × 數列才是實際的長條數 */
 const MAX_GROUPED_CATEGORIES = 8;
 
-/** 標籤是否為年份序列（1900–2099）——折線只在時間序列上成立 */
+/** 年份的字面形式（1900–2099）。欄位判定與標籤判定必須用同一個定義，否則兩處會各說各話 */
+const YEAR_CELL = /^(19|20)\d{2}$/;
+
+/** 標籤是否為年份序列——折線只在時間序列上成立 */
 function looksLikeYears(labels: string[]): boolean {
-  const years = labels.filter((l) => /^(19|20)\d{2}$/.test(l.trim()));
+  const years = labels.filter((l) => YEAR_CELL.test(l.trim()));
   return years.length === labels.length && new Set(years).size === labels.length;
 }
 
@@ -376,10 +379,26 @@ const PREVIEW_ROWS = 12;
 /** 找出第一個數值欄的索引；沒有回 -1 */
 export function firstNumericColumn(table: StoredTable): number {
   for (let c = 0; c < table.headers.length; c++) {
-    const hits = table.rows.filter((r) => parseCellNumber(r[c] ?? '') !== null).length;
-    if (hits >= Math.max(2, Math.ceil(table.rows.length * 0.6))) return c;
+    if (isNumericColumn(table, c)) return c;
   }
   return -1;
+}
+
+/** 一欄要有六成以上的列解析得出數字才算數值欄——少數缺值或備註列不該否決整欄 */
+function isNumericColumn(table: StoredTable, c: number): boolean {
+  const hits = table.rows.filter((r) => parseCellNumber(r[c] ?? '') !== null).length;
+  return hits >= Math.max(2, Math.ceil(table.rows.length * 0.6));
+}
+
+/**
+ * 一欄是否為年份欄。
+ *
+ * 年份解析得出數字，但它是**時間軸的刻度**而不是可以比長短的量：拿 2014…2025 當長條
+ * 長度，每根的差距不到 0.5%，整排看起來都是滿格。數值欄與年份欄因此必須分開判定。
+ */
+function isYearColumn(table: StoredTable, c: number): boolean {
+  const hits = table.rows.filter((r) => YEAR_CELL.test((r[c] ?? '').trim())).length;
+  return hits >= Math.max(2, Math.ceil(table.rows.length * 0.6));
 }
 
 /**
@@ -449,10 +468,27 @@ const AUTO_CHART_TRIES = 5;
  *
  * 實測命中率只有一半上下：同一次呼叫裡模型既要寫文又要挑表，常常寫完就忘了附圖，
  * 而且那是注意力分配問題，把 prompt 講得更用力換不到穩定改善。既然候選清單已經是用
- * 查詢句排序過的，最相關那張表的「第一個文字欄 vs 第一個數值欄」就是合理的預設圖。
+ * 查詢句排序過的，最相關那張表的「維度欄 vs 量值欄」就是合理的預設圖（見 pickChartColumns）。
  *
  * 只在模型完全沒挑時才用，絕不覆蓋它的選擇——它看得到章節的語意，這裡只看得到欄位型別。
  */
+export function pickChartColumns(table: StoredTable): { li: number; vi: number } | undefined {
+  const cols = table.headers.map((_, i) => i);
+  // 量值欄：解析得出數字**且不是年份**。年份是刻度不是量，選錯這一欄整排長條都會滿格
+  const vi = cols.find((i) => isNumericColumn(table, i) && !isYearColumn(table, i));
+  if (vi === undefined) return undefined;
+  /*
+   * 標籤欄取維度：優先非數值欄；整張表都是數字時退而取年份欄——「年度 | 人數」的
+   * 年度就是時間軸，交給 resolveChartKind 會自動變成折線。
+   * 原本取「第一個不是量值欄的欄」，在兩欄都是數字的表上會把人數當標籤、年度當長度。
+   */
+  const li =
+    cols.find((i) => i !== vi && !isNumericColumn(table, i)) ??
+    cols.find((i) => i !== vi && isYearColumn(table, i));
+  if (li === undefined) return undefined;
+  return { li, vi };
+}
+
 async function autoChartFrom(
   tenantId: string,
   entry: TableCatalogEntry,
@@ -460,15 +496,13 @@ async function autoChartFrom(
 ): Promise<SectionChart | undefined> {
   const table = await loadTable(tenantId, entry.id);
   if (!table) return undefined;
-  const vi = firstNumericColumn(table);
-  if (vi < 0) return undefined;
-  // 標籤取第一個不是數值欄的欄位；沒有就放棄（整張表都是數字，沒有東西可以當類別）
-  const li = table.headers.findIndex((_, i) => i !== vi);
-  if (li < 0) return undefined;
+  // 選不出「維度 + 量值」就不畫：畫一張把年份當長度的圖，比沒有圖更糟
+  const picked = pickChartColumns(table);
+  if (!picked) return undefined;
   return buildExactChart(tenantId, {
     table: entry.id,
-    label: table.headers[li],
-    value: table.headers[vi],
+    label: table.headers[picked.li],
+    value: table.headers[picked.vi],
     ...(kind ? { kind } : {}),
     title: `${table.sheet}${table.caption ? `（${table.caption}）` : ''}`,
   });

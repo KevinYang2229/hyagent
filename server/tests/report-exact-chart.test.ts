@@ -138,6 +138,25 @@ describe('renderer：精確圖表的說明文字', () => {
     expect(md).toContain('共 87 列中的前 3 筆');
   });
 
+  /*
+   * 折線的節錄方式跟長條相反：長條依數值遞減取前 N 筆，折線依年份遞增取**最後** N 筆。
+   * 兩者都寫成「前 N 筆」的話，一張 2014–2025 的折線會被說成「16 列中的前 12 筆」——
+   * 圖上的數字沒錯，但描述它的那句話是錯的。
+   */
+  it('折線取的是最近的 N 筆，說明不得寫成「前 N 筆」', () => {
+    const line = { ...exact, kind: 'line' as const, totalRows: 16 };
+    const md = renderMarkdown(doc(line));
+    expect(md).toContain('共 16 列中最近的 3 筆');
+    expect(md).not.toContain('前 3 筆');
+    expect(renderHtml(doc(line))).toContain('共 16 列中最近的 3 筆');
+  });
+
+  it('英文語系同樣區分 top 與 most recent', () => {
+    const en = (chart: ReportSection['chart']) => renderMarkdown({ ...doc(chart), locale: 'en' });
+    expect(en({ ...exact, totalRows: 87 })).toContain('Top 3 of 87 rows');
+    expect(en({ ...exact, kind: 'line' as const, totalRows: 87 })).toContain('Most recent 3 of 87 rows');
+  });
+
   it('HTML 同樣區分兩種可信度', () => {
     expect(renderHtml(doc(exact))).toContain('直接讀自原始資料');
     expect(renderHtml(doc({ ...exact, complete: false, sourceLabel: undefined, totalRows: undefined })))
