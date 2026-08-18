@@ -12,12 +12,16 @@ import { rerankChunks } from '@/modules/knowledge/rerank';
 import { pickRetriever } from '@/modules/knowledge/retriever.pick';
 import type { KnowledgeChunk } from '@/modules/knowledge/retriever.types';
 import { usageStore } from '@/modules/usage/usage.store';
+import { getEmbeddingProvider } from '@/lib/embedding';
 import {
   listTableCatalog,
   loadTable,
+  searchTableCatalog,
   type StoredTable,
   type TableCatalogEntry,
 } from '@/modules/knowledge/knowledge.tables.repo';
+import { knowledgeStore } from '@/modules/knowledge/knowledge.store';
+import { tenantStore } from '@/modules/tenant/tenant.store';
 import type {
   ChartKind,
   OutlineSection,
@@ -281,17 +285,77 @@ export function selectCatalog(
     })
     .sort((a, b) => b.hit - a.hit);
 
-  // 第一輪：每個工作表名最多取 MAX_PER_SHEET 份，讓不同形狀的表都有機會出現
+  return capPerSheet(scored.map((x) => x.t), limit);
+}
+
+/**
+ * 排名融合（Reciprocal Rank Fusion）的常數。k 越大越壓抑「只在單一訊號拿到第一名」的項目。
+ * 取 10：兩個訊號的清單都只有數十項，k 太小會讓任一邊的第一名直接定案，
+ * 失去融合的意義。
+ */
+const RRF_K = 10;
+
+/**
+ * 融合語意與字面兩份排名。
+ *
+ * 實測兩者互有勝負，而且失誤的方式互補：
+ *   語意把「國際**參展商**來源地區分布」對到參觀者的表——它被「來源地區分布」帶走，
+ *         丟掉了最關鍵的類別詞；
+ *   字面把「歷年參展商數量成長**趨勢**」對到參展商統計——它抓得住類別詞，
+ *         卻不知道「趨勢」要的是逐年那張表。
+ * 單用任一邊都會固定在某一類問題上出錯，融合則要求「兩邊都覺得不錯」才排前面。
+ */
+export function fuseRankings(
+  semantic: TableCatalogEntry[],
+  lexical: TableCatalogEntry[],
+): TableCatalogEntry[] {
+  const score = new Map<string, number>();
+  const byId = new Map<string, TableCatalogEntry>();
+  for (const list of [semantic, lexical]) {
+    // 先收斂成「每個工作表一票」再計分。不收斂的話，語意清單裡同一張表的十幾個逐年
+    // 複本各自佔一個名次，等於替同一個答案投十幾票——實測直接融合反而比單用任一邊更差。
+    oncePerSheet(list).forEach((t, i) => {
+      byId.set(t.id, t);
+      score.set(t.id, (score.get(t.id) ?? 0) + 1 / (RRF_K + i + 1));
+    });
+  }
+  return [...score.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([id]) => byId.get(id) as TableCatalogEntry);
+}
+
+/** 每個工作表只留最前面那一筆；融合的投票單位是「工作表」而非「某年度的那一份」 */
+function oncePerSheet(entries: TableCatalogEntry[]): TableCatalogEntry[] {
+  const seen = new Set<string>();
+  const out: TableCatalogEntry[] = [];
+  for (const t of entries) {
+    if (seen.has(t.sheet)) continue;
+    seen.add(t.sheet);
+    out.push(t);
+  }
+  return out;
+}
+
+/**
+ * 同名工作表最多留 MAX_PER_SHEET 份。
+ *
+ * 逐年複本（8-CC-參展商展區 有 16 份）名稱與欄位完全相同，無論用字面或語意排序都會
+ * 擠在一起——不收斂的話 20 個名額被同一張表佔掉十幾個，結構不同的表根本進不了清單。
+ * 不足名額也不補：清單短而多樣，勝過用複本填滿。
+ */
+export function capPerSheet(
+  entries: TableCatalogEntry[],
+  limit: number,
+): TableCatalogEntry[] {
   const perSheet = new Map<string, number>();
   const picked: TableCatalogEntry[] = [];
-  for (const { t } of scored) {
+  for (const t of entries) {
     if (picked.length >= limit) break;
     const n = perSheet.get(t.sheet) ?? 0;
     if (n >= MAX_PER_SHEET) continue;
     perSheet.set(t.sheet, n + 1);
     picked.push(t);
   }
-  // 不足名額也不補：清單短而多樣，勝過用同一張表的複本填滿——那正是原本的問題
   return picked;
 }
 
@@ -607,14 +671,38 @@ export async function composeSection(
     .map((c, i) => `[${i + 1}] ${c.title}${c.url ? `（${c.url}）` : ''}\n${c.content}`)
     .join('\n\n');
 
-  // 目錄查詢失敗不得中斷該節：沒有目錄就退回「只用檢索片段」的舊行為
+  /*
+   * 選表優先走語意相似度。字面重疊（bigram）實測分不出相關與否——「國際參展商來源地區
+   * 分布」對到錯的表拿 30%，對的表只有 15%，訂任何門檻都會誤傷正確的。
+   * 「來源地區分布」與「年度家數」是不是同一件事本來就是語意問題，字面答不了。
+   *
+   * 向量不可用時（未回填、embedding 失敗、file 後端）退回 bigram：它不夠準，但比沒有好。
+   */
+  const intent = `${section.heading}${section.query}`;
   let catalog: TableCatalogEntry[] = [];
   try {
     catalog = await listTableCatalog(tenantId);
   } catch (err) {
     logger.warn({ err, tenantId }, 'table catalog lookup failed; section falls back to excerpts only');
   }
-  const shortlist = selectCatalog(catalog, `${section.heading}${section.query}`);
+  // 取寬一點：融合會先把兩邊各自收斂成每個工作表一筆，太窄會讓候選在收斂後所剩無幾
+  const lexical = selectCatalog(catalog, intent, catalog.length);
+
+  let semantic: TableCatalogEntry[] = [];
+  try {
+    const model = knowledgeStore.getSource(tenantId).embeddingModel;
+    const embedder = getEmbeddingProvider(tenantStore.getTenant(tenantId)?.llmConfig);
+    const { vectors, tokens } = await embedder.embed([intent], model);
+    usageStore.recordEmbeddingUsage(tenantId, tokens, model, embedder.keySource);
+    semantic = await searchTableCatalog(tenantId, vectors[0], CATALOG_LIMIT * 6);
+  } catch (err) {
+    // 向量不可用（未回填、embedding 失敗、file 後端）就只剩字面——不夠準，但比沒有好
+    logger.warn({ err, tenantId }, '語意選表失敗，本節只用字面比對');
+  }
+  const shortlist = capPerSheet(
+    semantic.length > 0 ? fuseRankings(semantic, lexical) : lexical,
+    CATALOG_LIMIT,
+  );
   const catalogBlock = shortlist.length > 0 ? `\n\n可用資料表：\n${catalogPrompt(shortlist)}` : '';
 
   // 最相關的幾張附上真實資料列，讓散文與圖表據同一份數字書寫；載入失敗只是少了預覽

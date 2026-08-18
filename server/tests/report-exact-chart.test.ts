@@ -15,6 +15,7 @@ import {
   buildExactChart,
   extractChartRef,
   firstNumericColumn,
+  fuseRankings,
   parseCellNumber,
   selectCatalog,
   tablePreview,
@@ -236,5 +237,38 @@ describe('selectCatalog 的多樣性收斂', () => {
     const out = selectCatalog(catalog, '展區', 12);
     expect(out.length).toBeLessThan(12);
     expect(out.filter((t) => t.sheet === '8-CC-參展商展區')).toHaveLength(2);
+  });
+});
+
+/**
+ * 選表的排名融合。語意與字面互有勝負，且失誤方式互補：
+ *   語意把「國際參展商來源地區分布」對到參觀者的表——被「來源地區分布」帶走，丟了類別詞；
+ *   字面把「歷年參展商數量成長趨勢」對到參展商統計——抓得住類別詞，不知道趨勢要逐年那張。
+ */
+describe('fuseRankings', () => {
+  const e = (id: string, sheet: string) => ({
+    id, source: 'x.xlsx', sheet, caption: '', headers: ['a', 'b'], rowCount: 5,
+  });
+
+  it('兩邊都靠前的排最前面', () => {
+    const sem = [e('1', 'A'), e('2', 'B'), e('3', 'C')];
+    const lex = [e('3', 'C'), e('1', 'A'), e('2', 'B')];
+    expect(fuseRankings(sem, lex)[0].sheet).toBe('A'); // 1+2 名優於 3+1 名
+  });
+
+  it('同工作表的逐年複本只投一票——不收斂的話等於替同一答案灌票', () => {
+    // 實測直接融合（未收斂）比單用任一訊號更差，就是被這個放大的：
+    // 語意清單裡「重複表」佔滿前十名，正解被擠到第十一，未收斂時它必輸。
+    const sem = [
+      ...Array.from({ length: 10 }, (_, i) => e(`d${i}`, '重複表')),
+      e('right', '正解表'),
+    ];
+    const lex = [e('right', '正解表'), e('other', '其他表'), e('d0', '重複表')];
+    expect(fuseRankings(sem, lex)[0].sheet).toBe('正解表');
+  });
+
+  it('只出現在單邊的項目仍會進入結果，只是排在後面', () => {
+    const out = fuseRankings([e('1', 'A')], [e('2', 'B')]);
+    expect(out.map((t) => t.sheet).sort()).toEqual(['A', 'B']);
   });
 });

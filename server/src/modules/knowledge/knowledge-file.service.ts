@@ -29,7 +29,7 @@ import {
   squash,
 } from './ingest.service';
 import { parseDocument } from './doc-parse';
-import { deleteTablesByFile, saveTables } from './knowledge.tables.repo';
+import { deleteTablesByFile, saveTables, tableDescriptor } from './knowledge.tables.repo';
 import type { IndexedChunk } from './knowledge-index.types';
 import { knowledgeStore, type KnowledgeFileMeta } from './knowledge.store';
 import { refreshSuggestedPrompts } from './knowledge.suggest';
@@ -149,7 +149,23 @@ export async function ingestFile(
    */
   if (parsed.tables?.length) {
     try {
-      const n = await saveTables(tenantId, fileId, name, parsed.tables);
+      /*
+       * 表的描述句也 embed 一份，供報告依語意挑表。與 chunks 分開：
+       * chunks 是「內容」的向量，這裡是「這張表在講什麼」的向量，用途與粒度都不同。
+       * embedding 失敗不阻斷——沒有向量只是選表退回字面比對。
+       */
+      let tableVectors: number[][] | undefined;
+      try {
+        tableVectors = await embedInBatches(
+          embedder,
+          parsed.tables.map((t) => tableDescriptor({ ...t, source: name })),
+          model,
+          (tokens) => usageStore.recordEmbeddingUsage(tenantId, tokens, model, embedder.keySource),
+        );
+      } catch (err) {
+        logger.warn({ err, tenantId, name }, '資料表描述 embedding 失敗，選表將退回字面比對');
+      }
+      const n = await saveTables(tenantId, fileId, name, parsed.tables, tableVectors);
       logger.info({ tenantId, name, tables: parsed.tables.length, rows: n }, '結構化表已留存');
     } catch (err) {
       logger.warn({ err, tenantId, name }, '結構化表留存失敗，匯入照常完成（報告將無法畫精確圖）');
