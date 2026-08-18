@@ -139,3 +139,31 @@ describe('looksLikeProportion', () => {
     }
   });
 });
+
+/**
+ * 跨節不重複用表。自動補圖只看「最相關的表 + 欄位型別」，同一張表很容易在多節之間
+ * 重複中選——實測一份報告有三節都畫了同一張 6-CC-參展商家數，讀者看到三張一樣的圖。
+ */
+describe('類別配色', () => {
+  it('圓餅各塊用不同色相，而非同色深淺——類別要靠色相區分', () => {
+    const html = renderHtml(doc({
+      ...base, kind: 'donut', title: 'x',
+      points: [{ label: 'a', value: 3 }, { label: 'b', value: 2 }, { label: 'c', value: 1 }],
+    }));
+    const fills = [...html.matchAll(/<path d="M 110 110[^"]*" fill="(#[0-9a-f]{6})"/g)].map((m) => m[1]);
+    expect(new Set(fills).size).toBe(3);
+    // 同色相深淺的舊配色（#0b6bcb / #2f83d6 / #5a9be0）辨識度不足，不應再出現
+    expect(fills).not.toContain('#2f83d6');
+    expect(fills).not.toContain('#5a9be0');
+  });
+
+  it('分組長條的各數列同樣用可區分的色相', () => {
+    const html = renderHtml(doc({
+      ...base, kind: 'grouped', title: 'g', series: ['甲', '乙'],
+      points: [{ label: 'A', value: 1, values: [1, 2] }, { label: 'B', value: 3, values: [3, 4] }],
+    }));
+    // 圖例的色塊：y="4" 那一列。屬性順序不固定，用 [^>]* 跨過 width/height
+    const fills = [...html.matchAll(/<rect [^>]*y="4"[^>]*fill="(#[0-9a-f]{6})"/g)].map((m) => m[1]);
+    expect(new Set(fills).size).toBe(2);
+  });
+});

@@ -421,14 +421,28 @@ async function autoChart(
   tenantId: string,
   shortlist: TableCatalogEntry[],
   query: string,
+  used: Set<string>,
 ): Promise<SectionChart | undefined> {
+  /*
+   * 排除整份報告已經用過的表。自動補圖只看「最相關的表 + 欄位型別」，同一張表很容易
+   * 在多節之間重複中選——實測一份報告有三節都畫了同一張 6-CC-參展商家數，讀者看到的
+   * 是三張一樣的圖。優先換一張沒用過的；全都用過了才退回原本的選擇（有圖仍勝過沒圖）。
+   */
+  const fresh = shortlist.filter((t) => !used.has(t.id));
+  const pool = fresh.length > 0 ? fresh : shortlist;
+
   if (looksLikeProportion(query)) {
-    for (const entry of shortlist.slice(0, AUTO_CHART_TRIES)) {
+    for (const entry of pool.slice(0, AUTO_CHART_TRIES)) {
       const chart = await autoChartFrom(tenantId, entry, 'donut');
-      if (chart?.kind === 'donut') return chart;
+      if (chart?.kind === 'donut') {
+        used.add(entry.id);
+        return chart;
+      }
     }
   }
-  return autoChartFrom(tenantId, shortlist[0]);
+  const chart = await autoChartFrom(tenantId, pool[0]);
+  if (chart) used.add(pool[0].id);
+  return chart;
 }
 
 /**
@@ -561,11 +575,17 @@ function toSources(chunks: KnowledgeChunk[]): SectionSource[] {
   return chunks.map((c) => (c.url ? { title: c.title, url: c.url } : { title: c.title }));
 }
 
+export interface ComposeOptions {
+  /** 整份報告已被自動補圖用過的表 id；跨節共用同一個 Set，避免多節畫出同一張圖 */
+  usedTables?: Set<string>;
+}
+
 export async function composeSection(
   tenantId: string,
   section: OutlineSection,
   locale: string | undefined,
   llm: LLMProvider,
+  opts: ComposeOptions = {},
 ): Promise<ReportSection> {
   const base = { heading: section.heading, query: section.query };
 
@@ -637,6 +657,8 @@ export async function composeSection(
     if (refOut.ref) {
       try {
         exact = await buildExactChart(tenantId, refOut.ref);
+        // 模型挑的也要記進去，否則後面的節會用自動補圖再畫一次同一張表
+        if (exact) opts.usedTables?.add(refOut.ref.table);
       } catch (err) {
         logger.warn({ err, tenantId, table: refOut.ref.table }, 'exact chart build failed');
       }
@@ -647,7 +669,12 @@ export async function composeSection(
     // 模型沒挑就自動補：加再多圖型，模型不選也看不到
     if (!chart && shortlist.length > 0) {
       try {
-        chart = await autoChart(tenantId, shortlist, `${section.heading}${section.query}`);
+        chart = await autoChart(
+          tenantId,
+          shortlist,
+          `${section.heading}${section.query}`,
+          opts.usedTables ?? new Set(),
+        );
         if (chart) logger.info({ tenantId, heading: section.heading }, '章節圖表由系統自動補上');
       } catch (err) {
         logger.warn({ err, tenantId }, 'auto chart failed');

@@ -84,8 +84,12 @@ export function startReportJob(params: StartReportParams, deps: ReportJobDeps = 
       // 逐節序列執行：併發會讓同租戶的 embedding / rerank 呼叫尖峰疊在一起，
       // 而報告本來就是非同步任務，沒有必要用尖峰換那幾秒
       const sections: ReportSection[] = [];
+      // 跨節共用：自動補圖只看「最相關的表 + 欄位型別」，不記錄的話同一張表會被多節重複選中
+      const usedTables = new Set<string>();
       for (const section of plan.sections) {
-        sections.push(await compose(params.tenantId, section, params.locale, params.llm));
+        sections.push(
+          await compose(params.tenantId, section, params.locale, params.llm, { usedTables }),
+        );
         job.doneSections += 1;
       }
 
