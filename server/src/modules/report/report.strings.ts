@@ -30,9 +30,35 @@ export function degradedNoticeText(locale: string): string {
  * 這是圖表相對於散文特別危險的地方：散文會說「根據檢索到的資料」，圖表不會自己聲明範圍。
  */
 export function chartCaptionText(locale: string, points: number, hits: number): string {
+  const en = normalizeLocale(locale) === 'en';
+  const detail = excerptDetail(locale, points, hits);
+  return en ? `${detail} — ${captionSuffix(locale, false)}` : `${detail}，${captionSuffix(locale, false)}`;
+}
+
+/**
+ * 可信度標記：一眼可辨的等級，HTML renderer 把它做成圖表旁的憑證標籤。
+ *
+ * 這份報告的主題其實是「這些數字可不可信」——每一張圖都得交代它是原始資料還是節錄。
+ * 把那件事從灰色小字提升成看得見的標記，是這份版面唯一刻意張揚的地方。
+ */
+export function captionTag(locale: string, complete: boolean): string {
+  if (normalizeLocale(locale) === 'en') return complete ? 'From source' : 'Excerpt';
+  return complete ? '原始資料' : '節錄';
+}
+
+/** 可信度的完整句尾：flat 版說明（md / docx / xlsx）用它把 detail 收成一句話 */
+export function captionSuffix(locale: string, complete: boolean): string {
+  if (normalizeLocale(locale) === 'en') {
+    return complete ? 'read directly from the source.' : 'a sample, not the full data set.';
+  }
+  return complete ? '數值直接讀自原始資料。' : '屬節錄而非完整母體。';
+}
+
+/** 節錄圖的細節：可回頭核對的範圍描述，不含可信度的評語 */
+export function excerptDetail(locale: string, points: number, hits: number): string {
   return normalizeLocale(locale) === 'en'
-    ? `${points} data points drawn from ${hits} retrieved excerpts — a sample, not the full data set.`
-    : `依 ${hits} 個檢索片段整理出的 ${points} 筆資料，屬節錄而非完整母體。`;
+    ? `${points} data points drawn from ${hits} retrieved excerpts`
+    : `依 ${hits} 個檢索片段整理出的 ${points} 筆資料`;
 }
 
 /**
@@ -41,6 +67,14 @@ export function chartCaptionText(locale: string, points: number, hits: number): 
  * 讀者必須看得出手上這張圖是哪一種。
  */
 export function exactChartCaptionText(locale: string, chart: SectionChart): string {
+  const detail = exactDetail(locale, chart);
+  return normalizeLocale(locale) === 'en'
+    ? `${detail}, ${captionSuffix(locale, true)}`
+    : `${detail}，${captionSuffix(locale, true)}`;
+}
+
+/** 精確圖的細節：取自哪一張表的哪個範圍。可信度的評語由 captionSuffix 接手 */
+export function exactDetail(locale: string, chart: SectionChart): string {
   const points = chart.points.length;
   const totalRows = chart.totalRows ?? points;
   const sourceLabel = chart.sourceLabel ?? '';
@@ -51,8 +85,8 @@ export function exactChartCaptionText(locale: string, chart: SectionChart): stri
    */
   if (chart.sliced) {
     return normalizeLocale(locale) === 'en'
-      ? `${points} columns from the "${chart.sliced}" row of ${sourceLabel}, read directly from the source.`
-      : `取自 ${sourceLabel} 的「${chart.sliced}」一列共 ${points} 個項目，數值直接讀自原始資料。`;
+      ? `${points} columns from the "${chart.sliced}" row of ${sourceLabel}`
+      : `取自 ${sourceLabel} 的「${chart.sliced}」一列共 ${points} 個項目`;
   }
   const partial = points < totalRows;
   /*
@@ -62,15 +96,15 @@ export function exactChartCaptionText(locale: string, chart: SectionChart): stri
    */
   const recent = kind === 'line';
   if (normalizeLocale(locale) === 'en') {
-    if (!partial) return `All ${totalRows} rows, read directly from ${sourceLabel}.`;
+    if (!partial) return `All ${totalRows} rows from ${sourceLabel}`;
     return recent
-      ? `Most recent ${points} of ${totalRows} rows, read directly from ${sourceLabel}.`
-      : `Top ${points} of ${totalRows} rows, read directly from ${sourceLabel}.`;
+      ? `Most recent ${points} of ${totalRows} rows from ${sourceLabel}`
+      : `Top ${points} of ${totalRows} rows from ${sourceLabel}`;
   }
-  if (!partial) return `取自 ${sourceLabel} 全部 ${totalRows} 列，數值直接讀自原始資料。`;
+  if (!partial) return `取自 ${sourceLabel} 全部 ${totalRows} 列`;
   return recent
-    ? `取自 ${sourceLabel} 共 ${totalRows} 列中最近的 ${points} 筆，數值直接讀自原始資料。`
-    : `取自 ${sourceLabel} 共 ${totalRows} 列中的前 ${points} 筆，數值直接讀自原始資料。`;
+    ? `取自 ${sourceLabel} 共 ${totalRows} 列中最近的 ${points} 筆`
+    : `取自 ${sourceLabel} 共 ${totalRows} 列中的前 ${points} 筆`;
 }
 
 /**
@@ -79,6 +113,25 @@ export function exactChartCaptionText(locale: string, chart: SectionChart): stri
  * 試算表裡沒有散文的位置，所以工作表裝的是「圖表背後的數據」：一張章節總表，
  * 加上每張圖各一個工作表。表頭與工作表名同樣要跟著語系走。
  */
+/** 報告開頭的兩個導覽區塊。長報告需要「一眼全貌」與「跳著讀」的入口 */
+export function highlightsHeading(locale: string): string {
+  return normalizeLocale(locale) === 'en' ? 'Key figures' : '重點數字';
+}
+
+export function tocHeading(locale: string): string {
+  return normalizeLocale(locale) === 'en' ? 'Contents' : '目錄';
+}
+
+/**
+ * 重點數字的註腳：這個數字在該圖裡是什麼位置。
+ *
+ * 時間序列看的是最新一期，其餘看的是最大值——標錯的話讀者會以為那是總計。
+ */
+export function highlightNote(locale: string, kind: 'latest' | 'peak', label: string): string {
+  if (normalizeLocale(locale) === 'en') return kind === 'latest' ? `Latest: ${label}` : `Highest: ${label}`;
+  return kind === 'latest' ? `最新：${label}` : `最高：${label}`;
+}
+
 export function sectionsSheetTitle(locale: string): string {
   return normalizeLocale(locale) === 'en' ? 'Sections' : '章節';
 }
@@ -102,15 +155,22 @@ export function sourcesHeading(locale: string): string {
 }
 
 /**
- * 全報告的來源去重：同 title + 同 url 視為同一筆。
+ * 全報告的來源去重：以 title 為準，有連結的那一筆勝出。
+ *
+ * 原本連 url 一起當鍵，於是同一個檔案「某節帶了連結、某節沒帶」會變成兩筆——
+ * 實跑的報告底下就出現兩行 CC匯出.xlsx，一行可點一行不可點。同名不同連結的情況
+ * 在這批資料裡不存在（來源就是檔名），而讀者看到重複的來源只會懷疑報告的嚴謹度。
+ *
  * 以 Map 保序，讓輸出穩定可快照測試。
  */
 export function dedupeSources(sections: ReportSection[]): SectionSource[] {
   const seen = new Map<string, SectionSource>();
   for (const section of sections) {
     for (const source of section.sources) {
-      const key = `${source.title}|${source.url || ''}`;
-      if (!seen.has(key)) seen.set(key, source);
+      const kept = seen.get(source.title);
+      if (kept === undefined) seen.set(source.title, source);
+      // 先出現的沒有連結、後來的有，就換成有連結的那一筆：可點的來源比較有用
+      else if (!safeUrl(kept.url) && safeUrl(source.url)) seen.set(source.title, source);
     }
   }
   return [...seen.values()];

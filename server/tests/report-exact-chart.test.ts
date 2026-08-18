@@ -13,7 +13,7 @@ jest.mock('@/modules/knowledge/knowledge.tables.repo', () => ({
 
 import {
   buildExactChart,
-  extractChartRef,
+  extractChartRefs,
   firstNumericColumn,
   fuseRankings,
   parseCellNumber,
@@ -22,7 +22,7 @@ import {
 } from '@/modules/report/report.compose';
 import { renderHtml } from '@/modules/report/renderers/html';
 import { renderMarkdown } from '@/modules/report/renderers/markdown';
-import type { ReportDoc, ReportSection } from '@/modules/report/report.types';
+import type { ReportDoc, SectionChart } from '@/modules/report/report.types';
 
 const TABLE = {
   id: 'tbl-1',
@@ -56,16 +56,16 @@ describe('parseCellNumber', () => {
   });
 });
 
-describe('extractChartRef', () => {
+describe('extractChartRefs', () => {
   it('抽出挑選結果並移除區塊', () => {
-    const out = extractChartRef('內文。\n\n```chart-ref\n{"table":"tbl-1","label":"國家","value":"人數"}\n```');
+    const out = extractChartRefs('內文。\n\n```chart-ref\n{"table":"tbl-1","label":"國家","value":"人數"}\n```');
     expect(out.body).toBe('內文。');
-    expect(out.ref).toEqual({ table: 'tbl-1', label: '國家', value: '人數' });
+    expect(out.refs[0]).toEqual({ table: 'tbl-1', label: '國家', value: '人數' });
   });
 
   it('缺必要欄位或 JSON 壞掉只丟挑選、保留散文', () => {
-    expect(extractChartRef('x\n```chart-ref\n{"table":"a"}\n```').ref).toBeUndefined();
-    expect(extractChartRef('x\n```chart-ref\n{壞\n```').ref).toBeUndefined();
+    expect(extractChartRefs('x\n```chart-ref\n{"table":"a"}\n```').refs).toHaveLength(0);
+    expect(extractChartRefs('x\n```chart-ref\n{壞\n```').refs).toHaveLength(0);
   });
 });
 
@@ -113,14 +113,14 @@ describe('buildExactChart', () => {
   });
 });
 
-const doc = (chart: ReportSection['chart']): ReportDoc => ({
+const doc = (chart: SectionChart): ReportDoc => ({
   title: '展覽數據報告', topic: '展覽數據', locale: 'zh-Hant',
   generatedAt: '2026-08-18T00:00:00.000Z',
-  sections: [{ heading: '預登', query: 'q', body: '內文。', sources: [], hits: 5, chart }],
+  sections: [{ heading: '預登', query: 'q', body: '內文。', sources: [], hits: 5, charts: [chart] }],
 });
 
 describe('renderer：精確圖表的說明文字', () => {
-  const exact: ReportSection['chart'] = {
+  const exact: SectionChart = {
     kind: 'bar' as const, complete: true, title: '各國預登人數', unit: '人',
     points: [{ label: '中華民國', value: 351 }, { label: '日本', value: 30 }, { label: '美國', value: 22 }],
     sourceLabel: 'TM 匯出.xlsx / 4-TM-參觀者預登國家數', totalRows: 3,
@@ -152,15 +152,15 @@ describe('renderer：精確圖表的說明文字', () => {
   });
 
   it('英文語系同樣區分 top 與 most recent', () => {
-    const en = (chart: ReportSection['chart']) => renderMarkdown({ ...doc(chart), locale: 'en' });
+    const en = (chart: SectionChart) => renderMarkdown({ ...doc(chart), locale: 'en' });
     expect(en({ ...exact, totalRows: 87 })).toContain('Top 3 of 87 rows');
     expect(en({ ...exact, kind: 'line' as const, totalRows: 87 })).toContain('Most recent 3 of 87 rows');
   });
 
   it('HTML 同樣區分兩種可信度', () => {
-    expect(renderHtml(doc(exact))).toContain('直接讀自原始資料');
+    expect(renderHtml(doc(exact))).toContain('prov-exact');
     expect(renderHtml(doc({ ...exact, complete: false, sourceLabel: undefined, totalRows: undefined })))
-      .toContain('節錄');
+      .toContain('prov-sample');
   });
 });
 

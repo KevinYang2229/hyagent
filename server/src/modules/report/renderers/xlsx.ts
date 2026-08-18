@@ -40,7 +40,7 @@ function captionOf(section: ReportSection, chart: SectionChart, locale: string):
 }
 
 /** 章節總表：一份報告有哪幾節、各自問了什麼、命中多少、圖畫在哪張工作表 */
-function addSummary(book: Workbook, doc: ReportDoc, names: Map<ReportSection, string>): void {
+function addSummary(book: Workbook, doc: ReportDoc, names: Map<ReportSection, string[]>): void {
   const sheet = book.addWorksheet(sectionsSheetTitle(doc.locale));
   sheet.addRow([doc.title]).font = { bold: true, size: 14 };
   sheet.addRow([`${doc.topic} · ${formatReportTimestamp(doc.generatedAt)}`]);
@@ -51,7 +51,7 @@ function addSummary(book: Workbook, doc: ReportDoc, names: Map<ReportSection, st
       section.heading,
       section.query,
       section.hits,
-      names.get(section) ?? '',
+      (names.get(section) ?? []).join('、'),
       section.sources.map((s) => s.title).join('、'),
     ]);
   }
@@ -84,13 +84,14 @@ export async function renderXlsx(doc: ReportDoc): Promise<Buffer> {
   book.created = new Date(doc.generatedAt);
 
   const used = new Set<string>();
-  const names = new Map<ReportSection, string>();
+  const names = new Map<ReportSection, string[]>();
   const pending: { chart: SectionChart; caption: string; name: string }[] = [];
   for (const section of doc.sections) {
-    if (!section.chart) continue;
-    const name = sheetName(section.chart.title, used);
-    names.set(section, name);
-    pending.push({ chart: section.chart, caption: captionOf(section, section.chart, doc.locale), name });
+    for (const chart of section.charts ?? []) {
+      const name = sheetName(chart.title, used);
+      names.set(section, [...(names.get(section) ?? []), name]);
+      pending.push({ chart, caption: captionOf(section, chart, doc.locale), name });
+    }
   }
 
   // 總表放最前面：它是目錄，讀者打開檔案第一眼該看到的是全貌

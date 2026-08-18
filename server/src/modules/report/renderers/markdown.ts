@@ -12,13 +12,14 @@ import {
   safeUrl,
   sourcesHeading,
 } from '../report.strings';
-import type { ReportDoc, ReportSection } from '../report.types';
+import type { ReportDoc, ReportSection, SectionChart } from '../report.types';
 
 function sectionBody(section: ReportSection, locale: string): string {
   if (section.hits === 0) return emptySectionText(locale);
   // 內文是 LLM 產生的 Markdown，標題層級要先正規化到章節（##）底下
   const body = normalizeSectionBody(section.body, section.heading);
-  const withChart = section.chart ? `${body}\n\n${chartTable(section, locale)}` : body;
+  const tables = (section.charts ?? []).map((chart) => chartTable(section, chart, locale));
+  const withChart = tables.length > 0 ? [body, ...tables].join('\n\n') : body;
   if (section.degraded) return `> ${degradedNoticeText(locale)}\n\n${withChart}`;
   return withChart;
 }
@@ -27,9 +28,7 @@ function sectionBody(section: ReportSection, locale: string): string {
  * Markdown 沒有可靠的內嵌 SVG 支援（各 viewer 行為不一），所以畫成表格。
  * 表格反而更誠實：數字原樣可讀、可複製核對，不會有「長條看起來差不多」的失真。
  */
-function chartTable(section: ReportSection, locale: string): string {
-  const chart = section.chart;
-  if (!chart) return '';
+function chartTable(section: ReportSection, chart: SectionChart, locale: string): string {
   // complete 與否的可信度差很多，說明必須分開講，不能用同一句帶過
   const caption = chart.complete
     ? exactChartCaptionText(locale, chart)

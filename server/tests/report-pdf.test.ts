@@ -32,10 +32,10 @@ const doc: ReportDoc = {
       body: '本節說明各國預登情形。',
       sources: [{ title: 'CC匯出.xlsx' }],
       hits: 5,
-      chart: {
+      charts: [{
         kind: 'bar', complete: false, title: '各國預登人數', unit: '人',
         points: [{ label: '日本', value: 30 }, { label: '美國', value: 232 }, { label: '德國', value: 11 }],
-      },
+      }],
     },
   ],
 };

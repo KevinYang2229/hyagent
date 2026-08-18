@@ -150,14 +150,15 @@ function stripBlocks(raw: string, tag: string): { body: string; payloads: string
   return { body: body.replace(/\n{3,}/g, '\n\n').trim(), payloads };
 }
 
-/** 抽出 ```chart 區塊（LLM 直接給數值的節錄版）；採用第一個通過驗證的 */
-export function extractChart(raw: string): { body: string; chart?: SectionChart } {
+/** 抽出 ```chart 區塊（LLM 直接給數值的節錄版）；全部通過驗證的都採用 */
+export function extractCharts(raw: string): { body: string; charts: SectionChart[] } {
   const { body, payloads } = stripBlocks(raw, 'chart');
+  const charts: SectionChart[] = [];
   for (const payload of payloads) {
     const chart = parseInlineChart(payload);
-    if (chart) return { body, chart };
+    if (chart) charts.push(chart);
   }
-  return { body };
+  return { body, charts: charts.slice(0, MAX_SECTION_CHARTS) };
 }
 
 /** 解析單一 inline 圖表區塊；不合格回 undefined */
@@ -206,6 +207,15 @@ interface ChartRef {
   /** 模型提出的類型；最終仍由 resolveChartKind 依資料形狀決定 */
   kind?: string;
 }
+
+/**
+ * 一節的圖表上限。
+ *
+ * 模型常常一次吐好幾個 chart-ref（它想畫多張圖），過去只採用第一個、其餘丟掉——
+ * 「訪客來源」那一節同時有五類構成與歷年趨勢，只挑一張等於丟掉一半的資訊。
+ * 但也不能全收：一節塞五張圖，讀者會失去「這節在講什麼」的主線。
+ */
+const MAX_SECTION_CHARTS = 3;
 
 /** 圓餅的扇形上限。超過就分不出角度，長條至少排得出高低 */
 const MAX_PIE_SLICES = 6;
@@ -720,8 +730,10 @@ export async function buildExactChart(
 }
 
 /** 抽出 ```chart-ref 區塊（LLM 挑表）；採用第一個欄位齊全的 */
-export function extractChartRef(raw: string): { body: string; ref?: ChartRef } {
+export function extractChartRefs(raw: string): { body: string; refs: ChartRef[] } {
   const { body, payloads } = stripBlocks(raw, 'chart-ref');
+  const refs: ChartRef[] = [];
+  const seen = new Set<string>();
   for (const payload of payloads) {
     try {
       const parsed = JSON.parse(payload) as Partial<ChartRef>;
@@ -736,12 +748,16 @@ export function extractChartRef(raw: string): { body: string; ref?: ChartRef } {
         : [];
       const value = typeof parsed.value === 'string' && parsed.value !== '' ? parsed.value : cols[0];
       if (value === undefined) continue;
-      return { body, ref: { ...parsed, value } as ChartRef };
+      // 同一張表的同一組欄位重複挑選就會畫出兩張一樣的圖；模型偶爾會這樣
+      const key = `${parsed.table}|${parsed.label}|${value}|${cols.join(',')}|${parsed.kind ?? ''}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      refs.push({ ...parsed, value } as ChartRef);
     } catch {
       // 這一個壞掉，繼續看下一個
     }
   }
-  return { body };
+  return { body, refs: refs.slice(0, MAX_SECTION_CHARTS) };
 }
 
 /** 彙整失敗時的降級內文：直接列出片段（比照知識庫問答的 fallbackReply，依語系加前綴） */
@@ -857,30 +873,36 @@ export async function composeSection(
      * chart-ref 優先於 inline chart：前者的數字由程式從完整資料列讀出，後者是 LLM 的轉述。
      * 兩者都在時取前者——沒有理由拿節錄去蓋掉精確值。
      */
-    const refOut = extractChartRef(result.text ?? '');
-    let exact: SectionChart | undefined;
-    if (refOut.ref) {
+    const refOut = extractChartRefs(result.text ?? '');
+    const exact: SectionChart[] = [];
+    for (const ref of refOut.refs) {
       try {
-        exact = await buildExactChart(tenantId, refOut.ref);
+        const built = await buildExactChart(tenantId, ref);
+        if (!built) continue;
+        exact.push(built);
         // 模型挑的也要記進去，否則後面的節會用自動補圖再畫一次同一張表
-        if (exact) opts.usedTables?.add(refOut.ref.table);
+        opts.usedTables?.add(ref.table);
       } catch (err) {
-        logger.warn({ err, tenantId, table: refOut.ref.table }, 'exact chart build failed');
+        logger.warn({ err, tenantId, table: ref.table }, 'exact chart build failed');
       }
     }
-    const { body, chart: inline } = extractChart(refOut.body);
-    let chart = exact ?? inline;
+    const { body, charts: inline } = extractCharts(refOut.body);
+    // 精確與節錄不混用：同一節裡一張是原始資料、一張是 LLM 轉述，讀者無從分辨可信度
+    let charts = exact.length > 0 ? exact : inline;
 
-    // 模型沒挑就自動補：加再多圖型，模型不選也看不到
-    if (!chart && shortlist.length > 0) {
+    // 模型一張都沒挑才自動補：加再多圖型，模型不選也看不到
+    if (charts.length === 0 && shortlist.length > 0) {
       try {
-        chart = await autoChart(
+        const auto = await autoChart(
           tenantId,
           shortlist,
           `${section.heading}${section.query}`,
           opts.usedTables ?? new Set(),
         );
-        if (chart) logger.info({ tenantId, heading: section.heading }, '章節圖表由系統自動補上');
+        if (auto) {
+          charts = [auto];
+          logger.info({ tenantId, heading: section.heading }, '章節圖表由系統自動補上');
+        }
       } catch (err) {
         logger.warn({ err, tenantId }, 'auto chart failed');
       }
@@ -893,7 +915,7 @@ export async function composeSection(
       body,
       sources: toSources(chunks),
       hits: chunks.length,
-      ...(chart ? { chart } : {}),
+      ...(charts.length > 0 ? { charts } : {}),
     };
   } catch (err) {
     logger.warn({ err, tenantId, heading: section.heading }, 'report section synthesis failed');

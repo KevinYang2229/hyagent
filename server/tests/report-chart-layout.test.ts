@@ -12,7 +12,7 @@ const doc = (chart: SectionChart): ReportDoc => ({
   topic: 't',
   locale: 'zh-Hant',
   generatedAt: '2026-08-18T00:00:00.000Z',
-  sections: [{ heading: 'h', query: 'q', body: '內文。', sources: [], hits: 5, chart }],
+  sections: [{ heading: 'h', query: 'q', body: '內文。', sources: [], hits: 5, charts: [chart] }],
 });
 
 const LONG = '台北國際自行車展覽會參觀者預先登記人數統計';
@@ -138,12 +138,13 @@ describe('列印與 PDF 輸出', () => {
 
   it('頁面邊界交給 @page，列印時 body 不再自行留白', () => {
     expect(html()).toContain('@page{margin:16mm 14mm}');
-    expect(html()).toContain('body{max-width:none;margin:0;padding:0}');
+    expect(html()).toContain('body{max-width:none;margin:0;padding:0;font-size:11pt}');
   });
 
   it('圖表是一個整體，不得被分頁線切開', () => {
-    // .chart 涵蓋標題、SVG 與說明；三者被拆到不同頁比沒有圖還難讀
-    expect(html()).toContain('.chart{break-inside:avoid}');
+    // .chart 涵蓋標題、SVG 與憑證；三者被拆到不同頁比沒有圖還難讀。
+    // 重點數字與目錄同理：拆頁後上半頁三張卡、下半頁一張，不成一個區塊
+    expect(html()).toContain('.chart,.figures,.toc{break-inside:avoid}');
   });
 
   it('整張表不設 break-inside——長表被迫整塊換頁會超出頁高而被裁掉', () => {
@@ -152,6 +153,6 @@ describe('列印與 PDF 輸出', () => {
   });
 
   it('標題不得落在頁尾，與內文分家', () => {
-    expect(html()).toContain('h1,h2,h3,h4{break-after:avoid}');
+    expect(html()).toContain('.sec>h2,h1,h3,h4{break-after:avoid}');
   });
 });

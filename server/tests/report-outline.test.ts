@@ -1,6 +1,12 @@
 /**
- * 報告大綱生成：JSON 解析容錯、節數上限、失敗 fail-fast。
+ * 報告大綱生成：JSON 解析容錯、節數上限、失敗 fail-fast、以及大綱看得到知識庫。
  */
+const mockListTableCatalog = jest.fn().mockResolvedValue([]);
+jest.mock('@/modules/knowledge/knowledge.tables.repo', () => ({
+  __esModule: true,
+  listTableCatalog: (...a: unknown[]) => mockListTableCatalog(...a),
+}));
+
 import type { LLMCreateParams, LLMProvider, LLMResult } from '@/lib/llm/types';
 import { buildOutline, outlineTokenBudget } from '@/modules/report/report.outline';
 
@@ -115,5 +121,60 @@ describe('outlineTokenBudget', () => {
 
   it('節數很少時仍保有下限', () => {
     expect(outlineTokenBudget(1)).toBeGreaterThanOrEqual(512);
+  });
+});
+
+/**
+ * 大綱看得到知識庫。
+ *
+ * 沒有這一段的話，規劃器只拿到「報告主題」四個字就要生出六節，於是憑常識想出資料裡
+ * 根本不存在的面向——實跑一份七節的報告有三節是「知識庫查無相關資料」，四成篇幅是空的。
+ */
+describe('大綱看得到知識庫', () => {
+  const userText = (llm: { calls: LLMCreateParams[] }): string => {
+    const content = llm.calls[0].messages[0].content;
+    return content.map((c) => ('text' in c ? c.text : '')).join('');
+  };
+
+  beforeEach(() => mockListTableCatalog.mockReset());
+
+  it('資料表目錄隨主題一起送進 prompt，模型才知道哪些章節答得出來', async () => {
+    mockListTableCatalog.mockResolvedValue([
+      { id: '1', source: 'CC匯出.xlsx', sheet: '2-CC-參觀者預登人數', headers: ['年度', '預登人數'], rowCount: 16 },
+      { id: '2', source: 'CC匯出.xlsx', sheet: '3-CC-參觀者來源', headers: ['類型', '自行預登'], rowCount: 5 },
+    ]);
+    const llm = fakeLLM([OK]);
+    await buildOutline('t1', '展覽數據', 'zh-Hant', llm);
+    const text = userText(llm);
+    expect(text).toContain('報告主題：展覽數據');
+    expect(text).toContain('2-CC-參觀者預登人數');
+    expect(text).toContain('欄位：年度、預登人數');
+  });
+
+  it('逐年複本同名只留一份——大綱要知道的是涵蓋哪些主題，不是有幾份', async () => {
+    mockListTableCatalog.mockResolvedValue(
+      Array.from({ length: 16 }, (_, i) => ({
+        id: String(i), source: 'CC匯出.xlsx', sheet: '8-CC-參展商展區',
+        caption: `年度:${2010 + i}`, headers: ['展區', '家數'], rowCount: 20,
+      })),
+    );
+    const llm = fakeLLM([OK]);
+    await buildOutline('t1', '展覽數據', 'zh-Hant', llm);
+    expect(userText(llm).match(/8-CC-參展商展區/g)).toHaveLength(1);
+  });
+
+  it('目錄取不到時只是退回原本行為，不讓整份報告產不出來', async () => {
+    mockListTableCatalog.mockRejectedValue(new Error('db down'));
+    const llm = fakeLLM([OK]);
+    const outline = await buildOutline('t1', '展覽數據', 'zh-Hant', llm);
+    expect(outline.sections).toHaveLength(2);
+    expect(userText(llm)).toBe('報告主題：展覽數據');
+  });
+
+  it('知識庫是空的就不附目錄區塊', async () => {
+    mockListTableCatalog.mockResolvedValue([]);
+    const llm = fakeLLM([OK]);
+    await buildOutline('t1', '展覽數據', 'zh-Hant', llm);
+    expect(userText(llm)).toBe('報告主題：展覽數據');
   });
 });

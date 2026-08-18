@@ -7,6 +7,8 @@
 import { env } from '@/config/env';
 import type { LLMProvider } from '@/lib/llm/types';
 import { normalizeLocale } from '@/lib/locale';
+import { listTableCatalog } from '@/modules/knowledge/knowledge.tables.repo';
+import { logger } from '@/lib/logger';
 import { usageStore } from '@/modules/usage/usage.store';
 import type { Outline, OutlineSection } from './report.types';
 
@@ -16,6 +18,9 @@ function outlineSystem(locale?: string): string {
       'You plan the outline of a knowledge-base report. Output JSON only.',
       `Shape: {"title": "...", "sections": [{"heading": "...", "query": "..."}]}`,
       `Produce at most ${env.REPORT_MAX_SECTIONS} sections covering distinct aspects of the topic.`,
+      'The user message lists the data tables the knowledge base ACTUALLY holds. Plan only sections',
+      'those tables can answer. Do not invent aspects the data does not cover — a section the data',
+      'cannot answer renders as "no relevant data" and is worse than having fewer sections.',
       '"query" MUST be a complete, self-contained question used to search the knowledge base —',
       'never a copy of the heading. Output nothing but the JSON.',
     ].join('\n');
@@ -24,6 +29,10 @@ function outlineSystem(locale?: string): string {
     '你是知識庫報告的大綱規劃器，只輸出 JSON。',
     '格式：{"title": "...", "sections": [{"heading": "...", "query": "..."}]}',
     `最多 ${env.REPORT_MAX_SECTIONS} 節，各節涵蓋主題的不同面向，不得重複。`,
+    '使用者訊息會列出知識庫**實際擁有**的資料表。只規劃這些資料答得出來的章節——',
+    '資料裡沒有的面向一律不要立節（例如沒有滿意度相關的表，就不要立「滿意度」一節）。',
+    '答不出來的章節在報告裡會印成「知識庫查無相關資料」，那比少幾節更糟。',
+    '寧可只產出三節紮實的，也不要湊滿上限。',
     '"query" 必須是一句「可獨立理解、能直接拿去檢索」的完整問句，嚴禁只複製標題——',
     '每節是各自去知識庫檢索的，問句寫得夠具體才撈得到那一節需要的材料。',
     '除 JSON 外不要輸出任何文字。',
@@ -76,15 +85,53 @@ function toSections(raw: unknown): OutlineSection[] {
     .map((s) => ({ heading: s.heading.trim(), query: s.query.trim() }));
 }
 
+/**
+ * 大綱可見的資料表上限。
+ *
+ * 這批資料有 165 張子表，全塞進去既貴又是雜訊；而大綱只需要知道「知識庫涵蓋哪些主題」，
+ * 不需要逐張的列數與年度。逐年複本（同名工作表 16 份）同名只留一份即可。
+ */
+const OUTLINE_CATALOG_LIMIT = 40;
+
+/**
+ * 知識庫概覽：給大綱規劃器看的「這裡實際有什麼」。
+ *
+ * 沒有這一段的話，規劃器只拿到「報告主題」四個字就要生出六節，於是憑常識想出
+ * 「商品交易與商機媒合」「參展滿意度」這種資料裡根本不存在的面向——實跑一份七節的報告，
+ * 有三節是「知識庫查無相關資料」，四成篇幅是空的。
+ *
+ * 取不到就回空字串：少了這段只是退回原本的行為，不該讓整份報告產不出來。
+ */
+async function knowledgeOverview(tenantId: string): Promise<string> {
+  let catalog;
+  try {
+    catalog = await listTableCatalog(tenantId);
+  } catch (err) {
+    logger.warn({ err, tenantId }, '大綱取不到資料表目錄，改回只看主題規劃');
+    return '';
+  }
+  const bySheet = new Map<string, string[]>();
+  for (const entry of catalog) {
+    if (!bySheet.has(entry.sheet)) bySheet.set(entry.sheet, entry.headers);
+  }
+  if (bySheet.size === 0) return '';
+  return [...bySheet.entries()]
+    .slice(0, OUTLINE_CATALOG_LIMIT)
+    .map(([sheet, headers]) => `- ${sheet}｜欄位：${headers.join('、')}`)
+    .join('\n');
+}
+
 export async function buildOutline(
   tenantId: string,
   topic: string,
   locale: string | undefined,
   llm: LLMProvider,
 ): Promise<Outline> {
+  const overview = await knowledgeOverview(tenantId);
+  const catalogBlock = overview === '' ? '' : `\n\n知識庫實際擁有的資料表：\n${overview}`;
   const result = await llm.createMessage({
     system: outlineSystem(locale),
-    messages: [{ role: 'user', content: [{ type: 'text', text: `報告主題：${topic}` }] }],
+    messages: [{ role: 'user', content: [{ type: 'text', text: `報告主題：${topic}${catalogBlock}` }] }],
     maxTokens: outlineTokenBudget(env.REPORT_MAX_SECTIONS),
   });
   usageStore.recordLLMUsage(tenantId, result);

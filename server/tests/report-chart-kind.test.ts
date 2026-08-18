@@ -51,7 +51,7 @@ describe('resolveChartKind', () => {
 
 const doc = (chart: SectionChart): ReportDoc => ({
   title: 'r', topic: 't', locale: 'zh-Hant', generatedAt: '2026-08-18T00:00:00.000Z',
-  sections: [{ heading: 'h', query: 'q', body: '內文。', sources: [], hits: 5, chart }],
+  sections: [{ heading: 'h', query: 'q', body: '內文。', sources: [], hits: 5, charts: [chart] }],
 });
 const base = { complete: true as const, sourceLabel: 'x.xlsx / s', totalRows: 5 };
 

@@ -95,8 +95,14 @@ export interface ReportSection {
   hits: number;
   /** 該節彙整 LLM 失敗、已降級為片段列表；renderer 必須標註出來 */
   degraded?: boolean;
-  /** 該節材料構成一組數列時的長條圖；不符條件時不存在 */
-  chart?: SectionChart;
+  /**
+   * 該節的圖表，依出現順序排列。
+   *
+   * 原本是單數的 `chart`，但一節常常同時有好幾件值得畫的事——「訪客來源」那一節
+   * 既有五類構成（圓餅）也有歷年趨勢（折線），只能挑一張等於丟掉一半的資訊。
+   * 模型本來就會一次吐好幾個 chart-ref，過去是解析時只採用第一個把其餘丟掉。
+   */
+  charts?: SectionChart[];
 }
 
 export interface ReportDoc {

@@ -74,7 +74,7 @@ describe('分組長條', () => {
 
 const doc = (chart: SectionChart): ReportDoc => ({
   title: 'r', topic: 't', locale: 'zh-Hant', generatedAt: '2026-08-18T00:00:00.000Z',
-  sections: [{ heading: 'h', query: 'q', body: '內文。', sources: [], hits: 5, chart }],
+  sections: [{ heading: 'h', query: 'q', body: '內文。', sources: [], hits: 5, charts: [chart] }],
 });
 
 describe('分組長條的呈現', () => {

@@ -1,8 +1,9 @@
 /**
  * 報告渲染：Markdown 產出的節結構、來源清單去重、degraded 標註、查無資料節保留標題。
  */
-import type { ReportDoc } from '@/modules/report/report.types';
+import type { ReportDoc, ReportSection, SectionChart } from '@/modules/report/report.types';
 import { renderers } from '@/modules/report/report.render';
+import { renderHtml as renderReportHtml } from '@/modules/report/renderers/html';
 
 function makeDoc(partial: Partial<ReportDoc> = {}): ReportDoc {
   return {
@@ -255,11 +256,14 @@ describe('章節內文的 Markdown 處理', () => {
 
   it('HTML：內文標題降級為 h3，巢狀在章節的 h2 底下', async () => {
     const out = (await renderers.html.render(docWithBody(MD_BODY))).toString('utf8');
-    expect(out).toContain('<h2>目標市場與客戶定位</h2>');
+    // 章節標題現在帶節次號，標題文字包在自己的 span 裡
+    expect(out).toContain('<span>目標市場與客戶定位</span>');
     expect(out).toContain('<h3>政府機關市場</h3>');
     // 內文不得產生與章節同級或更高的標題，否則報告階層會壞掉
     expect(out).not.toContain('<h1>目標市場與客戶定位</h1>');
-    expect(out.match(/<h2>/g) ?? []).toHaveLength(2); // 章節標題 + 來源標題
+    // 內文的 ## 必須降成 h3；章節標題與導覽區塊的 h2 由 renderer 自己產生
+    expect(out).not.toContain('<h2>政府機關市場');
+    expect(out).toContain('<h3>政府機關市場</h3>');
   });
 
   it('HTML：內文開頭重複章節標題時剔除，不重複顯示', async () => {
@@ -335,5 +339,70 @@ describe('產生時間的呈現', () => {
     ).toString('utf8');
     expect(out).toContain('2026-08-13 21:05:07');
     expect(out).not.toMatch(/PM|AM/);
+  });
+});
+
+/**
+ * 版面：重點數字、目錄、憑證標記、來源去重。
+ *
+ * 實跑的報告被評為「不好閱讀、資訊不多」，這幾件事是回應：開頭要有全貌與入口，
+ * 圖表的可信度要一眼看得出來，而重複的來源會讓讀者懷疑整份報告的嚴謹度。
+ */
+describe('報告版面', () => {
+  const chart = (over: Partial<SectionChart> = {}): SectionChart => ({
+    kind: 'bar', complete: true, title: '各國參展商家數', unit: '家',
+    points: [{ label: '美國', value: 1930 }, { label: '日本', value: 1379 }, { label: '韓國', value: 920 }],
+    sourceLabel: 'CP.xlsx / 4-CP', totalRows: 122, ...over,
+  });
+  const doc = (sections: ReportSection[]): ReportDoc => ({
+    title: '參展統計報告', topic: '展覽數據', locale: 'zh-Hant',
+    generatedAt: '2026-08-18T00:00:00.000Z', sections,
+  });
+  const section = (heading: string, over: Partial<ReportSection> = {}): ReportSection => ({
+    heading, query: 'q', body: '內文。', sources: [{ title: 'CP.xlsx' }], hits: 5, ...over,
+  });
+
+  it('重點數字取真實存在的那一格，時間序列取最新、其餘取最大', () => {
+    const html = renderReportHtml(doc([
+      section('A', { charts: [chart()] }),
+      section('B', { charts: [chart({ kind: 'line', title: '歷年趨勢',
+        points: [{ label: '2023', value: 900 }, { label: '2024', value: 100 }] })] }),
+    ]));
+    expect(html).toContain('1,930');   // 最大值，不是總和
+    expect(html).toContain('最高：美國');
+    expect(html).toContain('100');     // 折線取最後一期而非最大值
+    expect(html).toContain('最新：2024');
+  });
+
+  it('節錄圖不進重點數字——放大成大字等於替它背書', () => {
+    const html = renderReportHtml(doc([section('A', { charts: [chart({ complete: false })] })]));
+    expect(html).not.toContain('重點數字');
+  });
+
+  it('憑證標記分成實心與虛線兩種，一眼看得出可信度', () => {
+    const exact = renderReportHtml(doc([section('A', { charts: [chart()] })]));
+    expect(exact).toContain('prov-exact');
+    expect(exact).toContain('>原始資料</span>');
+    const sample = renderReportHtml(doc([section('A', { charts: [chart({ complete: false })] })]));
+    expect(sample).toContain('prov-sample');
+    expect(sample).toContain('>節錄</span>');
+  });
+
+  it('目錄與章節錨點對得起來；單節報告不生目錄', () => {
+    const many = renderReportHtml(doc([section('第一節'), section('第二節')]));
+    expect(many).toContain('href="#sec-01"');
+    expect(many).toContain('id="sec-02"');
+    expect(many).toContain('目錄');
+    // 只有一節時目錄只是雜訊
+    expect(renderReportHtml(doc([section('唯一')]))).not.toContain('目錄');
+  });
+
+  it('同一個來源不因某節沒帶連結而重複列出，且保留可點的那一筆', () => {
+    const html = renderReportHtml(doc([
+      section('A', { sources: [{ title: 'CC匯出.xlsx' }] }),
+      section('B', { sources: [{ title: 'CC匯出.xlsx', url: 'https://example.com/cc' }] }),
+    ]));
+    expect(html.match(/CC匯出\.xlsx/g) ?? []).toHaveLength(1);
+    expect(html).toContain('href="https://example.com/cc"');
   });
 });

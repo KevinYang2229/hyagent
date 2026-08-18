@@ -17,11 +17,11 @@ const bar: ReportSection = {
   body: '本節說明各國預登情形。\n\n### 重點\n\n- **日本**最多\n- 其次是[美國](https://example.com/us)\n',
   sources: [{ title: 'CC匯出.xlsx', url: 'https://example.com/cc' }],
   hits: 5,
-  chart: {
+  charts: [{
     kind: 'bar', complete: true, title: '各國預登人數', unit: '人',
     points: [{ label: '日本', value: 3012 }, { label: '美國', value: 2320 }, { label: '德國', value: 1180 }],
     sourceLabel: 'CC匯出.xlsx / 4-CC-國家', totalRows: 3,
-  },
+  }],
 };
 
 const grouped: ReportSection = {
@@ -30,14 +30,14 @@ const grouped: ReportSection = {
   body: '兩地的落差如下。',
   sources: [{ title: 'CC匯出.xlsx' }],
   hits: 4,
-  chart: {
+  charts: [{
     kind: 'grouped', complete: true, title: '預登與報到', series: ['今年預登', '今年報到'],
     points: [
       { label: 'Taiwan', value: 128, values: [128, 96] },
       { label: 'Overseas', value: 232, values: [232, 180] },
     ],
     sourceLabel: 'CC匯出.xlsx / 1-CC-統計', totalRows: 2,
-  },
+  }],
 };
 
 const empty: ReportSection = { heading: '滿意度', query: '滿意度如何？', body: '', sources: [], hits: 0 };
@@ -91,10 +91,10 @@ describe('xlsx', () => {
 
   it('工作表名截到 31 字、去掉非法字元、重名加序號', async () => {
     const long = '參觀者預先登記人數統計依國家與地區別分列的完整明細表';
-    const chart = { ...bar.chart!, title: `${long}[A]` };
+    const chart = { ...bar.charts![0], title: `${long}[A]` };
     const book = await load({
       ...doc,
-      sections: [{ ...bar, chart }, { ...bar, heading: '第二節', chart: { ...chart } }],
+      sections: [{ ...bar, charts: [chart] }, { ...bar, heading: '第二節', charts: [{ ...chart }] }],
     });
     const names = book.worksheets.slice(1).map((w) => w.name);
     expect(names[0].length).toBeLessThanOrEqual(31);

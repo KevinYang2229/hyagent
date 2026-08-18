@@ -15,7 +15,7 @@ jest.mock('@/modules/knowledge/knowledge.tables.repo', () => ({
   loadTable: (...a: unknown[]) => mockLoadTable(...a),
 }));
 
-import { autoChart, buildExactChart, extractChartRef } from '@/modules/report/report.compose';
+import { autoChart, buildExactChart, extractChartRefs } from '@/modules/report/report.compose';
 import { renderHtml } from '@/modules/report/renderers/html';
 import { renderMarkdown } from '@/modules/report/renderers/markdown';
 import type { StoredTable } from '@/modules/knowledge/knowledge.tables.repo';
@@ -36,18 +36,18 @@ describe('1. chart-ref 接受 values 形式（prompt 明說 value 可省略）',
   const block = (json: string): string => `內文。\n\n\`\`\`chart-ref\n${json}\n\`\`\``;
 
   it('只有 values、沒有 value 的 ref 必須被採用', () => {
-    const out = extractChartRef(block('{"table":"t","label":"類型","values":["甲","乙"],"kind":"donut"}'));
-    expect(out.ref?.table).toBe('t');
-    expect(out.ref?.values).toEqual(['甲', '乙']);
+    const out = extractChartRefs(block('{"table":"t","label":"類型","values":["甲","乙"],"kind":"donut"}'));
+    expect(out.refs[0]?.table).toBe('t');
+    expect(out.refs[0]?.values).toEqual(['甲', '乙']);
   });
 
   it('values 只給一個時當成單欄的 value 用', () => {
-    const out = extractChartRef(block('{"table":"t","label":"類型","values":["人數"]}'));
-    expect(out.ref?.value).toBe('人數');
+    const out = extractChartRefs(block('{"table":"t","label":"類型","values":["人數"]}'));
+    expect(out.refs[0]?.value).toBe('人數');
   });
 
   it('value 與 values 都沒有仍要拒絕——沒有數值欄就不成圖', () => {
-    expect(extractChartRef(block('{"table":"t","label":"類型"}')).ref).toBeUndefined();
+    expect(extractChartRefs(block('{"table":"t","label":"類型"}')).refs).toHaveLength(0);
   });
 });
 
@@ -55,21 +55,21 @@ describe('2. 區塊未閉合或行尾為 CRLF 時仍要移除', () => {
   const REF = '{"table":"t","label":"類型","values":["甲","乙"],"kind":"donut"}';
 
   it('未閉合的區塊不得留在內文——讀者不該看到裸 JSON', () => {
-    const out = extractChartRef(`內文。\n\n\`\`\`chart-ref\n${REF}`);
+    const out = extractChartRefs(`內文。\n\n\`\`\`chart-ref\n${REF}`);
     expect(out.body).toBe('內文。');
-    expect(out.ref?.table).toBe('t');
+    expect(out.refs[0]?.table).toBe('t');
   });
 
   it('被截斷成壞 JSON 的未閉合區塊：ref 丟掉，但內文一樣要乾淨', () => {
-    const out = extractChartRef('內文。\n\n```chart-ref\n{"table":"t","lab');
+    const out = extractChartRefs('內文。\n\n```chart-ref\n{"table":"t","lab');
     expect(out.body).toBe('內文。');
-    expect(out.ref).toBeUndefined();
+    expect(out.refs).toHaveLength(0);
   });
 
   it('CRLF 行尾的區塊照樣抽得出來', () => {
-    const out = extractChartRef(`內文。\r\n\r\n\`\`\`chart-ref\r\n${REF}\r\n\`\`\``);
+    const out = extractChartRefs(`內文。\r\n\r\n\`\`\`chart-ref\r\n${REF}\r\n\`\`\``);
     expect(out.body).toBe('內文。');
-    expect(out.ref?.table).toBe('t');
+    expect(out.refs[0]?.table).toBe('t');
   });
 });
 
@@ -153,12 +153,13 @@ describe('4. 一列跨欄 → 切片', () => {
     const chart = await sliced([TOTAL_ROW]);
     const doc: ReportDoc = {
       title: 'r', topic: 't', locale: 'zh-Hant', generatedAt: '2026-08-18T00:00:00.000Z',
-      sections: [{ heading: 'h', query: 'q', body: '內文。', sources: [], hits: 5, chart: chart! }],
+      sections: [{ heading: 'h', query: 'q', body: '內文。', sources: [], hits: 5, charts: [chart!] }],
     };
     const html = renderHtml(doc);
     expect(html).toContain('「總計」');
     expect(html).not.toContain('全部 5 列');
-    expect(html).toContain('直接讀自原始資料');
+    // HTML 把可信度拆成「標記 + 細節」：標記一眼可辨，細節可回頭核對
+    expect(html).toContain('>原始資料</span>');
     expect(renderMarkdown(doc)).toContain('「總計」');
   });
 });

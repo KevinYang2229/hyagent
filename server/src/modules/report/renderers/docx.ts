@@ -257,7 +257,7 @@ function sectionBlocks(section: ReportSection, locale: string): Block[] {
     return out;
   }
   out.push(...markdownBlocks(normalizeSectionBody(section.body, section.heading)));
-  if (section.chart) out.push(...chartBlocks(section, section.chart, locale));
+  for (const chart of section.charts ?? []) out.push(...chartBlocks(section, chart, locale));
   return out;
 }
 

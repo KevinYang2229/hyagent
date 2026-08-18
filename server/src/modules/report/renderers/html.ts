@@ -7,8 +7,12 @@
 import MarkdownIt from 'markdown-it';
 import { normalizeLocale } from '@/lib/locale';
 import {
-  chartCaptionText,
-  exactChartCaptionText,
+  captionTag,
+  excerptDetail,
+  exactDetail,
+  highlightNote,
+  highlightsHeading,
+  tocHeading,
   degradedNoticeText,
   dedupeSources,
   emptySectionText,
@@ -82,48 +86,99 @@ function labelBody(text: string, fontSize: number, maxWidth: number): string {
   return escapeHtml(shown) + (full ? `<title>${escapeHtml(full)}</title>` : '');
 }
 
+/*
+ * 版面。
+ *
+ * 這份報告的主題其實是「這些數字可不可信」——每一張圖都得交代它是原始資料還是節錄。
+ * 因此唯一刻意張揚的元素是圖表旁的**憑證標記**：實心＝程式直接讀自原始表，
+ * 虛線空心＝由檢索片段整理的節錄。其餘一律安靜，讓標記成為唯一記得住的東西。
+ *
+ * 字體只有一套 sans：不變式是零外部資源，而容器裡只有 Noto Sans CJK（沒有 serif），
+ * 與其賭第二個字體家族存在，不如用字重、字級與字距把層次做準。
+ */
 const STYLE = [
-  'body{max-width:46rem;margin:2rem auto;padding:0 1rem;',
-  'font-family:system-ui,"Noto Sans TC",sans-serif;line-height:1.7;color:#1a1a1a}',
-  'h1{font-size:1.6rem;margin-bottom:.25rem}',
-  'h2{font-size:1.2rem;margin-top:2rem;border-bottom:1px solid #e5e5e5;padding-bottom:.25rem}',
-  // 內文標題由 normalizeSectionBody 保證從 h3 起跳，巢狀在章節的 h2 底下
-  'h3{font-size:1.05rem;margin-top:1.5rem;margin-bottom:.25rem}',
-  'h4,h5,h6{font-size:1rem;margin-top:1.25rem;margin-bottom:.25rem}',
-  '.meta{color:#666;font-size:.85rem;margin-bottom:2rem}',
-  '.notice{background:#fff8e1;border-left:3px solid #f0b429;padding:.5rem .75rem;margin:.5rem 0}',
-  '.empty{color:#666}',
-  // 內文改由 markdown-it 產生真正的區塊標籤，不再需要 pre-wrap 保留換行
-  'p{margin:.75rem 0}',
-  'ul,ol{margin:.75rem 0;padding-left:1.5rem}',
-  'li{margin:.25rem 0}',
-  'blockquote{margin:.75rem 0;padding-left:.75rem;border-left:3px solid #e5e5e5;color:#555}',
-  'code{background:#f5f5f5;padding:.1rem .3rem;border-radius:3px;font-size:.9em}',
-  'pre{background:#f5f5f5;padding:.75rem;border-radius:4px;overflow-x:auto}',
+  ':root{',
+  '--ink:#17212b;--ink-soft:#3f4e5d;--muted:#6b7a8a;',
+  '--rule:#dde4ec;--rule-soft:#eef2f7;',
+  '--accent:#14456f;--accent-soft:#e8eff7;--tint:#f7f9fb;--paper:#fff;',
+  '}',
+  'body{max-width:46rem;margin:0 auto;padding:3rem 1.25rem 4rem;background:var(--paper);',
+  'font-family:system-ui,"Noto Sans TC","Noto Sans CJK TC",sans-serif;',
+  'font-size:16px;line-height:1.85;color:var(--ink);',
+  'font-variant-numeric:tabular-nums;-webkit-text-size-adjust:100%}',
+  // 報告表頭：標題與產生資訊之間用一條線收尾，而不是靠間距硬撐
+  '.doc-head{border-bottom:2px solid var(--accent);padding-bottom:1.1rem;margin-bottom:2.25rem}',
+  'h1{font-size:1.95rem;line-height:1.35;font-weight:700;letter-spacing:-.02em;margin:0 0 .5rem}',
+  '.meta{color:var(--muted);font-size:.85rem;margin:0;letter-spacing:.02em}',
+  // 重點數字：只取自「原始資料」等級的圖，節錄不進來
+  '.highlights{margin:0 0 2.25rem}',
+  // eyebrow 是真正的 h2（保留文件大綱與無障礙），只是不長得像標題
+  '.eyebrow{font-size:.72rem;font-weight:700;line-height:1.6;letter-spacing:.14em;',
+  'color:var(--accent);margin:0 0 .75rem;text-transform:uppercase}',
+  '.figures{display:grid;grid-template-columns:repeat(auto-fit,minmax(9.5rem,1fr));gap:1px;',
+  'background:var(--rule);border:1px solid var(--rule)}',
+  '.figure{background:var(--paper);padding:.9rem 1rem}',
+  '.figure-value{font-size:1.5rem;font-weight:700;line-height:1.25;color:var(--accent);letter-spacing:-.01em}',
+  '.figure-unit{font-size:.85rem;font-weight:600;margin-left:.15rem}',
+  '.figure-label{font-size:.82rem;color:var(--ink-soft);margin-top:.3rem;line-height:1.5}',
+  '.figure-note{font-size:.75rem;color:var(--muted);margin-top:.1rem}',
+  // 目錄：長報告要能跳著讀，列印出來也用得到節次
+  '.toc{margin:0 0 2.75rem;border-top:1px solid var(--rule);padding-top:1rem}',
+  '.toc ol{list-style:none;margin:0;padding:0}',
+  '.toc li{display:flex;gap:.75rem;padding:.3rem 0;border-bottom:1px solid var(--rule-soft)}',
+  '.toc li:last-child{border-bottom:none}',
+  '.toc-no{color:var(--accent);font-weight:700;font-size:.8rem;min-width:1.6rem;padding-top:.15rem}',
+  '.toc a{color:var(--ink);text-decoration:none}',
+  // 章節：節次號掛在標題左側（懸吊），標題本身不被號碼推開
+  '.sec{margin-top:2.75rem}',
+  '.sec>h2{display:flex;gap:.75rem;align-items:baseline;font-size:1.2rem;font-weight:700;',
+  'letter-spacing:-.01em;line-height:1.5;margin:0 0 .9rem;padding-top:.9rem;border-top:1px solid var(--rule)}',
+  '.sec-no{color:var(--accent);font-size:.8rem;font-weight:700;min-width:1.6rem}',
+  'h3{font-size:1rem;font-weight:700;color:var(--ink-soft);margin:1.6rem 0 .35rem}',
+  'h4,h5,h6{font-size:.95rem;font-weight:700;color:var(--ink-soft);margin:1.25rem 0 .25rem}',
+  'p{margin:.7rem 0}',
+  'ul,ol{margin:.7rem 0;padding-left:1.35rem}',
+  'li{margin:.2rem 0}',
+  'strong{font-weight:700}',
+  'blockquote{margin:.9rem 0;padding:.15rem 0 .15rem .9rem;border-left:2px solid var(--accent-soft);color:var(--ink-soft)}',
+  'code{background:var(--rule-soft);padding:.1rem .3rem;border-radius:2px;font-size:.88em}',
+  'pre{background:var(--rule-soft);padding:.8rem;border-radius:2px;overflow-x:auto}',
   'pre code{background:none;padding:0}',
-  'table{border-collapse:collapse;margin:.75rem 0}',
-  'th,td{border:1px solid #e5e5e5;padding:.35rem .6rem;text-align:left}',
-  'a{color:#0b6bcb}',
-  // 圖表：純 SVG，無腳本無外部資源，離線與列印皆可
-  '.chart{margin:1.25rem 0}',
-  '.chart-title{font-weight:600;margin:0 0 .5rem}',
-  '.chart-cap{color:#666;font-size:.8rem;margin:.4rem 0 0}',
+  'a{color:var(--accent)}',
+  '.notice{background:#fff8e6;border-left:3px solid #d99f24;padding:.55rem .8rem;margin:.7rem 0;font-size:.9rem}',
+  '.empty{color:var(--muted);font-style:italic}',
+  // 表格：不畫滿格線。表頭一條粗線、列間細線，數字靠右——正式報告的表就是這樣讀的
+  'table{border-collapse:collapse;margin:.9rem 0;width:100%;font-size:.92rem}',
+  'th,td{padding:.42rem .6rem;text-align:left;border-bottom:1px solid var(--rule-soft)}',
+  'th{font-weight:700;color:var(--ink-soft);border-bottom:1.5px solid var(--accent)}',
+  'td:not(:first-child),th:not(:first-child){text-align:right}',
+  // 圖表：一張圖是一個整體（標題、圖、憑證），用底色與細框把它與散文分開
+  '.chart{margin:1.4rem 0;padding:1rem 1.1rem .85rem;background:var(--tint);border:1px solid var(--rule)}',
+  '.chart-title{font-weight:700;font-size:.95rem;margin:0 0 .7rem;color:var(--ink)}',
   '.chart svg{max-width:100%;height:auto;display:block}',
+  // 憑證標記：這份版面唯一張揚的地方（見檔頭）
+  '.prov{display:flex;gap:.5rem;align-items:baseline;margin:.7rem 0 0;',
+  'font-size:.75rem;color:var(--muted);line-height:1.6}',
+  '.prov-tag{flex:none;font-weight:700;letter-spacing:.06em;padding:.05rem .4rem;border-radius:2px}',
+  '.prov-exact{background:var(--accent);color:#fff}',
+  '.prov-sample{background:transparent;color:var(--accent);border:1px dashed var(--accent)}',
+  // 來源
+  '.sources{margin-top:3rem;border-top:1px solid var(--rule);padding-top:1rem}',
+  '.sources ul{list-style:none;padding:0;margin:0;font-size:.88rem;color:var(--ink-soft)}',
+  '.sources li{padding:.15rem 0}',
   /*
-   * 列印與輸出 PDF。這份 HTML 的不變式之一就是「可直接列印成 PDF」，但先前完全沒有
-   * 列印規則：頁面邊界由螢幕用的 body margin 兼任，圖表也會被分頁線攔腰切開——
-   * 一半在上一頁、一半在下一頁的長條圖，比沒有圖還難讀。
-   *
-   * break-inside 只加在 .chart（標題、SVG、說明是一個整體）與 tr/li；整張表不加，
-   * 否則一張長表會被迫整塊推到下一頁、超過頁高的部分直接被裁掉。
+   * 列印與輸出 PDF。這份 HTML 的不變式之一就是「可直接列印成 PDF」。
+   * break-inside 只加在整體不可拆的區塊；整張表不加，否則長表被迫整塊換頁會超出頁高被裁掉。
    */
   '@page{margin:16mm 14mm}',
   '@media print{',
-  'body{max-width:none;margin:0;padding:0}',
-  '.chart{break-inside:avoid}',
+  'body{max-width:none;margin:0;padding:0;font-size:11pt}',
+  '.chart,.figures,.toc{break-inside:avoid}',
   'tr,li{break-inside:avoid}',
-  'h1,h2,h3,h4{break-after:avoid}',
+  '.sec{break-inside:auto}',
+  '.sec>h2,h1,h3,h4{break-after:avoid}',
   'p{orphans:3;widows:3}',
+  'a{color:var(--ink);text-decoration:none}',
   '}',
 ].join('');
 
@@ -147,6 +202,9 @@ const X_LABEL_MAX_W = 96;
 
 /** 圓餅圖例可用寬度：文字從 x=252 起，右緣留 8px */
 const LEGEND_W = PLOT_W - 252 - 8;
+
+/** 重點數字最多幾張卡。超過四張就從「重點」變成另一張表，讀者反而抓不到主線 */
+const MAX_HIGHLIGHTS = 4;
 /**
  * 類別配色（圓餅、甜甜圈、分組長條的數列）。
  *
@@ -158,6 +216,14 @@ const LEGEND_W = PLOT_W - 252 - 8;
  * 是必要的而非裝飾——顏色不能是辨識的唯一線索。
  */
 const CATEGORY_COLORS = ['#1f6fb2', '#e07b39', '#2a9d8f', '#7d5ba6', '#c0504d', '#b8860b'];
+
+/**
+ * 單數列（長條、折線）的顏色。
+ *
+ * 取類別配色的第一色而不是另訂一個藍：原本圖表用 #0b6bcb、版面用深藍，同一頁上出現
+ * 兩個不同的藍，看起來像兩套系統拼在一起。單數列與類別圖共用同一個起點才是一套配色。
+ */
+const SERIES_COLOR = CATEGORY_COLORS[0];
 
 /**
  * 折線圖：時間軸由左至右；只標首末與最大值，每點都掛數字會把折線淹掉。
@@ -188,7 +254,7 @@ function lineSvg(chart: SectionChart): string {
     .map((p, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(p.value).toFixed(1)}`)
     .join(' ');
   const dots = chart.points
-    .map((p, i) => `<circle cx="${x(i).toFixed(1)}" cy="${y(p.value).toFixed(1)}" r="3.5" fill="#0b6bcb"/>`)
+    .map((p, i) => `<circle cx="${x(i).toFixed(1)}" cy="${y(p.value).toFixed(1)}" r="3.5" fill="${SERIES_COLOR}"/>`)
     .join('');
   // x 軸標籤抽稀：12 個點的中文日期標籤在 620px 寬下必然重疊，寧可少標也不要糊成一團
   const spacing = chart.points.length > 1 ? w / (chart.points.length - 1) : w;
@@ -231,7 +297,7 @@ function lineSvg(chart: SectionChart): string {
     .join('');
   return (
     `<svg viewBox="0 0 ${PLOT_W} ${PLOT_H}" role="img" aria-label="${escapeHtml(chart.title)}">${grid}${axis}` +
-    `<path d="${path}" fill="none" stroke="#0b6bcb" stroke-width="2"/>${dots}${marks}${labels}</svg>`
+    `<path d="${path}" fill="none" stroke="${SERIES_COLOR}" stroke-width="2"/>${dots}${marks}${labels}</svg>`
   );
 }
 
@@ -344,13 +410,11 @@ function groupedSvg(chart: SectionChart): string {
  * 而長條圖只需要矩形與文字，不值得為它破壞那個不變式。
  * 每條都直接標數值——長度只給得出概略比例，讀者要核對的是數字。
  */
-function chartSvg(section: ReportSection, locale: string): string {
-  const chart = section.chart;
-  if (!chart) return '';
-  // complete 與否的可信度差很多，說明必須分開講，不能用同一句帶過
-  const caption = chart.complete
-    ? exactChartCaptionText(locale, chart)
-    : chartCaptionText(locale, chart.points.length, section.hits);
+function chartSvg(chart: SectionChart, section: ReportSection, locale: string): string {
+  // complete 與否的可信度差很多：標記負責一眼可辨，細節負責可回頭核對
+  const detail = chart.complete
+    ? exactDetail(locale, chart)
+    : excerptDetail(locale, chart.points.length, section.hits);
   const max = Math.max(...chart.points.map((pt) => pt.value), 0);
   const trackW = CHART_W - LABEL_W - VALUE_W;
   const height = chart.points.length * (BAR_H + BAR_GAP);
@@ -363,7 +427,7 @@ function chartSvg(section: ReportSection, locale: string): string {
     return [
       `<text x="0" y="${y + BAR_H * 0.7}" font-size="12" fill="#333">${labelBody(pt.label, 12, LABEL_W - 8)}</text>`,
       `<rect x="${LABEL_W}" y="${y}" width="${trackW}" height="${BAR_H}" fill="#f0f0f0"/>`,
-      `<rect x="${LABEL_W}" y="${y}" width="${w}" height="${BAR_H}" fill="#0b6bcb"/>`,
+      `<rect x="${LABEL_W}" y="${y}" width="${w}" height="${BAR_H}" fill="${SERIES_COLOR}"/>`,
       `<text x="${LABEL_W + trackW + 8}" y="${y + BAR_H * 0.7}" font-size="12" fill="#333">${escapeHtml(value)}</text>`,
     ].join('');
   });
@@ -376,19 +440,31 @@ function chartSvg(section: ReportSection, locale: string): string {
         ? groupedSvg(chart)
         : `<svg viewBox="0 0 ${CHART_W} ${height}" role="img" aria-label="${escapeHtml(chart.title)}">${rows.join('')}</svg>`;
 
+  const tagClass = chart.complete ? 'prov-exact' : 'prov-sample';
   return [
-    '<div class="chart">',
+    '<figure class="chart">',
     `<p class="chart-title">${escapeHtml(chart.title)}</p>`,
     svg,
-    `<p class="chart-cap">${escapeHtml(caption)}</p>`,
-    '</div>',
+    '<figcaption class="prov">',
+    `<span class="prov-tag ${tagClass}">${escapeHtml(captionTag(locale, chart.complete))}</span>`,
+    `<span>${escapeHtml(detail)}</span>`,
+    '</figcaption>',
+    '</figure>',
   ].join('');
 }
 
-function sectionHtml(section: ReportSection, locale: string): string {
-  const heading = `<h2>${escapeHtml(section.heading)}</h2>`;
+/** 節次號補零到兩位：目錄與內文要對得起來，而列印出來的報告是靠「第 03 節」互指的 */
+function sectionNo(index: number): string {
+  return String(index + 1).padStart(2, '0');
+}
+
+function sectionHtml(section: ReportSection, index: number, locale: string): string {
+  const no = sectionNo(index);
+  const heading =
+    `<h2><span class="sec-no">${no}</span><span>${escapeHtml(section.heading)}</span></h2>`;
+  const open = `<section class="sec" id="sec-${no}">`;
   if (section.hits === 0) {
-    return `${heading}\n<p class="empty">${escapeHtml(emptySectionText(locale))}</p>`;
+    return `${open}${heading}\n<p class="empty">${escapeHtml(emptySectionText(locale))}</p></section>`;
   }
   const notice = section.degraded
     ? `<p class="notice">${escapeHtml(degradedNoticeText(locale))}</p>\n`
@@ -396,7 +472,62 @@ function sectionHtml(section: ReportSection, locale: string): string {
   // 內文是 Markdown：先把標題層級正規化到章節（h2）底下，再交給 markdown-it 轉標籤。
   // 這裡不能用 escapeHtml——那會讓 ## 與 ** 原樣顯示，正是本來的 bug。
   const body = markdown.render(normalizeSectionBody(section.body, section.heading));
-  return `${heading}\n${notice}${body.trim()}${chartSvg(section, locale)}`;
+  const charts = (section.charts ?? []).map((chart) => chartSvg(chart, section, locale)).join('');
+  return `${open}${heading}\n${notice}${body.trim()}${charts}</section>`;
+}
+
+/**
+ * 重點數字：只取自「原始資料」等級的圖。
+ *
+ * 節錄圖的數字不進來——放大成兩公分高的數字等於替它背書，而它本來就標著「節錄」。
+ * 取的是真實存在的那一格（時間序列取最新一期、其餘取最大值），不做任何加總或推算：
+ * 算出來的數字不在任何一個儲存格裡，就不該出現在報告最顯眼的位置。
+ */
+function highlightsHtml(doc: ReportDoc): string {
+  const cards: string[] = [];
+  for (const section of doc.sections) {
+    for (const chart of section.charts ?? []) {
+      if (!chart.complete || chart.points.length === 0) continue;
+      const latest = chart.kind === 'line';
+      const point = latest
+        ? chart.points[chart.points.length - 1]
+        : chart.points.reduce((best, p) => (p.value > best.value ? p : best));
+      const unit = chart.unit?.trim();
+      cards.push([
+        '<div class="figure">',
+        `<div class="figure-value">${escapeHtml(point.value.toLocaleString('en-US'))}`,
+        unit ? `<span class="figure-unit">${escapeHtml(unit)}</span>` : '',
+        '</div>',
+        `<div class="figure-label">${escapeHtml(highlightNote(doc.locale, latest ? 'latest' : 'peak', point.label))}</div>`,
+        `<div class="figure-note">${escapeHtml(chart.title)}</div>`,
+        '</div>',
+      ].join(''));
+      if (cards.length >= MAX_HIGHLIGHTS) break;
+    }
+    if (cards.length >= MAX_HIGHLIGHTS) break;
+  }
+  if (cards.length === 0) return '';
+  return [
+    '<section class="highlights">',
+    `<h2 class="eyebrow">${escapeHtml(highlightsHeading(doc.locale))}</h2>`,
+    `<div class="figures">${cards.join('')}</div>`,
+    '</section>',
+  ].join('');
+}
+
+/** 目錄：六節以上的報告需要跳著讀的入口；少於兩節時它只是雜訊 */
+function tocHtml(doc: ReportDoc): string {
+  if (doc.sections.length < 2) return '';
+  const items = doc.sections.map((section, i) => {
+    const no = sectionNo(i);
+    return `<li><span class="toc-no">${no}</span><a href="#sec-${no}">${escapeHtml(section.heading)}</a></li>`;
+  });
+  return [
+    '<nav class="toc">',
+    `<h2 class="eyebrow">${escapeHtml(tocHeading(doc.locale))}</h2>`,
+    `<ol>${items.join('')}</ol>`,
+    '</nav>',
+  ].join('');
 }
 
 export function renderHtml(doc: ReportDoc): string {
@@ -405,7 +536,8 @@ export function renderHtml(doc: ReportDoc): string {
     sources.length === 0
       ? ''
       : [
-          `<h2>${escapeHtml(sourcesHeading(doc.locale))}</h2>`,
+          '<section class="sources">',
+          `<h2 class="eyebrow">${escapeHtml(sourcesHeading(doc.locale))}</h2>`,
           '<ul>',
           ...sources.map((s) => {
             const validUrl = safeUrl(s.url);
@@ -414,6 +546,7 @@ export function renderHtml(doc: ReportDoc): string {
               : `<li>${escapeHtml(s.title)}</li>`;
           }),
           '</ul>',
+          '</section>',
         ].join('\n');
 
   const normalizedLocale = normalizeLocale(doc.locale);
@@ -427,9 +560,13 @@ export function renderHtml(doc: ReportDoc): string {
     `<style>${STYLE}</style>`,
     '</head>',
     '<body>',
+    '<header class="doc-head">',
     `<h1>${escapeHtml(doc.title)}</h1>`,
     `<p class="meta">${escapeHtml(doc.topic)} · ${escapeHtml(formatReportTimestamp(doc.generatedAt))}</p>`,
-    ...doc.sections.map((s) => sectionHtml(s, doc.locale)),
+    '</header>',
+    highlightsHtml(doc),
+    tocHtml(doc),
+    ...doc.sections.map((s, i) => sectionHtml(s, i, doc.locale)),
     sourcesBlock,
     '</body>',
     '</html>',
