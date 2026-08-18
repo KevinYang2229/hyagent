@@ -5,7 +5,7 @@
  * 寫在 prompt 裡擋不住，必須寫在程式裡（比照合計列排除、不可解析值略過的作法）。
  * 覆寫一律往 bar 收斂：它對任何「類別 vs 數值」都成立。
  */
-import { resolveChartKind } from '@/modules/report/report.compose';
+import { looksLikeProportion, resolveChartKind } from '@/modules/report/report.compose';
 import { renderHtml } from '@/modules/report/renderers/html';
 import type { ReportDoc, SectionChart } from '@/modules/report/report.types';
 
@@ -118,5 +118,24 @@ describe('甜甜圈與自動補圖', () => {
       points: [{ label: 'a', value: 1 }, { label: 'b', value: 1 }],
     }));
     expect(html).not.toContain('<circle cx="110" cy="110"');
+  });
+});
+
+/**
+ * 自動補圖的選型。圓餅成立與否是語意判斷——「國內 757／國外 197」構成一個整體、
+ * 「日本 30／美國 232」只是兩個並列的數字，兩者的欄位型別完全相同。
+ * 自動補圖若只看型別就永遠落在長條，圓餅等於形同虛設。
+ */
+describe('looksLikeProportion', () => {
+  it('認得佔比語意', () => {
+    for (const q of ['參展商的國內外組成比例', '台灣與海外的佔比', '客群結構占多少', 'market share breakdown']) {
+      expect(looksLikeProportion(q)).toBe(true);
+    }
+  });
+
+  it('排名、趨勢、分布不算佔比', () => {
+    for (const q of ['各國買主排名', '歷年預登趨勢', '各展區家數分布']) {
+      expect(looksLikeProportion(q)).toBe(false);
+    }
   });
 });

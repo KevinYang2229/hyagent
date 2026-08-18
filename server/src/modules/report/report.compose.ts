@@ -367,6 +367,20 @@ export function parseCellNumber(raw: string): number | null {
 }
 
 /**
+ * 查詢句是否在問「部分佔整體」。
+ *
+ * 這是自動補圖唯一拿得到、而欄位型別看不出來的資訊。圓餅成立與否是語意判斷——
+ * 「國內 757／國外 197」構成一個整體、「日本 30／美國 232」只是兩個並列的數字，
+ * 兩者的欄位型別完全相同。查詢句就在手上，不用它等於自廢一半判斷依據。
+ */
+export function looksLikeProportion(query: string): boolean {
+  return /佔比|比例|占比|組成|構成|比重|結構占|share|proportion|composition|breakdown/i.test(query);
+}
+
+/** 自動補圖時最多試幾張表：形狀不合就換下一張，但不值得為它把整個清單都載入 */
+const AUTO_CHART_TRIES = 5;
+
+/**
  * 沒有模型挑選時，直接從最相關的表自動產圖。
  *
  * 實測命中率只有一半上下：同一次呼叫裡模型既要寫文又要挑表，常常寫完就忘了附圖，
@@ -375,9 +389,10 @@ export function parseCellNumber(raw: string): number | null {
  *
  * 只在模型完全沒挑時才用，絕不覆蓋它的選擇——它看得到章節的語意，這裡只看得到欄位型別。
  */
-async function autoChart(
+async function autoChartFrom(
   tenantId: string,
   entry: TableCatalogEntry,
+  kind?: string,
 ): Promise<SectionChart | undefined> {
   const table = await loadTable(tenantId, entry.id);
   if (!table) return undefined;
@@ -390,8 +405,30 @@ async function autoChart(
     table: entry.id,
     label: table.headers[li],
     value: table.headers[vi],
+    ...(kind ? { kind } : {}),
     title: `${table.sheet}${table.caption ? `（${table.caption}）` : ''}`,
   });
+}
+
+/**
+ * 自動補圖的入口。
+ *
+ * 問佔比時**依形狀挑表**而不是直接拿排名第一的：最相關的常是逐年的長表（16 列），
+ * 對它要求圓餅只會因超過扇形上限而退回長條——想畫佔比就得找到那張兩三列的統計表。
+ * 找不到就回到預設行為，不會因為挑不到理想形狀而整節沒圖。
+ */
+async function autoChart(
+  tenantId: string,
+  shortlist: TableCatalogEntry[],
+  query: string,
+): Promise<SectionChart | undefined> {
+  if (looksLikeProportion(query)) {
+    for (const entry of shortlist.slice(0, AUTO_CHART_TRIES)) {
+      const chart = await autoChartFrom(tenantId, entry, 'donut');
+      if (chart?.kind === 'donut') return chart;
+    }
+  }
+  return autoChartFrom(tenantId, shortlist[0]);
 }
 
 /**
@@ -610,7 +647,7 @@ export async function composeSection(
     // 模型沒挑就自動補：加再多圖型，模型不選也看不到
     if (!chart && shortlist.length > 0) {
       try {
-        chart = await autoChart(tenantId, shortlist[0]);
+        chart = await autoChart(tenantId, shortlist, `${section.heading}${section.query}`);
         if (chart) logger.info({ tenantId, heading: section.heading }, '章節圖表由系統自動補上');
       } catch (err) {
         logger.warn({ err, tenantId }, 'auto chart failed');
