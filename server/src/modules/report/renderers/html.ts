@@ -38,6 +38,50 @@ export function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
+/**
+ * 東亞寬字元。用於估算文字寬度：這些字元約佔一個 em，拉丁字母與數字約佔 0.55 em。
+ */
+const WIDE_CHAR = /[\u1100-\u115F\u2E80-\uA4CF\uAC00-\uD7A3\uF900-\uFAFF\uFE30-\uFE6F\uFF00-\uFF60\uFFE0-\uFFE6]/;
+
+/**
+ * 文字寬度估算（px）。
+ *
+ * server 端沒有字體度量可用，但 SVG 的版面必須在畫之前就決定，所以只能估。
+ * 估值只拿來決定「截到哪裡」與「哪些標籤畫得下」，寧可略估寬一點留白，
+ * 也不要讓字疊在一起——重疊是不可讀，留白只是不好看。
+ */
+function textWidth(text: string, fontSize: number): number {
+  let units = 0;
+  for (const ch of text) units += WIDE_CHAR.test(ch) ? 1 : 0.55;
+  return units * fontSize;
+}
+
+/**
+ * 依估算寬度截斷，超出的部分以 … 收尾。
+ *
+ * 標籤來自被爬取的表格欄位，長度完全不受控；不截斷的話中文標籤會直接壓到長條上。
+ * 同時回傳原字串，讓呼叫端在截斷時掛 <title>：列印時看不到，但螢幕上讀者仍取得回全名。
+ */
+function clampLabel(text: string, fontSize: number, maxWidth: number): { shown: string; full?: string } {
+  if (textWidth(text, fontSize) <= maxWidth) return { shown: text };
+  const budget = maxWidth - textWidth('…', fontSize);
+  let shown = '';
+  let width = 0;
+  for (const ch of text) {
+    const w = textWidth(ch, fontSize);
+    if (width + w > budget) break;
+    shown += ch;
+    width += w;
+  }
+  return { shown: `${shown.trimEnd()}…`, full: text };
+}
+
+/** clampLabel 的 <text> 內容版：截斷過的標籤掛上 <title>，滑鼠停留仍讀得到完整字串 */
+function labelBody(text: string, fontSize: number, maxWidth: number): string {
+  const { shown, full } = clampLabel(text, fontSize, maxWidth);
+  return escapeHtml(shown) + (full ? `<title>${escapeHtml(full)}</title>` : '');
+}
+
 const STYLE = [
   'body{max-width:46rem;margin:2rem auto;padding:0 1rem;',
   'font-family:system-ui,"Noto Sans TC",sans-serif;line-height:1.7;color:#1a1a1a}',
@@ -74,9 +118,19 @@ const LABEL_W = 150;
 const VALUE_W = 76;
 const CHART_W = 620;
 
+/** 分組長條圖例每個數列佔的橫向槽寬；上游 MAX_SERIES 為 4，4 × 150 仍在 CHART_W 內 */
+const LEGEND_SLOT_W = 150;
+
 /** 折線與圓餅共用的畫布尺寸 */
 const PLOT_W = 620;
 const PLOT_H = 220;
+
+/** 折線 x 軸標籤：字級與單一標籤的寬度上限（超過就截，再由抽稀決定畫不畫） */
+const X_LABEL_FS = 11;
+const X_LABEL_MAX_W = 96;
+
+/** 圓餅圖例可用寬度：文字從 x=252 起，右緣留 8px */
+const LEGEND_W = PLOT_W - 252 - 8;
 /**
  * 類別配色（圓餅、甜甜圈、分組長條的數列）。
  *
@@ -89,18 +143,30 @@ const PLOT_H = 220;
  */
 const CATEGORY_COLORS = ['#1f6fb2', '#e07b39', '#2a9d8f', '#7d5ba6', '#c0504d', '#b8860b'];
 
-/** 折線圖：時間軸由左至右；只標首末與最大值，每點都掛數字會把折線淹掉 */
+/**
+ * 折線圖：時間軸由左至右；只標首末與最大值，每點都掛數字會把折線淹掉。
+ *
+ * y 軸取資料自身的範圍而非強制含 0：時間序列要看的是「怎麼變」，1020→1035 這種
+ * 小幅變化被 0 基線壓成一條直線就等於什麼都沒說。代價是基線不再是 0、變化幅度容易
+ * 被高估——所以左側一定標出上下界並各畫一條格線：截斷的軸必須是看得見的，
+ * 否則就是在騙人。
+ */
 function lineSvg(chart: SectionChart): string {
   const vals = chart.points.map((p) => p.value);
-  const max = Math.max(...vals, 0);
-  const min = Math.min(...vals, 0);
+  const max = Math.max(...vals);
+  const min = Math.min(...vals);
+  // 全部同值時 span 為 0，畫在中線；此時上下界是同一個數，只標一次
+  const flat = max === min;
   const span = max - min || 1;
   const padL = 56;
   const w = PLOT_W - padL - 16;
   const h = PLOT_H - 28 - 16;
+  // 上下各留一段，讓最高與最低點不貼著圖框
+  const inset = 12;
   const x = (i: number): number =>
     padL + (chart.points.length === 1 ? w / 2 : (i * w) / (chart.points.length - 1));
-  const y = (v: number): number => 16 + h - ((v - min) / span) * h;
+  const y = (v: number): number =>
+    flat ? 16 + h / 2 : 16 + inset + (1 - (v - min) / span) * (h - inset * 2);
 
   const path = chart.points
     .map((p, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(p.value).toFixed(1)}`)
@@ -108,10 +174,26 @@ function lineSvg(chart: SectionChart): string {
   const dots = chart.points
     .map((p, i) => `<circle cx="${x(i).toFixed(1)}" cy="${y(p.value).toFixed(1)}" r="3.5" fill="#0b6bcb"/>`)
     .join('');
+  // x 軸標籤抽稀：12 個點的中文日期標籤在 620px 寬下必然重疊，寧可少標也不要糊成一團
+  const spacing = chart.points.length > 1 ? w / (chart.points.length - 1) : w;
+  const clamped = chart.points.map((p) => clampLabel(p.label, X_LABEL_FS, X_LABEL_MAX_W));
+  const widest = Math.max(...clamped.map((c) => textWidth(c.shown, X_LABEL_FS)), 1);
+  const step = Math.max(1, Math.ceil((widest + 8) / spacing));
+  const keep = new Set<number>();
+  for (let i = 0; i < chart.points.length; i += step) keep.add(i);
+  const lastIdx = chart.points.length - 1;
+  if (!keep.has(lastIdx)) {
+    // 末點是時間序列裡讀者最先找的一個，寧可犧牲它前面那個標籤也要留下
+    const prev = Math.max(...keep);
+    if ((lastIdx - prev) * spacing < widest + 8) keep.delete(prev);
+    keep.add(lastIdx);
+  }
   const labels = chart.points
-    .map(
-      (p, i) =>
-        `<text x="${x(i).toFixed(1)}" y="${PLOT_H - 8}" font-size="11" fill="#555" text-anchor="middle">${escapeHtml(p.label)}</text>`,
+    .map((_pt, i) =>
+      keep.has(i)
+        ? `<text x="${x(i).toFixed(1)}" y="${PLOT_H - 8}" font-size="${X_LABEL_FS}" fill="#555" text-anchor="middle">` +
+          `${escapeHtml(clamped[i].shown)}${clamped[i].full ? `<title>${escapeHtml(clamped[i].full)}</title>` : ''}</text>`
+        : '',
     )
     .join('');
   const marks = [...new Set([0, chart.points.length - 1, vals.indexOf(max)])]
@@ -120,9 +202,19 @@ function lineSvg(chart: SectionChart): string {
         `<text x="${x(i).toFixed(1)}" y="${(y(chart.points[i].value) - 8).toFixed(1)}" font-size="11" fill="#333" text-anchor="middle">${escapeHtml(chart.points[i].value.toLocaleString('en-US'))}</text>`,
     )
     .join('');
+  // 上下界的格線與數字：y 軸不是 0 基線，不標出來讀者無從判斷變化幅度
+  const bounds = flat ? [max] : [max, min];
+  const grid = bounds
+    .map((v) => `<line x1="${padL}" y1="${y(v).toFixed(1)}" x2="${PLOT_W - 16}" y2="${y(v).toFixed(1)}" stroke="#e5e5e5"/>`)
+    .join('');
+  const axis = bounds
+    .map(
+      (v) =>
+        `<text x="${padL - 8}" y="${(y(v) + 4).toFixed(1)}" font-size="10.5" fill="#777" text-anchor="end">${escapeHtml(v.toLocaleString('en-US'))}</text>`,
+    )
+    .join('');
   return (
-    `<svg viewBox="0 0 ${PLOT_W} ${PLOT_H}" role="img" aria-label="${escapeHtml(chart.title)}">` +
-    `<line x1="${padL}" y1="${16 + h}" x2="${PLOT_W - 16}" y2="${16 + h}" stroke="#ddd"/>` +
+    `<svg viewBox="0 0 ${PLOT_W} ${PLOT_H}" role="img" aria-label="${escapeHtml(chart.title)}">${grid}${axis}` +
     `<path d="${path}" fill="none" stroke="#0b6bcb" stroke-width="2"/>${dots}${marks}${labels}</svg>`
   );
 }
@@ -163,10 +255,13 @@ function pieSvg(chart: SectionChart): string {
     .map((p, i) => {
       const ly = 24 + i * 22;
       const pct = ((p.value / total) * 100).toFixed(1);
-      const text = `${p.label}  ${p.value.toLocaleString('en-US')}${chart.unit ?? ''}（${pct}%）`;
+      // 只截標籤、不動數字尾巴：佔比才是圓餅圖例存在的理由，截掉它等於白畫
+      const tail = `  ${p.value.toLocaleString('en-US')}${chart.unit ?? ''}（${pct}%）`;
+      const name = clampLabel(p.label, 12, LEGEND_W - textWidth(tail, 12));
       return (
         `<rect x="232" y="${ly - 10}" width="12" height="12" fill="${CATEGORY_COLORS[i % CATEGORY_COLORS.length]}"/>` +
-        `<text x="252" y="${ly}" font-size="12" fill="#333">${escapeHtml(text)}</text>`
+        `<text x="252" y="${ly}" font-size="12" fill="#333">${escapeHtml(name.shown + tail)}` +
+        `${name.full ? `<title>${escapeHtml(name.full + tail)}</title>` : ''}</text>`
       );
     })
     .join('');
@@ -209,16 +304,16 @@ function groupedSvg(chart: SectionChart): string {
         })
         .join('');
       const mid = top + (series.length * (barH + gapIn)) / 2;
-      return `<text x="0" y="${mid}" font-size="12" fill="#333">${escapeHtml(p.label)}</text>${bars}`;
+      return `<text x="0" y="${mid}" font-size="12" fill="#333">${labelBody(p.label, 12, labelW - 8)}</text>${bars}`;
     })
     .join('');
 
   const legend = series
     .map((name, i) => {
-      const x = i * 150;
+      const x = i * LEGEND_SLOT_W;
       return (
         `<rect x="${x}" y="4" width="11" height="11" fill="${CATEGORY_COLORS[i % CATEGORY_COLORS.length]}"/>` +
-        `<text x="${x + 16}" y="14" font-size="11" fill="#555">${escapeHtml(name)}</text>`
+        `<text x="${x + 16}" y="14" font-size="11" fill="#555">${labelBody(name, 11, LEGEND_SLOT_W - 16 - 8)}</text>`
       );
     })
     .join('');
@@ -250,7 +345,7 @@ function chartSvg(section: ReportSection, locale: string): string {
     const w = max > 0 ? Math.max(1, Math.round((pt.value / max) * trackW)) : 0;
     const value = pt.value.toLocaleString('en-US') + (chart.unit ? ` ${chart.unit}` : '');
     return [
-      `<text x="0" y="${y + BAR_H * 0.7}" font-size="12" fill="#333">${escapeHtml(pt.label)}</text>`,
+      `<text x="0" y="${y + BAR_H * 0.7}" font-size="12" fill="#333">${labelBody(pt.label, 12, LABEL_W - 8)}</text>`,
       `<rect x="${LABEL_W}" y="${y}" width="${trackW}" height="${BAR_H}" fill="#f0f0f0"/>`,
       `<rect x="${LABEL_W}" y="${y}" width="${w}" height="${BAR_H}" fill="#0b6bcb"/>`,
       `<text x="${LABEL_W + trackW + 8}" y="${y + BAR_H * 0.7}" font-size="12" fill="#333">${escapeHtml(value)}</text>`,
