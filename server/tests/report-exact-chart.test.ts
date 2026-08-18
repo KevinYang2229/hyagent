@@ -14,8 +14,10 @@ jest.mock('@/modules/knowledge/knowledge.tables.repo', () => ({
 import {
   buildExactChart,
   extractChartRef,
+  firstNumericColumn,
   parseCellNumber,
   selectCatalog,
+  tablePreview,
 } from '@/modules/report/report.compose';
 import { renderHtml } from '@/modules/report/renderers/html';
 import { renderMarkdown } from '@/modules/report/renderers/markdown';
@@ -162,5 +164,44 @@ describe('selectCatalog', () => {
     const out = selectCatalog(many, '台北國際工具機展 2025 各國預登人數', 5);
     expect(out).toHaveLength(5);
     expect(out[0].sheet).toBe('4-TM-參觀者預登國家數');
+  });
+});
+
+/**
+ * 散文與圖表的數字一致性。
+ *
+ * 實跑時模型寫出「2022 年 8,598 為歷年最高」，而同一節的圖表（由程式從完整表算出）
+ * 顯示 2023 年是 18,697——它只是沒在 top-5 檢索片段裡看到那一列。同一節內散文與圖
+ * 互相矛盾，比兩者都錯更傷可信度，所以把真實資料列一併餵給撰文的模型。
+ */
+describe('tablePreview', () => {
+  const table = {
+    id: 't', source: 'CC匯出.xlsx', sheet: '2-CC-參觀者預登人數',
+    caption: '展覽名稱:台北國際自行車展覽會', headers: ['年度', '預登總數'], rowCount: 4,
+    rows: [['2022', '8,598'], ['2023', '18,697'], ['2019', '6,159'], ['2018', '7,926']],
+  };
+
+  it('依數值欄由大到小排序——散文引用的多半是極值', () => {
+    const out = tablePreview(table);
+    const lines = out.split('\n');
+    expect(lines[lines.length - 4]).toContain('18,697'); // 最大值排在資料列首位
+    expect(out.indexOf('18,697')).toBeLessThan(out.indexOf('8,598'));
+  });
+
+  it('全部列出時明講，避免模型把節錄當成全部', () => {
+    expect(tablePreview(table)).toContain('已全部列出');
+  });
+
+  it('只取前幾列時標明總列數與排序依據', () => {
+    const many = { ...table, rows: Array.from({ length: 40 }, (_, i) => [`${2000 + i}`, String(i)]) };
+    const out = tablePreview(many);
+    expect(out).toContain('共 40 列');
+    expect(out).toContain('預登總數');
+  });
+
+  it('沒有數值欄時退回原始順序，不排序也不出錯', () => {
+    const text = { ...table, headers: ['項目', '說明'], rows: [['a', '甲'], ['b', '乙'], ['c', '丙']] };
+    expect(firstNumericColumn(text)).toBe(-1);
+    expect(() => tablePreview(text)).not.toThrow();
   });
 });

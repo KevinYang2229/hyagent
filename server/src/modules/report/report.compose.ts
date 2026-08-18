@@ -12,7 +12,12 @@ import { rerankChunks } from '@/modules/knowledge/rerank';
 import { pickRetriever } from '@/modules/knowledge/retriever.pick';
 import type { KnowledgeChunk } from '@/modules/knowledge/retriever.types';
 import { usageStore } from '@/modules/usage/usage.store';
-import { listTableCatalog, loadTable, type TableCatalogEntry } from '@/modules/knowledge/knowledge.tables.repo';
+import {
+  listTableCatalog,
+  loadTable,
+  type StoredTable,
+  type TableCatalogEntry,
+} from '@/modules/knowledge/knowledge.tables.repo';
 import type { OutlineSection, ReportSection, SectionChart, SectionSource } from './report.types';
 
 function sectionSystem(locale?: string): string {
@@ -20,7 +25,9 @@ function sectionSystem(locale?: string): string {
     return [
       'You write ONE section of a knowledge-base report. Respond entirely in English.',
       'Rules:',
-      '- Use ONLY the reference material below; for anything not covered, say "Not mentioned in the materials." Never fabricate.',
+      '- Use ONLY the reference material and the table contents below; for anything not covered, say "Not mentioned in the materials." Never fabricate.',
+      '- For any NUMBER, trust "Table contents" over "Reference material": the latter are retrieved excerpts,',
+      '  and superlatives drawn from them ("highest", "most") will contradict the chart.',
       '- Write the body of this section only. Do NOT repeat the section heading.',
       '- Do NOT write conclusions, summaries, or transitions to other sections.',
       '- Output Markdown. Sub-headings, if any, MUST start at level 3 (###) — the section heading is already level 2.',
@@ -45,7 +52,9 @@ function sectionSystem(locale?: string): string {
   return [
     '你負責撰寫知識庫報告的「其中一節」，全程使用繁體中文。',
     '規則：',
-    '- 只根據下方「參考資料」撰寫；資料未提到的部分明說「資料中未提及」，切勿杜撰。',
+    '- 只根據下方「參考資料」與「資料表實際內容」撰寫；未提到的部分明說「資料中未提及」，切勿杜撰。',
+    '- **數字一律以「資料表實際內容」為準**：參考資料是檢索片段，只是節錄，'
+      + '拿它下「最高」「最多」這類全稱判斷會與圖表互相矛盾。',
     '- 只寫這一節的內文，不要重複章節標題。',
     '- 不要寫結論、總結或銜接其他章節的過渡句（章節銜接由排版負責）。',
     '- 以 Markdown 輸出。若要分小節，標題一律從第三級（###）起跳——章節標題本身已經是第二級。',
@@ -178,6 +187,47 @@ export function selectCatalog(
     .sort((a, b) => b.hit - a.hit)
     .slice(0, limit)
     .map((x) => x.t);
+}
+
+/**
+ * 附上真實資料列的表數，以及每張最多幾列。
+ *
+ * 散文若只看檢索片段（top-5），會拿片面的數字下全稱判斷——實跑時模型寫出
+ * 「2022 年 8,598 為歷年最高」，而完整表裡 2023 年是 18,697，它只是沒看到那一列。
+ * 圖表由程式從完整表算出，於是同一節裡散文與圖互相矛盾，比兩者都錯更傷可信度。
+ *
+ * 解法不是多打一次 LLM，而是在同一次呼叫裡把最可能相關的幾張表的實際資料附上去。
+ * 只附前幾張、每張只附排序後的前幾列：極值是散文最常引用的（「最高」「前三名」），
+ * 而完整幾百列既無必要也塞不下。
+ */
+const PREVIEW_TABLES = 3;
+const PREVIEW_ROWS = 12;
+
+/** 找出第一個數值欄的索引；沒有回 -1 */
+export function firstNumericColumn(table: StoredTable): number {
+  for (let c = 0; c < table.headers.length; c++) {
+    const hits = table.rows.filter((r) => parseCellNumber(r[c] ?? '') !== null).length;
+    if (hits >= Math.max(2, Math.ceil(table.rows.length * 0.6))) return c;
+  }
+  return -1;
+}
+
+/**
+ * 一張表的資料預覽。有數值欄就依它由大到小排序後取前幾列——散文引用的多半是極值；
+ * 沒有就取原始順序的前幾列。列數不足全部的話明講，避免模型把節錄當成全部。
+ */
+export function tablePreview(table: StoredTable): string {
+  const numeric = firstNumericColumn(table);
+  const rows = numeric >= 0
+    ? [...table.rows].sort((a, b) => (parseCellNumber(b[numeric] ?? '') ?? 0) - (parseCellNumber(a[numeric] ?? '') ?? 0))
+    : table.rows;
+  const shown = rows.slice(0, PREVIEW_ROWS);
+  const note = shown.length < table.rows.length
+    ? `（共 ${table.rows.length} 列，此處為依「${table.headers[numeric]}」排序後的前 ${shown.length} 列）`
+    : `（共 ${table.rows.length} 列，已全部列出）`;
+  const head = `${table.sheet}${table.caption ? ` — ${table.caption}` : ''} ${note}`;
+  const body = [table.headers.join(' | '), ...shown.map((r) => r.join(' | '))].join('\n');
+  return `${head}\n${body}`;
 }
 
 /** 目錄摘要：只給表的「形狀」，不給資料列——幾千列塞進 prompt 既貴又沒必要 */
@@ -320,6 +370,18 @@ export async function composeSection(
   const shortlist = selectCatalog(catalog, `${section.heading}${section.query}`);
   const catalogBlock = shortlist.length > 0 ? `\n\n可用資料表：\n${catalogPrompt(shortlist)}` : '';
 
+  // 最相關的幾張附上真實資料列，讓散文與圖表據同一份數字書寫；載入失敗只是少了預覽
+  const previews: string[] = [];
+  for (const entry of shortlist.slice(0, PREVIEW_TABLES)) {
+    try {
+      const table = await loadTable(tenantId, entry.id);
+      if (table) previews.push(tablePreview(table));
+    } catch (err) {
+      logger.warn({ err, tenantId, table: entry.id }, 'table preview load failed');
+    }
+  }
+  const previewBlock = previews.length > 0 ? `\n\n資料表實際內容：\n${previews.join('\n\n')}` : '';
+
   try {
     const result = await llm.createMessage({
       system: sectionSystem(locale),
@@ -329,7 +391,7 @@ export async function composeSection(
           content: [
             {
               type: 'text',
-              text: `章節標題：${section.heading}\n\n參考資料：\n${context}${catalogBlock}\n\n本節要回答：${section.query}`,
+              text: `章節標題：${section.heading}\n\n參考資料：\n${context}${catalogBlock}${previewBlock}\n\n本節要回答：${section.query}`,
             },
           ],
         },
