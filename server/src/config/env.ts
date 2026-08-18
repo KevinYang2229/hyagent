@@ -16,6 +16,9 @@ export const envSchema = z.object({
   DATA_BACKEND: z.enum(['file', 'db']).default('file'),
   // DATA_BACKEND=db 時必填（Supabase 建議用 session pooler；transaction pooler 需加 ?pgbouncer=true）
   DATABASE_URL: z.string().optional(),
+  // Prisma 連線池上限；未設時 lib/db 會套用保守預設（見該檔的 DEFAULT_CONNECTION_LIMIT）。
+  // Supabase session pooler 全帳號共用 15 條，Prisma 的原生預設會超過。
+  DB_CONNECTION_LIMIT: z.coerce.number().int().positive().optional(),
   // 敏感欄位靜態加密金鑰（BYO LLM key / ssoSecret）：64 hex（openssl rand -hex 32）。
   // 未設＝明文落地（dev 便利）；設定後新寫入即加密，舊明文資料開機自動補加密。
   // 空字串視為未設定（測試環境以 '' 固定關閉加密，見 tests/setup-env.ts）

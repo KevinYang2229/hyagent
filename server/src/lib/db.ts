@@ -6,16 +6,52 @@
  * - closeDb()：關機前把所有佇列沖完再斷線（index.ts shutdown 用）。
  */
 import type { PrismaClient } from '@prisma/client';
+import { env } from '@/config/env';
 import { logger } from '@/lib/logger';
 
 let client: PrismaClient | undefined;
 const queues: DbWriteQueue[] = [];
 
+/**
+ * 未指定時套用的連線池上限。
+ *
+ * Prisma 的預設是「實體核心數 × 2 + 1」——10 核心的開發機就是 21 條，而 Supabase 的
+ * session pooler 預設只給 15，**單一個 process 就能把整個 pooler 佔滿**，其他連線一律
+ * 收到 `EMAXCONNSESSION: max clients reached`。而且這個上限是全帳號共用的：正式站的
+ * server、批次匯入 CLI、臨時腳本全都在搶同一個 15。
+ *
+ * 取 5 是因為本專案的資料庫工作幾乎都是序列的（各 store 一條 DbWriteQueue、批次匯入
+ * 逐檔處理），併發度本來就低；留下的餘裕讓 server 與 CLI 可以並存。真的需要更高的
+ * 部署可用 DB_CONNECTION_LIMIT 覆寫，或直接在 DATABASE_URL 帶 ?connection_limit=N。
+ */
+const DEFAULT_CONNECTION_LIMIT = 5;
+
+/**
+ * 補上 connection_limit（URL 已自帶則尊重原值）。
+ * 在此處理而非要求每個部署改 .env：漏改的後果是連線耗盡，而症狀（逾時、連不上）
+ * 看起來完全不像連線數問題，非常難查。
+ */
+export function withConnectionLimit(url: string, limit: number): string {
+  try {
+    const u = new URL(url);
+    if (!u.searchParams.has('connection_limit')) {
+      u.searchParams.set('connection_limit', String(limit));
+    }
+    return u.toString();
+  } catch {
+    return url; // 解析不了就原樣送出，交給 Prisma 自己報錯
+  }
+}
+
 /** 各 store 的 init 呼叫；重複呼叫回同一個 client */
 export async function connectDb(): Promise<PrismaClient> {
   if (!client) {
     const { PrismaClient } = await import('@prisma/client');
-    client = new PrismaClient();
+    const limit = env.DB_CONNECTION_LIMIT ?? DEFAULT_CONNECTION_LIMIT;
+    const url = env.DATABASE_URL ? withConnectionLimit(env.DATABASE_URL, limit) : undefined;
+    client = url
+      ? new PrismaClient({ datasources: { db: { url } } })
+      : new PrismaClient();
   }
   return client;
 }
