@@ -17,7 +17,7 @@ import {
   safeUrl,
   sourcesHeading,
 } from '../report.strings';
-import type { ReportDoc, ReportSection } from '../report.types';
+import type { ReportDoc, ReportSection, SectionChart } from '../report.types';
 
 /**
  * 章節內文的 Markdown → HTML 轉換器。
@@ -74,6 +74,91 @@ const LABEL_W = 150;
 const VALUE_W = 76;
 const CHART_W = 620;
 
+/** 折線與圓餅共用的畫布尺寸 */
+const PLOT_W = 620;
+const PLOT_H = 220;
+/** 圓餅色階：同一色相由深到淺，不用彩虹色——那會暗示不存在的分類語意 */
+const PIE_SHADES = ['#0b6bcb', '#2f83d6', '#5a9be0', '#84b3ea', '#aecbf3', '#d7e3f9'];
+
+/** 折線圖：時間軸由左至右；只標首末與最大值，每點都掛數字會把折線淹掉 */
+function lineSvg(chart: SectionChart): string {
+  const vals = chart.points.map((p) => p.value);
+  const max = Math.max(...vals, 0);
+  const min = Math.min(...vals, 0);
+  const span = max - min || 1;
+  const padL = 56;
+  const w = PLOT_W - padL - 16;
+  const h = PLOT_H - 28 - 16;
+  const x = (i: number): number =>
+    padL + (chart.points.length === 1 ? w / 2 : (i * w) / (chart.points.length - 1));
+  const y = (v: number): number => 16 + h - ((v - min) / span) * h;
+
+  const path = chart.points
+    .map((p, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(p.value).toFixed(1)}`)
+    .join(' ');
+  const dots = chart.points
+    .map((p, i) => `<circle cx="${x(i).toFixed(1)}" cy="${y(p.value).toFixed(1)}" r="3.5" fill="#0b6bcb"/>`)
+    .join('');
+  const labels = chart.points
+    .map(
+      (p, i) =>
+        `<text x="${x(i).toFixed(1)}" y="${PLOT_H - 8}" font-size="11" fill="#555" text-anchor="middle">${escapeHtml(p.label)}</text>`,
+    )
+    .join('');
+  const marks = [...new Set([0, chart.points.length - 1, vals.indexOf(max)])]
+    .map(
+      (i) =>
+        `<text x="${x(i).toFixed(1)}" y="${(y(chart.points[i].value) - 8).toFixed(1)}" font-size="11" fill="#333" text-anchor="middle">${escapeHtml(chart.points[i].value.toLocaleString('en-US'))}</text>`,
+    )
+    .join('');
+  return (
+    `<svg viewBox="0 0 ${PLOT_W} ${PLOT_H}" role="img" aria-label="${escapeHtml(chart.title)}">` +
+    `<line x1="${padL}" y1="${16 + h}" x2="${PLOT_W - 16}" y2="${16 + h}" stroke="#ddd"/>` +
+    `<path d="${path}" fill="none" stroke="#0b6bcb" stroke-width="2"/>${dots}${marks}${labels}</svg>`
+  );
+}
+
+/** 圓餅圖：扇形數已由 resolveChartKind 限制在 6 以內，才畫得出可比的角度 */
+function pieSvg(chart: SectionChart): string {
+  const total = chart.points.reduce((n, p) => n + p.value, 0);
+  if (total <= 0) return '';
+  const cx = 110;
+  const cy = 110;
+  const r = 92;
+  let acc = 0;
+  const slices = chart.points
+    .map((p, i) => {
+      const a0 = (acc / total) * Math.PI * 2 - Math.PI / 2;
+      acc += p.value;
+      const a1 = (acc / total) * Math.PI * 2 - Math.PI / 2;
+      const large = a1 - a0 > Math.PI ? 1 : 0;
+      const x0 = cx + r * Math.cos(a0);
+      const y0 = cy + r * Math.sin(a0);
+      const x1 = cx + r * Math.cos(a1);
+      const y1 = cy + r * Math.sin(a1);
+      // 單一扇形佔滿整圓時 arc 起訖點重合、畫不出來，改用整圓路徑
+      const d =
+        chart.points.length === 1
+          ? `M ${cx} ${cy - r} A ${r} ${r} 0 1 1 ${cx - 0.01} ${cy - r} Z`
+          : `M ${cx} ${cy} L ${x0.toFixed(1)} ${y0.toFixed(1)} A ${r} ${r} 0 ${large} 1 ${x1.toFixed(1)} ${y1.toFixed(1)} Z`;
+      return `<path d="${d}" fill="${PIE_SHADES[i % PIE_SHADES.length]}" stroke="#fff" stroke-width="1.5"/>`;
+    })
+    .join('');
+  // 圖例配文字：扇形內標不下，且單靠顏色辨識對色覺障礙不友善
+  const legend = chart.points
+    .map((p, i) => {
+      const ly = 24 + i * 22;
+      const pct = ((p.value / total) * 100).toFixed(1);
+      const text = `${p.label}  ${p.value.toLocaleString('en-US')}${chart.unit ?? ''}（${pct}%）`;
+      return (
+        `<rect x="232" y="${ly - 10}" width="12" height="12" fill="${PIE_SHADES[i % PIE_SHADES.length]}"/>` +
+        `<text x="252" y="${ly}" font-size="12" fill="#333">${escapeHtml(text)}</text>`
+      );
+    })
+    .join('');
+  return `<svg viewBox="0 0 ${PLOT_W} 224" role="img" aria-label="${escapeHtml(chart.title)}">${slices}${legend}</svg>`;
+}
+
 /**
  * 長條圖 → inline SVG。
  *
@@ -105,12 +190,16 @@ function chartSvg(section: ReportSection, locale: string): string {
     ].join('');
   });
 
+  const svg = chart.kind === 'line'
+    ? lineSvg(chart)
+    : chart.kind === 'pie'
+      ? pieSvg(chart)
+      : `<svg viewBox="0 0 ${CHART_W} ${height}" role="img" aria-label="${escapeHtml(chart.title)}">${rows.join('')}</svg>`;
+
   return [
     '<div class="chart">',
     `<p class="chart-title">${escapeHtml(chart.title)}</p>`,
-    `<svg viewBox="0 0 ${CHART_W} ${height}" role="img" aria-label="${escapeHtml(chart.title)}">`,
-    rows.join(''),
-    '</svg>',
+    svg,
     `<p class="chart-cap">${escapeHtml(caption)}</p>`,
     '</div>',
   ].join('');

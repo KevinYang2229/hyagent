@@ -2,7 +2,7 @@
  * 報告大綱生成：JSON 解析容錯、節數上限、失敗 fail-fast。
  */
 import type { LLMCreateParams, LLMProvider, LLMResult } from '@/lib/llm/types';
-import { buildOutline } from '@/modules/report/report.outline';
+import { buildOutline, outlineTokenBudget } from '@/modules/report/report.outline';
 
 /** 補齊 LLMResult 必填欄位（stopReason / model / keySource）的輔助函式 */
 function llmResult(text: string): LLMResult {
@@ -94,5 +94,26 @@ describe('buildOutline', () => {
       },
     };
     await expect(buildOutline('t1', '主題', undefined, llm)).rejects.toThrow();
+  });
+});
+
+/**
+ * 大綱的 token 預算。原本固定 512，而 prompt 要求「每節寫出可獨立檢索的完整問句」——
+ * 六節中文問句加 JSON 骨架超過預算，輸出被截斷後只抓得到半截物件，
+ * 實跑兩次都以「JSON 格式錯誤」全滅，錯誤訊息還把人引去查模型的格式。
+ */
+describe('outlineTokenBudget', () => {
+  it('隨節數縮放——任何寫死的值都會在某個 REPORT_MAX_SECTIONS 下重演同一個 bug', () => {
+    expect(outlineTokenBudget(12)).toBeGreaterThan(outlineTokenBudget(6));
+    expect(outlineTokenBudget(6)).toBeGreaterThan(outlineTokenBudget(3));
+  });
+
+  it('六節的預算足以容納中文問句（實測輸出約 683 字元）', () => {
+    // 中文約 1 字元 ≈ 1 token，六節實測 683 字元，預算必須明顯高於它
+    expect(outlineTokenBudget(6)).toBeGreaterThanOrEqual(1200);
+  });
+
+  it('節數很少時仍保有下限', () => {
+    expect(outlineTokenBudget(1)).toBeGreaterThanOrEqual(512);
   });
 });

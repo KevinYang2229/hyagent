@@ -30,14 +30,34 @@ function outlineSystem(locale?: string): string {
   ].join('\n');
 }
 
+/**
+ * 大綱的 token 預算。
+ *
+ * 原本固定 512，但 prompt 要求「每節寫出可獨立理解、能直接拿去檢索的完整問句」——
+ * 六節中文問句加上 JSON 骨架早就超過，輸出被截斷後 extractJson 抓到半截物件，
+ * 每次都以「JSON 格式錯誤」收場。錯誤訊息還會把人引去查模型的格式，
+ * 真正的原因是預算與 prompt 的要求互相矛盾。
+ *
+ * 隨節數縮放而非再寫死一個數字：REPORT_MAX_SECTIONS 可設到 12，
+ * 任何固定值都會在某個設定下重演同一個 bug。
+ */
+export function outlineTokenBudget(sections: number): number {
+  return Math.max(512, sections * 220 + 200);
+}
+
 /** 從模型輸出抓出第一個 JSON 物件（容忍前後綴與 code fence），比照 rerank.ts 的做法 */
-function extractJson(text: string): unknown {
+function extractJson(text: string, truncated: boolean): unknown {
   const match = text.match(/\{[\s\S]*\}/);
   if (!match) throw new Error('報告大綱解析失敗：模型未輸出 JSON');
   try {
     return JSON.parse(match[0]);
   } catch {
-    throw new Error('報告大綱解析失敗：JSON 格式錯誤');
+    // 截斷與「模型真的輸出了壞 JSON」是兩件事，處置方式也不同（調預算 vs 調 prompt）
+    throw new Error(
+      truncated
+        ? '報告大綱解析失敗：輸出被 token 上限截斷（請調高 REPORT_MAX_SECTIONS 對應的預算或減少節數）'
+        : '報告大綱解析失敗：JSON 格式錯誤',
+    );
   }
 }
 
@@ -65,11 +85,14 @@ export async function buildOutline(
   const result = await llm.createMessage({
     system: outlineSystem(locale),
     messages: [{ role: 'user', content: [{ type: 'text', text: `報告主題：${topic}` }] }],
-    maxTokens: 512,
+    maxTokens: outlineTokenBudget(env.REPORT_MAX_SECTIONS),
   });
   usageStore.recordLLMUsage(tenantId, result);
 
-  const parsed = extractJson(result.text ?? '') as { title?: unknown; sections?: unknown };
+  const parsed = extractJson(result.text ?? '', result.stopReason === 'max_tokens') as {
+    title?: unknown;
+    sections?: unknown;
+  };
   const sections = toSections(parsed.sections).slice(0, env.REPORT_MAX_SECTIONS);
   if (sections.length === 0) throw new Error('報告大綱解析失敗：未取得任何章節');
 

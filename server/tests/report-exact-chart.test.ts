@@ -120,7 +120,7 @@ const doc = (chart: ReportSection['chart']): ReportDoc => ({
 
 describe('renderer：精確圖表的說明文字', () => {
   const exact: ReportSection['chart'] = {
-    complete: true, title: '各國預登人數', unit: '人',
+    kind: 'bar' as const, complete: true, title: '各國預登人數', unit: '人',
     points: [{ label: '中華民國', value: 351 }, { label: '日本', value: 30 }, { label: '美國', value: 22 }],
     sourceLabel: 'TM 匯出.xlsx / 4-TM-參觀者預登國家數', totalRows: 3,
   };

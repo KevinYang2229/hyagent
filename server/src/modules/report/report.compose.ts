@@ -18,7 +18,13 @@ import {
   type StoredTable,
   type TableCatalogEntry,
 } from '@/modules/knowledge/knowledge.tables.repo';
-import type { OutlineSection, ReportSection, SectionChart, SectionSource } from './report.types';
+import type {
+  ChartKind,
+  OutlineSection,
+  ReportSection,
+  SectionChart,
+  SectionSource,
+} from './report.types';
 
 function sectionSystem(locale?: string): string {
   if (normalizeLocale(locale) === 'en') {
@@ -36,7 +42,9 @@ function sectionSystem(locale?: string): string {
       '- The tables listed under "Available tables" hold the original spreadsheet rows.',
       '- If one answers this section, append a block naming the table and the two columns:',
       '  ```chart-ref',
-      '  {"table":"<id>","label":"<column>","value":"<column>","title":"...","unit":"..."}',
+      '  {"table":"<id>","label":"<column>","value":"<column>","kind":"bar|line|pie","title":"...","unit":"..."}',
+      '- If the section discusses ANY comparable numbers, attach a chart. Do not settle for prose.',
+      '- Pick kind by intent: bar for magnitude, line for change across years, pie for a few parts of a whole.',
       '  ```',
       '- Column names MUST match the listed 欄位 exactly. Never put numbers in this block —',
       '  the values are read from the table itself.',
@@ -63,7 +71,10 @@ function sectionSystem(locale?: string): string {
     '- 「可用資料表」列出的是試算表的原始資料列。',
     '- 若其中一張能回答本節，附上一個區塊，指名該表與要用的兩個欄位：',
     '  ```chart-ref',
-    '  {"table":"<id>","label":"<欄位名>","value":"<欄位名>","title":"標題","unit":"人數"}',
+    '  {"table":"<id>","label":"<欄位名>","value":"<欄位名>","kind":"bar|line|pie","title":"標題","unit":"人數"}',
+    '- **只要本節談到任何可比較的數字，就該附圖**；資料表在上面列著，不要只寫文字。',
+    '- kind 依這一節在講什麼選：比大小用 bar、隨年度變化用 line、少數幾塊構成整體用 pie。',
+    '  選不定就給 bar；系統會依實際資料形狀驗證，不合適會自動改成 bar。',
     '  ```',
     '- 欄位名必須與清單中的「欄位」完全一致。**這個區塊裡不要放任何數字**——',
     '  數值由系統直接從該表讀出，你只負責挑表與挑欄位。',
@@ -120,7 +131,7 @@ export function extractChart(raw: string): { body: string; chart?: SectionChart 
 function parseInlineChart(payload: string): SectionChart | undefined {
   // 解析或驗證失敗一律只丟掉圖表、保留散文：圖表是加分項，不值得讓整節降級
   try {
-    const parsed = JSON.parse(payload) as Partial<SectionChart>;
+    const parsed = JSON.parse(payload) as Partial<SectionChart> & { kind?: string };
     const points = Array.isArray(parsed.points) ? parsed.points : [];
     const clean = points.filter(
       (pt): pt is { label: string; value: number } =>
@@ -128,11 +139,17 @@ function parseInlineChart(payload: string): SectionChart | undefined {
     );
     if (clean.length < MIN_CHART_POINTS || clean.length > MAX_CHART_POINTS) return undefined;
     if (typeof parsed.title !== 'string' || parsed.title.trim() === '') return undefined;
+    const pts = clean.map((pt) => ({ label: pt.label.trim(), value: pt.value }));
     return {
+      kind: resolveChartKind(
+        typeof parsed.kind === 'string' ? parsed.kind : undefined,
+        pts.map((x) => x.label),
+        pts.map((x) => x.value),
+      ),
       complete: false, // LLM 從檢索片段讀出的節錄
       title: parsed.title.trim(),
       ...(typeof parsed.unit === 'string' && parsed.unit.trim() !== '' ? { unit: parsed.unit.trim() } : {}),
-      points: clean.map((pt) => ({ label: pt.label.trim(), value: pt.value })),
+      points: pts,
     };
   } catch {
     return undefined;
@@ -149,6 +166,40 @@ interface ChartRef {
   value: string;
   title?: string;
   unit?: string;
+  /** 模型提出的類型；最終仍由 resolveChartKind 依資料形狀決定 */
+  kind?: string;
+}
+
+/** 圓餅的扇形上限。超過就分不出角度，長條至少排得出高低 */
+const MAX_PIE_SLICES = 6;
+
+/** 標籤是否為年份序列（1900–2099）——折線只在時間序列上成立 */
+function looksLikeYears(labels: string[]): boolean {
+  const years = labels.filter((l) => /^(19|20)\d{2}$/.test(l.trim()));
+  return years.length === labels.length && new Set(years).size === labels.length;
+}
+
+/**
+ * 決定最終圖表類型：模型的提議 + 資料形狀的否決權。
+ *
+ * 覆寫一律往 bar 收斂——它對任何一組「類別 vs 數值」都成立，是安全的落點。
+ */
+export function resolveChartKind(
+  requested: string | undefined,
+  labels: string[],
+  values: number[],
+): ChartKind {
+  const want = requested === 'line' || requested === 'pie' ? requested : 'bar';
+  // 折線要求時間序列：拿它畫類別資料會暗示不存在的連續性
+  if (want === 'line') return looksLikeYears(labels) ? 'line' : 'bar';
+  // 圓餅要求「少數幾塊構成一個整體」：負值無法構成佔比，太多扇形則角度比不出大小
+  if (want === 'pie') {
+    if (labels.length > MAX_PIE_SLICES) return 'bar';
+    if (values.some((v) => v < 0)) return 'bar';
+    return 'pie';
+  }
+  // 模型沒提但標籤就是年份序列時，主動用折線——趨勢用長條看不出走向
+  return looksLikeYears(labels) ? 'line' : 'bar';
 }
 
 /**
@@ -290,9 +341,18 @@ export async function buildExactChart(
   if (points.length < MIN_CHART_POINTS) return undefined;
 
   const totalRows = points.length;
-  const top = [...points].sort((a, b) => b.value - a.value).slice(0, MAX_EXACT_POINTS);
+  const kind = resolveChartKind(ref.kind, points.map((p) => p.label), points.map((p) => p.value));
+  /*
+   * 排序方式由類型決定：長條與圓餅比大小，依數值遞減才讀得出高低；
+   * 折線是時間軸，必須依年份遞增，否則折線的走向毫無意義。
+   */
+  const ordered = kind === 'line'
+    ? [...points].sort((a, b) => Number(a.label) - Number(b.label))
+    : [...points].sort((a, b) => b.value - a.value);
+  const top = kind === 'line' ? ordered.slice(-MAX_EXACT_POINTS) : ordered.slice(0, MAX_EXACT_POINTS);
   const where = `${table.source} / ${table.sheet}${table.caption ? `（${table.caption}）` : ''}`;
   return {
+    kind,
     complete: true,
     title: ref.title?.trim() || `${table.sheet}`,
     ...(ref.unit?.trim() ? { unit: ref.unit.trim() } : {}),

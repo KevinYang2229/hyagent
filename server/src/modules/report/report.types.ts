@@ -39,7 +39,19 @@ export interface ChartPoint {
  * renderer 有義務把這件事標在圖上（見 report.strings 的 chartCaptionText）：
  * 散文說「根據檢索到的資料」讀者知道是節錄，長條圖不會這樣說話，它隱含「這就是全部」。
  */
+/**
+ * 圖表類型。由 LLM 依「這一節在講什麼」提出，但**程式依資料形狀驗證並可覆寫**——
+ * 模型很容易把 107 個國家選成圓餅、把年度序列選成長條，那是規則問題不是理解問題，
+ * 寫在程式裡才擋得住（比照合計列排除、不可解析值略過的作法）。
+ *
+ * bar  量值比較（各國人數、各展區家數）——最通用，也是所有覆寫的落點
+ * line 隨時間變化（歷年預登總數）——標籤須為年份序列，且依年份而非數值排序
+ * pie  部分佔整體（台灣／海外）——扇形數必須夠少，否則角度根本比不出大小
+ */
+export type ChartKind = 'bar' | 'line' | 'pie';
+
 export interface SectionChart {
+  kind: ChartKind;
   title: string;
   /** 數值的單位（人數、家數…），標在資料點旁 */
   unit?: string;
