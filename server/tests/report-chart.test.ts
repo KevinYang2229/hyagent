@@ -4,7 +4,7 @@
  * 核心不變式是「圖表不得看起來比實際完整」——數值來自 top-k 檢索片段，必然是節錄，
  * 而長條圖不像散文會自己聲明範圍，所以說明文字是強制的，不是裝飾。
  */
-import { extractChart } from '@/modules/report/report.compose';
+import { extractChart, extractChartRef } from '@/modules/report/report.compose';
 import { renderHtml } from '@/modules/report/renderers/html';
 import { renderMarkdown } from '@/modules/report/renderers/markdown';
 import type { ReportDoc, ReportSection } from '@/modules/report/report.types';
@@ -122,5 +122,51 @@ describe('renderer：圖表呈現', () => {
     };
     expect(() => renderHtml(doc(zero))).not.toThrow();
     expect(renderHtml(doc(zero))).toContain('<svg');
+  });
+});
+
+/**
+ * 實跑一份真實報告時發現的缺陷：模型在一節裡吐了 6 個 chart-ref 區塊（它想畫多張圖），
+ * 而解析器用非全域 regex 只移除第一個——其餘全部以裸露的 JSON 留在內文裡給讀者看。
+ */
+describe('多個圖表區塊', () => {
+  const refBlock = (t: string) =>
+    `\`\`\`chart-ref\n{"table":"${t}","label":"國家","value":"人數"}\n\`\`\``;
+
+  it('內文不得殘留任何區塊——採用第一個，其餘一併移除', () => {
+    const out = extractChartRef(`前段。\n\n${refBlock('a')}\n\n中段。\n\n${refBlock('b')}\n\n後段。`);
+    expect(out.ref?.table).toBe('a');
+    expect(out.body).not.toContain('chart-ref');
+    expect(out.body).not.toContain('{"table"');
+    expect(out.body).toContain('前段。');
+    expect(out.body).toContain('中段。');
+    expect(out.body).toContain('後段。');
+  });
+
+  it('第一個壞掉時往後找，且兩個都要從內文移除', () => {
+    const out = extractChartRef(`x\n\n\`\`\`chart-ref\n{壞\n\`\`\`\n\n${refBlock('b')}`);
+    expect(out.ref?.table).toBe('b');
+    expect(out.body).not.toContain('chart-ref');
+  });
+
+  it('空區塊只移除、不當成有效挑選', () => {
+    const out = extractChartRef('內文。\n\n```chart-ref\n```');
+    expect(out.ref).toBeUndefined();
+    expect(out.body).toBe('內文。');
+  });
+
+  it('inline 圖表同樣移除全部區塊', () => {
+    const b = (title: string) =>
+      `\`\`\`chart\n{"title":"${title}","points":[{"label":"a","value":1},{"label":"b","value":2},{"label":"c","value":3}]}\n\`\`\``;
+    const out = extractChart(`前。\n\n${b('第一張')}\n\n後。\n\n${b('第二張')}`);
+    expect(out.chart?.title).toBe('第一張');
+    expect(out.body).not.toContain('```chart');
+    expect(out.body).toContain('後。');
+  });
+
+  it('chart 的解析不得誤吃 chart-ref（前者是後者的字首）', () => {
+    const out = extractChart(`內文。\n\n${refBlock('a')}`);
+    expect(out.chart).toBeUndefined();
+    expect(out.body).toContain('chart-ref'); // 該由 extractChartRef 處理，不是這裡
   });
 });

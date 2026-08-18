@@ -78,33 +78,55 @@ function sectionSystem(locale?: string): string {
 const MIN_CHART_POINTS = 3;
 const MAX_CHART_POINTS = 12;
 
-/** 從內文尾端抽出 ```chart 區塊，回傳去掉該區塊的內文與（驗證過的）圖表 */
-export function extractChart(raw: string): { body: string; chart?: SectionChart } {
-  const match = /```chart\s*\n([\s\S]*?)```/.exec(raw);
-  if (!match) return { body: raw.trim() };
-  const body = raw.replace(match[0], '').trim();
+/**
+ * 抽出所有 ```<tag> 區塊，回傳「移除全部區塊後的內文」與各區塊的內容。
+ *
+ * 必須移除**全部**而非第一個：模型常在一節裡吐好幾個區塊（它想畫多張圖），
+ * 只移除第一個會讓其餘的原樣留在內文，讀者看到的就是一段裸露的 JSON。
+ * 目前一節只採用第一個有效區塊——一節多圖牽涉版面與各自的說明文字，是另一個設計問題。
+ *
+ * tag 後面要求緊接換行，所以 `chart` 不會誤吃 `chart-ref`（後者接的是 `-`）。
+ */
+function stripBlocks(raw: string, tag: string): { body: string; payloads: string[] } {
+  const re = new RegExp('```' + tag + '[ \\t]*\\n([\\s\\S]*?)```', 'g');
+  const payloads: string[] = [];
+  const body = raw.replace(re, (_m, inner: string) => {
+    payloads.push(inner);
+    return '';
+  });
+  return { body: body.replace(/\n{3,}/g, '\n\n').trim(), payloads };
+}
 
+/** 抽出 ```chart 區塊（LLM 直接給數值的節錄版）；採用第一個通過驗證的 */
+export function extractChart(raw: string): { body: string; chart?: SectionChart } {
+  const { body, payloads } = stripBlocks(raw, 'chart');
+  for (const payload of payloads) {
+    const chart = parseInlineChart(payload);
+    if (chart) return { body, chart };
+  }
+  return { body };
+}
+
+/** 解析單一 inline 圖表區塊；不合格回 undefined */
+function parseInlineChart(payload: string): SectionChart | undefined {
   // 解析或驗證失敗一律只丟掉圖表、保留散文：圖表是加分項，不值得讓整節降級
   try {
-    const parsed = JSON.parse(match[1]) as Partial<SectionChart>;
+    const parsed = JSON.parse(payload) as Partial<SectionChart>;
     const points = Array.isArray(parsed.points) ? parsed.points : [];
     const clean = points.filter(
       (pt): pt is { label: string; value: number } =>
         typeof pt?.label === 'string' && pt.label.trim() !== '' && Number.isFinite(pt?.value),
     );
-    if (clean.length < MIN_CHART_POINTS || clean.length > MAX_CHART_POINTS) return { body };
-    if (typeof parsed.title !== 'string' || parsed.title.trim() === '') return { body };
+    if (clean.length < MIN_CHART_POINTS || clean.length > MAX_CHART_POINTS) return undefined;
+    if (typeof parsed.title !== 'string' || parsed.title.trim() === '') return undefined;
     return {
-      body,
-      chart: {
-        complete: false, // LLM 從檢索片段讀出的節錄
-        title: parsed.title.trim(),
-        ...(typeof parsed.unit === 'string' && parsed.unit.trim() !== '' ? { unit: parsed.unit.trim() } : {}),
-        points: clean.map((pt) => ({ label: pt.label.trim(), value: pt.value })),
-      },
+      complete: false, // LLM 從檢索片段讀出的節錄
+      title: parsed.title.trim(),
+      ...(typeof parsed.unit === 'string' && parsed.unit.trim() !== '' ? { unit: parsed.unit.trim() } : {}),
+      points: clean.map((pt) => ({ label: pt.label.trim(), value: pt.value })),
     };
   } catch {
-    return { body };
+    return undefined;
   }
 }
 
@@ -230,20 +252,24 @@ export async function buildExactChart(
   };
 }
 
-/** 從內文尾端抽出 ```chart-ref 區塊（LLM 挑表），回傳去掉該區塊的內文與挑選結果 */
+/** 抽出 ```chart-ref 區塊（LLM 挑表）；採用第一個欄位齊全的 */
 export function extractChartRef(raw: string): { body: string; ref?: ChartRef } {
-  const match = /```chart-ref\s*\n([\s\S]*?)```/.exec(raw);
-  if (!match) return { body: raw.trim() };
-  const body = raw.replace(match[0], '').trim();
-  try {
-    const parsed = JSON.parse(match[1]) as Partial<ChartRef>;
-    if (typeof parsed.table !== 'string' || typeof parsed.label !== 'string' || typeof parsed.value !== 'string') {
-      return { body };
+  const { body, payloads } = stripBlocks(raw, 'chart-ref');
+  for (const payload of payloads) {
+    try {
+      const parsed = JSON.parse(payload) as Partial<ChartRef>;
+      if (
+        typeof parsed.table === 'string' &&
+        typeof parsed.label === 'string' &&
+        typeof parsed.value === 'string'
+      ) {
+        return { body, ref: parsed as ChartRef };
+      }
+    } catch {
+      // 這一個壞掉，繼續看下一個
     }
-    return { body, ref: parsed as ChartRef };
-  } catch {
-    return { body };
   }
+  return { body };
 }
 
 /** 彙整失敗時的降級內文：直接列出片段（比照知識庫問答的 fallbackReply，依語系加前綴） */
