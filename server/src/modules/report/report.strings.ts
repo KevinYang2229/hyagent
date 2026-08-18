@@ -73,6 +73,30 @@ export function exactChartCaptionText(locale: string, chart: SectionChart): stri
     : `取自 ${sourceLabel} 共 ${totalRows} 列中的前 ${points} 筆，數值直接讀自原始資料。`;
 }
 
+/**
+ * xlsx 的字串。
+ *
+ * 試算表裡沒有散文的位置，所以工作表裝的是「圖表背後的數據」：一張章節總表，
+ * 加上每張圖各一個工作表。表頭與工作表名同樣要跟著語系走。
+ */
+export function sectionsSheetTitle(locale: string): string {
+  return normalizeLocale(locale) === 'en' ? 'Sections' : '章節';
+}
+
+export function summaryHeaderRow(locale: string): string[] {
+  return normalizeLocale(locale) === 'en'
+    ? ['Section', 'Question', 'Hits', 'Chart', 'Sources']
+    : ['章節', '本節要回答', '命中片段', '圖表', '來源'];
+}
+
+export function chartItemHeader(locale: string): string {
+  return normalizeLocale(locale) === 'en' ? 'Item' : '項目';
+}
+
+export function chartValueHeader(locale: string): string {
+  return normalizeLocale(locale) === 'en' ? 'Value' : '數值';
+}
+
 export function sourcesHeading(locale: string): string {
   return normalizeLocale(locale) === 'en' ? 'Sources' : '來源';
 }

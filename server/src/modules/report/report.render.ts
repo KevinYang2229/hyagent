@@ -6,9 +6,11 @@
  * 多一份就多一個會漏改的地方。
  */
 import type { ReportDoc } from './report.types';
+import { docxRenderer } from './renderers/docx';
 import { htmlRenderer } from './renderers/html';
 import { markdownRenderer } from './renderers/markdown';
 import { pdfRenderer, resolveBrowserPath } from './renderers/pdf';
+import { xlsxRenderer } from './renderers/xlsx';
 
 export interface ReportRenderer {
   /** URL 與儲存用的 key，同時是副檔名 */
@@ -28,6 +30,8 @@ export interface ReportRenderer {
 export const renderers: Record<string, ReportRenderer> = {
   [markdownRenderer.format]: markdownRenderer,
   [htmlRenderer.format]: htmlRenderer,
+  [docxRenderer.format]: docxRenderer,
+  [xlsxRenderer.format]: xlsxRenderer,
   ...(resolveBrowserPath() ? { [pdfRenderer.format]: pdfRenderer } : {}),
 };
 

@@ -69,7 +69,9 @@ describe('startReportJob', () => {
       );
       const done = await waitForJobForTest(job.id);
       expect(done.status).toBe('done');
-      expect(await reportStore.formatsOf(job.id)).toEqual(['md']);
+      const formats = await reportStore.formatsOf(job.id);
+      expect(formats).not.toContain('html');
+      expect(formats).toContain('md');
     } finally {
       spy.mockRestore();
     }
