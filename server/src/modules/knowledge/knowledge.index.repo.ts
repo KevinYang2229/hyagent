@@ -22,6 +22,7 @@ import type {
   KnowledgeIndexMetaOnly,
   KnowledgeIndexText,
 } from './knowledge-index.types';
+import { deleteTablesByTenant } from './knowledge.tables.repo';
 import type { SourceKey } from './prompt-slots';
 import { invalidatePgvectorModelCache } from './retriever.pgvector';
 import { invalidateIndexCache } from './retriever.staticIndex';
@@ -473,8 +474,11 @@ export async function saveIndex(tenantId: string, idx: KnowledgeIndexFile): Prom
 
 /** 刪除該租戶整份索引；本來就不存在也視為成功（冪等） */
 export async function deleteIndex(tenantId: string): Promise<void> {
-  if (env.DATA_BACKEND === 'db') await deleteIndexFromDb(tenantId);
-  else deleteIndexFromFile(tenantId);
+  if (env.DATA_BACKEND === 'db') {
+    await deleteIndexFromDb(tenantId);
+    // 結構化表跟著索引走：留著會讓報告引用到已清除的資料
+    await deleteTablesByTenant(tenantId);
+  } else deleteIndexFromFile(tenantId);
   invalidateIndexCache(tenantId);
   invalidatePgvectorModelCache(tenantId);
 }

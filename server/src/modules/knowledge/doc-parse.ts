@@ -28,10 +28,28 @@ export type DocFormat = 'txt' | 'md' | 'html' | 'docx' | 'doc' | 'pdf' | 'xlsx';
 /** structured = 標題/清單/表格已保留為 Markdown；text = 僅有純文字流 */
 export type DocFidelity = 'structured' | 'text';
 
+/**
+ * 從試算表抽出的結構化子表。
+ *
+ * 與 text 並存而非取代：text 供 RAG 切塊（回答敘述性問題），本結構供報告做精確計算。
+ * 圖表若從 RAG 片段的文字讀數字，會同時吃到「轉述失真」與「top-k 只是節錄」兩個問題，
+ * 而圖表不像散文會自己聲明範圍——所以需要一條看得到完整資料列的路徑。
+ */
+export interface ParsedTable {
+  /** 工作表名 */
+  sheet: string;
+  /** 跨欄橫幅（例：展覽名稱:X 展覽年度:Y）；沒有則不存在 */
+  caption?: string;
+  headers: string[];
+  rows: string[][];
+}
+
 export interface ParsedDoc {
   text: string;
   format: DocFormat;
   fidelity: DocFidelity;
+  /** 僅 xlsx 有；其他格式沒有可靠的表格邊界可抽 */
+  tables?: ParsedTable[];
 }
 
 export const SUPPORTED_EXTENSIONS = [
@@ -456,10 +474,10 @@ function renderTable(rows: string[][]): string {
  * 橫幅輸出成三級標題，讓 chunkMarkdown 把它併進標題路徑——每個資料列切出的 chunk
  * 於是自帶「哪個展覽、哪一年」，不必再依賴上下文。
  */
-function sheetToMarkdown(ws: Worksheet): string {
+function sheetBlocks(ws: Worksheet): SheetBlock[] {
   const width = ws.columnCount;
   const height = Math.min(ws.rowCount, MAX_SHEET_ROWS);
-  if (width < 1 || height < 1) return '';
+  if (width < 1 || height < 1) return [];
 
   const blocks: SheetBlock[] = [];
   let current: SheetBlock | null = null;
@@ -478,6 +496,13 @@ function sheetToMarkdown(ws: Worksheet): string {
     }
     current.rows.push(cells);
   }
+  return blocks;
+}
+
+/** 區塊 → Markdown（供 RAG 切塊使用） */
+function sheetToMarkdown(ws: Worksheet): string {
+  const blocks = sheetBlocks(ws);
+  const height = Math.min(ws.rowCount, MAX_SHEET_ROWS);
 
   const parts: string[] = [];
   for (const b of blocks) {
@@ -492,7 +517,24 @@ function sheetToMarkdown(ws: Worksheet): string {
   return parts.join('\n\n');
 }
 
-async function parseXlsx(buf: Buffer): Promise<string> {
+/**
+ * 區塊 → 結構化表（供報告精確計算使用）。首列是表頭，其餘是資料列。
+ * 只有一列（表頭沒有資料）的區塊不收：對計算沒有意義。
+ */
+function blockToTable(sheet: string, b: SheetBlock): ParsedTable | null {
+  if (b.rows.length < 2) return null;
+  const cols = Math.max(...b.rows.map(usedWidth));
+  if (cols === 0) return null;
+  const [headers, ...rows] = b.rows.map((r) => r.slice(0, cols));
+  return {
+    sheet,
+    ...(b.banner === null ? {} : { caption: b.banner }),
+    headers,
+    rows,
+  };
+}
+
+async function parseXlsxDoc(buf: Buffer): Promise<{ text: string; tables: ParsedTable[] }> {
   const wb = new Workbook();
   // exceljs 的型別宣告裡 `declare interface Buffer extends ArrayBuffer {}` 是其套件內的區域
   // 型別，並非 Node 的 Buffer，因此與 @types/node 對不起來。執行期收的就是 Node Buffer，
@@ -500,18 +542,23 @@ async function parseXlsx(buf: Buffer): Promise<string> {
   await wb.xlsx.load(buf as unknown as Parameters<typeof wb.xlsx.load>[0]);
 
   const parts: string[] = [];
+  const tables: ParsedTable[] = [];
   for (const ws of wb.worksheets) {
     // 隱藏工作表通常是查表資料或計算暫存，不是給人讀的內容——比照 sanitizeHtml 移除非正文節點
     if (ws.state === 'hidden' || ws.state === 'veryHidden') {
       logger.warn({ sheet: ws.name }, 'xlsx hidden sheet skipped');
       continue;
     }
+    for (const b of sheetBlocks(ws)) {
+      const table = blockToTable(ws.name, b);
+      if (table) tables.push(table);
+    }
     const md = sheetToMarkdown(ws);
     if (!md) continue;
     // 工作表名當標題：切塊後 chunk 才帶得到「這張表在講什麼」，否則只剩一堆無主的數字列
     parts.push(`## ${ws.name}\n\n${md}`);
   }
-  return parts.join('\n\n');
+  return { text: parts.join('\n\n'), tables };
 }
 
 async function parseLegacyDoc(buf: Buffer): Promise<string> {
@@ -533,8 +580,10 @@ export async function parseDocument(name: string, buf: Buffer): Promise<ParsedDo
       return { text: htmlToMarkdown(decodeText(buf, { html: true })), format, fidelity: 'structured' };
     case 'docx':
       return { text: await parseDocx(buf), format, fidelity: 'structured' };
-    case 'xlsx':
-      return { text: await parseXlsx(buf), format, fidelity: 'structured' };
+    case 'xlsx': {
+      const { text, tables } = await parseXlsxDoc(buf);
+      return { text, format, fidelity: 'structured', tables };
+    }
     case 'doc':
       return { text: await parseLegacyDoc(buf), format, fidelity: 'text' };
     case 'pdf':

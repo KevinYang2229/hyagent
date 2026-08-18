@@ -3,6 +3,7 @@
  */
 import {
   chartCaptionText,
+  exactChartCaptionText,
   degradedNoticeText,
   dedupeSources,
   emptySectionText,
@@ -29,6 +30,10 @@ function sectionBody(section: ReportSection, locale: string): string {
 function chartTable(section: ReportSection, locale: string): string {
   const chart = section.chart;
   if (!chart) return '';
+  // complete 與否的可信度差很多，說明必須分開講，不能用同一句帶過
+  const caption = chart.complete
+    ? exactChartCaptionText(locale, chart.points.length, chart.totalRows ?? chart.points.length, chart.sourceLabel ?? '')
+    : chartCaptionText(locale, chart.points.length, section.hits);
   const valueHeader = chart.unit ?? '';
   return [
     `**${chart.title}**`,
@@ -37,7 +42,7 @@ function chartTable(section: ReportSection, locale: string): string {
     '| --- | ---: |',
     ...chart.points.map((pt) => `| ${pt.label} | ${pt.value.toLocaleString('en-US')} |`),
     '',
-    `_${chartCaptionText(locale, chart.points.length, section.hits)}_`,
+    `_${caption}_`,
   ].join('\n');
 }
 

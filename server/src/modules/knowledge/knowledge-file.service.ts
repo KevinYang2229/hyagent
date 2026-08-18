@@ -29,6 +29,7 @@ import {
   squash,
 } from './ingest.service';
 import { parseDocument } from './doc-parse';
+import { deleteTablesByFile, saveTables } from './knowledge.tables.repo';
 import type { IndexedChunk } from './knowledge-index.types';
 import { knowledgeStore, type KnowledgeFileMeta } from './knowledge.store';
 import { refreshSuggestedPrompts } from './knowledge.suggest';
@@ -142,6 +143,19 @@ export async function ingestFile(
     });
   }
 
+  /*
+   * 結構化表與 chunks 並存：chunks 回答「這在講什麼」，表回答「數字是多少」。
+   * 失敗不得中斷匯入——沒有表只是報告畫不了精確圖，而 chunks 已經付過 embedding 的錢。
+   */
+  if (parsed.tables?.length) {
+    try {
+      const n = await saveTables(tenantId, fileId, name, parsed.tables);
+      logger.info({ tenantId, name, tables: parsed.tables.length, rows: n }, '結構化表已留存');
+    } catch (err) {
+      logger.warn({ err, tenantId, name }, '結構化表留存失敗，匯入照常完成（報告將無法畫精確圖）');
+    }
+  }
+
   // 點狀附加：只寫本檔的 chunks，不重寫整份索引（見 knowledge.index.repo 的 appendChunks 註解）
   await appendChunks(tenantId, fileChunks, {
     model,
@@ -204,6 +218,10 @@ export async function removeFile(
 
   // 實際刪除走點狀 SQL，不把整份索引寫回去
   const removed = await removeFileChunks(tenantId, fileId);
+  // 結構化表與 chunks 同生命週期：留著會讓報告引用到已刪除檔案的數字
+  await deleteTablesByFile(tenantId, fileId).catch((err: unknown) => {
+    logger.warn({ err, tenantId, fileId }, '結構化表刪除失敗，可能殘留');
+  });
 
   // files 走 delta 操作（而非整包覆蓋的 setMeta）：理由同 ingestFile 的 addFileMeta，
   // 見 knowledge.store.ts 的 removeFileMeta／enqueueFilesDelta 註解。

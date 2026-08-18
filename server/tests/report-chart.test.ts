@@ -62,6 +62,7 @@ const chartSection: ReportSection = {
   sources: [{ title: 'TM 匯出.xlsx' }],
   hits: 5,
   chart: {
+    complete: false,
     title: '各國預登人數',
     unit: '人',
     points: [
@@ -117,7 +118,7 @@ describe('renderer：圖表呈現', () => {
   it('所有數值皆為 0 時不除以零，仍畫得出來', () => {
     const zero: ReportSection = {
       ...chartSection,
-      chart: { title: 't', points: [{ label: 'a', value: 0 }, { label: 'b', value: 0 }, { label: 'c', value: 0 }] },
+      chart: { complete: false, title: 't', points: [{ label: 'a', value: 0 }, { label: 'b', value: 0 }, { label: 'c', value: 0 }] },
     };
     expect(() => renderHtml(doc(zero))).not.toThrow();
     expect(renderHtml(doc(zero))).toContain('<svg');

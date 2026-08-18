@@ -8,6 +8,7 @@ import MarkdownIt from 'markdown-it';
 import { normalizeLocale } from '@/lib/locale';
 import {
   chartCaptionText,
+  exactChartCaptionText,
   degradedNoticeText,
   dedupeSources,
   emptySectionText,
@@ -83,6 +84,10 @@ const CHART_W = 620;
 function chartSvg(section: ReportSection, locale: string): string {
   const chart = section.chart;
   if (!chart) return '';
+  // complete 與否的可信度差很多，說明必須分開講，不能用同一句帶過
+  const caption = chart.complete
+    ? exactChartCaptionText(locale, chart.points.length, chart.totalRows ?? chart.points.length, chart.sourceLabel ?? '')
+    : chartCaptionText(locale, chart.points.length, section.hits);
   const max = Math.max(...chart.points.map((pt) => pt.value), 0);
   const trackW = CHART_W - LABEL_W - VALUE_W;
   const height = chart.points.length * (BAR_H + BAR_GAP);
@@ -106,7 +111,7 @@ function chartSvg(section: ReportSection, locale: string): string {
     `<svg viewBox="0 0 ${CHART_W} ${height}" role="img" aria-label="${escapeHtml(chart.title)}">`,
     rows.join(''),
     '</svg>',
-    `<p class="chart-cap">${escapeHtml(chartCaptionText(locale, chart.points.length, section.hits))}</p>`,
+    `<p class="chart-cap">${escapeHtml(caption)}</p>`,
     '</div>',
   ].join('');
 }

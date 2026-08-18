@@ -35,6 +35,28 @@ export function chartCaptionText(locale: string, points: number, hits: number): 
     : `依 ${hits} 個檢索片段整理出的 ${points} 筆資料，屬節錄而非完整母體。`;
 }
 
+/**
+ * 精確圖表的說明：數字來自結構化表的完整資料列，由程式讀出、未經 LLM 轉述。
+ * 與 chartCaptionText 分成兩句而非共用一句：兩者的可信度差很多，
+ * 讀者必須看得出手上這張圖是哪一種。
+ */
+export function exactChartCaptionText(
+  locale: string,
+  points: number,
+  totalRows: number,
+  sourceLabel: string,
+): string {
+  const partial = points < totalRows;
+  if (normalizeLocale(locale) === 'en') {
+    return partial
+      ? `Top ${points} of ${totalRows} rows, read directly from ${sourceLabel}.`
+      : `All ${totalRows} rows, read directly from ${sourceLabel}.`;
+  }
+  return partial
+    ? `取自 ${sourceLabel} 共 ${totalRows} 列中的前 ${points} 筆，數值直接讀自原始資料。`
+    : `取自 ${sourceLabel} 全部 ${totalRows} 列，數值直接讀自原始資料。`;
+}
+
 export function sourcesHeading(locale: string): string {
   return normalizeLocale(locale) === 'en' ? 'Sources' : '來源';
 }

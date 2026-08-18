@@ -44,6 +44,15 @@ export interface SectionChart {
   /** 數值的單位（人數、家數…），標在資料點旁 */
   unit?: string;
   points: ChartPoint[];
+  /**
+   * true = 數字由程式從結構化表的完整資料列算出；false = LLM 從檢索片段讀出的節錄。
+   * renderer 依此決定說明文字——兩者的可信度差很多，不能用同一句話帶過。
+   */
+  complete: boolean;
+  /** complete 時的出處（檔名／工作表），供讀者回頭核對 */
+  sourceLabel?: string;
+  /** complete 時：表的總列數。points 若少於它，代表只取了前幾名 */
+  totalRows?: number;
 }
 
 /** 彙整完成的一節 */
