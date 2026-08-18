@@ -18,6 +18,7 @@
     "smoke": "tsx scripts/engine-smoke.ts",
     "ingest:knowledge": "tsx scripts/knowledge-ingest.ts",
     "watch:knowledge": "tsx scripts/knowledge-watch.ts",
+    "reconcile:knowledge": "tsx scripts/knowledge-reconcile.ts",
     "eval:knowledge": "tsx scripts/knowledge-eval.ts",
     "migrate:knowledge": "tsx scripts/knowledge-migrate-to-db.ts",
     "test": "jest",
