@@ -264,3 +264,54 @@ describe('parseDocument — xlsx', () => {
     expect(out.text).toContain('| 狀態 | 待審\\|已核\\|退回 |');
   });
 });
+
+/**
+ * 實際匯出檔的形狀：第 1 列是跨欄合併的橫幅（展覽名稱／年度），真正的欄位名在第 2 列，
+ * 而且一張工作表可以用空白列堆疊多個子表。把橫幅當表頭會讓每一格都掛上同一個欄位名，
+ * 「中華民國」與「37993」變成同一個欄位的兩個值，答案就無從分辨。
+ */
+describe('parseDocument — xlsx 的橫幅列與堆疊子表', () => {
+  it('跨欄合併的橫幅還原成標題，第 2 列才是表頭', async () => {
+    const buf = await makeXlsx({
+      name: '4-TM-參觀者預登國家數',
+      rows: [
+        ['展覽名稱:台北國際工具機展\n展覽年度:2025', null],
+        ['國家', '人數'],
+        ['中華民國', 37993],
+        ['日本', 1234],
+      ],
+      merges: ['A1:B1'],
+    });
+    const out = await parseDocument('TM.xlsx', buf);
+
+    expect(out.text).toContain('展覽名稱:台北國際工具機展 展覽年度:2025');
+    expect(out.text).toContain('| 國家 | 人數 |');
+    expect(out.text).toContain('| 中華民國 | 37993 |');
+    // 橫幅絕不可成為表頭：那會讓每一欄的欄位名都一樣
+    expect(out.text).not.toMatch(/\|\s*展覽名稱[^|]*\|\s*展覽名稱/);
+  });
+
+  it('空白列分隔的堆疊子表各自保留自己的橫幅與表頭', async () => {
+    const buf = await makeXlsx({
+      name: '11-TM-媒體預登國家數',
+      rows: [
+        ['展覽名稱:台北國際工具機展\n展覽年度:2025', null],
+        ['國家', '人數'],
+        ['中華民國', 300],
+        [],
+        ['展覽名稱:台北國際工具機展\n展覽年度:2023', null],
+        ['國家', '人數'],
+        ['中華民國', 22],
+      ],
+      merges: ['A1:B1', 'A5:B5'],
+    });
+    const out = await parseDocument('TM.xlsx', buf);
+
+    // 兩個子表若被併成一張，第二張的橫幅與表頭會變成第一張的資料列，年度就分不出來
+    expect(out.text).toContain('展覽年度:2025');
+    expect(out.text).toContain('展覽年度:2023');
+    expect(out.text).toContain('| 中華民國 | 300 |');
+    expect(out.text).toContain('| 中華民國 | 22 |');
+    expect(out.text).not.toContain('| 國家 | 人數 |\n| 中華民國 | 300 |\n| 展覽名稱');
+  });
+});

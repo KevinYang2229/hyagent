@@ -399,40 +399,97 @@ function usedWidth(cells: string[]): number {
 }
 
 /**
- * 單一工作表 → Markdown 表格；無內容回空字串。
- * 首列當表頭：GFM 表格語法要求要有表頭列，而試算表的第一列實務上就是欄位名。
+ * 讀出一列，並判定它是不是「跨欄合併的橫幅」。
+ *
+ * 實務上的匯出檔（例如展覽統計）第 1 列往往是一格橫跨整張表的標題
+ * （「展覽名稱:X 展覽年度:Y」），真正的欄位名在第 2 列。把橫幅當表頭的後果是
+ * 每一欄都掛上同一個欄位名——「中華民國」與「37993」變成同一個欄位的兩個值，
+ * 檢索命中之後根本分不出哪個是國家、哪個是人數。
+ *
+ * 判定依據是「整列的內容來自同一個合併儲存格、且真的跨了不只一欄」：
+ * 一般表頭列的每格各自為政（master 就是自己），不會誤判。
+ */
+function readRow(ws: Worksheet, r: number, width: number): { cells: string[]; banner: string | null } {
+  const cells: string[] = [];
+  const masters = new Set<string>();
+  for (let c = 1; c <= width; c++) {
+    const cell = ws.getCell(r, c);
+    // master：合併儲存格的內容只存在主格，其餘格回填相同值。等同 HTML 表格展開 rowspan，
+    // 不補的話被合併蓋住的列會少幾格，後面每一欄都往左位移，答案錯得理直氣壯
+    const text = mdCell(cellText(cell.master.value));
+    cells.push(text);
+    if (text !== '') masters.add(cell.master.address);
+  }
+  const spread = cells.filter((v) => v !== '').length;
+  const banner = masters.size === 1 && spread > 1 ? (cells.find((v) => v !== '') ?? null) : null;
+  return { cells, banner };
+}
+
+/** 一個子表：自己的橫幅（可能沒有）與資料列，首列為表頭 */
+interface SheetBlock {
+  banner: string | null;
+  rows: string[][];
+}
+
+/** 資料列 → Markdown 表格；無內容回空字串。首列當表頭（GFM 語法要求要有表頭列） */
+function renderTable(rows: string[][]): string {
+  if (rows.length === 0) return '';
+  // 收斂寬度：columnCount 取的是最右一個「曾被寫入」的欄，殘留的格式設定常讓它遠超實際
+  // 資料範圍，不裁掉會產出整片空欄的表格
+  const cols = Math.max(...rows.map(usedWidth));
+  if (cols === 0) return '';
+  const cells = rows.map((r) => r.slice(0, cols));
+  return [
+    `| ${cells[0].join(' | ')} |`,
+    `| ${cells[0].map(() => '---').join(' | ')} |`,
+    ...cells.slice(1).map((r) => `| ${r.join(' | ')} |`),
+  ].join('\n');
+}
+
+/**
+ * 單一工作表 → Markdown；無內容回空字串。
+ *
+ * 一張工作表可以堆疊多個子表（各自帶橫幅與表頭，以空白列分隔），所以**由橫幅列開啟
+ * 新子表**，而不是以空白列切割：空白列在單一表格中間也很常見，拿它當邊界會把一張
+ * 完整的表切成兩半，而且第二半的首列會被誤當成表頭。
+ *
+ * 橫幅輸出成三級標題，讓 chunkMarkdown 把它併進標題路徑——每個資料列切出的 chunk
+ * 於是自帶「哪個展覽、哪一年」，不必再依賴上下文。
  */
 function sheetToMarkdown(ws: Worksheet): string {
   const width = ws.columnCount;
   const height = Math.min(ws.rowCount, MAX_SHEET_ROWS);
   if (width < 1 || height < 1) return '';
 
-  const rows: string[][] = [];
+  const blocks: SheetBlock[] = [];
+  let current: SheetBlock | null = null;
+
   for (let r = 1; r <= height; r++) {
-    const cells: string[] = [];
-    for (let c = 1; c <= width; c++) {
-      // master：合併儲存格的內容只存在主格，其餘格回填相同值。等同 HTML 表格展開 rowspan，
-      // 不補的話被合併蓋住的列會少幾格，後面每一欄都往左位移，答案錯得理直氣壯
-      cells.push(mdCell(cellText(ws.getCell(r, c).master.value)));
+    const { cells, banner } = readRow(ws, r, width);
+    if (usedWidth(cells) === 0) continue; // 整列皆空 = 純排版留白，不進索引也不切割
+    if (banner !== null) {
+      current = { banner, rows: [] };
+      blocks.push(current);
+      continue;
     }
-    if (usedWidth(cells) > 0) rows.push(cells); // 整列皆空 = 純排版留白，不進索引
+    if (current === null) {
+      current = { banner: null, rows: [] };
+      blocks.push(current);
+    }
+    current.rows.push(cells);
   }
-  if (rows.length === 0) return '';
 
-  // 收斂寬度：columnCount 取的是最右一個「曾被寫入」的欄，殘留的格式設定常讓它遠超實際
-  // 資料範圍，不裁掉會產出整片空欄的表格
-  const cols = Math.max(...rows.map(usedWidth));
-  const cells = rows.map((r) => r.slice(0, cols));
-
-  const lines = [
-    `| ${cells[0].join(' | ')} |`,
-    `| ${cells[0].map(() => '---').join(' | ')} |`,
-    ...cells.slice(1).map((r) => `| ${r.join(' | ')} |`),
-  ];
+  const parts: string[] = [];
+  for (const b of blocks) {
+    const table = renderTable(b.rows);
+    if (!table) continue;
+    parts.push(b.banner === null ? table : `### ${b.banner}\n\n${table}`);
+  }
+  if (parts.length === 0) return '';
   if (ws.rowCount > height) {
-    lines.push('', `（此工作表共 ${ws.rowCount} 列，僅擷取前 ${MAX_SHEET_ROWS} 列）`);
+    parts.push(`（此工作表共 ${ws.rowCount} 列，僅擷取前 ${MAX_SHEET_ROWS} 列）`);
   }
-  return lines.join('\n');
+  return parts.join('\n\n');
 }
 
 async function parseXlsx(buf: Buffer): Promise<string> {
