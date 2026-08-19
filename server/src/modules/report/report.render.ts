@@ -6,11 +6,9 @@
  * 多一份就多一個會漏改的地方。
  */
 import type { ReportDoc } from './report.types';
-import { docxRenderer } from './renderers/docx';
 import { htmlRenderer } from './renderers/html';
 import { markdownRenderer } from './renderers/markdown';
 import { pdfRenderer, resolveBrowserPath } from './renderers/pdf';
-import { xlsxRenderer } from './renderers/xlsx';
 
 export interface ReportRenderer {
   /** URL 與儲存用的 key，同時是副檔名 */
@@ -27,11 +25,15 @@ export interface ReportRenderer {
  * 沒有瀏覽器時 ?format=pdf 得到的是 422「不支援的格式」而不是 500，前端的下載清單也不會
  * 出現一個按了就壞的連結。代價是裝好瀏覽器後要重啟才會生效——登錄表是啟動時決定的。
  */
+/*
+ * docx 與 xlsx 目前不對外開放：renderers/docx.ts 與 renderers/xlsx.ts 仍然保留且有測試，
+ * 只是不登錄在這裡。登錄表是唯一的格式來源，少了這兩行，報告就不會產出這兩種檔案、
+ * 下載清單不會列出、?format=docx 也會得到 422，不必再去前端各挖一份隱藏清單。
+ * 要重新開放就把兩行加回來。
+ */
 export const renderers: Record<string, ReportRenderer> = {
   [markdownRenderer.format]: markdownRenderer,
   [htmlRenderer.format]: htmlRenderer,
-  [docxRenderer.format]: docxRenderer,
-  [xlsxRenderer.format]: xlsxRenderer,
   ...(resolveBrowserPath() ? { [pdfRenderer.format]: pdfRenderer } : {}),
 };
 
