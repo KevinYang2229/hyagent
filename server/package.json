@@ -1,6 +1,6 @@
 {
   "name": "hyagent-server",
-  "version": "0.9.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Agent-Native OA — 對話式表單填寫 Agent 後端（MVP：請假單，schema-driven，Claude + OA stub）",
   "main": "dist/index.js",
