@@ -1,9 +1,9 @@
-import { useState, type ReactNode } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
-import { useAuth } from '../auth';
-import { applyTheme, getTheme, type Theme } from '../theme';
-import { IconLogout, IconTenants } from './icons';
-import pkg from '../../package.json';
+import { useState, type ReactNode } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { useAuth } from "../auth";
+import { applyTheme, getTheme, type Theme } from "../theme";
+import { IconLogout, IconTenants } from "./icons";
+import pkg from "../../package.json";
 
 /**
  * 控制台外殼：深色側邊欄 + 頂部列 + 內容區。
@@ -24,12 +24,13 @@ export default function AppLayout({
   const navigate = useNavigate();
   const loc = useLocation();
   const onTenants =
-    (loc.pathname === '/' || loc.pathname.startsWith('/tenants')) && loc.pathname !== '/skills';
+    (loc.pathname === "/" || loc.pathname.startsWith("/tenants")) &&
+    loc.pathname !== "/skills";
   const [navOpen, setNavOpen] = useState(false);
   const [theme, setTheme] = useState<Theme>(getTheme());
 
   const toggleTheme = () => {
-    const next: Theme = theme === 'dark' ? 'light' : 'dark';
+    const next: Theme = theme === "dark" ? "light" : "dark";
     applyTheme(next);
     setTheme(next);
   };
@@ -40,9 +41,13 @@ export default function AppLayout({
   };
 
   return (
-    <div className={`app${navOpen ? ' nav-open' : ''}`}>
+    <div className={`app${navOpen ? " nav-open" : ""}`}>
       {/* 手機側邊欄抽屜遮罩 */}
-      <div className="nav-backdrop" onClick={() => setNavOpen(false)} aria-hidden />
+      <div
+        className="nav-backdrop"
+        onClick={() => setNavOpen(false)}
+        aria-hidden
+      />
 
       <aside className="sidebar">
         <div className="brand">
@@ -50,7 +55,7 @@ export default function AppLayout({
             <img src="/hy_logo.png" alt="凌網資訊" />
           </div>
           <div>
-            <div className="brand-name">OA Agent</div>
+            <div className="brand-name">HyAgent</div>
             <div className="brand-sub">管理後台</div>
           </div>
         </div>
@@ -58,8 +63,8 @@ export default function AppLayout({
         <div className="nav-label">營運</div>
         <nav className="nav">
           <div
-            className={`nav-item${onTenants ? ' active' : ''}`}
-            onClick={() => go('/')}
+            className={`nav-item${onTenants ? " active" : ""}`}
+            onClick={() => go("/")}
             role="button"
             tabIndex={0}
           >
@@ -71,8 +76,8 @@ export default function AppLayout({
         <div className="nav-label">平台</div>
         <nav className="nav">
           <div
-            className={`nav-item${loc.pathname === '/skills' ? ' active' : ''}`}
-            onClick={() => go('/skills')}
+            className={`nav-item${loc.pathname === "/skills" ? " active" : ""}`}
+            onClick={() => go("/skills")}
             role="button"
             tabIndex={0}
           >
@@ -81,13 +86,18 @@ export default function AppLayout({
           </div>
         </nav>
 
-        <button type="button" className="theme-toggle" onClick={toggleTheme} aria-label="切換深淺色">
-          <span aria-hidden>{theme === 'dark' ? '☀' : '☾'}</span>
-          {theme === 'dark' ? '淺色模式' : '深色模式'}
+        <button
+          type="button"
+          className="theme-toggle"
+          onClick={toggleTheme}
+          aria-label="切換深淺色"
+        >
+          <span aria-hidden>{theme === "dark" ? "☀" : "☾"}</span>
+          {theme === "dark" ? "淺色模式" : "深色模式"}
         </button>
 
         <div className="sidebar-foot">
-          OA Agent 多租戶控制台
+          HyAgent 多租戶控制台
           <br />
           <code>v{pkg.version}</code>
         </div>
@@ -118,7 +128,7 @@ export default function AppLayout({
               className="btn btn-ghost btn-sm"
               onClick={() => {
                 logout();
-                navigate('/login');
+                navigate("/login");
               }}
             >
               <IconLogout />

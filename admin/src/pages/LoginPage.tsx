@@ -1,11 +1,11 @@
-import { useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../auth';
+import { useState, type FormEvent } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../auth";
 
 export default function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
-  const [password, setPassword] = useState('');
+  const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -16,9 +16,9 @@ export default function LoginPage() {
     setBusy(true);
     try {
       await login(password);
-      navigate('/', { replace: true });
+      navigate("/", { replace: true });
     } catch (e2) {
-      setErr(e2 instanceof Error ? e2.message : '登入失敗');
+      setErr(e2 instanceof Error ? e2.message : "登入失敗");
     } finally {
       setBusy(false);
     }
@@ -35,12 +35,15 @@ export default function LoginPage() {
 
       <div className="login-card">
         <div className="login-brand">
-          <div className="brand-mark" style={{ width: 44, height: 44, borderRadius: 13 }}>
+          <div
+            className="brand-mark"
+            style={{ width: 44, height: 44, borderRadius: 13 }}
+          >
             <img src="/hy_logo.png" alt="凌網資訊" />
           </div>
           <div>
             <div className="login-title">管理後台</div>
-            <div className="login-sub">OA Agent 多租戶控制台</div>
+            <div className="login-sub">HyAgent 多租戶控制台</div>
           </div>
         </div>
 
@@ -61,7 +64,7 @@ export default function LoginPage() {
           </div>
           {err && <p className="login-err">{err}</p>}
           <button type="submit" className="btn btn-primary" disabled={busy}>
-            {busy ? '登入中…' : '登入控制台'}
+            {busy ? "登入中…" : "登入控制台"}
           </button>
         </form>
 
