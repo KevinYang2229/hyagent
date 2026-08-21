@@ -5,7 +5,7 @@
  * 為向後相容，系統內建一個 id='default' 的預設租戶：未帶 API Key 的舊 widget 一律落到此租戶，
  * 行為與改造前相同（見 resolve-tenant middleware 與 tenant.store 的種子資料）。
  */
-import type { TenantAppearance } from '@oa-agent/shared';
+import type { TenantAppearance } from '@hyagent/shared';
 import type { TenantLLMConfig } from '@/lib/llm/types';
 
 /** 公開金鑰（pk_）可放瀏覽器；秘密金鑰（sk_）只在伺服器端用。 */

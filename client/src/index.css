@@ -1,6 +1,6 @@
 @import "tailwindcss";
-/* 設計系統共用樣式（token + base + 共用 class），由 @oa-agent/ui 提供 */
-@import "@oa-agent/ui/index.css";
+/* 設計系統共用樣式（token + base + 共用 class），由 @hyagent/ui 提供 */
+@import "@hyagent/ui/index.css";
 
 @theme {
   --font-sans:

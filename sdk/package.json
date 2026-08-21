@@ -1,5 +1,5 @@
 {
-  "name": "@oa-agent/sdk",
+  "name": "@hyagent/sdk",
   "version": "0.9.0",
   "description": "OA Agent 整合 SDK（瀏覽器端）：headless REST 客戶端 + widget 事件/控制橋接。",
   "private": true,
@@ -20,7 +20,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@oa-agent/shared": "*",
+    "@hyagent/shared": "*",
     "jsonwebtoken": "^9.0.2"
   },
   "devDependencies": {

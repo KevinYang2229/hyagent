@@ -1,4 +1,4 @@
-# @oa-agent/sdk
+# @hyagent/sdk
 
 OA Agent 整合 SDK（瀏覽器端）。提供兩種整合方式，共用同一組租戶設定：
 
@@ -8,13 +8,13 @@ OA Agent 整合 SDK（瀏覽器端）。提供兩種整合方式，共用同一�
 ## 安裝
 
 ```bash
-npm install @oa-agent/sdk
+npm install @hyagent/sdk
 ```
 
 ## headless 用法（自建 UI）
 
 ```ts
-import { createOAAgent } from '@oa-agent/sdk';
+import { createOAAgent } from '@hyagent/sdk';
 
 const oa = createOAAgent({
   key: 'pk_xxxxx',            // 租戶公開金鑰
@@ -42,13 +42,13 @@ const off = oa.on('submitted', (detail) => console.log('已送出', detail));
 
 事件型別：`open` / `close` / `submitted`（對應 widget.js 發出的 `oa-agent:*` DOM 事件）。
 
-## 伺服器端：簽發 SSO user token（`@oa-agent/sdk/server`）
+## 伺服器端：簽發 SSO user token（`@hyagent/sdk/server`）
 
 給「整合方後端」用：使用者登入自家系統後，用該租戶的 `ssoSecret` 簽一張 user token，
 交給前端塞進 widget（`data-user-token`）或 SDK（`userToken`）。**ssoSecret 須留在後端、勿外洩。**
 
 ```ts
-import { signUserToken } from '@oa-agent/sdk/server';
+import { signUserToken } from '@hyagent/sdk/server';
 
 // 在你的後端，於使用者登入後：
 const userToken = signUserToken({
@@ -60,7 +60,7 @@ const userToken = signUserToken({
 // 把 userToken 回給前端使用
 ```
 
-> 主入口（`@oa-agent/sdk`）是瀏覽器端；server 子入口依賴 `jsonwebtoken`，僅供 Node 使用。
+> 主入口（`@hyagent/sdk`）是瀏覽器端；server 子入口依賴 `jsonwebtoken`，僅供 Node 使用。
 > 完整可跑範例見 [examples/tenant-backend](../examples/tenant-backend)。
 
 ## 認證模型

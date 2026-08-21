@@ -1,6 +1,6 @@
 import { useState, type CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Button, FileUploader } from '@oa-agent/ui';
+import { Button, FileUploader } from '@hyagent/ui';
 import type { Attachment, Definition, FieldSpec, LeaveBalance, SubmissionInfo } from './api';
 import { resolveArrayFieldRenderer, resolveFieldRenderer } from './form/registry';
 

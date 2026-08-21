@@ -1,5 +1,5 @@
 /**
- * @oa-agent/ui — 設計系統元件庫（前端共用）。
+ * @hyagent/ui — 設計系統元件庫（前端共用）。
  *
  * 目前對外匯出對話 / 表單會用到的元件；其餘設計系統元件（layout、表格、
  * router 相依者…）已在 src/ 內，需要時再加進這裡與 tsconfig 的 include。

@@ -2,7 +2,7 @@
  * Mock 使用者目錄（MVP）：以 userId 對應姓名 / 部門 / 職稱，並提供職務代理人候選名冊。
  * 之後接真實 HR / OA 來源時，只要換這層實作，對外介面不變。
  */
-import type { Applicant } from "@oa-agent/shared";
+import type { Applicant } from "@hyagent/shared";
 
 const DIRECTORY: Record<string, Omit<Applicant, "id">> = {
   kevin: { name: "Kevin Yang", department: "行銷部", title: "技術經理", region: "台北", email: "kevin@example.com" },

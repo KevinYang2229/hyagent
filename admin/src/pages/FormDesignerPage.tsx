@@ -12,8 +12,8 @@ import {
   useSensors,
   type DragEndEvent,
 } from '@dnd-kit/core';
-import type { FieldComponent } from '@oa-agent/shared';
-import { Checkbox, SchemaFormPreview } from '@oa-agent/ui';
+import type { FieldComponent } from '@hyagent/shared';
+import { Checkbox, SchemaFormPreview } from '@hyagent/ui';
 import { api, UnauthorizedError } from '../api';
 import { useAuth } from '../auth';
 import AppLayout from '../components/AppLayout';

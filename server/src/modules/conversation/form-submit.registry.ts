@@ -9,7 +9,7 @@
  * 不認識 express，可在 worker 執行。
  */
 import { randomUUID } from 'node:crypto';
-import type { ApprovalStep } from '@oa-agent/shared';
+import type { ApprovalStep } from '@hyagent/shared';
 import { logger } from '@/lib/logger';
 import { businessTripService } from '@/modules/business-trip/business-trip.service';
 import { makeToolContext, toolRegistry } from '@/modules/tools';

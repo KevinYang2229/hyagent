@@ -1,4 +1,4 @@
-import type { Definition, TenantAppearance } from '@oa-agent/shared';
+import type { Definition, TenantAppearance } from '@hyagent/shared';
 
 export type { Definition };
 

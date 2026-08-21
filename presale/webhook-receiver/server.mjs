@@ -16,7 +16,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { constructWebhookEvent } from '@oa-agent/sdk/server';
+import { constructWebhookEvent } from '@hyagent/sdk/server';
 
 const DIR = path.dirname(fileURLToPath(import.meta.url));
 const envPath = path.join(DIR, '.env');

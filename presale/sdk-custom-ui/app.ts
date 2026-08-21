@@ -2,11 +2,11 @@
  * 自訂 UI 範例（Surface 2 / SDK headless）。
  *
  * 重點：完全不載入 widget、不用 iframe。畫面、版面、CSS 全部自己畫，
- * 只透過 @oa-agent/sdk 拿資料（對話 / 表單 / 狀態），證明「UI 可完全客製化」。
+ * 只透過 @hyagent/sdk 拿資料（對話 / 表單 / 狀態），證明「UI 可完全客製化」。
  *
  * 由 esbuild 打包成瀏覽器可執行的 /app.js（見同目錄 server.mjs）。
  */
-import { createOAAgent, type TurnData } from '@oa-agent/sdk';
+import { createOAAgent, type TurnData } from '@hyagent/sdk';
 
 // server.mjs 注入：OA 來源與租戶公開金鑰
 const cfg = (window as unknown as { __OA__: { origin: string; key: string } }).__OA__;

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Checkbox, useToast } from "@oa-agent/ui";
+import { Checkbox, useToast } from "@hyagent/ui";
 import {
   api,
   type IngestJob,

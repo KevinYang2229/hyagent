@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react';
-import type { FieldSpec } from '@oa-agent/shared';
+import type { FieldSpec } from '@hyagent/shared';
 
 /**
  * registry 內每個欄位 renderer 收到的統一 props。

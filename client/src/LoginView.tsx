@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Input } from "@oa-agent/ui";
+import { Button, Input } from "@hyagent/ui";
 import { auth, type Applicant } from "./api";
 
 /** 登入頁：帳密 → 取得 access/refresh token 與使用者資料 */

@@ -1,5 +1,5 @@
 /**
- * @oa-agent/sdk/server — 伺服器端 SSO 工具（給「整合方後端」用）。
+ * @hyagent/sdk/server — 伺服器端 SSO 工具（給「整合方後端」用）。
  *
  * 用途：整合方在自己的後端，於使用者登入後，用該租戶的 ssoSecret 簽一張「終端使用者 token」，
  * 交給前端塞進 OA widget（data-user-token）。OA Agent 收到後驗章換發本系統 token，達成免登入。

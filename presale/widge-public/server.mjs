@@ -2,7 +2,7 @@
  * 模擬「整合方（租戶）的 landing page」——純前端嵌入版（不做 SSO 免登入）。
  *
  * 與隔壁 widge-tenant 的差別：
- *   - 不 import SDK（不需要 @oa-agent/sdk/server）。
+ *   - 不 import SDK（不需要 @hyagent/sdk/server）。
  *   - 沒有 /sso-token 端點，不簽任何 token，後端不持有 ssoSecret。
  *   - 載入 widget 時不帶 data-user-token → 使用者在 widget 內自行登入。
  *

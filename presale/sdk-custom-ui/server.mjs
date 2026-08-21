@@ -3,7 +3,7 @@
  *
  * 與 tenant-backend（widget 版）的差異：
  *   - 不載入 OA widget、不用 iframe。
- *   - 前端用 @oa-agent/sdk（headless）拿資料，UI 完全自己畫（見 app.ts / index.html）。
+ *   - 前端用 @hyagent/sdk（headless）拿資料，UI 完全自己畫（見 app.ts / index.html）。
  *
  * 本服務負責：
  *   1. /sso-token   — 用 SDK 的 signUserToken 簽 user token（模擬整合方後端）。
@@ -17,7 +17,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as esbuild from 'esbuild';
-import { signUserToken } from '@oa-agent/sdk/server';
+import { signUserToken } from '@hyagent/sdk/server';
 
 const DIR = path.dirname(fileURLToPath(import.meta.url));
 
@@ -36,7 +36,7 @@ const TENANT_SSO_SECRET = process.env.TENANT_SSO_SECRET ?? 'test-secret123456789
 const DEMO_USER_ID = process.env.DEMO_USER_ID ?? 'hyweb';
 const DEMO_USER_NAME = process.env.DEMO_USER_NAME ?? '測試員';
 
-// 啟動時用 esbuild 把 app.ts（含 @oa-agent/sdk）打包成瀏覽器可執行的 ESM。
+// 啟動時用 esbuild 把 app.ts（含 @hyagent/sdk）打包成瀏覽器可執行的 ESM。
 let appJs = '';
 async function buildApp() {
   const result = await esbuild.build({

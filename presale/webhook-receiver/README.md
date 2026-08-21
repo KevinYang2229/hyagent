@@ -3,7 +3,7 @@
 模擬「整合方接收 OA 表單結果回拋」的那一段。表單在 OA 送出後，OA 會 POST `form.submitted`
 事件到這個服務；本服務示範接收端標準三步：**驗章 → 去重 → 快回 2xx**，並把結果印出來（模擬寫入對方系統）。
 
-驗章用 SDK 的 `constructWebhookEvent`（`@oa-agent/sdk/server`）。
+驗章用 SDK 的 `constructWebhookEvent`（`@hyagent/sdk/server`）。
 
 ## 取得密鑰（二選一）
 

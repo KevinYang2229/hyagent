@@ -21,7 +21,7 @@
 ### 2. 三種整合方式
 - **Surface 1 — 嵌入 widget 產品化**：`client/public/widget.js` 支援 `data-key/form/locale/theme/position/user-token`，參數化 iframe URL，轉發 `oa-agent:submitted` 等事件，提供 `OAAgent.open/close/toggle` 控制 API。
   - client：`embedConfig.ts`、`api.ts`（帶 `x-api-key` + SSO 換發）、`App.tsx`（套用 locale/theme/form、送出事件）。
-- **Surface 2 — 開發者 SDK**：新 workspace `@oa-agent/sdk`（`sdk/`），headless REST + widget 事件/控制橋接 + SSO。
+- **Surface 2 — 開發者 SDK**：新 workspace `@hyagent/sdk`（`sdk/`），headless REST + widget 事件/控制橋接 + SSO。
 - **Surface 3 — 表單結果 webhook 回拋**：每租戶可登記端點，送出成功後以 **HMAC 簽章 + 行內非同步投遞 + 指數退避重試** 推送 `form.submitted`。
   - `server/src/modules/webhook/`
 

@@ -2,12 +2,12 @@
  * admin i18n 初始化（繁中 + English）。
  *
  * admin 後台本身介面為純中文、不做語系切換；此處只為了讓表單設計器的
- * 即時預覽 <SchemaFormPreview> 內、來自 @oa-agent/ui 的 DatePicker /
+ * 即時預覽 <SchemaFormPreview> 內、來自 @hyagent/ui 的 DatePicker /
  * TimePicker / FileUploader 等元件能正確顯示文案（這些元件以 react-i18next
  * 的 t() 取字，未初始化時會直接吐出 key）。
  *
  * 這組 key 與 client/src/i18n.ts 的 ui 元件區段同源；client 是 canonical，
- * 若日後 ui 元件新增 key，兩邊需一起補（理想上應抽進 @oa-agent/ui 共用）。
+ * 若日後 ui 元件新增 key，兩邊需一起補（理想上應抽進 @hyagent/ui 共用）。
  */
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";

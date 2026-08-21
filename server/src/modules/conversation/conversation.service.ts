@@ -1,4 +1,4 @@
-import type { Attachment } from '@oa-agent/shared';
+import type { Attachment } from '@hyagent/shared';
 import { refreshApprovals } from '@/modules/form/approvals';
 import { computeStatus, setField, validateAll } from '@/modules/form/form.engine';
 import { getDefinition } from '@/modules/form/form.registry';

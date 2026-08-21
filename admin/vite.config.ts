@@ -4,7 +4,7 @@ import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
-  optimizeDeps: { exclude: ['@oa-agent/shared', '@oa-agent/ui'] },
+  optimizeDeps: { exclude: ['@hyagent/shared', '@hyagent/ui'] },
   server: {
     port: 5174,
     proxy: {

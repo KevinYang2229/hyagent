@@ -1,7 +1,7 @@
 /**
  * 六層 Form Definition 與 slot-filling 衍生型別。
  *
- * canonical 定義位於前後端共用套件 @oa-agent/shared；此處原樣再匯出，
+ * canonical 定義位於前後端共用套件 @hyagent/shared；此處原樣再匯出，
  * 維持 `@/modules/form/form.types` 既有 import 路徑不變。
  */
 export type {
@@ -28,4 +28,4 @@ export type {
   FormValues,
   FieldIssue,
   SlotStatus,
-} from '@oa-agent/shared';
+} from '@hyagent/shared';

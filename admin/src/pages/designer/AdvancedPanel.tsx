@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { OASchema, PolicySchema, WorkflowSchema } from '@oa-agent/shared';
+import type { OASchema, PolicySchema, WorkflowSchema } from '@hyagent/shared';
 import type { DraftForm } from './model';
 
 /**

@@ -1,4 +1,4 @@
-// oa-agent 持久化層（DATA_BACKEND=db 時啟用；Supabase Postgres）。
+// hyagent 持久化層（DATA_BACKEND=db 時啟用；Supabase Postgres）。
 //
 // 第一階段只搬 tenant store：資料表是「記憶體 Map 的 write-through 落地」，
 // service / store 介面不變（見 tenant.store.ts 檔頭說明）。

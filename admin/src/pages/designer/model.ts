@@ -13,7 +13,7 @@ import type {
   OASchema,
   PolicySchema,
   WorkflowSchema,
-} from '@oa-agent/shared';
+} from '@hyagent/shared';
 
 export type DraftDataType = 'string' | 'number' | 'integer' | 'boolean' | 'array';
 

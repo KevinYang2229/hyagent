@@ -3,7 +3,7 @@
  *
  * 每租戶可登記一或多個端點；表單送出成功後，以行內非同步方式投遞事件（含 HMAC 簽章）。
  */
-import type { SubmissionInfo } from '@oa-agent/shared';
+import type { SubmissionInfo } from '@hyagent/shared';
 import type { FormValues } from '@/modules/form/form.types';
 
 export type WebhookEventType = 'form.submitted';

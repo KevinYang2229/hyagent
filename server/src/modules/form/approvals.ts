@@ -4,7 +4,7 @@
  * 由各表單 service（請假／外出登記…）與對話查詢共用：依 workflow 關卡定義與送出時間，
  * 推算每關 approved/current/pending 狀態。Demo 以時間自動推進；真串接時改由 OA 連接器查詢。
  */
-import type { ApprovalStep } from '@oa-agent/shared';
+import type { ApprovalStep } from '@hyagent/shared';
 import type { Definition } from './form.types';
 
 // Demo 模擬：送出後每經過此時間就自動核准一關（真實串接時改由 OA 連接器查詢狀態）

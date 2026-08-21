@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { useToast } from '@oa-agent/ui';
+import { useToast } from '@hyagent/ui';
 import { api, UnauthorizedError, type Tenant } from '../api';
 import { useAuth } from '../auth';
 import AppLayout from '../components/AppLayout';

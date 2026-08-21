@@ -5,7 +5,7 @@
  * （DB、SSO、LDAP…）只要換掉這段，token 簽發與 refresh 流程不動。
  */
 import jwt from 'jsonwebtoken';
-import type { Applicant } from '@oa-agent/shared';
+import type { Applicant } from '@hyagent/shared';
 import { env } from '@/config/env';
 import { getApplicant, isKnownUser } from '@/modules/user/user.directory';
 import type { Tenant } from '@/modules/tenant/tenant.types';

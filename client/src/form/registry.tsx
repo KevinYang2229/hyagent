@@ -1,7 +1,7 @@
 /**
  * 欄位元件註冊表（schema-driven renderer 的接縫）。
  *
- * schema 的 field.component（'Select' / 'DatePicker'…）在此對應到 @oa-agent/ui 的設計系統元件。
+ * schema 的 field.component（'Select' / 'DatePicker'…）在此對應到 @hyagent/ui 的設計系統元件。
  * 要新增/替換元件：在這裡 import，寫一個把 FieldControlProps 轉成該元件 props 的 adapter，
  * 再加進 fieldRegistry。FormView 只查表，不需改動。
  *
@@ -20,8 +20,8 @@ import {
   Select,
   Textarea,
   TimePicker,
-} from '@oa-agent/ui';
-import type { FieldComponent } from '@oa-agent/shared';
+} from '@hyagent/ui';
+import type { FieldComponent } from '@hyagent/shared';
 import i18n from '../i18n';
 import type { ArrayFieldRenderer, FieldRenderer } from './types';
 

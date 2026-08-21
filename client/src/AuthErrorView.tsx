@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { Button } from "@oa-agent/ui";
+import { Button } from "@hyagent/ui";
 
 /**
  * 登入／連線失敗的整頁錯誤畫面。

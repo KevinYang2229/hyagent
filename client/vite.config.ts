@@ -6,7 +6,7 @@ import tailwindcss from '@tailwindcss/vite';
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   // workspace 套件以原始碼形式被引用，不要被 esbuild 預先打包
-  optimizeDeps: { exclude: ['@oa-agent/shared', '@oa-agent/ui'] },
+  optimizeDeps: { exclude: ['@hyagent/shared', '@hyagent/ui'] },
   server: {
     port: 5173,
     proxy: {

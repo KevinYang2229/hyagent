@@ -14,9 +14,9 @@ import "./SchemaFormPreview.css";
  *
  * DOM 結構與 class 命名鏡像 client 的 FormView（form-sheet / form-section / form-grid / form-row /
  * form-field / form-label / form-value），並以可攜的純 CSS 重現其樣式，因此「看起來就像真實畫面」。
- * 欄位控制項沿用與 client 相同的 @oa-agent/ui 元件。為唯讀預覽：不送出、不上傳、不分步驟。
+ * 欄位控制項沿用與 client 相同的 @hyagent/ui 元件。為唯讀預覽：不送出、不上傳、不分步驟。
  *
- * 型別在此以最小結構自宣告，避免 ui 套件強依賴 @oa-agent/shared；傳入完整 Definition（結構相容）即可。
+ * 型別在此以最小結構自宣告，避免 ui 套件強依賴 @hyagent/shared；傳入完整 Definition（結構相容）即可。
  */
 export type PreviewFieldComponent =
   | "Input"

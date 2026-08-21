@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it, expect, vi } from 'vitest';
 import { render, fireEvent, screen, waitFor } from '@testing-library/react';
-import type { Definition } from '@oa-agent/shared';
+import type { Definition } from '@hyagent/shared';
 import FormView from './FormView';
 
 const DIR = join(__dirname, '../../schemas/leave-request');

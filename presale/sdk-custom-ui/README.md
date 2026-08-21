@@ -1,7 +1,7 @@
 # SDK 自訂 UI 示範（第二個測試網站）
 
 一個 landing page，**header 右上「線上客服」按鈕**點擊後開啟**完全自建的聊天室面板**——
-用 `@oa-agent/sdk`（headless）取得資料、自己渲染（自己的氣泡、欄位面板、機器人 header），
+用 `@hyagent/sdk`（headless）取得資料、自己渲染（自己的氣泡、欄位面板、機器人 header），
 **不載入 widget、不用 iframe**。證明「用 SDK 取代 widget 後，UI 與觸發方式都可完全客製化」。
 
 - 觸發：`#open-chat`（header）/ `#hero-chat`（hero）→ 開啟面板（首次開啟才初始化 SDK）。
@@ -11,7 +11,7 @@
 
 | | [tenant-backend](../tenant-backend)（widget） | 本範例（SDK 自訂 UI） |
 |--|--|--|
-| 整合方式 | 貼 widget script，iframe 載入 OA 前端 | `@oa-agent/sdk` headless，自己畫 UI |
+| 整合方式 | 貼 widget script，iframe 載入 OA 前端 | `@hyagent/sdk` headless，自己畫 UI |
 | UI 客製化 | 只能改主題/語言/位置/標題 | **版面、元件、CSS 全自訂** |
 | API 呼叫位置 | iframe 內（同源 OA） | 本頁面**跨網域**呼叫 OA（需 CORS 放行） |
 | 打包 | 不用（widget.js 是純 JS） | 需用 esbuild 把 SDK + app.ts 打包 |
@@ -35,7 +35,7 @@ open http://localhost:4200
 瀏覽器開 http://localhost:4200
    │
    ├─ 取 SSO token ── GET /sso-token（後端用 SDK signUserToken 簽）
-   ├─ 載入 /app.js（esbuild 把 app.ts + @oa-agent/sdk 打包成 ESM）
+   ├─ 載入 /app.js（esbuild 把 app.ts + @hyagent/sdk 打包成 ESM）
    │
    └─ app.ts：createOAAgent({ key, userToken, apiBase }) → authenticate()
         → conversations.create / sendMessage / submit

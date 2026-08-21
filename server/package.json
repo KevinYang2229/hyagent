@@ -1,5 +1,5 @@
 {
-  "name": "oa-agent-server",
+  "name": "hyagent-server",
   "version": "0.9.0",
   "private": true,
   "description": "Agent-Native OA — 對話式表單填寫 Agent 後端（MVP：請假單，schema-driven，Claude + OA stub）",
@@ -30,7 +30,7 @@
     "@asteasolutions/zod-to-openapi": "^7.3.0",
     "@aws-sdk/client-s3": "^3.685.0",
     "@aws-sdk/s3-request-presigner": "^3.685.0",
-    "@oa-agent/shared": "*",
+    "@hyagent/shared": "*",
     "@prisma/client": "^5.22.0",
     "@types/markdown-it": "^14.1.2",
     "ajv": "^8.17.1",

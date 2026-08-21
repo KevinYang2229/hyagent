@@ -1,4 +1,4 @@
-/** 後台深/淺色主題：套用 <html data-theme>，@oa-agent/ui token 隨之切換。 */
+/** 後台深/淺色主題：套用 <html data-theme>，@hyagent/ui token 隨之切換。 */
 import { useEffect, useState } from 'react';
 
 export type Theme = 'light' | 'dark';

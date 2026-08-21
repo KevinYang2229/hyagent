@@ -10,7 +10,7 @@
  */
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Dialog } from '@oa-agent/ui';
+import { Dialog } from '@hyagent/ui';
 import { ApiError, downloadReport, fetchReport, type ReportData } from './api';
 
 const POLL_MS = 2000;

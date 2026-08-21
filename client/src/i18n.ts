@@ -1,7 +1,7 @@
 /**
  * i18n 初始化（繁體中文 + English）。
  *
- * 涵蓋：app 介面字串、表單畫面、以及 @oa-agent/ui 的 Dialog / DatePicker 所需 key。
+ * 涵蓋：app 介面字串、表單畫面、以及 @hyagent/ui 的 Dialog / DatePicker 所需 key。
  * 語系切換用 i18n.changeLanguage('zh-Hant' | 'en')，並記憶在 localStorage。
  */
 import i18n from "i18next";

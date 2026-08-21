@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Badge, Button, Input, type StatusBadgeVariant } from '@oa-agent/ui';
+import { Badge, Button, Input, type StatusBadgeVariant } from '@hyagent/ui';
 import {
   api,
   ApiError,
@@ -16,7 +16,7 @@ import {
   type SubmissionInfo,
   type TurnData,
 } from './api';
-import type { TenantAppearance } from '@oa-agent/shared';
+import type { TenantAppearance } from '@hyagent/shared';
 import { changeLanguage } from './i18n';
 import { embedConfig, fetchAppearance } from './embedConfig';
 import { pickKnowledgePrompts, type SuggestedPrompts } from './knowledgePrompt';

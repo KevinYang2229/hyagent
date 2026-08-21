@@ -7,7 +7,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it, expect, vi } from 'vitest';
 import { render, fireEvent } from '@testing-library/react';
-import type { FieldComponent } from '@oa-agent/shared';
+import type { FieldComponent } from '@hyagent/shared';
 import { fieldRegistry, resolveArrayFieldRenderer, resolveFieldRenderer } from './registry';
 import type { FieldControlProps } from './types';
 

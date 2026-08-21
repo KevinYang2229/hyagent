@@ -4,7 +4,7 @@
    ============================================================ */
 
 @import "tailwindcss";
-@import "@oa-agent/ui/index.css";
+@import "@hyagent/ui/index.css";
 
 @theme {
   --font-sans:
@@ -18,7 +18,7 @@
   --sidebar-border: var(--border-color);
   --on-sidebar: var(--text-primary);
   --on-sidebar-dim: var(--text-secondary);
-  /* admin 專屬（@oa-agent/ui 沒有）：圓角、陰影、字型 */
+  /* admin 專屬（@hyagent/ui 沒有）：圓角、陰影、字型 */
   --radius: 12px;
   --radius-sm: 8px;
   --radius-lg: 16px;
@@ -34,7 +34,7 @@
 }
 
 /* OA 設計 token（含 SchemaFormPreview 的 Input/Select/DatePicker 用）
-   由上方 @import "@oa-agent/ui/index.css" 提供（light + :root[data-theme=dark]）。 */
+   由上方 @import "@hyagent/ui/index.css" 提供（light + :root[data-theme=dark]）。 */
 
 * {
   box-sizing: border-box;

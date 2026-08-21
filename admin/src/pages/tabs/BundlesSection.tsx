@@ -1,5 +1,5 @@
 import { useState, type CSSProperties } from 'react';
-import { Checkbox } from '@oa-agent/ui';
+import { Checkbox } from '@hyagent/ui';
 import type { ScopeDef, SkillBundle, TenantPolicyView } from '../../api';
 
 const thStyle: CSSProperties = {

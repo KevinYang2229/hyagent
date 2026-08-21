@@ -5,7 +5,7 @@
  * 連接器內以 oa.mapper 依 schema 組 body / 解析回應。新增表單不必加方法。
  */
 
-import type { Attachment, LeaveBalance, OASchema } from '@oa-agent/shared';
+import type { Attachment, LeaveBalance, OASchema } from '@hyagent/shared';
 
 export type { Attachment, LeaveBalance, OASchema };
 

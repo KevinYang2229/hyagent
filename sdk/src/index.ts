@@ -1,13 +1,13 @@
 /**
- * @oa-agent/sdk — OA Agent 整合 SDK（瀏覽器端）。
+ * @hyagent/sdk — OA Agent 整合 SDK（瀏覽器端）。
  *
  * 提供兩種整合方式，共用同一組租戶設定（公開金鑰 + 選用 SSO token）：
  *   1) headless REST：開發者自建 UI，直接呼叫對話 / 表單 API。
  *   2) widget 橋接：程式化開關內建 widget（OAAgent.open/close）、訂閱事件（form:submitted…）。
  *
- * 設計上不依賴框架，型別重用 @oa-agent/shared（單一來源）。
+ * 設計上不依賴框架，型別重用 @hyagent/shared（單一來源）。
  */
-import type { Definition, SessionStatus, SubmissionInfo } from '@oa-agent/shared';
+import type { Definition, SessionStatus, SubmissionInfo } from '@hyagent/shared';
 
 export interface OAAgentOptions {
   /** 租戶公開金鑰 pk_…（多租戶資料隔離；省略則後端落到預設租戶） */

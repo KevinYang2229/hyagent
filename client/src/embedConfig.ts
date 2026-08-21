@@ -6,7 +6,7 @@
  *
  * 全部選填——未帶任何參數時等同改造前的純 ?embed=1 行為（向後相容）。
  */
-import type { TenantAppearance } from '@oa-agent/shared';
+import type { TenantAppearance } from '@hyagent/shared';
 import type { SuggestedPrompts } from './knowledgePrompt';
 
 type Theme = 'light' | 'dark';

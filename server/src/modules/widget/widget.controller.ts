@@ -3,7 +3,7 @@
  * widget iframe 載入時讀取（帶 ?key=pk_…）；未設外觀則回內建預設。
  */
 import type { Request, Response } from 'express';
-import type { TenantAppearance } from '@oa-agent/shared';
+import type { TenantAppearance } from '@hyagent/shared';
 import { knowledgeStore } from '@/modules/knowledge/knowledge.store';
 import { effectivePrompts } from '@/modules/knowledge/prompt-slots';
 

@@ -2,7 +2,7 @@
  * 外出登記領域 service：最終 payload 驗證 → 透過 OA 連接器送出 + 簽核流程（workflow）。
  * 結構比照 leave.service；不 import express（可在 worker 執行）。
  */
-import type { ApprovalStep } from '@oa-agent/shared';
+import type { ApprovalStep } from '@hyagent/shared';
 import type { OASubmitResult } from '@/lib/oa/types';
 import { computeApprovals, stepDefs } from '@/modules/form/approvals';
 import { validateAll } from '@/modules/form/form.engine';

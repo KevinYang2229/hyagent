@@ -4,7 +4,7 @@ import { api, UnauthorizedError, type Tenant } from '../api';
 import { useAuth } from '../auth';
 import AppLayout from '../components/AppLayout';
 import { IconChevron, IconInfo, IconPlus } from '../components/icons';
-import { Checkbox } from '@oa-agent/ui';
+import { Checkbox } from '@hyagent/ui';
 
 export default function TenantsPage() {
   const { logout } = useAuth();

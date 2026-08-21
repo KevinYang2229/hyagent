@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
-import { ToastProvider } from '@oa-agent/ui';
+import { ToastProvider } from '@hyagent/ui';
 import { AuthProvider, useAuth } from './auth';
 import LoginPage from './pages/LoginPage';
 import TenantsPage from './pages/TenantsPage';

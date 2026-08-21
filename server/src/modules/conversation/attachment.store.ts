@@ -12,7 +12,7 @@
  * - 以 sessionId 分群，方便對話取消／送出後一次清掉該對話的所有暫存附件。
  */
 import { randomUUID } from 'node:crypto';
-import type { Attachment } from '@oa-agent/shared';
+import type { Attachment } from '@hyagent/shared';
 import { DbWriteQueue } from '@/lib/db';
 import { env } from '@/config/env';
 

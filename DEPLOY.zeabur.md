@@ -59,35 +59,39 @@ Zeabur 連上 GitHub repo 後，會 watch 指定分支；**每次 `git push` 到
 2. 連接 GitHub，授權存取 `KevinYang2229/oa-agent`。
 
 > **指定 Dockerfile 的關鍵規則**（Zeabur monorepo）：
+>
 > - **最推薦**：把服務「命名」成 `server` / `client`，Zeabur 會自動配對 `Dockerfile.server` / `Dockerfile.client`，不必設任何變數。
 > - 若服務名稱不是 server/client，才用變數 `ZBPACK_DOCKERFILE_NAME`，值是**後綴**（`server` / `client`），**不是**完整檔名。
 >   寫成 `Dockerfile.server` 會讓 Zeabur 去找 `Dockerfile.Dockerfile.server`（不存在）→ 靜默退回自動偵測 → 部署到錯的進入點。
 
 ### 服務 A：server
+
 3. **Add Service → Git → 選 oa-agent repo**。
 4. **把服務名稱設成 `server`** → Zeabur 自動使用 `Dockerfile.server`（不需設 `ZBPACK_DOCKERFILE_NAME`）。
    - 若服務名稱不是 `server`，才到 **Variables** 加 `ZBPACK_DOCKERFILE_NAME = server`（後綴，不含 `Dockerfile.`）。
 5. 設定下方「server 環境變數」（見第三節）。
-6. **Networking → 產生 Domain**（例：`oa-agent-server.zeabur.app`）。記下這個網址，client 要用。
+6. **Networking → 產生 Domain**（例：`hyagent-server.zeabur.app`）。記下這個網址，client 要用。
 
 ### 服務 B：client
-7. 在同一個 Project 再 **Add Service → Git → 選同一個 oa-agent repo**。
+
+7. 在同一個 Project 再 **Add Service → Git → 選同一個 hyagent repo**。
 8. **把服務名稱設成 `client`** → Zeabur 自動使用 `Dockerfile.client`。並到 **Variables** 加：
-   - `VITE_API_BASE = https://oa-agent-server.zeabur.app`  ← 填服務 A 的 Domain
+   - `VITE_API_BASE = https://hyagent-server.zeabur.app` ← 填服務 A 的 Domain
      （Vite 會在 **build 階段** 把這個值 bake 進前端 bundle；改了要重新 build 才生效）
    - 若服務名稱不是 `client`，再加 `ZBPACK_DOCKERFILE_NAME = client`（後綴）。
-9. **Networking → 產生 Domain**（例：`oa-agent.zeabur.app`）。記下來，回填到 server 的 `CORS_ORIGIN`。
+9. **Networking → 產生 Domain**（例：`hyagent.zeabur.app`）。記下來，回填到 server 的 `CORS_ORIGIN`。
 
 ### 服務 C：admin（管理後台）
-10. 在同一個 Project 再 **Add Service → Git → 選同一個 oa-agent repo**。
+
+10. 在同一個 Project 再 **Add Service → Git → 選同一個 hyagent repo**。
 11. **把服務名稱設成 `admin`** → Zeabur 自動使用 `Dockerfile.admin`。並到 **Variables** 加：
-    - `VITE_API_BASE = https://oa-agent-server.zeabur.app`  ← 同樣填服務 A 的 Domain（build 階段 bake）
-    - `VITE_WIDGET_ORIGIN = https://oa-agent.zeabur.app`  ← 填服務 B（client）的 Domain，供「外觀」分頁的預覽 iframe 使用。**不設會 fallback 到 `localhost:5173`，公開後台會因連到私有網段被瀏覽器封鎖而看不到預覽。**
+    - `VITE_API_BASE = https://hyagent-server.zeabur.app` ← 同樣填服務 A 的 Domain（build 階段 bake）
+    - `VITE_WIDGET_ORIGIN = https://hyagent.zeabur.app` ← 填服務 B（client）的 Domain，供「外觀」分頁的預覽 iframe 使用。**不設會 fallback 到 `localhost:5173`，公開後台會因連到私有網段被瀏覽器封鎖而看不到預覽。**
     - 若服務名稱不是 `admin`，再加 `ZBPACK_DOCKERFILE_NAME = admin`（後綴）。
-12. **Networking → 產生 Domain**（例：`oa-agent-admin.zeabur.app`）。記下來，連同 client 一起回填到 server 的 `CORS_ORIGIN`。
+12. **Networking → 產生 Domain**（例：`hyagent-admin.zeabur.app`）。記下來，連同 client 一起回填到 server 的 `CORS_ORIGIN`。
 13. 回服務 A（server）確認兩個變數：
     - `CORS_ORIGIN` 同時放 client 與 admin 兩個網域，**逗號分隔**：
-      `https://oa-agent.zeabur.app,https://oa-agent-admin.zeabur.app`
+      `https://hyagent.zeabur.app,https://hyagent-admin.zeabur.app`
     - `ADMIN_PASSWORD` 一定要設（後台登入用，留空＝登入回 403）。
 
 > 三個服務都用 repo 根目錄當 build context；用服務名稱或 `ZBPACK_DOCKERFILE_NAME`（後綴）決定各自用哪個 Dockerfile。
@@ -95,12 +99,12 @@ Zeabur 連上 GitHub repo 後，會 watch 指定分支；**每次 `git push` 到
 ### 服務 D（選用）：presale demo（widge-tenant，模擬租戶網站 + SSO 免登入）
 
 > 僅作展示用；不想對外展示可略過。它是一支小型 Node server（`presale/widge-tenant/server.mjs`），
-> 透過 `tsx` 啟動（避開 `@oa-agent/sdk/server` 的 raw TS import 問題）。
+> 透過 `tsx` 啟動（避開 `@hyagent/sdk/server` 的 raw TS import 問題）。
 
 14. 在同一個 Project 再 **Add Service → Git → 選同一個 oa-agent repo**。
 15. 因為這支 Dockerfile 名稱不是 server/client/admin，**一定要**到 **Variables** 加 `ZBPACK_DOCKERFILE_NAME = presale-tenant`（後綴，不是完整檔名）。
 16. 同一個 **Variables** 加（見下方表）：`OA_ORIGIN` 填 **client 服務**的 Domain（widget panel 從 client 載入）、`TENANT_PK` / `TENANT_SSO_SECRET` 填**目標租戶**的公開金鑰與 SSO 密鑰、`DEMO_USER_*` 自訂展示用使用者。
-17. **Networking → 產生 Domain**（例：`oa-agent-demo.zeabur.app`）。
+17. **Networking → 產生 Domain**（例：`hyagent-demo.zeabur.app`）。
 18. 回服務 A（server）把這個 demo 的 Domain **也加進 `CORS_ORIGIN`**，並確認該租戶的 `allowedOrigins` 含此 Domain（widget.js 會跨網域抓 `/widget/config`）。
 
 ---
@@ -108,48 +112,51 @@ Zeabur 連上 GitHub repo 後，會 watch 指定分支；**每次 `git push` 到
 ## 三、環境變數
 
 ### server 服務
-| 變數 | 必填 | 範例 / 說明 |
-|------|------|------|
-| `NODE_ENV` | 建議 | `production` |
-| `ANTHROPIC_API_KEY` | ✅ 必填 | 沒填 server 啟動會直接 fail-fast 退出 |
-| `JWT_ACCESS_SECRET` | ✅ | ≥32 字元隨機字串 |
-| `JWT_REFRESH_SECRET` | ✅ | ≥32 字元隨機字串（與上者不同） |
-| `CORS_ORIGIN` | 建議 | client 與 admin 的 Domain，**逗號分隔**：`https://oa-agent.zeabur.app,https://oa-agent-admin.zeabur.app`。**結尾不要加 `/`**（瀏覽器送的 Origin 不帶斜線，多打會比對不到而擋掉；程式已做容錯，但仍建議別加）|
-| `ADMIN_PASSWORD` | 後台必填 | admin 後台登入密碼；**留空＝後台登入回 403**（停用）。與 `ADMIN_API_KEY` 分開 |
-| `AUTH_DEV_PASSWORD` | 視需要 | MVP 登入共用密碼，預設 `oa1234`，正式環境請改 |
-| `LLM_MODEL` | 選填 | 預設 `claude-sonnet-4-5` |
-| `REPORT_PDF_BROWSER` | 不用填 | Dockerfile 已設為 `/usr/bin/chromium`（報告的 PDF 輸出）。**探測不到瀏覽器時 pdf 不會出現在下載格式裡**，md 與 html 照常產出；指到不存在的路徑會留一筆警告並停用 pdf |
-| `PORT` | 不用填 | Zeabur 自動注入，server 會自動聽 |
+
+| 變數                 | 必填     | 範例 / 說明                                                                                                                                                                                                |
+| -------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NODE_ENV`           | 建議     | `production`                                                                                                                                                                                               |
+| `ANTHROPIC_API_KEY`  | ✅ 必填  | 沒填 server 啟動會直接 fail-fast 退出                                                                                                                                                                      |
+| `JWT_ACCESS_SECRET`  | ✅       | ≥32 字元隨機字串                                                                                                                                                                                           |
+| `JWT_REFRESH_SECRET` | ✅       | ≥32 字元隨機字串（與上者不同）                                                                                                                                                                             |
+| `CORS_ORIGIN`        | 建議     | client 與 admin 的 Domain，**逗號分隔**：`https://hyagent.zeabur.app,https://hyagent-admin.zeabur.app`。**結尾不要加 `/`**（瀏覽器送的 Origin 不帶斜線，多打會比對不到而擋掉；程式已做容錯，但仍建議別加） |
+| `ADMIN_PASSWORD`     | 後台必填 | admin 後台登入密碼；**留空＝後台登入回 403**（停用）。與 `ADMIN_API_KEY` 分開                                                                                                                              |
+| `AUTH_DEV_PASSWORD`  | 視需要   | MVP 登入共用密碼，預設 `oa1234`，正式環境請改                                                                                                                                                              |
+| `LLM_MODEL`          | 選填     | 預設 `claude-sonnet-4-5`                                                                                                                                                                                   |
+| `REPORT_PDF_BROWSER` | 不用填   | Dockerfile 已設為 `/usr/bin/chromium`（報告的 PDF 輸出）。**探測不到瀏覽器時 pdf 不會出現在下載格式裡**，md 與 html 照常產出；指到不存在的路徑會留一筆警告並停用 pdf                                       |
+| `PORT`               | 不用填   | Zeabur 自動注入，server 會自動聽                                                                                                                                                                           |
 
 > 產生隨機 secret 可用：`node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
 
 ### client 服務
-| 變數 | 必填 | 說明 |
-|------|------|------|
-| `VITE_API_BASE` | ✅ | server 的對外網址，build 時 bake 進 bundle |
+
+| 變數                     | 必填   | 說明                                                                                  |
+| ------------------------ | ------ | ------------------------------------------------------------------------------------- |
+| `VITE_API_BASE`          | ✅     | server 的對外網址，build 時 bake 進 bundle                                            |
 | `ZBPACK_DOCKERFILE_NAME` | 視情況 | 僅當服務「名稱」不是 `client` 時才需要；值是後綴 `client`（不是 `Dockerfile.client`） |
 
 ### admin 服務
-| 變數 | 必填 | 說明 |
-|------|------|------|
-| `VITE_API_BASE` | ✅ | server 的對外網址，build 時 bake 進 bundle（admin 的 `api.ts` 走 `${VITE_API_BASE}/api`）|
-| `VITE_WIDGET_ORIGIN` | 建議 | client（widget）的對外網址，build 時 bake 進 bundle，供「外觀」分頁預覽 iframe 使用。不設會 fallback `localhost:5173`，公開後台預覽會被瀏覽器封鎖（連到私有網段）|
-| `VITE_DEMO_SITE_URL` | 選填 | 「外觀」分頁「開啟示範網站」按鈕的外部網址，build 時 bake；不設用程式內建預設（presale demo 網址）|
-| `ZBPACK_DOCKERFILE_NAME` | 視情況 | 僅當服務「名稱」不是 `admin` 時才需要；值是後綴 `admin`（不是 `Dockerfile.admin`） |
+
+| 變數                     | 必填   | 說明                                                                                                                                                              |
+| ------------------------ | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `VITE_API_BASE`          | ✅     | server 的對外網址，build 時 bake 進 bundle（admin 的 `api.ts` 走 `${VITE_API_BASE}/api`）                                                                         |
+| `VITE_WIDGET_ORIGIN`     | 建議   | client（widget）的對外網址，build 時 bake 進 bundle，供「外觀」分頁預覽 iframe 使用。不設會 fallback `localhost:5173`，公開後台預覽會被瀏覽器封鎖（連到私有網段） |
+| `VITE_DEMO_SITE_URL`     | 選填   | 「外觀」分頁「開啟示範網站」按鈕的外部網址，build 時 bake；不設用程式內建預設（presale demo 網址）                                                                |
+| `ZBPACK_DOCKERFILE_NAME` | 視情況 | 僅當服務「名稱」不是 `admin` 時才需要；值是後綴 `admin`（不是 `Dockerfile.admin`）                                                                                |
 
 > admin 登入還需要 server 端設好 `ADMIN_PASSWORD`，且 server 的 `CORS_ORIGIN` 要包含 admin 的 Domain。
 > 預覽 iframe 載入 client 後會 `postMessage` 即時帶入外觀；client 的 widget config 讀取也需 server 的 `CORS_ORIGIN`／租戶 allowedOrigins 放行 admin 與 client 網域。
 
 ### presale demo 服務（widge-tenant，選用）
 
-| 變數 | 必填 | 說明 |
-|------|------|------|
-| `OA_ORIGIN` | ✅ | **client（widget）服務**的對外網址（widget panel 從這裡載入）。runtime 讀取，不需 bake |
-| `TENANT_PK` | ✅ | 目標租戶的公開金鑰 `pk_…`（可放前端，會注入頁面） |
-| `TENANT_SSO_SECRET` | ✅ | 該租戶的 SSO 密鑰；**機密，只在此 server 端用來簽 token**，切勿放前端 |
-| `DEMO_USER_ID` | 選填 | 模擬登入者帳號（預設 `hyweb`） |
-| `DEMO_USER_NAME` | 選填 | 模擬登入者姓名（預設 `測試員`） |
-| `ZBPACK_DOCKERFILE_NAME` | ✅ | 固定填 `presale-tenant`（後綴）；因服務名不會剛好等於它 |
+| 變數                     | 必填 | 說明                                                                                   |
+| ------------------------ | ---- | -------------------------------------------------------------------------------------- |
+| `OA_ORIGIN`              | ✅   | **client（widget）服務**的對外網址（widget panel 從這裡載入）。runtime 讀取，不需 bake |
+| `TENANT_PK`              | ✅   | 目標租戶的公開金鑰 `pk_…`（可放前端，會注入頁面）                                      |
+| `TENANT_SSO_SECRET`      | ✅   | 該租戶的 SSO 密鑰；**機密，只在此 server 端用來簽 token**，切勿放前端                  |
+| `DEMO_USER_ID`           | 選填 | 模擬登入者帳號（預設 `hyweb`）                                                         |
+| `DEMO_USER_NAME`         | 選填 | 模擬登入者姓名（預設 `測試員`）                                                        |
+| `ZBPACK_DOCKERFILE_NAME` | ✅   | 固定填 `presale-tenant`（後綴）；因服務名不會剛好等於它                                |
 
 > 這個 demo 的 `TENANT_SSO_SECRET` 必須等於該租戶建立時設定的 `ssoSecret`，否則 SSO 換 token 會失敗。
 > 並記得把此 demo 的 Domain 加進 server 的 `CORS_ORIGIN` 與該租戶 `allowedOrigins`。
@@ -178,12 +185,14 @@ docker run --rm -v "$PWD:/backup" -e DB_URL postgres:17-alpine \
 > 注意：備份含全部租戶資料（API key 為 sha256 雜湊、BYO key 為密文——還原後要能解密，`DATA_ENCRYPTION_KEY` 必須是同一把）。artifact 只有 repo 協作者能下載，repo 需維持 private。
 
 ## 五、驗證
+
 - 開 client Domain → 應正常載入頁面。
 - 用帳號 + `AUTH_DEV_PASSWORD` 登入 → 對話功能能打到 server（瀏覽器 Network 面板看到請求送往 `VITE_API_BASE`，回 200）。
-- 若 client 或 admin 出現 CORS 錯誤 → 確認 server 的 `CORS_ORIGIN` 同時包含 client 與 admin 的 Domain，逗號分隔（例：`https://oa-agent.zeabur.app,https://oa-agent-admin.zeabur.app`，含 `https://`、結尾不要多斜線），更新後重啟 / redeploy server。
+- 若 client 或 admin 出現 CORS 錯誤 → 確認 server 的 `CORS_ORIGIN` 同時包含 client 與 admin 的 Domain，逗號分隔（例：`https://hyagent.zeabur.app,https://hyagent-admin.zeabur.app`，含 `https://`、結尾不要多斜線），更新後重啟 / redeploy server。
 - 若 server log 出現 `Prisma failed to detect the libssl/openssl version` → 確認使用新版 `Dockerfile.server` 重新部署；server image 需要安裝 `openssl` 供 Prisma generate/runtime 偵測。
 
 ## 六、本機驗證（可選，需裝 Docker）
+
 ```bash
 # server
 docker build -f Dockerfile.server -t oa-server .
@@ -217,14 +226,14 @@ watcher 會依序消化每個檔案，成功搬進 `_done/`；永久性失敗（
 搬進 `_failed/` 並附同名 `.error.txt` 記錄原因；暫時性失敗（embedding API 逾時等）不搬檔，
 留在原地待下一輪重試。
 
-| 參數 | 預設 | 說明 |
-|---|---|---|
-| `--root` | 必填 | 監控的根目錄 |
-| `--interval` | 30 | 輪詢間隔（秒） |
-| `--once` | — | 單次呼叫內自足完成兩輪（掃描 → 等待 `--interval` 秒 → 再掃描，只在第二輪處理），**可掛 cron**。代價是單次執行至少要等一個 `--interval`，嫌久可用 `--once --interval=5` |
-| `--dry-run` | — | 只列出將處理什麼與預估規模，不呼叫任何 API、不搬檔；搭配 `--once` 同樣走完整兩輪 |
-| `--max-mb` | 50 | 單檔大小上限（MB）；`0` 為合法值，代表拒絕所有檔案 |
-| `--tenant` | — | 只處理指定租戶的子資料夾 |
+| 參數         | 預設 | 說明                                                                                                                                                                   |
+| ------------ | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--root`     | 必填 | 監控的根目錄                                                                                                                                                           |
+| `--interval` | 30   | 輪詢間隔（秒）                                                                                                                                                         |
+| `--once`     | —    | 單次呼叫內自足完成兩輪（掃描 → 等待 `--interval` 秒 → 再掃描，只在第二輪處理），**可掛 cron**。代價是單次執行至少要等一個 `--interval`，嫌久可用 `--once --interval=5` |
+| `--dry-run`  | —    | 只列出將處理什麼與預估規模，不呼叫任何 API、不搬檔；搭配 `--once` 同樣走完整兩輪                                                                                       |
+| `--max-mb`   | 50   | 單檔大小上限（MB）；`0` 為合法值，代表拒絕所有檔案                                                                                                                     |
+| `--tenant`   | —    | 只處理指定租戶的子資料夾                                                                                                                                               |
 
 > `--interval` 與 `--max-mb` 會驗證輸入：非數字、`Infinity`、`--interval <= 0`、`--max-mb < 0`
 > 一律印出明確錯誤並以 exit code 1 結束，不會靜默改用預設值。

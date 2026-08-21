@@ -13,7 +13,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { signUserToken } from "@oa-agent/sdk/server";
+import { signUserToken } from "@hyagent/sdk/server";
 
 const DIR = path.dirname(fileURLToPath(import.meta.url));
 const envPath = path.join(DIR, ".env");

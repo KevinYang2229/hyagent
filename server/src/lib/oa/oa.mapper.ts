@@ -6,7 +6,7 @@
  *
  * http 與 stub 連接器共用；OA 真欄位名／狀態值改動時只改 oa.schema.json。
  */
-import type { OARequestMapping, OAResponseMapping } from '@oa-agent/shared';
+import type { OARequestMapping, OAResponseMapping } from '@hyagent/shared';
 import { AppError } from '@/utils/app-error';
 import type { OASubmitResult } from './types';
 

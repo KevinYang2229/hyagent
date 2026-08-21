@@ -1,4 +1,4 @@
-// 對應後端 auth / conversation / form / leave API。型別共用 @oa-agent/shared（單一來源）。
+// 對應後端 auth / conversation / form / leave API。型別共用 @hyagent/shared（單一來源）。
 import type {
   Applicant,
   Attachment,
@@ -9,7 +9,7 @@ import type {
   ReportRef,
   SessionStatus,
   SubmissionInfo,
-} from '@oa-agent/shared';
+} from '@hyagent/shared';
 
 export type {
   Applicant,

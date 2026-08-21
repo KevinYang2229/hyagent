@@ -17,7 +17,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 // 用 SDK 的伺服器端工具簽 token（取代直接呼叫 jsonwebtoken）
-import { signUserToken } from '@oa-agent/sdk/server';
+import { signUserToken } from '@hyagent/sdk/server';
 
 const DIR = path.dirname(fileURLToPath(import.meta.url));
 

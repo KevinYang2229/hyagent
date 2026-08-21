@@ -24,19 +24,19 @@
 ## 專案結構（monorepo / npm workspaces）
 
 ```
-oa-agent/
+hyagent/
 ├─ schemas/            前後端共用：六層表單 JSON Definition（單一來源）
 ├─ shared/             前後端共用：TS 型別（Definition / FieldSpec / SessionStatus…）
-├─ ui/                 設計系統元件庫 @oa-agent/ui（前端共用、純展示）
+├─ ui/                 設計系統元件庫 @hyagent/ui（前端共用、純展示）
 ├─ server/             後端 Express（schema 引擎 + 對話 Agent + REST）
 └─ client/             前端 Vite + React + TS（對話 + schema-driven 表單）
 ```
 
-`server` 與 `client` 都 import `@oa-agent/shared`，型別不再各寫一份。
+`server` 與 `client` 都 import `@hyagent/shared`，型別不再各寫一份。
 
 ### 設計系統與 schema-driven 渲染
 
-表單元件由 schema 的 `field.component` 決定，透過一張 registry 對應到 `@oa-agent/ui` 的元件：
+表單元件由 schema 的 `field.component` 決定，透過一張 registry 對應到 `@hyagent/ui` 的元件：
 
 ```
 ui/src/components/*          設計系統元件（自己的 props，不認識 schema）
@@ -50,10 +50,10 @@ client/src/FormView.tsx      只查 registry render，不寫死 switch
 ```css
 /* client/src/index.css */
 @import "tailwindcss";
-@import "@oa-agent/ui/styles.css"; /* ← 元件共用 token + base */
+@import "@hyagent/ui/styles.css"; /* ← 元件共用 token + base */
 ```
 
-（`@oa-agent/ui/styles.css` 對應 `ui/src/styles.css`，於 ui 的 package.json `exports` 宣告。）
+（`@hyagent/ui/styles.css` 對應 `ui/src/styles.css`，於 ui 的 package.json `exports` 宣告。）
 
 **接上你的設計系統**：
 
@@ -170,7 +170,7 @@ server/src/
   modules/business-trip/        國內出差報銷最終驗證 → 送 OA + workflow
   modules/outing/               外出登記最終驗證 → 送 OA + workflow
 client/src/
-  api.ts                        對話 / 表單 API client（型別取自 @oa-agent/shared）
+  api.ts                        對話 / 表單 API client（型別取自 @hyagent/shared）
   App.tsx                       對話畫面 + 狀態管理
   FormView.tsx                  schema-driven 表單：依 field.component 渲染可編輯元件，依 layout 分組／多步驟
 shared/src/index.ts             前後端共用型別（Definition / FieldSpec / SessionStatus…）
@@ -201,7 +201,7 @@ schemas/<formId>/*.json         六層表單 Definition（前後端共用單一�
 
 差別只在最後一步：環境變數 `OA_CONNECTOR=stub` 換成 `http`、實作 `lib/oa/http.connector.ts`。**前端、schema、BFF 邏輯皆不動**，三層各自獨立部署。
 
-**共用 schema 不會把前後端綁死**：schema JSON 只住後端（[`form.loader.ts`](server/src/modules/form/form.loader.ts) 以 `fs` 讀 `schemas/`），前端執行時用 `GET /api/forms/:formId` 取得 Definition，**bundle 內零張 schema**。前後端唯一共用的是 `@oa-agent/shared` 的 TypeScript 型別，屬 build 期便利、runtime 會被編譯掉。
+**共用 schema 不會把前後端綁死**：schema JSON 只住後端（[`form.loader.ts`](server/src/modules/form/form.loader.ts) 以 `fs` 讀 `schemas/`），前端執行時用 `GET /api/forms/:formId` 取得 Definition，**bundle 內零張 schema**。前後端唯一共用的是 `@hyagent/shared` 的 TypeScript 型別，屬 build 期便利、runtime 會被編譯掉。
 
 **gateway 典型該管的現況**：認證已接 JWT（dev 為 mock 名錄 + 共用密碼，上線前換真實身分來源）、session 已可持久化（`DATA_BACKEND=db`）、限流／配額已補齊（兩層守門：[`tenant-rate-limit.ts`](server/src/middlewares/tenant-rate-limit.ts) 依「租戶＋使用者」防突發轟炸、[`tenant-quota.ts`](server/src/middlewares/tenant-quota.ts) 依 `quotaMonthlyLlmTokens` 對照當月 usage 分桶做月配額，掛在會觸發 LLM 計費的 `/api/conversations`）；**尚未補**：真實身分來源（換掉 mock 名錄）。
 

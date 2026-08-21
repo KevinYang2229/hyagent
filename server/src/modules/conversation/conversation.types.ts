@@ -1,4 +1,4 @@
-import type { ReportRef, SessionStatus, SubmissionInfo } from '@oa-agent/shared';
+import type { ReportRef, SessionStatus, SubmissionInfo } from '@hyagent/shared';
 import type { LLMMessage } from '@/lib/llm/types';
 import type { FormValues } from '@/modules/form/form.types';
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type CSSProperties } from 'react';
-import { Checkbox, useToast } from '@oa-agent/ui';
+import { Checkbox, useToast } from '@hyagent/ui';
 import { api, type ScopeDef, type TenantPolicyView } from '../../api';
 import BundlesSection from './BundlesSection';
 

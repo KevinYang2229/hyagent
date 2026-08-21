@@ -151,7 +151,7 @@ interface Definition {
 
 > ℹ️ **`MultiSelect` 走 [`registry.tsx`](../client/src/form/registry.tsx) 的 `arrayFieldRegistry`**（值為 `string[]`，不走「value 一律字串」的 `fieldRegistry`）。data schema 對應欄位請定義成 `type: "array"`、`items: { "type": "string", "enum": [...] }` —— 可選值放在 `items.enum`，放頂層 `enum` 會誤擋整個陣列。必填的陣列欄位給空陣列 `[]` 視同未填（[`form.engine.ts`](../server/src/modules/form/form.engine.ts) 的 `isEmpty`）。
 >
-> ℹ️ **`Upload` 由 [`FormView.tsx`](../client/src/FormView.tsx) 特例渲染，不經 registry**。因其值為 `Attachment[]`（非字串）且需非同步上傳到後端，不符 registry「value 一律字串」的契約。整條鏈已接好：FormView → `@oa-agent/ui` 的 `FileUploader` → client `api.uploadAttachment`/`deleteAttachment` → 後端 `POST/DELETE /conversations/:id/attachments`（multer + `attachmentStore`）→ 送出時 `attachments` metadata 隨 payload 交付 OA。data schema 對應欄位請定義成 `type: array`、`items` 為附件 metadata 物件。`leave-request` 與 `business-trip-domestic` 已示範。
+> ℹ️ **`Upload` 由 [`FormView.tsx`](../client/src/FormView.tsx) 特例渲染，不經 registry**。因其值為 `Attachment[]`（非字串）且需非同步上傳到後端，不符 registry「value 一律字串」的契約。整條鏈已接好：FormView → `@hyagent/ui` 的 `FileUploader` → client `api.uploadAttachment`/`deleteAttachment` → 後端 `POST/DELETE /conversations/:id/attachments`（multer + `attachmentStore`）→ 送出時 `attachments` metadata 隨 payload 交付 OA。data schema 對應欄位請定義成 `type: array`、`items` 為附件 metadata 物件。`leave-request` 與 `business-trip-domestic` 已示範。
 
 **範例**
 
