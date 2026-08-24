@@ -38,6 +38,10 @@ function sectionSystem(locale?: string): string {
       '- Use ONLY the reference material and the table contents below; for anything not covered, say "Not mentioned in the materials." Never fabricate.',
       '- For any NUMBER, trust "Table contents" over "Reference material": the latter are retrieved excerpts,',
       '  and superlatives drawn from them ("highest", "most") will contradict the chart.',
+      '- A year series may have GAPS — some shows are biennial (2021, 2023, 2025). "The last three years"',
+      '  means the three MOST RECENT years present in the table, not three consecutive calendar years.',
+      '- Before writing "rose", "fell", or "declined year over year", put the two numbers you are comparing',
+      '  side by side and check the direction.',
       '- Write the body of this section only. Do NOT repeat the section heading.',
       '- Do NOT write conclusions, summaries, or transitions to other sections.',
       '- Output Markdown. Sub-headings, if any, MUST start at level 3 (###) — the section heading is already level 2.',
@@ -72,6 +76,10 @@ function sectionSystem(locale?: string): string {
     '- 只根據下方「參考資料」與「資料表實際內容」撰寫；未提到的部分明說「資料中未提及」，切勿杜撰。',
     '- **數字一律以「資料表實際內容」為準**：參考資料是檢索片段，只是節錄，'
       + '拿它下「最高」「最多」這類全稱判斷會與圖表互相矛盾。',
+    '- **年度序列可能不連續**：有些展覽是雙年展（2021、2023、2025）。「最近三年」指的是'
+      + '資料表裡**最新的三個年度**，不是從今年往回推三個自然年，也不是表上任意三列。',
+    '- 寫「上升」「下滑」「逐年減少」之前，先把要比較的那兩個數字並列核對一次——'
+      + '方向寫反比數字寫錯更難被發現。',
     '- 只寫這一節的內文，不要重複章節標題。',
     '- 不要寫結論、總結或銜接其他章節的過渡句（章節銜接由排版負責）。',
     '- 以 Markdown 輸出。若要分小節，標題一律從第三級（###）起跳——章節標題本身已經是第二級。',
@@ -484,9 +492,15 @@ export function requestedYearCount(query: string): number {
   const explicit = new Set(query.match(/(?:19|20)\d{2}/g) ?? []);
   if (explicit.size > 1) return explicit.size;
 
-  const arabic = query.match(/(?:最近|近|過去|近期)\s*(\d{1,2})\s*年/);
+  /*
+   * 「前三年」與「這三年」在中文裡就是在問最近三年，而且是實際打進來的寫法——
+   * 少了它們，那次查詢的年數被當成 1，逐年表沒補齊、預覽也只給了 3 張。
+   * 要求緊接「年」字，「前三名」這種同樣以「前」開頭的問法不會被誤收。
+   */
+  const RECENT = '(?:最近|近期|近|過去|前|這|此)';
+  const arabic = query.match(new RegExp(`${RECENT}\\s*(\\d{1,2})\\s*年`));
   if (arabic) return Math.max(1, Math.min(10, Number(arabic[1])));
-  const chinese = query.match(/(?:最近|近|過去|近期)\s*([一二兩三四五六七八九十])\s*年/);
+  const chinese = query.match(new RegExp(`${RECENT}\\s*([一二兩三四五六七八九十])\\s*年`));
   if (chinese) {
     const values: Record<string, number> = {
       一: 1, 二: 2, 兩: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10,
@@ -579,8 +593,19 @@ export function tablePreview(table: StoredTable): string {
     ? [...table.rows].sort((a, b) => (parseCellNumber(b[numeric] ?? '') ?? 0) - (parseCellNumber(a[numeric] ?? '') ?? 0))
     : table.rows;
   const shown = rows.slice(0, PREVIEW_ROWS);
+  /*
+   * 年度欄與數值欄的節錄要用不同說法。兩者都是由大到小取前幾列，但依年度取到的是
+   * **最近**的幾年，說成「前 N 列」會被讀成「最早的 N 年」——renderer 早就為圖表
+   * 區分過這兩種說法，預覽沒有。實跑時模型把工具機展的「前三年」寫成 2019／2017／2023，
+   * 而那張表由新到舊的前三列是 2025／2023／2022。
+   */
+  const byYear = numeric >= 0 && isYearColumn(table, numeric);
   const note = shown.length < table.rows.length
-    ? `（共 ${table.rows.length} 列，此處為依「${table.headers[numeric]}」排序後的前 ${shown.length} 列）`
+    ? `（共 ${table.rows.length} 列，此處為${
+      byYear
+        ? `依「${table.headers[numeric]}」由新到舊、最近的 ${shown.length} 列`
+        : `依「${table.headers[numeric]}」排序後的前 ${shown.length} 列`
+    }）`
     : `（共 ${table.rows.length} 列，已全部列出）`;
   const head = `${table.sheet}${table.caption ? ` — ${table.caption}` : ''} ${note}`;
   const body = [table.headers.join(' | '), ...shown.map((r) => r.join(' | '))].join('\n');

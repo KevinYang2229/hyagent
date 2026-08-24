@@ -221,6 +221,34 @@ describe('tablePreview', () => {
     expect(out).toContain('預登總數');
   });
 
+  /*
+   * 依年度排序時的節錄說明，與圖表的說明踩同一個坑：由新到舊排完再取「前 12 列」，
+   * 拿到的是最近的 12 年，說成「前 12 列」卻會被讀成「最早的 12 年」。
+   * renderer 早就為圖表區分過這兩種說法（見「折線取的是最近的 N 筆」），預覽沒有。
+   *
+   * 這不是措辭潔癖：實跑時模型把工具機展的「前三年」寫成 2019／2017／2023，
+   * 而那張表由新到舊的前三列是 2025／2023／2022。
+   */
+  it('依年度排序的節錄要說「最近的 N 列」，不得說成「前 N 列」', () => {
+    const many = { ...table, rows: Array.from({ length: 40 }, (_, i) => [`${1985 + i}`, String(i)]) };
+    const out = tablePreview(many);
+    expect(out).toContain('最近的 12 列');
+    expect(out).not.toContain('前 12 列');
+    expect(out).toContain('2024'); // 最新的年度要在，最早的不該在
+    expect(out).not.toContain('1985');
+  });
+
+  it('依數值欄排序的節錄仍說「前 N 列」——那才真的是由大到小的前幾名', () => {
+    const many = {
+      ...table,
+      headers: ['展區', '家數'],
+      rows: Array.from({ length: 40 }, (_, i) => [`展區${i}`, String(i)]),
+    };
+    const out = tablePreview(many);
+    expect(out).toContain('依「家數」排序後的前 12 列');
+    expect(out).not.toContain('最近的');
+  });
+
   it('沒有數值欄時退回原始順序，不排序也不出錯', () => {
     const text = { ...table, headers: ['項目', '說明'], rows: [['a', '甲'], ['b', '乙'], ['c', '丙']] };
     expect(firstNumericColumn(text)).toBe(-1);
@@ -275,6 +303,22 @@ describe('多年度查詢的資料表補齊', () => {
     expect(requestedYearCount('最近三年參展商')).toBe(3);
     expect(requestedYearCount('近5年參展商')).toBe(5);
     expect(requestedYearCount('2023、2024、2025 參展商')).toBe(3);
+  });
+
+  /*
+   * 使用者實際打的是「前三年」——中文問「過去三年」最自然的兩種寫法之一，
+   * 卻不在辨識清單裡，於是那次查詢的年數被當成 1：逐年表沒補齊、預覽只給 3 張。
+   */
+  it('「前 N 年」與「這 N 年」同樣是在問最近 N 年', () => {
+    expect(requestedYearCount('前三年參展商家數')).toBe(3);
+    expect(requestedYearCount('前 3 年參展商家數')).toBe(3);
+    expect(requestedYearCount('這三年的參展商家數')).toBe(3);
+    expect(requestedYearCount('自行車展與工具機展的提供前三年參展商家數資料')).toBe(3);
+  });
+
+  it('不帶年數的問句仍回 1——「前三名」不是年數', () => {
+    expect(requestedYearCount('參展商家數前三名的展區')).toBe(1);
+    expect(requestedYearCount('歷年參展商家數')).toBe(1);
   });
 
   it('兩個展覽都補齊最近三年，不再遺漏第三年', () => {
