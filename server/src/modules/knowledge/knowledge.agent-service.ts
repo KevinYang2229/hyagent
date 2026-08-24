@@ -20,6 +20,13 @@ import { usageStore } from '@/modules/usage/usage.store';
 import { rerankChunks } from './rerank';
 import { pickRetriever } from './retriever.pick';
 import type { KnowledgeChunk } from './retriever.types';
+import { listTableCatalog, loadTable } from './knowledge.tables.repo';
+import {
+  expandRequestedYears,
+  requestedYearCount,
+  selectCatalog,
+  tablePreview,
+} from '@/modules/report/report.compose';
 
 // 重排後交給作答 LLM 的最終片段數
 const FINAL_K = 5;
@@ -29,6 +36,30 @@ const FINAL_K = 5;
  * 夠解「那他們的完成日期呢」這類指代，又讓 input 大小有界——長對話不必要求使用者重開。
  */
 const HISTORY_MESSAGES = 6;
+
+/**
+ * 一般知識問答也要讀結構化試算表。只靠 top-5 文字 chunk 會使「最近三年」的
+ * 第三年隨檢索排名消失，即使資料表其實有完整數值。
+ */
+export async function loadTableContext(tenantId: string, query: string): Promise<string> {
+  try {
+    const catalog = await listTableCatalog(tenantId);
+    if (catalog.length === 0) return '';
+    const base = selectCatalog(catalog, query, 20);
+    const selected = expandRequestedYears(base, catalog, query, 20);
+    // 多展覽比較預留兩個展覽的年度表；一般查詢最多只讀 3 張。
+    const count = Math.min(selected.length, Math.max(3, requestedYearCount(query) * 2));
+    const previews: string[] = [];
+    for (const entry of selected.slice(0, count)) {
+      const table = await loadTable(tenantId, entry.id);
+      if (table) previews.push(tablePreview(table));
+    }
+    return previews.join('\n\n');
+  } catch (err) {
+    logger.warn({ err, tenantId }, 'knowledge table context load failed; falling back to chunks');
+    return '';
+  }
+}
 
 /**
  * 指代改寫：把「那他們的完成日期呢」補成可獨立檢索的完整問句。
@@ -95,7 +126,7 @@ function kbAnswerSystem(locale?: string): string {
     return [
       'You are the company knowledge-base assistant. Respond entirely in English.',
       'Rules:',
-      '- Answer ONLY from the "Reference" material below; for anything not covered, say "Not mentioned in the materials." Never fabricate.',
+      '- Answer ONLY from the "Reference" and "Actual table contents" below; for anything not covered, say "Not mentioned in the materials." Never fabricate.',
       '- "Previous conversation", if present, is only for resolving what the question refers to — never use it as a source of answers.',
       '- Be concise and directly on point; use bullet points when helpful.',
       '- When helpful, cite the source at the end as (Source: title).',
@@ -104,7 +135,8 @@ function kbAnswerSystem(locale?: string): string {
   return [
     '你是公司知識庫問答助理，全程使用繁體中文。',
     '規則：',
-    '- 只根據下方「參考資料」回答；資料未提到的部分，明說「資料中未提及」，切勿杜撰。',
+    '- 只根據下方「參考資料」與「資料表實際內容」回答；資料未提到的部分，明說「資料中未提及」，切勿杜撰。',
+    '- 數字一律以「資料表實際內容」為準，文字片段只是檢索節錄。',
     '- 「先前對話」若有，僅用於理解本次問題在指涉什麼，不得作為答案來源。',
     '- 回答精簡、直接切中問題；必要時條列。',
     '- 若有幫助，於句末以（來源：標題）標註引用。',
@@ -150,9 +182,10 @@ export const knowledgeAgentService: AgentService = {
     const retriever = await pickRetriever(session.tenantId);
     const pool = await retriever.search(session.tenantId, query);
     const chunks = await rerankChunks(session.tenantId, query, pool, FINAL_K);
+    const tableContext = await loadTableContext(session.tenantId, query);
 
     let reply: string;
-    if (chunks.length === 0) {
+    if (chunks.length === 0 && tableContext === '') {
       reply =
         normalizeLocale(session.locale) === 'en'
           ? 'No relevant information found in the knowledge base. Try rephrasing, or contact the relevant desk.'
@@ -174,7 +207,8 @@ export const knowledgeAgentService: AgentService = {
                   text: [
                     // 脈絡只用來理解問題在指什麼；答案仍只能出自參考資料（system prompt 已明訂）
                     history.length > 0 ? `先前對話（僅供理解問題脈絡）：\n${transcriptOf(history)}\n` : '',
-                    `參考資料：\n${context}`,
+                    `參考資料：\n${context || '（無相關文字片段）'}`,
+                    tableContext ? `資料表實際內容：\n${tableContext}` : '',
                     `\n問題：${userText}`,
                   ]
                     .filter(Boolean)
