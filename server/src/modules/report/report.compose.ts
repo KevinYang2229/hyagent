@@ -641,9 +641,22 @@ export async function autoChart(
       return best.chart;
     }
   }
-  const chart = await autoChartFrom(tenantId, pool[0]);
-  if (chart) used.add(pool[0].id);
-  return chart;
+  /*
+   * 預設路徑同樣要往下試，不能只賭排第一的那張。
+   *
+   * 實跑「兩展的前三年參展商家數」時，工具機展那一節整節沒有圖：排序把 1-CC-參觀者統計
+   * （3 列，扣掉合計只剩 2 個資料點）放在第一，它畫不出來，而排第二的 6-TM-參展商家數
+   * 明明是該節要的那張。第一名畫不出來是常態——三列的統計表、只有一列的國家數表在這批
+   * 資料裡到處都是——賭單張等於把「有沒有圖」交給排序的運氣。
+   */
+  for (const entry of pool.slice(0, AUTO_CHART_TRIES)) {
+    const chart = await autoChartFrom(tenantId, entry);
+    if (chart) {
+      used.add(entry.id);
+      return chart;
+    }
+  }
+  return undefined;
 }
 
 /**
