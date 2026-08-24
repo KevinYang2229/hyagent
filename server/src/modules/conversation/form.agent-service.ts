@@ -6,7 +6,6 @@
  * sticky=true：填表流程一旦開始即點黏，知識問答只能旁路插入、不奪走流程。
  */
 import type { LLMProvider } from '@/lib/llm/types';
-import { requiresExplicitConsent, resolveFieldLinks } from '@hyagent/shared';
 import { logger } from '@/lib/logger';
 import { languageDirective } from '@/lib/locale';
 import { resolveScopes } from '@/modules/authz/resolve-scopes';
@@ -14,6 +13,7 @@ import { formScopeId } from '@/modules/authz/scope-catalog';
 import { computeStatus, setField, validateAll } from '@/modules/form/form.engine';
 import { getDefinition, listDefinitions } from '@/modules/form/form.registry';
 import { buildTools } from '@/modules/form/form.tools';
+import { requiresExplicitConsent, resolveFieldLinks } from '@/modules/form/field-links';
 import type { Definition, FieldIssue } from '@/modules/form/form.types';
 import { leaveService } from '@/modules/leave/leave.service';
 import { tenantStore } from '@/modules/tenant/tenant.store';

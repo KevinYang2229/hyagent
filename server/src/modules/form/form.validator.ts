@@ -8,7 +8,7 @@
  */
 import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
-import { isSafeFieldLinkUrl } from '@hyagent/shared';
+import { isSafeFieldLinkUrl } from './field-links';
 import type { Definition, FieldIssue } from './form.types';
 
 const ajv = new Ajv({ allErrors: true, strict: false });

@@ -9,6 +9,7 @@ export type {
   DataSchema,
   FieldComponent,
   FieldOption,
+  FieldLink,
   FieldSpec,
   FieldSchema,
   LayoutSection,

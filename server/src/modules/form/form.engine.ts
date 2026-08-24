@@ -6,7 +6,7 @@
  */
 import Ajv, { type ValidateFunction } from 'ajv';
 import addFormats from 'ajv-formats';
-import { requiresExplicitConsent } from '@hyagent/shared';
+import { requiresExplicitConsent } from './field-links';
 import type {
   BusinessRule,
   Definition,
