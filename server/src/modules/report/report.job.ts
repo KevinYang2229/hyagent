@@ -12,6 +12,7 @@ import { AppError } from '@/utils/app-error';
 import { normalizeLocale } from '@/lib/locale';
 import { buildOutline } from './report.outline';
 import { composeSection } from './report.compose';
+import { composeSynthesis } from './report.synthesis';
 import { renderers } from './report.render';
 import { reportStore } from './report.store';
 import type { ReportDoc, ReportJob, ReportSection } from './report.types';
@@ -23,6 +24,7 @@ const running = new Map<string, Promise<void>>();
 export interface ReportJobDeps {
   outline?: typeof buildOutline;
   compose?: typeof composeSection;
+  synthesize?: typeof composeSynthesis;
 }
 
 export interface StartReportParams {
@@ -58,6 +60,7 @@ export function startReportJob(params: StartReportParams, deps: ReportJobDeps = 
 
   const outline = deps.outline ?? buildOutline;
   const compose = deps.compose ?? composeSection;
+  const synthesize = deps.synthesize ?? composeSynthesis;
 
   const job: ReportJob = {
     id: randomUUID(),
@@ -92,6 +95,17 @@ export function startReportJob(params: StartReportParams, deps: ReportJobDeps = 
         );
         job.doneSections += 1;
       }
+
+      /*
+       * 收尾的綜合節：各節之間刻意不共享脈絡、也禁止寫結論，於是整份報告沒有任何一處
+       * 把跨檔案的數字讀成一件事。這一節補上，而且只吃各節已產生的精確圖表資料點——
+       * 那些數值是程式從原始儲存格讀出的，不是前面各節的轉述。
+       * 條件不足或失敗都只是少一節，前面的內容照常交付。
+       */
+      const synthesis = await synthesize(
+        params.tenantId, params.topic, sections, params.locale, params.llm,
+      );
+      if (synthesis) sections.push(synthesis);
 
       // 全部節都零命中：流程成功但沒有內容可交付，不產檔
       if (sections.every((s) => s.hits === 0)) {

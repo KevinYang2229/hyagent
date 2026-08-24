@@ -36,6 +36,50 @@ function sectionWith(hits: number): (t: string, s: { heading: string; query: str
 
 beforeEach(() => reportStore._resetForTest());
 
+describe('收尾的綜合建議節', () => {
+  const synthesis: ReportSection = {
+    heading: '綜合觀察與建議', query: '主題', body: '兩展的走向相反。', sources: [], hits: 2,
+  };
+
+  it('產得出來就接在最後一節之後', async () => {
+    const job = startReportJob(
+      { tenantId: 't-syn', userId: 'u1', topic: '主題', llm },
+      { outline: async () => outline, compose: sectionWith(2), synthesize: async () => synthesis },
+    );
+    const done = await waitForJobForTest(job.id);
+    expect(done.status).toBe('done');
+    const md = (await reportStore.get(job.id, 'md'))?.content.toString() ?? '';
+    expect(md).toContain('## 綜合觀察與建議');
+    expect(md.indexOf('## 綜合觀察與建議')).toBeGreaterThan(md.indexOf('## B'));
+  });
+
+  /*
+   * 進度回報的分母是大綱的節數。綜合節是流程收尾時才決定產不產得出來的，
+   * 不能讓它把 doneSections 推過 totalSections——那會讓輪詢端看到 3/2。
+   */
+  it('不影響進度回報的分母與分子', async () => {
+    const job = startReportJob(
+      { tenantId: 't-syn2', userId: 'u1', topic: '主題', llm },
+      { outline: async () => outline, compose: sectionWith(2), synthesize: async () => synthesis },
+    );
+    const done = await waitForJobForTest(job.id);
+    expect(done.totalSections).toBe(2);
+    expect(done.doneSections).toBe(2);
+  });
+
+  it('產不出來時報告照樣完成，只是少了這一節', async () => {
+    const job = startReportJob(
+      { tenantId: 't-syn3', userId: 'u1', topic: '主題', llm },
+      { outline: async () => outline, compose: sectionWith(2), synthesize: async () => undefined },
+    );
+    const done = await waitForJobForTest(job.id);
+    expect(done.status).toBe('done');
+    const md = (await reportStore.get(job.id, 'md'))?.content.toString() ?? '';
+    expect(md).toContain('## A');
+    expect(md).not.toContain('綜合觀察與建議');
+  });
+});
+
 describe('startReportJob', () => {
   it('完成後狀態為 done，並存下所有登錄格式', async () => {
     const job = startReportJob(
