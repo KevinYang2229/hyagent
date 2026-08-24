@@ -94,7 +94,7 @@ export function exactDetail(locale: string, chart: SectionChart): string {
    * 折線依年份遞增取**最後** N 筆（也就是最近的 N 年）。兩者都寫成「前 N 筆」的話，
    * 一張 2014–2025 的折線會被說成「16 列中的前 12 筆」——那是不實的描述。
    */
-  const recent = kind === 'line';
+  const recent = chart.recent ?? kind === 'line';
   if (normalizeLocale(locale) === 'en') {
     if (!partial) return `All ${totalRows} rows from ${sourceLabel}`;
     return recent

@@ -56,6 +56,11 @@ function sectionSystem(locale?: string): string {
       '- When those columns are the PARTS OF ONE WHOLE for a single row (e.g. visitor sources:',
       '  self-registered / sponsored / self-funded / on-site), give "values" with kind pie or donut —',
       '  the system turns each column into a slice, taking the total row (max 6 slices).',
+      '- To compare TWO OR MORE shows/files, give "tables" instead — one series per table:',
+      '  {"tables":[{"id":"<id>","series":"Cycle Show"},{"id":"<id>","series":"Machine Tool Show"}],',
+      '   "label":"年度","value":"參展總家數","title":"...","unit":"..."}',
+      '  The system reads each table separately and aligns them on the label column (max 4 series).',
+      '  Only labels present in EVERY table are plotted; a year missing from one side is dropped, never zero-filled.',
       '- If the section discusses ANY comparable numbers, attach a chart. Do not settle for prose.',
       '- Pick kind by intent: bar for magnitude, line for change across years, pie for a few parts of a whole.',
       '  ```',
@@ -94,6 +99,12 @@ function sectionSystem(locale?: string): string {
     '- 若那幾個欄是**同一列構成一個整體**（例如訪客來源：自行預登／駐外補助／駐外自費／',
     '  廠商申請補助／現場報名），一樣給 "values" 但 kind 用 pie 或 donut——系統會取合計列，',
     '  把每個欄畫成一塊切片（最多 6 塊）。這類構成資料用圓餅遠比長條清楚。',
+    '- 若本節要**比較兩個以上的展覽／檔案**，改給 "tables"，每張表一個數列：',
+    '  {"tables":[{"id":"<id>","series":"自行車展"},{"id":"<id>","series":"工具機展"}],',
+    '   "label":"年度","value":"參展總家數","title":"標題","unit":"家"}',
+    '  系統會各自從各表讀值、以 label 欄對齊成同一張分組圖（最多 4 個數列）。',
+    '  各表都有的標籤才會畫；某一年只有一邊有（雙年展）就整個略過，不補 0。',
+    '  談對比就用這個形式——兩張各自獨立的圖並排，讀者得自己在腦中對齊。',
     '- **只要本節談到任何可比較的數字，就該附圖**；資料表在上面列著，不要只寫文字。',
     '- kind 依這一節在講什麼選：比大小用 bar、隨年度變化用 line、少數幾塊構成整體用 pie。',
     '  選不定就給 bar；donut 與 pie 規則相同，只是中央留白。',
@@ -205,11 +216,22 @@ const MAX_EXACT_POINTS = 12;
 
 /** LLM 對結構化表的挑選結果；數字不經它的手 */
 interface ChartRef {
-  table: string;
+  /**
+   * 單表路徑的表 id。跨表對比由 tables 取代，模型不會給這個欄位——
+   * 解析時會補上第一張表當代表值，讓去重鍵與「用過哪些表」的記錄有一致的落點。
+   */
+  table?: string;
   label: string;
   value: string;
   /** grouped 專用：多個數值欄名。給了它就走分組長條，value 忽略 */
   values?: string[];
+  /**
+   * 跨表對比：每張表貢獻一個數列，全部以 label 欄對齊。
+   *
+   * 兩個展分屬兩個檔案，而 table 只吃得下一個 id——「對比」這件事因此沒有任何一張圖
+   * 表達得出來。數值仍由程式各自從各表的完整資料列讀出，模型只挑表、挑欄位、命名數列。
+   */
+  tables?: { id: string; series: string }[];
   title?: string;
   unit?: string;
   /** 模型提出的類型；最終仍由 resolveChartKind 依資料形狀決定 */
@@ -759,6 +781,79 @@ export async function autoChart(
 }
 
 /**
+ * 跨表對比：把不同檔案的同一個指標畫進同一張分組圖。
+ *
+ * 實跑「自行車展與工具機展的前三年參展商家數」時，對比分析那一節的散文在講對比，
+ * 圖卻是兩張各自獨立的折線並排——chart-ref 只吃單一 table id，一張圖的數字永遠
+ * 只能來自一張表，而兩個展分屬兩個檔案。「對比」這件事沒有任何一張圖表達得出來。
+ *
+ * 對齊方式是**交集**而不是聯集：工具機展是雙年展，2024 那一年在它的表上根本不存在，
+ * 補 0 會在圖上長出一根不存在的長條，而且正好長在最容易被讀成「那年掉到谷底」的位置。
+ * 這與單表路徑「數值解析不出來就整列略過」是同一條原則。
+ */
+async function buildComparisonChart(
+  tenantId: string,
+  ref: ChartRef,
+  tables: { id: string; series: string }[],
+): Promise<SectionChart | undefined> {
+  const picked = tables.slice(0, MAX_SERIES);
+  const loaded: { series: string; table: StoredTable; values: Map<string, number> }[] = [];
+
+  for (const item of picked) {
+    const table = await loadTable(tenantId, item.id);
+    if (!table) return undefined;
+    const li = table.headers.indexOf(ref.label);
+    const vi = table.headers.indexOf(ref.value);
+    // 欄位名在任一張表對不上就整張不畫：拿錯欄位的數字比沒有圖糟得多
+    if (li < 0 || vi < 0 || li === vi) return undefined;
+
+    const values = new Map<string, number>();
+    for (const row of table.rows) {
+      const label = (row[li] ?? '').trim();
+      const value = parseCellNumber(row[vi] ?? '');
+      if (label === '' || value === null) continue;
+      if (TOTAL_LABELS.has(label)) continue; // 合計列與組成項不同層級
+      values.set(label, value);
+    }
+    loaded.push({ series: item.series, table, values });
+  }
+
+  // 每張表都有的標籤才留下；順序先沿用第一張表，年度序列稍後改為由舊到新
+  const shared = [...loaded[0].values.keys()].filter((label) =>
+    loaded.every((l) => l.values.has(label)));
+  if (shared.length < 2) return undefined;
+
+  const byYear = looksLikeYears(shared);
+  const ordered = byYear ? [...shared].sort((a, b) => Number(a) - Number(b)) : shared;
+  // 年度取最近的幾筆（與折線同理），其餘沿用原順序取前幾筆
+  const kept = byYear
+    ? ordered.slice(-MAX_GROUPED_CATEGORIES)
+    : ordered.slice(0, MAX_GROUPED_CATEGORIES);
+
+  const points = kept.map((label) => {
+    const values = loaded.map((l) => l.values.get(label) as number);
+    return { label, value: values[0], values };
+  });
+
+  const where = loaded
+    .map((l) => `${l.table.source} / ${l.table.sheet}`)
+    .join('、');
+
+  return {
+    kind: 'grouped',
+    complete: true,
+    title: ref.title?.trim() || `${ref.value}對比`,
+    ...(ref.unit?.trim() ? { unit: ref.unit.trim() } : {}),
+    points,
+    series: loaded.map((l) => l.series),
+    sourceLabel: where,
+    totalRows: shared.length,
+    // 依年度截斷時取的是最近的幾筆，說明文字不能寫成「前 N 筆」
+    ...(byYear ? { recent: true } : {}),
+  };
+}
+
+/**
  * 分組長條：一列多欄的表（類型 | 今年預登 | 今年報到 | 上屆預登 | 上屆報到）。
  *
  * 這批資料裡資訊密度最高的幾張表就是這個形狀，而兩欄的 label/value 只抓得到其中一欄，
@@ -857,6 +952,10 @@ export async function buildExactChart(
   tenantId: string,
   ref: ChartRef,
 ): Promise<SectionChart | undefined> {
+  // 跨表對比：一張圖的數字來自多張表，每張貢獻一個數列
+  if (ref.tables && ref.tables.length >= 2) return buildComparisonChart(tenantId, ref, ref.tables);
+
+  if (ref.table === undefined) return undefined;
   const table = await loadTable(tenantId, ref.table);
   if (!table) return undefined;
 
@@ -919,7 +1018,26 @@ export function extractChartRefs(raw: string): { body: string; refs: ChartRef[] 
   for (const payload of payloads) {
     try {
       const parsed = JSON.parse(payload) as Partial<ChartRef>;
-      if (typeof parsed.table !== 'string' || typeof parsed.label !== 'string') continue;
+      if (typeof parsed.label !== 'string') continue;
+      /*
+       * tables 是跨表對比的形式：每張表一個數列。給了它就沒有單一的 table id，
+       * 所以 table 的必要性要讓位——但仍填一個代表值（第一張表），
+       * 讓去重鍵與「本節用過哪些表」的記錄不必為這條路徑另開一套。
+       */
+      const series = Array.isArray(parsed.tables)
+        ? parsed.tables.filter(
+          (t): t is { id: string; series: string } =>
+            typeof t === 'object' && t !== null
+            && typeof (t as { id?: unknown }).id === 'string'
+            && typeof (t as { series?: unknown }).series === 'string',
+        )
+        : [];
+      // 有 tables 但其中有項目缺 id 或缺數列名：圖例上不能有無名數列，整個 ref 丟掉
+      if (Array.isArray(parsed.tables) && series.length !== parsed.tables.length) continue;
+      // 只有一張表沒有對比可言，退回單表路徑
+      const cross = series.length >= 2 ? series : undefined;
+      const table = cross ? cross[0].id : parsed.table ?? series[0]?.id;
+      if (typeof table !== 'string') continue;
       /*
        * value 與 values 二擇一即可。prompt 明說「給了 values 時 value 可省略」，
        * 但這裡原本硬性要求 value 是字串——模型照著 prompt 做，ref 就被整個丟掉，
@@ -931,10 +1049,11 @@ export function extractChartRefs(raw: string): { body: string; refs: ChartRef[] 
       const value = typeof parsed.value === 'string' && parsed.value !== '' ? parsed.value : cols[0];
       if (value === undefined) continue;
       // 同一張表的同一組欄位重複挑選就會畫出兩張一樣的圖；模型偶爾會這樣
-      const key = `${parsed.table}|${parsed.label}|${value}|${cols.join(',')}|${parsed.kind ?? ''}`;
+      const key = `${table}|${parsed.label}|${value}|${cols.join(',')}|`
+        + `${cross?.map((t) => t.id).join('+') ?? ''}|${parsed.kind ?? ''}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      refs.push({ ...parsed, value } as ChartRef);
+      refs.push({ ...parsed, table, value, ...(cross ? { tables: cross } : { tables: undefined }) } as ChartRef);
     } catch {
       // 這一個壞掉，繼續看下一個
     }
@@ -1070,8 +1189,10 @@ export async function composeSection(
         const built = await buildExactChart(tenantId, ref);
         if (!built) continue;
         exact.push(built);
-        // 模型挑的也要記進去，否則後面的節會用自動補圖再畫一次同一張表
-        opts.usedTables?.add(ref.table);
+        // 模型挑的也要記進去，否則後面的節會用自動補圖再畫一次同一張表。
+        // 跨表對比一次用掉好幾張，每一張都要記——只記第一張會讓其餘的又被補一次圖。
+        const usedIds = ref.tables?.map((t) => t.id) ?? (ref.table ? [ref.table] : []);
+        for (const id of usedIds) opts.usedTables?.add(id);
       } catch (err) {
         logger.warn({ err, tenantId, table: ref.table }, 'exact chart build failed');
       }
