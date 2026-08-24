@@ -1,6 +1,7 @@
 import { useState, type CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button, FileUploader } from '@hyagent/ui';
+import { requiresExplicitConsent, resolveFieldLinks } from '@hyagent/shared';
 import type { Attachment, Definition, FieldSpec, LeaveBalance, SubmissionInfo } from './api';
 import { resolveArrayFieldRenderer, resolveFieldRenderer } from './form/registry';
 
@@ -119,6 +120,7 @@ export default function FormView({
   function isRequiredMissing(key: string): boolean {
     if (!required.has(key)) return false;
     const raw = draft[key];
+    if (requiresExplicitConsent(def.field[key])) return raw !== true && raw !== 'true';
     if (raw === null || raw === undefined) return true;
     return String(raw).trim() === '';
   }
@@ -203,6 +205,7 @@ export default function FormView({
     const v = raw === null || raw === undefined ? '' : String(raw);
     // 多選欄位的值是 string[]，原樣往返，不經字串化
     const arrayValue = Array.isArray(raw) ? (raw as string[]) : [];
+    const links = resolveFieldLinks(spec);
 
     // 假別欄位：依目前選取的假別顯示「今年度剩餘 N 小時」
     const balance = key === 'leaveType' && v ? balances?.find((b) => b.leaveType === v) : undefined;
@@ -237,6 +240,16 @@ export default function FormView({
             <p className="form-balance">
               {t('form.remainingHours', { hours: balance.remainingHours })}
             </p>
+          )}
+          {(spec.help || links.length > 0) && (
+            <div className="form-field-help">
+              {spec.help && <span>{spec.help}</span>}
+              {links.map((link) => (
+                <a key={`${link.label}-${link.url}`} href={link.url} target="_blank" rel="noreferrer">
+                  {link.label}
+                </a>
+              ))}
+            </div>
           )}
         </dd>
       </div>

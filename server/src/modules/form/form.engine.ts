@@ -6,6 +6,7 @@
  */
 import Ajv, { type ValidateFunction } from 'ajv';
 import addFormats from 'ajv-formats';
+import { requiresExplicitConsent } from '@hyagent/shared';
 import type {
   BusinessRule,
   Definition,
@@ -37,6 +38,11 @@ function isEmpty(v: unknown): boolean {
   // 空陣列（多選未選、附件未上傳）等同未填，否則陣列型必填欄位形同虛設
   if (Array.isArray(v)) return v.length === 0;
   return v === null || v === undefined || v === '';
+}
+
+function isFieldEmpty(def: Definition, name: string, value: unknown): boolean {
+  if (requiresExplicitConsent(def.field[name])) return value !== true;
+  return isEmpty(value);
 }
 
 /** 依 data.schema 的型別做輕量 coerce（Agent 多半給字串） */
@@ -124,7 +130,7 @@ export function computeStatus(def: Definition, values: FormValues): SlotStatus {
   const invalid: FieldIssue[] = [];
 
   for (const [name, value] of Object.entries(values)) {
-    if (isEmpty(value)) continue;
+    if (isFieldEmpty(def, name, value)) continue;
     filled.push(name);
     const issue = validateField(def, name, value);
     if (issue) invalid.push(issue);
@@ -133,7 +139,7 @@ export function computeStatus(def: Definition, values: FormValues): SlotStatus {
   invalid.push(...evaluateRules(def.validation.rules, values));
 
   const required = def.validation.required ?? [];
-  const missing = required.filter((name) => isEmpty(values[name]));
+  const missing = required.filter((name) => isFieldEmpty(def, name, values[name]));
 
   return {
     filled,

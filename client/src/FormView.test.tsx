@@ -164,3 +164,32 @@ describe('FormView：Radio / MultiSelect / Password 欄位', () => {
     expect(screen.queryByText('Abcd1234!')).toBeNull();
   });
 });
+
+describe('FormView：同意條款', () => {
+  const consentDef = {
+    formId: 'consent-demo',
+    data: { type: 'object', properties: { agreeTerms: { type: 'boolean' } } },
+    field: {
+      agreeTerms: { component: 'Checkbox', label: '同意服務條款和隱私權政策' },
+    },
+    validation: { required: ['agreeTerms'] },
+    agent: { intent: 'demo', description: 'demo' },
+  } as unknown as Definition;
+
+  it('顯示示範條款連結，未勾選前不能送出', () => {
+    render(
+      <FormView
+        def={consentDef}
+        values={{ agreeTerms: false }}
+        onConfirm={vi.fn()}
+        onClose={() => {}}
+      />,
+    );
+    expect(screen.getByRole('link', { name: '服務條款' }).getAttribute('href')).toBe('/legal/terms.html');
+    expect(screen.getByRole('link', { name: '隱私權政策' }).getAttribute('href')).toBe('/legal/privacy.html');
+    const submit = screen.getByRole('button', { name: '確認送出' }) as HTMLButtonElement;
+    expect(submit.disabled).toBe(true);
+    fireEvent.click(screen.getByLabelText('同意服務條款和隱私權政策'));
+    expect(submit.disabled).toBe(false);
+  });
+});

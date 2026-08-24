@@ -101,6 +101,30 @@ describe('toDefinition（存檔核心）', () => {
     expect(toDefinition(d).validation.required).toEqual(['a', 'c']);
   });
 
+  it('同意欄位會保存說明、連結與 const=true', () => {
+    const d = draft({
+      fields: [field({
+        key: 'agreeTerms',
+        component: 'Checkbox',
+        dataType: 'boolean',
+        help: '請先閱讀',
+        requiresTrue: true,
+        links: [
+          { label: '服務條款', url: '/legal/terms.html' },
+          { label: '不安全', url: 'javascript:alert(1)' },
+        ],
+      })],
+    });
+    const def = toDefinition(d);
+    expect(def.data.properties.agreeTerms.const).toBe(true);
+    expect(def.field.agreeTerms.help).toBe('請先閱讀');
+    expect(def.field.agreeTerms.links).toEqual([{ label: '服務條款', url: '/legal/terms.html' }]);
+
+    const round = fromDefinition(def).fields[0];
+    expect(round.requiresTrue).toBe(true);
+    expect(round.links).toEqual([{ label: '服務條款', url: '/legal/terms.html' }]);
+  });
+
   it('Select → enum + options，Upload → array + items', () => {
     const d = draft({
       fields: [

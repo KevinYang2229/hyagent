@@ -8,6 +8,7 @@
  */
 import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
+import { isSafeFieldLinkUrl } from '@hyagent/shared';
 import type { Definition, FieldIssue } from './form.types';
 
 const ajv = new Ajv({ allErrors: true, strict: false });
@@ -57,6 +58,12 @@ export function validateDefinition(def: Definition): FieldIssue[] {
     }
     if (!spec.component) add(`field.${k}`, `欄位 ${k} 缺少 component`);
     if (!spec.label) add(`field.${k}`, `欄位 ${k} 缺少 label`);
+    for (const link of spec.links ?? []) {
+      if (!link.label?.trim()) add(`field.${k}.links`, `欄位 ${k} 的連結缺少顯示文字`);
+      if (!isSafeFieldLinkUrl(link.url ?? '')) {
+        add(`field.${k}.links`, `欄位 ${k} 的連結必須是 http(s) 或站內絕對路徑`);
+      }
+    }
     if (OPTION_COMPONENTS.has(spec.component) && !(spec.options && spec.options.length > 0)) {
       add(`field.${k}`, `${spec.component} 欄位 ${k} 需提供 options`);
     }

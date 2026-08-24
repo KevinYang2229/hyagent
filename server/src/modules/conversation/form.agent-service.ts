@@ -6,6 +6,7 @@
  * sticky=true：填表流程一旦開始即點黏，知識問答只能旁路插入、不奪走流程。
  */
 import type { LLMProvider } from '@/lib/llm/types';
+import { requiresExplicitConsent, resolveFieldLinks } from '@hyagent/shared';
 import { logger } from '@/lib/logger';
 import { languageDirective } from '@/lib/locale';
 import { resolveScopes } from '@/modules/authz/resolve-scopes';
@@ -49,7 +50,15 @@ function describeFields(def: Definition): string {
         ? `；可選值：${f.options.map((o) => `${o.label}=${o.value}`).join('、')}`
         : '';
       const guide = def.agent.fieldGuidance?.[name] ? `；${def.agent.fieldGuidance[name]}` : '';
-      return `- ${name}（${f?.label ?? name}，${required}）${opts}${guide}`;
+      const help = f?.help ? `；說明：${f.help}` : '';
+      const links = f ? resolveFieldLinks(f) : [];
+      const linkText = links.length > 0
+        ? `；閱讀連結：${links.map((link) => `${link.label} ${link.url}`).join('、')}`
+        : '';
+      const consent = requiresExplicitConsent(f)
+        ? '；必須由使用者閱讀後明確表示同意，不得自動填入 true 或從送出意圖推定同意'
+        : '';
+      return `- ${name}（${f?.label ?? name}，${required}）${opts}${guide}${help}${linkText}${consent}`;
     })
     .join('\n');
 }

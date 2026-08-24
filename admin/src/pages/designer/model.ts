@@ -14,6 +14,7 @@ import type {
   PolicySchema,
   WorkflowSchema,
 } from '@hyagent/shared';
+import { isSafeFieldLinkUrl } from '@hyagent/shared';
 
 export type DraftDataType = 'string' | 'number' | 'integer' | 'boolean' | 'array';
 
@@ -23,6 +24,8 @@ export interface DraftField {
   label: string;
   placeholder?: string;
   help?: string;
+  links?: { label: string; url: string }[];
+  requiresTrue?: boolean;
   required: boolean;
   dataType: DraftDataType;
   description?: string;
@@ -113,10 +116,12 @@ export function toDefinition(d: DraftForm): Definition {
   const ordered: DraftField[] = d.steps.flatMap((_, i) => fieldsOfStep(d, i));
 
   for (const f of ordered) {
+    const links = (f.links ?? []).filter((link) => link.label.trim() && isSafeFieldLinkUrl(link.url));
     const prop: JsonSchemaProperty = { type: f.dataType };
     if (f.description) prop.description = f.description;
     if (f.format) prop.format = f.format;
     if (f.pattern) prop.pattern = f.pattern;
+    if (f.requiresTrue) prop.const = true;
     if ((f.component === 'Select' || f.component === 'Radio') && f.options?.length) {
       prop.enum = f.options.map((o) => o.value);
     }
@@ -139,6 +144,8 @@ export function toDefinition(d: DraftForm): Definition {
       label: f.label,
       ...(f.placeholder ? { placeholder: f.placeholder } : {}),
       ...(f.help ? { help: f.help } : {}),
+      ...(links.length ? { links } : {}),
+      ...(f.requiresTrue ? { requiresTrue: true } : {}),
       ...(OPTION_COMPONENTS.includes(f.component) && f.options ? { options: f.options } : {}),
     };
   }
@@ -235,6 +242,8 @@ export function fromDefinition(def: Definition): DraftForm {
           label: spec?.label ?? key,
           placeholder: spec?.placeholder,
           help: spec?.help,
+          links: spec?.links,
+          requiresTrue: spec?.requiresTrue === true || prop.const === true,
           required: required.has(key),
           dataType: (prop.type as DraftDataType) ?? 'string',
           description: prop.description,

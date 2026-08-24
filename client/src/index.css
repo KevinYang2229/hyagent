@@ -532,6 +532,12 @@
   .form-value {
     @apply m-0 font-medium text-[var(--text-primary)];
   }
+  .form-field-help {
+    @apply mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-normal text-[var(--text-secondary)];
+  }
+  .form-field-help a {
+    @apply font-medium text-[var(--primary-color)] underline underline-offset-2;
+  }
   .form-error {
     @apply mb-3 rounded-md bg-[var(--badge-danger-bg)] px-3 py-2 text-sm text-[var(--badge-danger-text)];
   }

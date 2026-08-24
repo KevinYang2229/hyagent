@@ -677,6 +677,16 @@ function Inspector({
           onChange={(e) => onPatch({ placeholder: e.target.value })}
         />
       </label>
+      <label>
+        <span>欄位說明（顯示給使用者與 Agent）</span>
+        <textarea
+          className="input"
+          rows={2}
+          value={field.help ?? ''}
+          placeholder="例：請先閱讀下方條款後再勾選"
+          onChange={(e) => onPatch({ help: e.target.value })}
+        />
+      </label>
       <label className="checkbox-row">
         <Checkbox
           checked={field.required}
@@ -694,6 +704,56 @@ function Inspector({
           onChange={(e) => onGuidance(e.target.value)}
         />
       </label>
+
+      {field.component === 'Checkbox' && (
+        <label className="checkbox-row">
+          <Checkbox
+            checked={field.requiresTrue === true}
+            onChange={(e) => onPatch({ requiresTrue: e.target.checked })}
+          />
+          <span>必須明確勾選同意（false 視為未完成）</span>
+        </label>
+      )}
+
+      <div className="options-editor">
+        <span className="options-title">補充連結（顯示文字 / URL）</span>
+        {(field.links ?? []).map((link, i) => (
+          <div className="option-row" key={i}>
+            <input
+              className="input"
+              value={link.label}
+              placeholder="服務條款"
+              onChange={(e) => {
+                const links = [...(field.links ?? [])];
+                links[i] = { ...links[i], label: e.target.value };
+                onPatch({ links });
+              }}
+            />
+            <input
+              className="input"
+              value={link.url}
+              placeholder="https://example.com/terms"
+              onChange={(e) => {
+                const links = [...(field.links ?? [])];
+                links[i] = { ...links[i], url: e.target.value };
+                onPatch({ links });
+              }}
+            />
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => onPatch({ links: (field.links ?? []).filter((_, n) => n !== i) })}
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+        <button
+          className="btn btn-secondary btn-sm"
+          onClick={() => onPatch({ links: [...(field.links ?? []), { label: '', url: '' }] })}
+        >
+          ＋ 新增連結
+        </button>
+      </div>
 
       {OPTION_COMPONENTS.includes(field.component) && (
         <div className="options-editor">

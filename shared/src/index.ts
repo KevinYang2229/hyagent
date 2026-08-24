@@ -10,6 +10,8 @@
 // ---- ① Data Schema（標準 JSON Schema 子集）----
 export interface JsonSchemaProperty {
   type: string;
+  /** 固定必須等於此值（例如同意欄位必須為 true） */
+  const?: string | number | boolean;
   enum?: (string | number)[];
   format?: string;
   pattern?: string;
@@ -53,12 +55,52 @@ export interface FieldOption {
   label: string;
 }
 
+export interface FieldLink {
+  label: string;
+  url: string;
+}
+
 export interface FieldSpec {
   component: FieldComponent;
   label: string;
   placeholder?: string;
   options?: FieldOption[];
   help?: string;
+  /** 欄䵍旁顯示的補充資料連結 */
+  links?: FieldLink[];
+  /** 必須由使用者明確勾選，false 不視為完成 */
+  requiresTrue?: boolean;
+}
+
+const DEMO_LEGAL_LINKS = {
+  terms: { label: '服務條款', url: '/legal/terms.html' },
+  privacy: { label: '隱私權政策', url: '/legal/privacy.html' },
+  personalData: { label: '個人資料蒐集告知事項', url: '/legal/personal-data.html' },
+} as const;
+
+/** 既有表單尚未加 links 時的示範後備；一旦 schema 有設定就完全以它為準。 */
+export function isSafeFieldLinkUrl(url: string): boolean {
+  return /^https?:\/\//i.test(url) || /^\/(?!\/)/.test(url);
+}
+
+export function resolveFieldLinks(spec: FieldSpec): FieldLink[] {
+  if (spec.links?.length) {
+    return spec.links.filter((link) => link.label.trim() !== '' && isSafeFieldLinkUrl(link.url));
+  }
+  const text = `${spec.label} ${spec.help ?? ''}`;
+  const links: FieldLink[] = [];
+  if (text.includes('服務條款')) links.push(DEMO_LEGAL_LINKS.terms);
+  if (text.includes('隱私權政策')) links.push(DEMO_LEGAL_LINKS.privacy);
+  if (/個人資料|個資/.test(text)) links.push(DEMO_LEGAL_LINKS.personalData);
+  return links;
+}
+
+export function requiresExplicitConsent(spec: FieldSpec | undefined): boolean {
+  if (!spec) return false;
+  return spec.requiresTrue === true || (
+    spec.component === 'Checkbox'
+    && /(同意|服務條款|隱私權|個人資料|個資)/.test(`${spec.label} ${spec.help ?? ''}`)
+  );
 }
 
 export type FieldSchema = Record<string, FieldSpec>;

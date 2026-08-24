@@ -144,3 +144,20 @@ describe('validateAll', () => {
     expect(issues.some((i) => i.message.includes('缺少必填欄位'))).toBe(true);
   });
 });
+
+describe('明確同意欄位', () => {
+  const consentDef = {
+    formId: 'consent-demo',
+    data: { type: 'object', properties: { agreeTerms: { type: 'boolean' } } },
+    field: {
+      agreeTerms: { component: 'Checkbox', label: '同意服務條款和隱私權政策' },
+    },
+    validation: { required: ['agreeTerms'] },
+    agent: { intent: 'demo', description: 'demo' },
+  } as unknown as typeof def;
+
+  it('false 仍視為未完成，只有 true 可通過', () => {
+    expect(computeStatus(consentDef, { agreeTerms: false }).missing).toContain('agreeTerms');
+    expect(computeStatus(consentDef, { agreeTerms: true }).missing).not.toContain('agreeTerms');
+  });
+});
