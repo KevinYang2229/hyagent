@@ -400,6 +400,76 @@ export function capPerSheet(
 const PREVIEW_TABLES = 3;
 const PREVIEW_ROWS = 12;
 
+/**
+ * 從查詢中取出使用者明確要的年度數。
+ *
+ * 平常查詢仍維持精簡預覽；「最近三年」或列出多個年份時，則不能再用固定的
+ * 兩份同名工作表上限，否則第三年會在送給 LLM 前消失。
+ */
+export function requestedYearCount(query: string): number {
+  const explicit = new Set(query.match(/(?:19|20)\d{2}/g) ?? []);
+  if (explicit.size > 1) return explicit.size;
+
+  const arabic = query.match(/(?:最近|近|過去|近期)\s*(\d{1,2})\s*年/);
+  if (arabic) return Math.max(1, Math.min(10, Number(arabic[1])));
+  const chinese = query.match(/(?:最近|近|過去|近期)\s*([一二兩三四五六七八九十])\s*年/);
+  if (chinese) {
+    const values: Record<string, number> = {
+      一: 1, 二: 2, 兩: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10,
+    };
+    return values[chinese[1]] ?? 1;
+  }
+  return 1;
+}
+
+/** 將已入選的逐年工作表補齊到查詢所要的年數，並以新到舊排列。 */
+export function expandRequestedYears(
+  shortlist: TableCatalogEntry[],
+  catalog: TableCatalogEntry[],
+  query: string,
+  limit = CATALOG_LIMIT,
+): TableCatalogEntry[] {
+  const count = requestedYearCount(query);
+  if (count <= MAX_PER_SHEET) return shortlist.slice(0, limit);
+
+  const explicit = new Set(query.match(/(?:19|20)\d{2}/g) ?? []);
+  const yearOf = (t: TableCatalogEntry): number => {
+    const hit = t.caption?.match(/(?:19|20)\d{2}/)?.[0];
+    return hit ? Number(hit) : -1;
+  };
+  const bySheet = new Map<string, TableCatalogEntry[]>();
+  for (const entry of catalog) {
+    const list = bySheet.get(entry.sheet) ?? [];
+    list.push(entry);
+    bySheet.set(entry.sheet, list);
+  }
+
+  const out: TableCatalogEntry[] = [];
+  const seen = new Set<string>();
+  const add = (entry: TableCatalogEntry): void => {
+    if (!seen.has(entry.id) && out.length < limit) {
+      seen.add(entry.id);
+      out.push(entry);
+    }
+  };
+  for (const entry of shortlist) {
+    const siblings = (bySheet.get(entry.sheet) ?? []).filter((t) => yearOf(t) > 0);
+    if (siblings.length < 2) {
+      add(entry);
+      continue;
+    }
+    siblings
+      .sort((a, b) => {
+        const aWanted = explicit.size === 0 || explicit.has(String(yearOf(a))) ? 1 : 0;
+        const bWanted = explicit.size === 0 || explicit.has(String(yearOf(b))) ? 1 : 0;
+        return bWanted - aWanted || yearOf(b) - yearOf(a);
+      })
+      .slice(0, count)
+      .forEach(add);
+  }
+  return out;
+}
+
 /** 找出第一個數值欄的索引；沒有回 -1 */
 export function firstNumericColumn(table: StoredTable): number {
   for (let c = 0; c < table.headers.length; c++) {
@@ -832,15 +902,18 @@ export async function composeSection(
     // 向量不可用（未回填、embedding 失敗、file 後端）就只剩字面——不夠準，但比沒有好
     logger.warn({ err, tenantId }, '語意選表失敗，本節只用字面比對');
   }
-  const shortlist = capPerSheet(
+  const baseShortlist = capPerSheet(
     semantic.length > 0 ? fuseRankings(semantic, lexical) : lexical,
     CATALOG_LIMIT,
   );
+  const shortlist = expandRequestedYears(baseShortlist, catalog, intent);
   const catalogBlock = shortlist.length > 0 ? `\n\n可用資料表：\n${catalogPrompt(shortlist)}` : '';
 
   // 最相關的幾張附上真實資料列，讓散文與圖表據同一份數字書寫；載入失敗只是少了預覽
   const previews: string[] = [];
-  for (const entry of shortlist.slice(0, PREVIEW_TABLES)) {
+  // 兩個展覽的「最近三年」至少需要 3×2 張逐年表；保留一般查詢的 3 張上限。
+  const previewTables = Math.min(shortlist.length, Math.max(PREVIEW_TABLES, requestedYearCount(intent) * 2));
+  for (const entry of shortlist.slice(0, previewTables)) {
     try {
       const table = await loadTable(tenantId, entry.id);
       if (table) previews.push(tablePreview(table));

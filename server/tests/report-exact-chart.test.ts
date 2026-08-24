@@ -13,10 +13,12 @@ jest.mock('@/modules/knowledge/knowledge.tables.repo', () => ({
 
 import {
   buildExactChart,
+  expandRequestedYears,
   extractChartRefs,
   firstNumericColumn,
   fuseRankings,
   parseCellNumber,
+  requestedYearCount,
   selectCatalog,
   tablePreview,
 } from '@/modules/report/report.compose';
@@ -256,6 +258,32 @@ describe('selectCatalog 的多樣性收斂', () => {
     const out = selectCatalog(catalog, '展區', 12);
     expect(out.length).toBeLessThan(12);
     expect(out.filter((t) => t.sheet === '8-CC-參展商展區')).toHaveLength(2);
+  });
+});
+
+describe('多年度查詢的資料表補齊', () => {
+  const yearly = (sheet: string, year: number) => ({
+    id: `${sheet}-${year}`, source: 'x.xlsx', sheet,
+    caption: `展覽年度:${year}`, headers: ['年度', '參展商家數'], rowCount: 1,
+  });
+  const catalog = [
+    ...[2021, 2022, 2023, 2024, 2025].map((y) => yearly('自行車展', y)),
+    ...[2021, 2022, 2023, 2024, 2025].map((y) => yearly('工具機展', y)),
+  ];
+
+  it('辨識中文與阿拉伯數字的最近年數', () => {
+    expect(requestedYearCount('最近三年參展商')).toBe(3);
+    expect(requestedYearCount('近5年參展商')).toBe(5);
+    expect(requestedYearCount('2023、2024、2025 參展商')).toBe(3);
+  });
+
+  it('兩個展覽都補齊最近三年，不再遺漏第三年', () => {
+    const initial = [yearly('自行車展', 2025), yearly('工具機展', 2025)];
+    const out = expandRequestedYears(initial, catalog, '自行車展與工具機展最近三年', 20);
+    expect(out.map((t) => t.id)).toEqual([
+      '自行車展-2025', '自行車展-2024', '自行車展-2023',
+      '工具機展-2025', '工具機展-2024', '工具機展-2023',
+    ]);
   });
 });
 
