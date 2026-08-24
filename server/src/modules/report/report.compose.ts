@@ -323,6 +323,80 @@ export function selectCatalog(
 const RRF_K = 10;
 
 /**
+ * 從橫幅取出這張表屬於哪個展覽。取不到回 undefined——那種表視為中立。
+ *
+ * 橫幅格式是「展覽名稱:台北國際工具機展 展覽年度:2025」，年度不算在展名裡。
+ */
+export function exhibitionOf(entry: { caption?: string }): string | undefined {
+  const hit = entry.caption?.match(/展覽名稱[:：]\s*(.+?)(?:\s*展覽年度|$)/);
+  return hit?.[1].trim() || undefined;
+}
+
+/**
+ * 展名裡不具辨識力的部分。四個展覽的名稱有一半是這些字，留著會讓每個展都對上每一句問話。
+ * 長的排前面，否則「展」會先吃掉「展覽會」的尾巴。
+ */
+const GENERIC_NAME_PARTS = /台北國際|臺北國際|台灣國際|臺灣國際|展覽會|展覽|台北|臺北|台灣|臺灣|國際|大展|展|會|TAIPEI|TAIWAN|DG/gi;
+
+/**
+ * 展名的辨識鍵。中文取 3 字以上的連續片段，英文取 4 字以上的完整字詞。
+ *
+ * 中文不放寬到 2 字是有代價換來的：「自行」同時出現在「自行車展」與欄位名「自行預登」，
+ * 放寬之後一句「自行預登人數」就會被當成在問自行車展，把其他三個展的表全部降級。
+ * 3 字的代價是「禮品展」這種極短簡稱對不上——那是漏判，會退成 no-op，比誤判安全。
+ */
+function exhibitionKeys(name: string): string[] {
+  const keys: string[] = [];
+  for (const seg of name.replace(GENERIC_NAME_PARTS, ' ').split(/[\s、,，/]+/)) {
+    if (seg === '') continue;
+    if (/^[\x20-\x7e]+$/.test(seg)) {
+      if (seg.length >= 4) keys.push(seg.toLowerCase());
+      continue;
+    }
+    for (let i = 0; i + 3 <= seg.length; i++) keys.push(seg.slice(i, i + 3));
+  }
+  return keys;
+}
+
+/** 問句有沒有點名這個展覽 */
+function mentionsExhibition(query: string, name: string): boolean {
+  const q = query.toLowerCase();
+  return q.includes(name.toLowerCase()) || exhibitionKeys(name).some((k) => q.includes(k));
+}
+
+/**
+ * 把問句沒點名的展覽的表降到後面。
+ *
+ * 這批資料四個展覽的工作表名稱與欄位幾乎一模一樣（每個展都有 1-*-參觀者統計、
+ * 6-*-參展商家數），語意與字面都分不出來——實跑「工具機展前三年參展商家數」時，
+ * 自行車展的 1-CC-參觀者統計 排到第一名，工具機展自己的表只排第二。橫幅上的
+ * 「展覽名稱:」是唯一的硬訊號，而問句幾乎都會直接點名展覽。
+ *
+ * 只降級不剔除，而且辨識不到（沒有任何展被點名、或全部都被點名）就整個退成 no-op：
+ * 展名簡稱五花八門，漏判必然存在，但漏判只是回到現狀，誤殺卻會讓整節沒有正確的表可用。
+ */
+export function preferMentionedExhibitions(
+  entries: TableCatalogEntry[],
+  query: string,
+): TableCatalogEntry[] {
+  const names = new Set(
+    entries.map((e) => exhibitionOf(e)).filter((n): n is string => n !== undefined),
+  );
+  if (names.size < 2) return entries;
+
+  const mentioned = new Set([...names].filter((n) => mentionsExhibition(query, n)));
+  if (mentioned.size === 0 || mentioned.size === names.size) return entries;
+
+  const on: TableCatalogEntry[] = [];
+  const off: TableCatalogEntry[] = [];
+  for (const e of entries) {
+    const name = exhibitionOf(e);
+    (name !== undefined && !mentioned.has(name) ? off : on).push(e);
+  }
+  return [...on, ...off];
+}
+
+/**
  * 融合語意與字面兩份排名。
  *
  * 實測兩者互有勝負，而且失誤的方式互補：
@@ -915,8 +989,13 @@ export async function composeSection(
     // 向量不可用（未回填、embedding 失敗、file 後端）就只剩字面——不夠準，但比沒有好
     logger.warn({ err, tenantId }, '語意選表失敗，本節只用字面比對');
   }
+  // 先把問句沒點名的展覽降到後面，再收斂名額：這批資料四個展的表名幾乎相同，
+  // 不先分展覽的話，20 個名額會被別的展的同名表佔掉（見 preferMentionedExhibitions）
   const baseShortlist = capPerSheet(
-    semantic.length > 0 ? fuseRankings(semantic, lexical) : lexical,
+    preferMentionedExhibitions(
+      semantic.length > 0 ? fuseRankings(semantic, lexical) : lexical,
+      intent,
+    ),
     CATALOG_LIMIT,
   );
   const shortlist = expandRequestedYears(baseShortlist, catalog, intent);
