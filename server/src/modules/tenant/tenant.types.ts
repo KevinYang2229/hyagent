@@ -24,6 +24,14 @@ export interface ApiKey {
   revokedAt?: string;
 }
 
+/** 知識庫可見性標籤（租戶自訂分類） */
+export interface KnowledgeLabel {
+  /** 小寫英數與連字號；scope id 為 kb:<id> */
+  id: string;
+  /** 顯示名稱，如「人資文件」 */
+  label: string;
+}
+
 export interface Tenant {
   id: string;
   name: string;
@@ -49,6 +57,15 @@ export interface Tenant {
    * 與群組/帳號政策一起併入 resolveScopes；未設＝不額外授權（仍有 BASE_SCOPES）。
    */
   grantedScopes?: string[];
+  /** 知識庫可見性標籤目錄（租戶自訂分類）。id 進 scope 體系時前綴 kb:。 */
+  knowledgeLabels?: KnowledgeLabel[];
+  /**
+   * 知識庫 ACL 階段旗標：
+   * off（預設）＝不過濾，行為與導入前完全相同；
+   * shadow＝不過濾但記錄「若啟用會擋掉什麼」；on＝強制過濾。
+   * 全租戶切至 on 後應移除三態邏輯，只留無條件過濾（見設計文件 §4）。
+   */
+  knowledgeAcl?: 'off' | 'shadow' | 'on';
   /** 是否已完成服務/表單 → scope 的一次性遷移；true 後遷移不再覆寫其授予。 */
   scopesMigrated?: boolean;
   /**

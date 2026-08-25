@@ -15,7 +15,12 @@ import { contentDispositionHeader } from '@/modules/report/report.http';
 import { submissionStore } from '@/modules/workflow/submission.store';
 import { formStore } from '@/modules/form/form.store';
 import { AppError } from '@/utils/app-error';
-import { SCOPE_CATALOG, assertGrantableScopes, tenantGrantableScopes } from '@/modules/authz/scope-catalog';
+import {
+  SCOPE_CATALOG,
+  assertGrantableScopes,
+  assertTenantGrantable,
+  tenantGrantableScopes,
+} from '@/modules/authz/scope-catalog';
 import { defaultGrantedScopes } from '@/modules/authz/scope-migration';
 import { scopePolicy } from '@/modules/authz/scope-policy';
 import { getApplicant, listDepartments, listUserIds } from '@/modules/user/user.directory';
@@ -216,7 +221,8 @@ export const adminController = {
     const tenant = ensureTenant(String(req.params.id));
     const body = req.body as PutPolicyInput;
     // 授予範圍一律限該租戶 grantable（擋 BASE / '*' / 目錄外 / 他租戶表單）
-    assertGrantableScopes(body.grantedScopes, tenant.id);
+    // 租戶層（grantedScopes）會併給該租戶所有人含訪客，額外拒絕 kb: 前綴（見 assertTenantGrantable）
+    assertTenantGrantable(body.grantedScopes, tenant.id);
     for (const scopes of Object.values(body.groups)) assertGrantableScopes(scopes, tenant.id);
     for (const scopes of Object.values(body.accounts)) assertGrantableScopes(scopes, tenant.id);
     // 套餐守門：內容物同樣限 grantable；id 不可重複；指派只能引用已定義的套餐

@@ -342,6 +342,8 @@ export const tenantStore = {
         | 'disabledServices'
         | 'disabledForms'
         | 'grantedScopes'
+        | 'knowledgeLabels'
+        | 'knowledgeAcl'
         | 'scopesMigrated'
         | 'llmConfig'
         | 'quotaMonthlyLlmTokens'
@@ -361,6 +363,8 @@ export const tenantStore = {
       ...(patch.disabledServices !== undefined ? { disabledServices: patch.disabledServices } : {}),
       ...(patch.disabledForms !== undefined ? { disabledForms: patch.disabledForms } : {}),
       ...(patch.grantedScopes !== undefined ? { grantedScopes: patch.grantedScopes } : {}),
+      ...(patch.knowledgeLabels !== undefined ? { knowledgeLabels: patch.knowledgeLabels } : {}),
+      ...(patch.knowledgeAcl !== undefined ? { knowledgeAcl: patch.knowledgeAcl } : {}),
       ...(patch.scopesMigrated !== undefined ? { scopesMigrated: patch.scopesMigrated } : {}),
       // 用 'in' 而非 '!== undefined'：llmConfig 需支援三態（不動/覆寫/清空），
       // undefined 也是合法值（代表整包清除），要能被 patch 帶入。

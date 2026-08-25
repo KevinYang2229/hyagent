@@ -5,6 +5,7 @@
  */
 import { AppError } from '@/utils/app-error';
 import { listDefinitions } from '@/modules/form/form.registry';
+import { tenantStore } from '@/modules/tenant/tenant.store';
 
 export interface ScopeDef {
   id: string;
@@ -35,15 +36,63 @@ export function isGrantableScope(id: string): boolean {
   return GRANTABLE_SCOPE_IDS.has(id);
 }
 
-/** 驗證一組 scope 皆可授予；form:<id> 需該租戶存在此表單。BASE / '*' / 目錄外一律 400。 */
+/** 知識庫可見性標籤的 scope 前綴 */
+export const KB_SCOPE_PREFIX = 'kb:';
+
+/** labelId → scope id */
+export function kbScopeId(labelId: string): string {
+  return `${KB_SCOPE_PREFIX}${labelId}`;
+}
+
+export function isKbScope(id: string): boolean {
+  return id.startsWith(KB_SCOPE_PREFIX);
+}
+
+/**
+ * labelId 限 [a-z0-9-]+。scope id 以冒號分段，label 內含冒號會讓 kb: 前綴的比對
+ * 出現歧義——而該比對正是 assertTenantGrantable 這道安全檢查所依賴的。
+ */
+const LABEL_ID_RE = /^[a-z0-9-]+$/;
+
+export function assertValidLabelId(labelId: string): void {
+  if (!LABEL_ID_RE.test(labelId)) {
+    throw AppError.badRequest(`標籤 id 只允許小寫英數與連字號：${labelId}`);
+  }
+}
+
+/** 驗證一組 scope 皆可授予；form:<id> 需該租戶存在此表單、kb:<id> 需該租戶存在此標籤。BASE / '*' / 目錄外一律 400。 */
 export function assertGrantableScopes(ids: string[], tenantId?: string): void {
   const validFormIds = tenantId
     ? new Set(listDefinitions(tenantId).map((d) => formScopeId(d.formId)))
     : new Set<string>();
+  const validLabelIds = tenantId
+    ? new Set((tenantStore.getTenant(tenantId)?.knowledgeLabels ?? []).map((l) => kbScopeId(l.id)))
+    : new Set<string>();
   const ok = (id: string): boolean =>
-    GRANTABLE_SCOPE_IDS.has(id) || validFormIds.has(id);
+    GRANTABLE_SCOPE_IDS.has(id) || validFormIds.has(id) || validLabelIds.has(id);
   const bad = ids.filter((id) => !ok(id));
   if (bad.length > 0) throw AppError.badRequest(`不可授予的 scope：${bad.join('、')}`);
+}
+
+/**
+ * 租戶層（Tenant.grantedScopes）授予驗證。
+ *
+ * resolveScopes 會把 grantedScopes 併給該租戶**所有人，包含訪客身分**。
+ * 該欄位語意是「這租戶買了哪些能力」，誤操作門檻很低——把 kb:hr 放進去，
+ * 等於對公開 widget 開放人事文件。訪客的可見範圍改走部門指派（見 resolve-scopes），
+ * 故此處無需任何白名單例外。
+ *
+ * tenantId 為選填：僅用來延續 assertGrantableScopes 對 form:<id> 的租戶歸屬驗證，
+ * 與 kb: 前綴的拒絕邏輯（安全邊界）無關，不構成白名單例外。
+ */
+export function assertTenantGrantable(ids: string[], tenantId?: string): void {
+  const kb = ids.filter(isKbScope);
+  if (kb.length > 0) {
+    throw AppError.badRequest(
+      `租戶層不可授予知識庫標籤（會併給所有人含訪客）：${kb.join('、')}。請改於部門或帳號層指派。`,
+    );
+  }
+  assertGrantableScopes(ids, tenantId);
 }
 
 export const SERVICE_SCOPE_IDS: Set<string> = new Set([
@@ -65,5 +114,11 @@ export function tenantGrantableScopes(tenantId: string): ScopeDef[] {
     description: `使用「${d.data.title ?? d.formId}」表單`,
     base: false,
   }));
-  return [...GRANTABLE_SCOPES, ...forms];
+  const labels: ScopeDef[] = (tenantStore.getTenant(tenantId)?.knowledgeLabels ?? []).map((l) => ({
+    id: kbScopeId(l.id),
+    label: l.label,
+    description: `檢索「${l.label}」分類的知識庫內容`,
+    base: false,
+  }));
+  return [...GRANTABLE_SCOPES, ...forms, ...labels];
 }
