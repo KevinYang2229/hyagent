@@ -1,8 +1,12 @@
 /** admin 權限 API：讀目錄、讀/寫每租戶政策、grantable 驗證。 */
+import request from 'supertest';
+import { createApp } from '@/app';
 import { adminController } from '@/modules/admin/admin.controller';
 import { scopePolicy } from '@/modules/authz/scope-policy';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 import { resolveScopes } from '@/modules/authz/resolve-scopes';
+
+const app = createApp();
 
 function mockRes() {
   const res: { statusCode?: number; body?: unknown; status: (n: number) => typeof res; json: (b: unknown) => void } = {
@@ -106,6 +110,23 @@ describe('admin 權限 API', () => {
     expect(putRes.statusCode).toBe(200);
   });
 
+  it('getPolicy 對 grantedScopes 額外濾掉 kb: 前綴（防禦深度：即使繞過寫入端誤植入也不回傳）', async () => {
+    const t = tenantStore.createTenant('admin-policy-kb-smuggled');
+    tenantStore.updateTenant(t.id, {
+      knowledgeLabels: [{ id: 'hr', label: '人資文件' }],
+      // 直接寫 store，模擬繞過 assertTenantGrantable 的寫入路徑（手改資料檔 / 未來程式碼疏漏）。
+      // kb:hr 對 tenantGrantableScopes 而言是合法值（部門/帳號層可用），若 prune 只比對
+      // grantableIds 會誤放行，讀取端要能自我修復。
+      grantedScopes: ['erp:read', 'kb:hr'],
+    });
+
+    const getRes = mockRes();
+    await adminController.getPolicy({ params: { id: t.id } } as never, getRes as never);
+    const body = (getRes.body as { data: { grantedScopes: string[]; groups: Record<string, string[]> } }).data;
+    expect(body.grantedScopes).toContain('erp:read');
+    expect(body.grantedScopes).not.toContain('kb:hr');
+  });
+
   it('授予非 grantable（BASE/未知）被擋 400', async () => {
     const t = tenantStore.createTenant('admin-policy-bad');
     const req = { params: { id: t.id }, body: { grantedScopes: ['oa:write'], groups: {}, accounts: {} } };
@@ -122,5 +143,34 @@ describe('admin 權限 API', () => {
     const t = tenantStore.createTenant('admin-policy-bad-acct');
     const req = { params: { id: t.id }, body: { grantedScopes: [], groups: {}, accounts: { kevin: ['nope:read'] } } };
     await expect(adminController.setPolicy(req as never, mockRes() as never)).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  // HTTP 層整合測試：守住 setPolicy 的租戶層安全邊界接線（見 scope-catalog.assertTenantGrantable）。
+  // 走真正的 PUT /api/admin/tenants/:id/policy，避免只測到 controller 內部呼叫、controller
+  // 與路由脫鉤時測不出來（脫鉤後果是知識庫標籤對公開 widget 全員含訪客開放）。
+  it('PUT policy：租戶層 grantedScopes 含 kb: 一律 400；同一標籤在 groups/accounts 合法可 200', async () => {
+    const t = tenantStore.createTenant('admin-policy-kb-http');
+    tenantStore.updateTenant(t.id, { knowledgeLabels: [{ id: 'hr', label: '人資文件' }] });
+
+    // 租戶層：會併給該租戶所有人含訪客，kb: 一律擋（無白名單例外）
+    const tenantLevel = await request(app)
+      .put(`/api/admin/tenants/${t.id}/policy`)
+      .set('x-admin-key', 'test-admin-key')
+      .send({ grantedScopes: ['kb:hr'], groups: {}, accounts: {} });
+    expect(tenantLevel.status).toBe(400);
+
+    // 部門層：kb: 合法，這是設計要的，別讓後人以為 kb: 到處都被擋
+    const groupLevel = await request(app)
+      .put(`/api/admin/tenants/${t.id}/policy`)
+      .set('x-admin-key', 'test-admin-key')
+      .send({ grantedScopes: [], groups: { 行銷部: ['kb:hr'] }, accounts: {} });
+    expect(groupLevel.status).toBe(200);
+
+    // 帳號層：同樣合法
+    const acctLevel = await request(app)
+      .put(`/api/admin/tenants/${t.id}/policy`)
+      .set('x-admin-key', 'test-admin-key')
+      .send({ grantedScopes: [], groups: {}, accounts: { kevin: ['kb:hr'] } });
+    expect(acctLevel.status).toBe(200);
   });
 });

@@ -19,6 +19,7 @@ import {
   SCOPE_CATALOG,
   assertGrantableScopes,
   assertTenantGrantable,
+  isKbScope,
   tenantGrantableScopes,
 } from '@/modules/authz/scope-catalog';
 import { defaultGrantedScopes } from '@/modules/authz/scope-migration';
@@ -202,10 +203,15 @@ export const adminController = {
     // 不會被自己回存的舊授予被 setPolicy 的 grantable 驗證擋成 400。
     const grantableIds = new Set(capabilities.map((s) => s.id));
     const prune = (ids: string[]): string[] => ids.filter((s) => grantableIds.has(s));
+    // 租戶層 grantedScopes 額外濾掉 kb: 前綴：即使 tenantGrantableScopes 合法列出 kb:<labelId>
+    // （部門/帳號層可用），grantedScopes 會併給該租戶所有人含訪客，此欄位永遠不該含 kb:。
+    // 這是讀取端的自我修復——寫入端已由 assertTenantGrantable 擋下，這裡是防禦深度，
+    // 不影響 groups/accounts/bundles（那裡 kb: 合法，仍走一般 prune）。
+    const pruneGrantedScopes = (ids: string[]): string[] => prune(ids).filter((s) => !isKbScope(s));
     res.status(200).json({
       data: {
         capabilities,
-        grantedScopes: prune(tenant.grantedScopes ?? []),
+        grantedScopes: pruneGrantedScopes(tenant.grantedScopes ?? []),
         groups: Object.fromEntries(Object.entries(policy.groups).map(([k, v]) => [k, prune(v)])),
         accounts: Object.fromEntries(Object.entries(policy.accounts).map(([k, v]) => [k, prune(v)])),
         bundles: (policy.bundles ?? []).map((b) => ({ ...b, scopes: prune(b.scopes) })),
