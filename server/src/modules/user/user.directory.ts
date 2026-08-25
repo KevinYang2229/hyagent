@@ -31,12 +31,19 @@ const FAVORITES: Record<string, string[]> = {
   hyweb: ["HYW042", "HYW210"],
 };
 
+/**
+ * 未建檔帳號的部門。宿主經 SSO 簽發的訪客 sub 不在本目錄中，一律落在此桶；
+ * 員工尚未建檔時同樣如此——最小權限，方向正確。
+ * scopePolicy.groups 以部門字串為 key，故此值即公開 widget 的權限掛鉤點。
+ */
+export const UNKNOWN_DEPARTMENT = '—';
+
 /** 取申請人 profile；未知帳號回退為「以 userId 當顯示名、部門未知」 */
 export function getApplicant(userId: string): Applicant {
   const profile = DIRECTORY[userId];
   return profile
     ? { id: userId, ...profile }
-    : { id: userId, name: userId, department: "—" };
+    : { id: userId, name: userId, department: UNKNOWN_DEPARTMENT };
 }
 
 /** 是否為目錄中的已知帳號（登入時用，未知帳號不可登入） */
