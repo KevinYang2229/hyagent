@@ -75,9 +75,11 @@ function bindValuesOf(call: unknown[]): unknown[] {
   );
 }
 
-/** 每列 chunk 綁 7 個值，順序同 saveIndexToDb 的 Prisma.sql 片段 */
-const FIELDS_PER_CHUNK = 7;
-const [I_TENANT, I_ID, I_URL, I_TITLE, I_TEXT, I_FILE_ID, I_VECTOR] = [0, 1, 2, 3, 4, 5, 6];
+/** 每列 chunk 綁 8 個值，順序同 saveIndexToDb 的 Prisma.sql 片段（含 visibility_scopes） */
+const FIELDS_PER_CHUNK = 8;
+const [I_TENANT, I_ID, I_URL, I_TITLE, I_TEXT, I_FILE_ID, I_VISIBILITY, I_VECTOR] = [
+  0, 1, 2, 3, 4, 5, 6, 7,
+];
 
 const idx: KnowledgeIndexFile = {
   generatedAt: '2026-08-04T00:00:00.000Z',
@@ -221,6 +223,11 @@ describe('saveIndex（db 後端）綁定值保真度', () => {
     expect(tuples.find((t) => t[I_ID] === 'c1')?.[I_FILE_ID]).toBe('F1');
     // 全體數量也要對（0..204 的奇數共 102 個）：無條件 null 的實作會讓這裡歸零
     expect(tuples.filter((t) => t[I_FILE_ID] !== null)).toHaveLength(102);
+  });
+
+  it('visibilityScopes 未設時綁 NULL（＝從未標記，非明確標成空陣列）', async () => {
+    const { tuples } = await insertTuplesOf();
+    expect(tuples.every((t) => t[I_VISIBILITY] === null)).toBe(true);
   });
 });
 

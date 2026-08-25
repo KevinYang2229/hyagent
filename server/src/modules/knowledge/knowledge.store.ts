@@ -30,6 +30,8 @@ export interface KnowledgeSource {
   rerank: boolean;
   /** 最後更新時間（ISO 8601） */
   updatedAt?: string;
+  /** 網站來源的可見性標籤（整個來源一組）；重爬時重新投影到 chunks */
+  visibilityScopes?: string[];
 }
 
 /** 單一上傳檔案的索引紀錄（供 admin 顯示與刪除比對） */
@@ -49,6 +51,8 @@ export interface KnowledgeFileMeta {
    * text 者（doc/pdf）檢索準確度較低，admin 據此提示使用者改上傳 docx。
    */
   fidelity?: 'structured' | 'text';
+  /** 可見性標籤（kb:<labelId>）真相來源；未設＝未標記，fail-closed 下不可見 */
+  visibilityScopes?: string[];
 }
 
 /** 由 prompt-slots.ts 定義的型別，此處 re-export 供既有呼叫端沿用 */

@@ -10,6 +10,11 @@ export interface IndexedChunk {
   vector: number[];
   /** 檔案來源的 chunk：來源檔 id（網站爬取的 chunk 無此欄）。刪檔/重爬保留據此篩選 */
   fileId?: string;
+  /**
+   * 可見性標籤（kb:<labelId>）。真相來源在檔案 meta／來源設定，本欄為查詢投影。
+   * undefined 寫入為 NULL＝從未標記；[] ＝明確標成誰都不能看。
+   */
+  visibilityScopes?: string[];
 }
 
 export interface KnowledgeIndexFile {

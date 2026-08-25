@@ -219,14 +219,15 @@ async function saveIndexToDb(tenantId: string, idx: KnowledgeIndexFile): Promise
         const batch = idx.chunks.slice(i, i + CHUNK_INSERT_BATCH);
         const values = batch.map(
           (c) => Prisma.sql`(${tenantId}, ${c.id}, ${c.url}, ${c.title}, ${c.text}, ${c.fileId ?? null},
-                            ${toVectorLiteral(c.vector)}::halfvec(3072))`,
+                            ${c.visibilityScopes ?? null}, ${toVectorLiteral(c.vector)}::halfvec(3072))`,
         );
         await tx.$executeRaw`
-          insert into knowledge_chunks (tenant_id, id, url, title, text, file_id, embedding)
+          insert into knowledge_chunks (tenant_id, id, url, title, text, file_id, visibility_scopes, embedding)
           values ${Prisma.join(values)}
           on conflict (tenant_id, id) do update set
             url = excluded.url, title = excluded.title, text = excluded.text,
-            file_id = excluded.file_id, embedding = excluded.embedding
+            file_id = excluded.file_id, visibility_scopes = excluded.visibility_scopes,
+            embedding = excluded.embedding
         `;
       }
 
@@ -271,14 +272,15 @@ async function replaceWebsiteChunksInDb(
         const batch = chunks.slice(i, i + CHUNK_INSERT_BATCH);
         const values = batch.map(
           (c) => Prisma.sql`(${tenantId}, ${c.id}, ${c.url}, ${c.title}, ${c.text}, ${c.fileId ?? null},
-                            ${toVectorLiteral(c.vector)}::halfvec(3072))`,
+                            ${c.visibilityScopes ?? null}, ${toVectorLiteral(c.vector)}::halfvec(3072))`,
         );
         await tx.$executeRaw`
-          insert into knowledge_chunks (tenant_id, id, url, title, text, file_id, embedding)
+          insert into knowledge_chunks (tenant_id, id, url, title, text, file_id, visibility_scopes, embedding)
           values ${Prisma.join(values)}
           on conflict (tenant_id, id) do update set
             url = excluded.url, title = excluded.title, text = excluded.text,
-            file_id = excluded.file_id, embedding = excluded.embedding
+            file_id = excluded.file_id, visibility_scopes = excluded.visibility_scopes,
+            embedding = excluded.embedding
         `;
       }
 
@@ -363,14 +365,15 @@ async function appendChunksToDb(
       const batch = chunks.slice(i, i + CHUNK_INSERT_BATCH);
       const values = batch.map(
         (c) => Prisma.sql`(${tenantId}, ${c.id}, ${c.url}, ${c.title}, ${c.text}, ${c.fileId ?? null},
-                          ${toVectorLiteral(c.vector)}::halfvec(3072))`,
+                          ${c.visibilityScopes ?? null}, ${toVectorLiteral(c.vector)}::halfvec(3072))`,
       );
       await db.$executeRaw`
-        insert into knowledge_chunks (tenant_id, id, url, title, text, file_id, embedding)
+        insert into knowledge_chunks (tenant_id, id, url, title, text, file_id, visibility_scopes, embedding)
         values ${Prisma.join(values)}
         on conflict (tenant_id, id) do update set
           url = excluded.url, title = excluded.title, text = excluded.text,
-          file_id = excluded.file_id, embedding = excluded.embedding
+          file_id = excluded.file_id, visibility_scopes = excluded.visibility_scopes,
+          embedding = excluded.embedding
       `;
     }
 
