@@ -324,20 +324,46 @@ update knowledge_tables set visibility_scopes = ? where tenant_id = ? and file_i
 fail-closed 讓未標記等於白花錢，此狀態必須以警示色刺眼呈現。
 這也是遷移期間唯一能看見進度的地方。
 
-### ⚠ 租戶層 `grantedScopes` 不得用於授予 `kb:` 標籤
+### 公開 widget 的訪客身分
 
-`resolveScopes` 會把 `Tenant.grantedScopes` 併給**該租戶所有人**。
-而匿名 widget 使用者的 userId fallback 是 `'demo-user'`
-（[`conversation.controller.ts`](../../../server/src/modules/conversation/conversation.controller.ts)），
-同樣吃得到租戶層授權。
+公開 widget 是實際使用中的情境，必須有明確的訪客可見範圍。
 
-亦即：管理者若把 `kb:hr` 放進租戶層 `grantedScopes`（該欄位語意是「這租戶買了哪些能力」，
-誤操作門檻很低），等於**對公開 widget 開放人事文件**。
+**訪客不是「未認證」。** `/api/conversations` 有掛 `requireAuth`
+（[`app.ts`](../../../server/src/app.ts)），`conversation.controller` 裡
+`x-user-id` 那條 fallback 在正式路徑上是死碼——
+[`conversation.routes.ts`](../../../server/src/modules/conversation/conversation.routes.ts)
+「MVP：未掛 requireAuth」的註解已過期，本設計實作時順手修正。
 
-規則：`kb:*` 僅允許於**部門／帳號／套餐**層指派。
-`assertGrantableScopes` 在租戶層授予路徑上拒絕 `kb:` 前綴，
-唯一例外是明確命名的 `kb:public`（若租戶需要匿名可見的公開分類）。
+訪客的 token 由宿主經 `/auth/sso/exchange` 簽發，帶著宿主決定的 `sub`。
+該 `sub` 不在使用者目錄中，`getApplicant` 回 `department: "—"`。
+
+**掛鉤點因此是部門，不是租戶層。** `scopePolicy.groups` 以部門字串為 key，
+把 `kb:public` 指派給「—」部門即可涵蓋所有訪客。
+
+順帶一個正確的性質：員工尚未在目錄建檔時同樣落在「—」，拿到訪客權限——最小權限，方向正確。
+
+實作上將該字串提為具名常數（`UNKNOWN_DEPARTMENT`，值沿用 `getApplicant` 現有的 `"—"`），
+後台部門指派 UI 顯示為「訪客／未建檔帳號」。魔術字串散落在兩個模組是這裡唯一的壞味道，
+用常數收斂掉。
+
+### ⚠ 租戶層 `grantedScopes` 一律禁止 `kb:` 前綴
+
+`resolveScopes` 會把 `Tenant.grantedScopes` 併給**該租戶所有人，包含訪客**。
+該欄位語意是「這租戶買了哪些能力」，誤操作門檻很低——
+把 `kb:hr` 放進去，等於對公開 widget 開放人事文件。
+
+既然訪客走部門掛鉤，租戶層就**不需要任何 `kb:` 例外**：
+`assertGrantableScopes` 在租戶層授予路徑上一律拒絕 `kb:` 前綴，無白名單。
 此為硬性檢查，不是 UI 提示。
+
+### 前提：ACL 的安全上限＝身分來源的可信度
+
+SSO handoff 讓**宿主決定 `sub`**。宿主若以 `sub = "hr-manager-001"` 簽發 token，
+本系統就認定那是 HR 主管。亦即這套 ACL 的強度上限等於 `ssoSecret` 的保管強度與宿主的簽發紀律。
+
+這是既有的信任模型，本設計未改變它。但要明講的是**分級會改變它的後果**：
+在沒有分級的今天，冒充身分看到的東西完全一樣，無害；上線後，冒充即提權。
+導入本設計時應同步向整合方重申 `ssoSecret` 的保管要求。
 
 ---
 
@@ -384,8 +410,31 @@ retriever 在 `off` 時完全不加可見性條件。schema 加欄位、程式�
 也因此 shadow 統計會低估影響——它看不到那些**因為候選池被佔滿而根本沒進 top-20** 的有權文件。
 這個限制要讓管理者知道：shadow 回報零影響不等於切換 `on` 後零影響。
 
-記錄內容：`{ tenantId, userId, filteredCount, fileIds }`。
-**不記問句全文**（可能含個資）；要定位漏標的檔案，`fileIds` 已足夠。
+### shadow 統計的存放：專用計數表，不借用 `audit.store`
+
+管理者需在後台看到這份統計，但**不可寫進 `auditStore`**：
+`AuditEntry` 綁 `toolId`（語意對不上），且 `MAX_PER_TENANT = 500`
+而 shadow 是每次查詢一筆的高頻寫入——**幾天內就會把真正的工具稽核紀錄整批擠掉**。
+
+改用專用表，以 (租戶, 檔案) 為單位累加：
+
+```sql
+create table knowledge_acl_shadow (
+  tenant_id       text not null,
+  file_id         text not null,
+  blocked_count   bigint not null default 0,
+  sample_user_ids text[],           -- 最多保留 5 個，供追查是誰在找
+  last_blocked_at timestamptz not null,
+  primary key (tenant_id, file_id)
+);
+```
+
+這個形狀有三個好處：資料量有界（等於檔案數，不是查詢數）、
+後台直接讀不必聚合、切 `on` 後整表 drop 與旗標一起退場。
+
+管理者要的是決策資訊（「這份檔被擋了 47 次」），不是逐筆日誌。
+
+**不記問句全文**（可能含個資）；要定位漏標的檔案，`file_id` 與少量 `sample_user_ids` 已足夠。
 
 **4. `on` — 正式生效。** 未標記文件自此鎖住，此為設計預期結果。
 
@@ -430,13 +479,19 @@ GET /admin/tenants/:id/knowledge/acl-report
 
 - `off` / `shadow` 狀態下檢索結果與未套用權限時**逐筆相同**（遷移安全性的基礎）
 - 空 scopes 使用者回傳零筆，且不拋錯
-- 租戶層 `grantedScopes` 授予 `kb:hr` 應被 `assertGrantableScopes` 拒絕（400）
+- 租戶層 `grantedScopes` 授予任何 `kb:` 前綴應被 `assertGrantableScopes` 拒絕（400），無白名單例外
+- 未知 `sub`（訪客）解析出的部門為 `UNKNOWN_DEPARTMENT`，且僅取得指派給該部門的 `kb:` 標籤
+- shadow 高頻寫入不影響 `auditStore.list()` 的內容（回歸測試：確保沒有人日後圖方便改回去寫 audit）
 
 ---
 
+## 已解決的設計問題（保留紀錄）
+
+1. **公開 widget 的訪客可見範圍**（2026-08-25 確認）。公開 widget 為實際使用情境。
+   解法為「`kb:public` 指派給 `"—"` 部門」，租戶層則完全禁止 `kb:` 前綴。見 §3。
+2. **shadow 統計存放位置**（2026-08-25 確認）。管理者需在後台看到統計，
+   但走專用計數表而非 `auditStore`——後者會擠掉工具稽核紀錄。見 §4。
+
 ## 未決事項
 
-1. **匿名 widget 的公開分類命名**。§3 提議保留 `kb:public` 作為租戶層唯一可授予的 `kb:` 標籤。
-   需確認公開 widget 的知識庫問答是否為實際使用中的情境——若否，租戶層應**完全禁止** `kb:` 前綴，規則更乾淨。
-2. **shadow 記錄的存放位置**。專案已有 audit 模組；使用它或僅用結構化 logger，待定。
-   判準是「管理者要不要在後台看到這份統計」——若要，走 audit。
+無。實作前若發現 §3 的 `UNKNOWN_DEPARTMENT` 常數與 HR 系統串接後的部門值有衝突，回頭修訂本節。
