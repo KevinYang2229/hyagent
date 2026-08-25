@@ -7,6 +7,7 @@ import { tenantStore } from '@/modules/tenant/tenant.store';
 import { usageStore } from '@/modules/usage/usage.store';
 import { replaceWebsiteChunks } from './knowledge.index.repo';
 import type { IndexedChunk, KnowledgeIndexFile } from './knowledge-index.types';
+import { knowledgeStore } from './knowledge.store';
 
 // 注意：carryOverFileChunks 定義於本檔（而非 knowledge-file.service.ts），
 // 是為了維持單向依賴——knowledge-file.service 已經需要 import 本檔的 chunkText/squash，
@@ -358,7 +359,14 @@ export async function runIngest(
       onProgress?.({ phase: 'embedding', pagesCrawled: pages.length, chunks: pending.length, embedded });
     },
   );
-  const chunks: IndexedChunk[] = pending.map((c, i) => ({ ...c, vector: vectors[i] }));
+  // 網站來源的標籤掛在來源設定上（整個網站一組）。重爬會刪掉 file_id is null 的列再塞回，
+  // 因此每次都必須重新蓋章——標籤的真相來源是 KnowledgeSource，不是上一輪的 chunk。
+  const sourceScopes = knowledgeStore.getSource(params.tenantId).visibilityScopes;
+  const chunks: IndexedChunk[] = pending.map((c, i) => ({
+    ...c,
+    vector: vectors[i],
+    ...(sourceScopes ? { visibilityScopes: sourceScopes } : {}),
+  }));
 
   /*
    * 重爬只整批重建「網站」chunks，檔案來源的 chunks 由 replaceWebsiteChunks 在資料層原地保留。

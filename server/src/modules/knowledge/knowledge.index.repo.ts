@@ -106,6 +106,7 @@ interface ChunkRow {
   title: string;
   text: string;
   file_id: string | null;
+  visibility_scopes: string[] | null;
   embedding: string;
 }
 
@@ -117,7 +118,7 @@ async function loadIndexFromDb(tenantId: string): Promise<KnowledgeIndexFile | n
   const meta = metaRows[0];
   if (!meta) return null;
   const rows = await db.$queryRaw<ChunkRow[]>`
-    select id, url, title, text, file_id, embedding::text as embedding
+    select id, url, title, text, file_id, visibility_scopes, embedding::text as embedding
     from knowledge_chunks where tenant_id = ${tenantId}
   `;
   const chunks: IndexedChunk[] = rows.map((r) => ({
@@ -128,6 +129,8 @@ async function loadIndexFromDb(tenantId: string): Promise<KnowledgeIndexFile | n
     vector: parseVectorLiteral(r.embedding),
     // file_id 為 null 代表網站來源；不設此欄以維持與 file 後端相同的物件形狀
     ...(r.file_id ? { fileId: r.file_id } : {}),
+    // 標籤必須隨 chunk 來回，否則 loadIndex → saveIndex 的重寫會把它清成 NULL
+    ...(r.visibility_scopes ? { visibilityScopes: r.visibility_scopes } : {}),
   }));
   return {
     generatedAt: meta.generated_at.toISOString(),
@@ -160,7 +163,7 @@ async function loadIndexTextFromDb(tenantId: string): Promise<KnowledgeIndexText
   if (!meta) return null;
   const db = await connectDb();
   const rows = await db.$queryRaw<Omit<ChunkRow, 'embedding'>[]>`
-    select id, url, title, text, file_id
+    select id, url, title, text, file_id, visibility_scopes
     from knowledge_chunks where tenant_id = ${tenantId}
   `;
   return {
@@ -171,6 +174,7 @@ async function loadIndexTextFromDb(tenantId: string): Promise<KnowledgeIndexText
       title: r.title,
       text: r.text,
       ...(r.file_id ? { fileId: r.file_id } : {}),
+      ...(r.visibility_scopes ? { visibilityScopes: r.visibility_scopes } : {}),
     })),
   };
 }
