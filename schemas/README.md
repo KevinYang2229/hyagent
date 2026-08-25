@@ -85,6 +85,7 @@ interface Definition {
 |--------|------|------|
 | `type` | 全部 | `string` / `number` / `integer` / `boolean` / `array` / `object` |
 | `enum` | string/number | 限定值集合 |
+| `const` | 全部 | 固定值（同意欄位常用 `true`）|
 | `format` | string | `date`（YYYY-MM-DD）等；由 `ajv-formats` 驗證 |
 | `pattern` | string | 正則，如時間 `^\\d{2}:\\d{2}$` |
 | `minLength`/`maxLength` | string | 長度限制 |
@@ -132,6 +133,16 @@ interface Definition {
 | `placeholder` | | 輸入提示 |
 | `options` | | `Select` 用：`[{ value, label }]` |
 | `help` | | 欄位下方輔助說明 |
+| `links` | | 欄位旁的補充資料連結：`[{ label, url }]`。URL **僅接受 `http(s)://` 或單斜線起始的站內絕對路徑**，其餘於 `validateDefinition` 就被擋下（`javascript:`、protocol-relative `//host` 都不行）|
+| `requiresTrue` | | 該欄位必須由使用者**明確勾選**才算完成：`false` 不視為已填。條款同意用 |
+
+> ℹ️ **條款連結與明確同意**。`links` 與 `requiresTrue` 兩個屬性讓「我已閱讀並同意服務條款」這類欄位成立：
+>
+> - 前台 [`FormView.tsx`](../client/src/FormView.tsx) 把 `links` 渲染成可點擊連結（`target="_blank"`），未勾選則擋住送出。
+> - 後端 [`form.engine.ts`](../server/src/modules/form/form.engine.ts) 對這種欄位改用「值必須是 `true`」判定是否已填——所以它同時也擋得住 Agent。
+> - Agent 的欄位說明（[`form.agent-service.ts`](../server/src/modules/conversation/form.agent-service.ts)）會附上條款連結，並明文要求「必須由使用者閱讀後明確表示同意，不得自動填入 true 或從送出意圖推定同意」。
+> - 兩個屬性都沒設時，[`field-links.ts`](../server/src/modules/form/field-links.ts) 會依欄位文字（含「同意 / 服務條款 / 隱私權 / 個資」且為 `Checkbox`）推定為同意欄位、並補上示範連結（`client/public/legal/` 的三份頁面）。**這是給既有表單的後備，schema 一旦寫了 `links` 就完全以 schema 為準。**
+> - data schema 對應欄位建議定義成 `{ "type": "boolean", "const": true }`。
 
 **可用 `component`（`FieldComponent`）**
 

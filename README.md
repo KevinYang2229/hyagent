@@ -1,6 +1,8 @@
-# OA Agent（MVP）
+# HyAgent（v1.0.0）
 
-對話式 OA 表單填寫 Agent。員工用自然語言描述需求，Agent 透過對話補齊欄位（slot-filling）、驗證、請使用者確認後送出。**已內建三張表單：請假單（leave-request）、國內出差報銷（business-trip-domestic）、外出登記（outing-registration）**，schema-driven、Claude 驅動、OA 以 stub 模擬。
+對話式 OA Agent。員工用自然語言描述需求，Agent 透過對話補齊欄位（slot-filling）、驗證、請使用者確認後送出。**已內建三張表單：請假單（leave-request）、國內出差報銷（business-trip-domestic）、外出登記（outing-registration）**，schema-driven、LLM 驅動、OA 以 stub 模擬。
+
+同一個對話介面另有兩條路：**知識庫問答**（RAG 檢索企業文件回答）與**報告**（依檢索結果彙整成可下載文件，見下方「報告」一節）。多租戶、權限（scope）、用量配額與後台管理見 [`INTEGRATION.md`](INTEGRATION.md)，部署見 [`DEPLOY.zeabur.md`](DEPLOY.zeabur.md)。
 
 ## 核心理念：一份 Schema 當唯一來源
 
@@ -28,11 +30,15 @@ hyagent/
 ├─ schemas/            前後端共用：六層表單 JSON Definition（單一來源）
 ├─ shared/             前後端共用：TS 型別（Definition / FieldSpec / SessionStatus…）
 ├─ ui/                 設計系統元件庫 @hyagent/ui（前端共用、純展示）
-├─ server/             後端 Express（schema 引擎 + 對話 Agent + REST）
-└─ client/             前端 Vite + React + TS（對話 + schema-driven 表單）
+├─ sdk/                對外整合 SDK @hyagent/sdk（headless REST 客戶端 + widget 事件/控制橋接）
+├─ server/             後端 Express（schema 引擎 + 對話 Agent + 知識庫 + 報告 + REST）
+├─ client/             前端 Vite + React + TS（對話 + schema-driven 表單）
+├─ admin/              後台 Vite + React + TS（租戶／權限／知識庫／表單 Designer／報告／稽核）
+├─ presale/            整合範例（公開 widget、租戶 widget、自製 UI、webhook receiver）
+└─ docs/               架構決策文件（ARCHITECTURE.md）
 ```
 
-`server` 與 `client` 都 import `@hyagent/shared`，型別不再各寫一份。
+`server` 與 `client` 都 import `@hyagent/shared`，型別不再各寫一份。**但 server 一律只用 `import type`**——部署映像只帶編譯後的 `server/dist`，執行期載入 shared 的 TypeScript 原始檔會直接爆掉，所以要共用的執行期函式（如條款連結判斷）改寫在 server 自己的模組（[`field-links.ts`](server/src/modules/form/field-links.ts)）。
 
 ### 設計系統與 schema-driven 渲染
 
@@ -72,16 +78,18 @@ npm install
 # 2. 設定 API key（編輯 server/.env，把 ANTHROPIC_API_KEY 換成真正的 key）
 #    ANTHROPIC_API_KEY=sk-ant-...
 
-# 3. 啟動（兩個終端機）
+# 3. 啟動（各開一個終端機）
 npm run dev:server   # 後端 http://localhost:3000
 npm run dev:client   # 前端 http://localhost:5173
+npm run dev:admin    # 後台 http://localhost:5174
 
 # 4.（離線）驗證 schema 引擎，不需 key
 npm run smoke
 
-# build / typecheck 全部 workspace
+# build / typecheck / test 全部 workspace
 npm run build
 npm run typecheck
+npm test
 ```
 
 打開 http://localhost:5173 即可用對話畫面填寫請假單；前端 dev server 會把 `/api`、`/healthz` proxy 到後端 3000。
@@ -97,7 +105,7 @@ npm run typecheck
 | POST   | `/api/conversations/:id/cancel`        | 取消                                                        |
 | GET    | `/api/forms` / `/api/forms/:formId` | 列出 / 取得表單 Definition                                  |
 | GET    | `/api/reports/:id`                        | 查報告產生進度與可下載格式                                  |
-| GET    | `/api/reports/:id/download?format=md`     | 下載報告（`format` 由後端登錄表決定，目前為 `md` / `html`） |
+| GET    | `/api/reports/:id/download?format=md`     | 下載報告（`format` 由後端登錄表決定：`md` / `html`，探測到 Chromium 時另有 `pdf`） |
 | GET    | `/api/admin/tenants/:id/reports`          | 後台：查該租戶的報告（`from` / `to` / `q` 皆選填）           |
 | GET    | `/api/admin/tenants/:id/reports/:reportId/download?format=md` | 後台：下載報告（不比對建立者，改以稽核留軌跡） |
 
@@ -130,10 +138,15 @@ Agent 會逐一問缺漏欄位 → 必填齊全後出摘要請你回「確認」
 
 1. **觸發方式**：純對話，沒有獨立的「建立報告」REST 端點。Agent 先用 LLM 從對話抽出主題（抽不到就回問，**不會** fail-open 拿一句空泛的話去硬跑，因為一份報告的成本是「1 次大綱 + N 次檢索 + N 次彙整」）。
 2. **需要的 scope**：`service:report`。這是刻意的產品決定——報告成本較高，**不列入新租戶預設開通的服務**，須由 admin 於後台「權限」手動授予該租戶（或該租戶內特定使用者）後才能使用；未授予時對話會判定沒有此意圖可用。
-3. **非同步產生**：抽到主題後對話立即回覆「已開始產生」並附上 `report: { id, status }`，實際彙整在背景進行，前端輪詢 `GET /api/reports/:id` 取得進度（`status`：`queued` → `outlining` → `composing` → `done` / `failed` / `empty`，並回傳 `doneSections` / `totalSections`）；`status: done` 後 `formats` 欄位才會列出可下載的格式。同一租戶同時只允許一份報告在跑，併發時會直接以對話回覆說明，不當錯誤處理。
-4. **內容全部來自 RAG 檢索結果**：LLM 依主題先拆出章節大綱，再逐節各自查知識庫、彙整檢索到的片段——章節之間互不共享脈絡，杜絕拼湊出檢索之外的內容。**查無資料的章節會據實標示為查無相關資料，不臆測、不生內容**；若全部章節都零命中，整份報告視為 `empty` 終態，不產出任何檔案。
-5. **產出物保存 `REPORT_TTL_HOURS` 小時**（預設 720，即 30 天）後過期，下載會回 404；`DATA_BACKEND=db` 時產出物落地 Postgres（`report_docs`，見 `server/db/migrations/0007_report_docs.sql`），重啟後仍可下載，`file` 模式僅存於記憶體、重啟即失效。
-6. **下載格式**：目前為 `md`（Markdown）與 `html`，由 `server/src/modules/report/report.render.ts` 的 renderer 登錄表決定；新增格式只需在該登錄表加一行，路由白名單、副檔名、Content-Type 皆由此推導。下載檔名為中文時走 RFC 5987（`Content-Disposition: ...; filename*=UTF-8''...`），並附 ASCII fallback 給不支援的舊瀏覽器。
+3. **非同步產生**：抽到主題後對話立即回覆「已開始產生」並附上 `report: { id, status }`，實際彙整在背景進行，前端輪詢 `GET /api/reports/:id` 取得進度（`status`：`queued` → `outlining` → `composing` → `done` / `failed` / `empty`，並回傳 `doneSections` / `totalSections`）；終態才會有完整的 `files`（`{ format, filename }[]`，前端一律照它渲染下載選項，不寫死格式清單）。同一租戶同時只允許一份報告在跑，併發時會直接以對話回覆說明，不當錯誤處理。
+4. **內容全部來自知識庫**：LLM 依主題先拆出章節大綱，再逐節各自查知識庫、彙整檢索到的片段——章節之間互不共享脈絡，杜絕拼湊出檢索之外的內容。**查無資料的章節會據實標示為查無相關資料，不臆測、不生內容**；若全部章節都零命中，整份報告視為 `empty` 終態，不產出任何檔案。
+5. **圖表分兩種來源，圖說也據此分流**——差別在可信度，不能用同一句話帶過：
+   - **精確圖**（`complete`）：來自試算表上傳後另外留存的結構化資料列（[`knowledge.tables.repo.ts`](server/src/modules/knowledge/knowledge.tables.repo.ts)，僅 `db` 後端）。章節 prompt 讓 LLM 用一個 `chart-ref` 程式碼區塊指名「哪張表、哪幾欄」，**數字由程式從原始儲存格算出**，圖下標出處與總列數。型別 `bar` / `line` / `pie` / `donut` / `grouped` 由 LLM 依語意提出，但**程式依資料形狀驗證並可覆寫**（107 個國家不會被畫成圓餅）。給 `tables` 可讓多張表各貢獻一個數列做跨表對比（標籤取交集，缺漏的年度整個略過而不補 0）。一節可有多張圖。
+   - **節錄圖**：LLM 從檢索片段讀出的數列。檢索只取 top-k，所以它必然是節錄而非母體——圖說會明講這件事，散文說「根據檢索到的資料」讀者知道是節錄，長條圖不會自己這樣說話。
+6. **收尾的「綜合觀察與建議」**（[`report.synthesis.ts`](server/src/modules/report/report.synthesis.ts)）：整份報告唯一有資格下結論的一節。各節不共享脈絡的代價是全篇沒有一處把跨檔案的數字讀成一件事，這節補上——**且只吃精確圖表的資料點**，不吃各節散文（餵散文等於讓結論長在轉述上，某節寫錯會被放大成整份報告的定論）。精確圖不足兩張、或這節的 LLM 失敗，就整節略過，不影響其餘章節，也不改動進度回報的分子分母。
+7. **產出物保存 `REPORT_TTL_HOURS` 小時**（預設 720，即 30 天）後過期，下載會回 404；`DATA_BACKEND=db` 時產出物落地 Postgres（`report_docs`，見 `server/db/migrations/0007_report_docs.sql`），重啟後仍可下載，`file` 模式僅存於記憶體、重啟即失效。
+8. **下載格式**：`md`（Markdown）、`html`，以及**探測到 Chromium 時才登錄的 `pdf`**（[`renderers/pdf.ts`](server/src/modules/report/renderers/pdf.ts) 把 html 產物交給 headless Chromium 印出，列印時網路全封——報告內文的 `![](http://…)` 圖片語法若由 server 去抓就是 SSRF，不是排版）。探測不到就不登錄，`?format=pdf` 誠實回 422，而不是給一個按了就壞的連結。格式清單由 [`report.render.ts`](server/src/modules/report/report.render.ts) 的 renderer 登錄表單一決定；新增格式只需在該登錄表加一行，路由白名單、副檔名、Content-Type、前端下載清單皆由此推導（`docx` / `xlsx` 的 renderer 仍在且有測試，只是刻意不登錄）。下載檔名為中文時走 RFC 5987（`Content-Disposition: ...; filename*=UTF-8''...`），並附 ASCII fallback 給不支援的舊瀏覽器。
+9. **要輪詢到全部格式都落地才算完成**：`pdf` 是最後產、也最慢產的一個（實測比 `html` 晚 7～18 秒）。狀態查詢在「產出物數量未達本部署的格式數」且「未超過 90 秒渲染寬限期」前一律回 `composing`——否則前端一收到終態就停止輪詢，把當下那份殘缺的下載清單永久凍結住。
 
 環境變數（`server/src/config/env.ts`）：
 
@@ -143,6 +156,7 @@ Agent 會逐一問缺漏欄位 → 必填齊全後出摘要請你回「確認」
 | `REPORT_SECTION_TOP_K` | `5` | 1–20 | 每節交給彙整 LLM 的檢索片段數（與知識庫問答的 `FINAL_K` 同量級） |
 | `REPORT_TTL_HOURS` | `720`（30 天） | 1–8760 | 產出物保存時數；報告沒有對應「對話結束」的生命週期終點，只能靠 TTL 回收。預設 30 天而非 24 小時，否則後台的報告查詢頁只看得到一天內的資料 |
 | `REPORT_TIMEZONE` | `Asia/Taipei` | IANA 時區名 | 報告表頭產生時間的顯示時區。刻意不用伺服器本地時間——正式環境跑在 UTC，會把台北的 09:41 印成 01:41 |
+| `REPORT_PDF_BROWSER` | 未設 | 執行檔路徑 | 印 PDF 用的 Chromium。未設時依序探測常見位置（容器的 `/usr/bin/chromium`、開發機的 Google Chrome）；找不到就只是少一種格式，`md` / `html` 照常產出。登錄表在啟動時決定，事後裝好瀏覽器要重啟才生效 |
 
 報告表頭的產生時間以 `YYYY-MM-DD HH:mm:ss`（24 小時制）呈現，不用 ISO 8601——報告是給人讀的文件。
 
@@ -161,18 +175,23 @@ Agent 會逐一問缺漏欄位 → 必填齊全後出摘要請你回「確認」
 
 ```
 server/src/
-  config/env.ts                 環境變數（含 LLM_/OA_）
-  lib/llm/                      LLM provider 抽象 + Claude 實作（tool use + prompt caching）
-  lib/oa/                       OA 連接器抽象 + StubOAConnector
-  modules/form/                 schema-core：型別 / Ajv 引擎 / loader / registry / 工具生成 / approvals（簽核關卡狀態）
-  modules/conversation/         session store（記憶體 + file/db 持久化）+ slot-filling agent loop + REST
+  config/env.ts                 環境變數（含 LLM_ / KNOWLEDGE_ / REPORT_ / OA_）
+  lib/llm/                      LLM provider 抽象 + Claude / OpenAI / local 實作（tool use + prompt caching）
+  lib/embedding/                embedding provider 抽象（雲端 / 地端）
+  lib/oa/                       OA 連接器抽象 + StubOAConnector + http 骨架
+  modules/form/                 schema-core：型別 / Ajv 引擎 / loader / registry / 工具生成 / approvals（簽核關卡狀態）/ field-links（條款連結與明確同意）
+  modules/conversation/         session store（記憶體 + file/db 持久化）+ slot-filling agent loop + 意圖分流 + REST
+  modules/knowledge/            知識庫：檔案解析 / 切塊 / 索引（pgvector 或靜態索引）/ 檢索 + 重排 / 試算表結構化留存
+  modules/report/               報告：大綱 → 逐節彙整（含圖表）→ 綜合節 → renderer 登錄表（md / html / pdf）
+  modules/tenant/ authz/ usage/ 多租戶、scope 權限、用量與配額
   modules/leave/                請假最終驗證 → 送 OA + workflow
   modules/business-trip/        國內出差報銷最終驗證 → 送 OA + workflow
   modules/outing/               外出登記最終驗證 → 送 OA + workflow
 client/src/
-  api.ts                        對話 / 表單 API client（型別取自 @hyagent/shared）
+  api.ts                        對話 / 表單 / 報告 API client（型別取自 @hyagent/shared）
   App.tsx                       對話畫面 + 狀態管理
   FormView.tsx                  schema-driven 表單：依 field.component 渲染可編輯元件，依 layout 分組／多步驟
+  ReportStatus.tsx              報告進度輪詢 + 下載彈窗（開啟時重新取一次格式清單）
 shared/src/index.ts             前後端共用型別（Definition / FieldSpec / SessionStatus…）
 schemas/<formId>/*.json         六層表單 Definition（前後端共用單一來源；現有 3 張表單）
 ```
@@ -210,11 +229,12 @@ schemas/<formId>/*.json         六層表單 Definition（前後端共用單一�
 - ✅ schema-driven 引擎、對話 slot-filling、Claude 抽象、OA stub、確認送出、REST
 - ✅ React 前端：對話畫面 + schema-driven 表單（依 `field.component` 渲染、依 `layout` 分組／多步驟、送出前可編輯）
 - ✅ 多表單（請假／國內出差／外出登記）、workflow 簽核關卡狀態（Demo 以時間自動推進）
-- ✅ 持久化後端切換：`DATA_BACKEND=db`（Prisma + Postgres/Supabase）涵蓋全部 10 個 runtime store（attachments / audit / forms / knowledge / scope-policy / sessions / submissions / tenants / usage / webhooks）
+- ✅ 持久化後端切換：`DATA_BACKEND=db`（Prisma + Postgres/Supabase）涵蓋全部 10 個 runtime store（attachments / audit / forms / knowledge / scope-policy / sessions / submissions / tenants / usage / webhooks），另有僅 `db` 才有的報告產出物（`report_docs`）與試算表結構化資料列（`knowledge_tables`）
 - ✅ 限流／配額：兩層守門（每租戶＋使用者速率限制 + 每租戶月度 LLM token 配額）
 - ✅ 表單 Designer：admin 後台 [`FormDesignerPage`](admin/src/pages/FormDesignerPage.tsx) 建立／編輯／匯出租戶表單（走 `/api/admin/tenants/:id/forms`）
 - ✅ OpenAI provider：[`lib/llm/openai.provider.ts`](server/src/lib/llm/openai.provider.ts)（Chat Completions + function calling；`local` 端點重用之）
-- ✅ 報告：依知識庫檢索彙整成可下載文件（`md` / `html`），對話觸發、非同步產生，需另外授予 `service:report` scope（見「報告」一節）
+- ✅ 報告：依知識庫檢索彙整成可下載文件（`md` / `html`，探測到 Chromium 時另有 `pdf`），含由結構化試算表算出的精確圖表（單表／跨表對比）與收尾的綜合觀察節；對話觸發、非同步產生，需另外授予 `service:report` scope（見「報告」一節）
+- ✅ 條款連結與明確同意：`FieldSpec.links` 在欄位旁顯示可點擊條款（URL 僅允許 `http(s)://` 或單斜線起始的站內路徑，於 `validateDefinition` 擋下），`requiresTrue` 的欄位**必須由使用者親自勾選**——引擎不把 `false` 當已填，Agent 的欄位說明也明文禁止代為推定同意。後台表單 Designer 可設定，`client/public/legal/` 有三份示範條款頁
 - 🔜 延後（架構留 seam）：真 OA HTTP 連接器（含真實簽核狀態查詢）
 
 ## 可抽換層
