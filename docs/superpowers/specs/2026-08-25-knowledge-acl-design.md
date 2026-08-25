@@ -135,11 +135,23 @@ const labels: ScopeDef[] = (tenantStore.getTenant(tenantId)?.knowledgeLabels ?? 
 
 `knowledge_chunks` **從不就地更新**，只有兩種寫法，兩種都是先刪再塞回：
 
+- [`replaceWebsiteChunksInDb`](../../../server/src/modules/knowledge/knowledge.index.repo.ts)：
+  刪掉 `file_id is null` 的列再塞回。**每次重爬都會走，這條路徑是活的。**
 - [`saveIndexToDb`](../../../server/src/modules/knowledge/knowledge.index.repo.ts)：
   `delete from knowledge_chunks where tenant_id = ?` — 刪光整個租戶再重寫。
-  **每次上傳、每次刪檔都會走一次。**
-- [`replaceWebsiteChunksInDb`](../../../server/src/modules/knowledge/knowledge.index.repo.ts)：
-  刪掉 `file_id is null` 的列再塞回。每次重爬都會走。
+  語意上是整份取代，但目前生產程式碼中唯一的呼叫者是一次性遷移腳本
+  `scripts/knowledge-migrate-to-db.ts`（其輸入讀自磁碟 JSON，不經 `loadIndexFromDb`）。
+
+> **勘誤（2026-08-26）**：本節初稿曾聲稱「`ingestFile` / `removeFile` 都走
+> `loadIndex → saveIndex`，每次上傳、每次刪檔都會清空標籤」。該敘述取自
+> `knowledge.index.repo.ts` 中一段未隨重構更新的註解，**與現況不符**：
+> `ingestFile` 走 `appendChunks`（點狀 upsert）、`removeFile` 走 `removeFileChunks`
+> （點狀 delete），兩者都不經 `saveIndex`。
+>
+> 結論不變、理由收斂：標籤的真相來源仍必須置於檔案 meta 與來源設定，
+> 因為**重爬那條路徑確實會整批換掉網站 chunk**（活的），而讀寫兩端的
+> 對稱性（寫入寫了、讀取要讀得回來）本身就是正確性要求。
+> 但「每上傳一檔即失聲」的急迫性描述是錯的，不應據此排定優先序。
 
 標籤若只活在 chunk 上，下一次重爬就會把網站來源的標籤整批清空。
 配合 fail-closed，結果是**知識庫某天早上毫無預警全部失聲**：沒有錯誤、沒有告警、日誌正常。

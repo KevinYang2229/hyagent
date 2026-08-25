@@ -544,8 +544,13 @@ git commit -m "feat(knowledge): 加入 visibility_scopes 投影欄位與 shadow 
 - Consumes: Task 3 的 `IndexedChunk.visibilityScopes`、`KnowledgeSource.visibilityScopes`
 - Produces: 無新匯出；修補既有讀寫路徑
 
-**這是整個計畫中最重要的一條測試。** 設計文件 §1 指出 `knowledge_chunks` 從不就地更新，
-但實際的清空路徑比重爬更近：
+**勘誤（2026-08-26）**：本節初稿聲稱「每上傳一個檔就會清空所有標籤」。經查證，
+`ingestFile` 走 `appendChunks`（點狀 upsert）、`removeFile` 走 `removeFileChunks`
+（點狀 delete），皆不經 `saveIndex`；`saveIndex` 在生產程式碼中唯一的呼叫者是
+一次性遷移腳本。該急迫性敘事**不成立**，來源是 `knowledge.index.repo.ts` 一段
+未隨重構更新的註解。
+
+本任務仍然必要，但理由是下列這條而非上述情境：
 
 `loadIndexFromDb` 目前的 select 是 `id, url, title, text, file_id, embedding`——**不含
 `visibility_scopes`**。而 `ingestFile` 與 `removeFile` 都走 `loadIndex → saveIndex`
