@@ -207,8 +207,10 @@ const SAVE_TX_TIMEOUT_MS = 30_000;
  * status='ready'，檢索器卻只剩殘缺的 chunks，機器人拿半份資料自信作答且不噴任何錯誤。
  * 而原本的向量已經沒了，只能重爬並重付一次 embedding 費用。
  *
- * 觸發窗口一點都不罕見：ingestFile／removeFile 都是把整份索引交給 saveIndex，
- * 所以每次上傳、每次刪檔都會走一次「刪 1470 列再塞回」。
+ * 目前生產程式碼唯一的呼叫者是一次性遷移腳本 scripts/knowledge-migrate-to-db.ts
+ * （輸入讀自磁碟 JSON，不經 loadIndexFromDb）：ingestFile 現在走 appendChunks（點狀
+ * upsert），removeFile 走 removeFileChunks（點狀 delete），都不再經過 loadIndex →
+ * saveIndex 的「整份撈回再整份塞回」路徑。
  *
  * 包交易的代價很小：單表插入、沒有其他寫入者競爭這張表，1.5k 列是個位數秒。
  * 這也讓 db 後端追上 file 後端本來就有的安全性——writeFileSync 失敗時舊索引檔完好無損。

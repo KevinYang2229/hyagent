@@ -30,7 +30,7 @@ jest.mock('@/config/env', () => ({
   },
 }));
 
-import { loadIndex } from '@/modules/knowledge/knowledge.index.repo';
+import { loadIndex, loadIndexText } from '@/modules/knowledge/knowledge.index.repo';
 
 describe('標籤在讀寫來回中存活', () => {
   it('loadIndex 撈回 visibility_scopes', async () => {
@@ -58,5 +58,60 @@ describe('標籤在讀寫來回中存活', () => {
     const chunkQuery = queryRaw.mock.calls[1] as unknown[];
     const raw = (chunkQuery[0] as unknown as { raw: readonly string[] }).raw;
     expect(Array.from(raw).join('?')).toContain('visibility_scopes');
+  });
+
+  /*
+   * loadIndexText 是活路徑（refreshSuggestedPrompts 用它取推薦問句的文字語料），
+   * 卻沒有與 loadIndex 對稱的回歸測試——knowledge-index-repo-db.test.ts 既有的
+   * loadIndexText 案例其 mock 列與期望值都不含 visibility_scopes，所以只要有人
+   * 把該欄從 loadIndexTextFromDb 的 select 拿掉，不會有任何測試變紅。
+   */
+  it('loadIndexText 撈回 visibility_scopes', async () => {
+    queryRaw.mockReset();
+    queryRaw
+      .mockResolvedValueOnce([{ generated_at: new Date(), model: 'test', source: 'https://x.com' }])
+      .mockResolvedValueOnce([
+        {
+          id: 'c1', url: 'u1', title: 't1', text: 'x1', file_id: 'f1',
+          visibility_scopes: ['kb:hr'],
+        },
+      ]);
+
+    const idx = await loadIndexText('t1');
+    expect(idx?.chunks[0]?.visibilityScopes).toEqual(['kb:hr']);
+  });
+
+  it('loadIndexText 的 select 清單含 visibility_scopes', async () => {
+    queryRaw.mockReset();
+    queryRaw
+      .mockResolvedValueOnce([{ generated_at: new Date(), model: 'test', source: 's' }])
+      .mockResolvedValueOnce([]);
+    await loadIndexText('t1');
+
+    const chunkQuery = queryRaw.mock.calls[1] as unknown[];
+    const raw = (chunkQuery[0] as unknown as { raw: readonly string[] }).raw;
+    expect(Array.from(raw).join('?')).toContain('visibility_scopes');
+  });
+
+  /*
+   * NULL＝從未標記、[]＝明確標成誰都不能看，兩者必須能區分。目前的寫法
+   * `...(r.visibility_scopes ? {...} : {})` 是對的（[] 在 JS 是 truthy），但若日後
+   * 有人「優化」成 `r.visibility_scopes?.length ? ... : ...`，會把 [] 誤判成未標記
+   * 而不留下任何 visibilityScopes 欄——這個案例守住這個區分。
+   */
+  it('loadIndex 對空陣列 visibility_scopes 回傳 []，不是 undefined', async () => {
+    queryRaw.mockReset();
+    queryRaw
+      .mockResolvedValueOnce([{ generated_at: new Date(), model: 'test', source: 'https://x.com' }])
+      .mockResolvedValueOnce([
+        {
+          id: 'c1', url: 'u1', title: 't1', text: 'x1', file_id: 'f1',
+          visibility_scopes: [], embedding: '[1,0,0]',
+        },
+      ]);
+
+    const idx = await loadIndex('t1');
+    expect(idx?.chunks[0]?.visibilityScopes).toEqual([]);
+    expect(idx?.chunks[0]?.visibilityScopes).not.toBeUndefined();
   });
 });
