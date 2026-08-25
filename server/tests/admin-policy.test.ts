@@ -165,6 +165,8 @@ describe('admin 權限 API', () => {
       .set('x-admin-key', 'test-admin-key')
       .send({ grantedScopes: [], groups: { 行銷部: ['kb:hr'] }, accounts: {} });
     expect(groupLevel.status).toBe(200);
+    // 200 不夠：要確認 kb:hr 真的存進去，而不是被某層過濾邏輯誤篩掉後仍回 200
+    expect((groupLevel.body as { data: { groups: Record<string, string[]> } }).data.groups['行銷部']).toContain('kb:hr');
 
     // 帳號層：同樣合法
     const acctLevel = await request(app)
@@ -172,5 +174,6 @@ describe('admin 權限 API', () => {
       .set('x-admin-key', 'test-admin-key')
       .send({ grantedScopes: [], groups: {}, accounts: { kevin: ['kb:hr'] } });
     expect(acctLevel.status).toBe(200);
+    expect((acctLevel.body as { data: { accounts: Record<string, string[]> } }).data.accounts.kevin).toContain('kb:hr');
   });
 });
