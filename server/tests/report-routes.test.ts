@@ -155,4 +155,42 @@ describe('GET /api/reports/:id', () => {
       .set('authorization', `Bearer ${await loginToken()}`);
     expect(res.status).toBe(404);
   });
+  /*
+   * 以下三則守的是「前台少一個 PDF、後台卻有」那個 bug：job 只活在單一行程的記憶體，
+   * 輪詢請求若打到沒有該 job 的行程（多副本、或期間重啟過），!job 分支會把「還在渲染」
+   * 謊報成 done。前端收到終態就永久停止輪詢，於是那則訊息的下載清單從此少一個格式——
+   * 而 PDF 正好是最後產、也最慢產的那一個（實測比 html 晚 7～18 秒）。
+   */
+  it('job 不在記憶體、格式還沒齊且產出物很新 → 不得回報 done（前端要繼續輪詢）', async () => {
+    save('r-race', 'kevin', 'md', '# 報告'); // html 還沒產完
+    const res = await request(app)
+      .get('/api/reports/r-race')
+      .set('authorization', `Bearer ${await loginToken()}`);
+    expect(res.status).toBe(200);
+    expect(res.body.data.status).not.toBe('done');
+    expect(res.body.data.files.map((f: { format: string }) => f.format)).toEqual(['md']);
+  });
+
+  it('格式補齊後即回報 done', async () => {
+    save('r-race', 'kevin', 'md', '# 報告');
+    save('r-race', 'kevin', 'html', '<h1>報告</h1>');
+    const res = await request(app)
+      .get('/api/reports/r-race')
+      .set('authorization', `Bearer ${await loginToken()}`);
+    expect(res.body.data.status).toBe('done');
+  });
+
+  it('格式不齊但產出物已過寬限期 → 回報 done，不讓舊報告永遠卡在產生中', async () => {
+    const realNow = Date.now;
+    Date.now = () => realNow() - 10 * 60_000; // 產出物寫於 10 分鐘前
+    try {
+      save('r-old', 'kevin', 'md', '# 報告');
+    } finally {
+      Date.now = realNow;
+    }
+    const res = await request(app)
+      .get('/api/reports/r-old')
+      .set('authorization', `Bearer ${await loginToken()}`);
+    expect(res.body.data.status).toBe('done');
+  });
 });

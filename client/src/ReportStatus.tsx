@@ -76,11 +76,22 @@ export function ReportStatus({ reportId }: { reportId: string }): JSX.Element {
   // 而不是讓畫面永遠停在「報告產生中…」
   const [stale, setStale] = useState(false);
   const [open, setOpen] = useState(false);
+  /*
+   * 開啟彈窗時重跑一次輪詢用的計數器。
+   *
+   * 輪詢收到終態就停止，而那一次拿到的清單有可能是殘缺的：狀態端點在 job 不在該行程
+   * 記憶體時，是以「目前有哪些產出物」推斷狀態的，pdf 是最後產、也最慢產的一個。
+   * 少了這個重查，那則訊息的下載清單會被第一次的快照永久凍結——使用者看不到後來才
+   * 產好的 PDF，後台卻列得出來。彈窗是使用者唯一會主動觸發的時機，重查成本一次請求。
+   */
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let failures = 0;
+    // 重查等於一次重試：先清掉上一輪的放棄旗標，否則查得到了畫面仍停在「報告已失效」
+    setStale(false);
 
     const poll = async (): Promise<void> => {
       try {
@@ -109,7 +120,7 @@ export function ReportStatus({ reportId }: { reportId: string }): JSX.Element {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [reportId]);
+  }, [reportId, refreshKey]);
 
   const status = stale ? 'stale' : (data?.status ?? 'queued');
   const isWorking = !stale && !TERMINAL.has(status);
@@ -171,7 +182,10 @@ export function ReportStatus({ reportId }: { reportId: string }): JSX.Element {
         className={`msg-action report-action${status === 'failed' || stale ? ' report-action--error' : ''}`}
         title={label}
         aria-label={label}
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          setOpen(true);
+          setRefreshKey((n) => n + 1);
+        }}
       >
         {isWorking ? <WorkingIcon /> : <DocumentIcon />}
       </button>

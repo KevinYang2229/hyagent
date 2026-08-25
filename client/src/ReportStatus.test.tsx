@@ -229,4 +229,33 @@ describe('ReportStatus 彈窗互動', () => {
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^MD$/i })).toBeNull();
   });
+  /*
+   * 守的是「前台少一顆 PDF、後台卻有」那個 bug 的前端半邊：輪詢一旦收到終態就停止，
+   * 若那一次剛好拿到殘缺清單（後端在 pdf 落地前把渲染中誤判為 done），清單就被永久凍結。
+   * 開啟彈窗時重查一次，讓使用者有辦法拿到後來才產好的格式。
+   */
+  it('停止輪詢後開啟彈窗會重新查詢，補上後來才產好的格式', async () => {
+    const partial = {
+      id: 'r1',
+      status: 'done' as const,
+      doneSections: 3,
+      totalSections: 3,
+      files: [
+        { format: 'md', filename: 'report.md' },
+        { format: 'html', filename: 'report.html' },
+      ],
+    };
+    // 第一次輪詢拿到殘缺清單（pdf 還沒落地），之後 pdf 才出現
+    fetchReport.mockResolvedValueOnce(partial).mockResolvedValue({
+      ...partial,
+      files: [...partial.files, { format: 'pdf', filename: 'report.pdf' }],
+    });
+
+    render(<ReportStatus reportId="r1" />);
+    // 先等第一次輪詢落地（終態，輪詢就此停止）
+    await waitFor(() => expect(fetchReport).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(await screen.findByRole('button', { name: /報告/ }));
+    expect(await screen.findByRole('button', { name: /pdf/i })).toBeInTheDocument();
+  });
 });
