@@ -417,7 +417,12 @@ jest.mock('@/lib/db', () => ({
 // $executeRaw 一次都不會被呼叫，本測試會因錯誤的原因失敗。
 jest.mock('@/config/env', () => ({
   __esModule: true,
-  env: { DATA_BACKEND: 'db', EMBEDDING_MODEL: 'test', KNOWLEDGE_RERANK: false, KNOWLEDGE_INDEX_DIR: '.' },
+  // LOG_LEVEL / NODE_ENV 不可省：logger.ts 在 import 階段就會讀它們，
+  // 缺了會在跟 SQL 無關的地方直接炸掉（Task 3 實測踩到）。
+  env: {
+    DATA_BACKEND: 'db', EMBEDDING_MODEL: 'test', KNOWLEDGE_RERANK: false,
+    KNOWLEDGE_INDEX_DIR: '.', LOG_LEVEL: 'silent', NODE_ENV: 'test',
+  },
 }));
 
 import { saveIndex } from '@/modules/knowledge/knowledge.index.repo';
@@ -578,7 +583,12 @@ jest.mock('@/lib/db', () => ({
 }));
 jest.mock('@/config/env', () => ({
   __esModule: true,
-  env: { DATA_BACKEND: 'db', EMBEDDING_MODEL: 'test', KNOWLEDGE_RERANK: false, KNOWLEDGE_INDEX_DIR: '.' },
+  // LOG_LEVEL / NODE_ENV 不可省：logger.ts 在 import 階段就會讀它們，
+  // 缺了會在跟 SQL 無關的地方直接炸掉（Task 3 實測踩到）。
+  env: {
+    DATA_BACKEND: 'db', EMBEDDING_MODEL: 'test', KNOWLEDGE_RERANK: false,
+    KNOWLEDGE_INDEX_DIR: '.', LOG_LEVEL: 'silent', NODE_ENV: 'test',
+  },
 }));
 
 import { loadIndex } from '@/modules/knowledge/knowledge.index.repo';
@@ -1177,7 +1187,12 @@ jest.mock('@/lib/db', () => ({
 }));
 jest.mock('@/config/env', () => ({
   __esModule: true,
-  env: { DATA_BACKEND: 'db', EMBEDDING_MODEL: 'test', KNOWLEDGE_RERANK: false, KNOWLEDGE_INDEX_DIR: '.' },
+  // LOG_LEVEL / NODE_ENV 不可省：logger.ts 在 import 階段就會讀它們，
+  // 缺了會在跟 SQL 無關的地方直接炸掉（Task 3 實測踩到）。
+  env: {
+    DATA_BACKEND: 'db', EMBEDDING_MODEL: 'test', KNOWLEDGE_RERANK: false,
+    KNOWLEDGE_INDEX_DIR: '.', LOG_LEVEL: 'silent', NODE_ENV: 'test',
+  },
 }));
 
 import { setFileVisibility } from '@/modules/knowledge/knowledge.visibility';
@@ -1714,7 +1729,12 @@ jest.mock('@/lib/db', () => ({
 // 兩個斷言都會空跑而「通過」。
 jest.mock('@/config/env', () => ({
   __esModule: true,
-  env: { DATA_BACKEND: 'db', EMBEDDING_MODEL: 'test', KNOWLEDGE_RERANK: false, KNOWLEDGE_INDEX_DIR: '.' },
+  // LOG_LEVEL / NODE_ENV 不可省：logger.ts 在 import 階段就會讀它們，
+  // 缺了會在跟 SQL 無關的地方直接炸掉（Task 3 實測踩到）。
+  env: {
+    DATA_BACKEND: 'db', EMBEDDING_MODEL: 'test', KNOWLEDGE_RERANK: false,
+    KNOWLEDGE_INDEX_DIR: '.', LOG_LEVEL: 'silent', NODE_ENV: 'test',
+  },
 }));
 
 import { auditStore } from '@/modules/audit/audit.store';
