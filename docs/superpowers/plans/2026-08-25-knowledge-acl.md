@@ -413,6 +413,13 @@ jest.mock('@/lib/db', () => ({
   },
 }));
 
+// setup-env.ts 把測試固定在 DATA_BACKEND='file'；不覆寫則 saveIndex 走檔案路徑，
+// $executeRaw 一次都不會被呼叫，本測試會因錯誤的原因失敗。
+jest.mock('@/config/env', () => ({
+  __esModule: true,
+  env: { DATA_BACKEND: 'db', EMBEDDING_MODEL: 'test', KNOWLEDGE_RERANK: false, KNOWLEDGE_INDEX_DIR: '.' },
+}));
+
 import { saveIndex } from '@/modules/knowledge/knowledge.index.repo';
 
 /** 把某次 $executeRaw 的 template strings 併回可搜尋的字串 */
@@ -747,10 +754,7 @@ function makeTenant(name: string, acl: 'off' | 'shadow' | 'on'): string {
 }
 
 describe('pgvector 可見性過濾', () => {
-  afterEach(() => {
-    scopePolicy.clear();
-    queryRaw.mock.calls.forEach(() => undefined);
-  });
+  afterEach(() => scopePolicy.clear());
 
   it('acl=on：dense 與 lexical 兩路都帶可見性條件', async () => {
     const tid = makeTenant('acl-retr-1', 'on');
@@ -787,7 +791,9 @@ describe('pgvector 可見性過濾', () => {
     invalidatePgvectorModelCache(tid);
   });
 
-  it('候選池不被無權文件佔滿：SQL 端先濾再取 top-k', async () => {
+  // 註：本案例斷言的是「有權候選不被評分階段丟掉」。真正守住 pre-filter 的是
+  // 本檔第一個案例（SQL 含可見性條件）——mock 層無法端到端驗證 DB 的過濾順序。
+  it('有權候選在評分階段全數保留（POOL_SIZE 前提見斷言）', async () => {
     const tid = makeTenant('acl-retr-4', 'on');
     invalidatePgvectorModelCache(tid);
     const policy = scopePolicy.getPolicy(tid);
@@ -920,15 +926,55 @@ import type { KnowledgeChunk, KnowledgeRetriever, RetrievalPrincipal } from './r
     `;
 ```
 
-- [ ] **Step 6: 執行測試確認通過**
+- [ ] **Step 6: 同步改 stub 與 staticIndex**
 
-Run: `npm test -w server -- knowledge-acl-retrieval`
-Expected: PASS（4 個案例）。既有 `knowledge-retriever-pgvector.test.ts` 此時會編譯失敗（仍傳 string）——Task 5 一併修正。
+改公開介面就必須同一個任務內改完所有實作，否則會留下無法編譯的 commit。
 
-- [ ] **Step 7: Commit**
+兩者的 `search` 簽名改為 `(principal: RetrievalPrincipal, query: string)`，
+函式開頭 `const { tenantId } = principal;`，其餘邏輯不變。
+
+`retriever.stub.ts` 加註解，把「不過濾」寫成明確決定：
+
+```ts
+/**
+ * stub 為固定 FAQ（dev/測試路徑），**全部視為公開**、不套用可見性過濾。
+ * 這是明確決定而非遺漏：stub 內容不含任何租戶資料。
+ */
+```
+
+`retriever.staticIndex.ts` 於挑選候選處套用同樣的過濾（file 後端須與 db 行為一致，
+否則權限邏輯永遠沒被日常開發驗證）：
+
+```ts
+import { aclModeOf, visibilityScopesOf } from './knowledge.visibility';
+
+    const visible = aclModeOf(tenantId) === 'on' ? new Set(visibilityScopesOf(principal)) : null;
+    const candidates = idx.chunks.filter(
+      (c) => !visible || (c.visibilityScopes ?? []).some((s) => visible.has(s)),
+    );
+```
+
+（`candidates` 取代原本直接迭代 `idx.chunks` 之處。）
+
+- [ ] **Step 7: 修既有 pgvector 測試**
+
+`server/tests/knowledge-retriever-pgvector.test.ts` 內所有 `pgvectorRetriever.search('t1', …)`
+改為 `pgvectorRetriever.search({ tenantId: 't1', userId: 'u1' }, …)`。
+該檔測的租戶未設 `knowledgeAcl`，預設 `off`，SQL 與既有斷言不受影響。
+
+- [ ] **Step 8: 執行測試確認通過 + 型別**
+
+Run: `npm test -w server && npm run typecheck -w server`
+Expected: 全綠。本任務結束時 repo 必須可編譯——四個呼叫端由 Task 5 處理，
+但它們傳的是 `tenantId` 字串，型別會報錯。**因此本步驟允許的例外**：
+若僅剩 `knowledge.agent-service.ts` / `report.compose.ts` / `knowledge.admin.controller.ts`
+三處的呼叫端型別錯誤，屬 Task 5 範圍，記錄於報告後即可提交；
+其餘任何錯誤都必須在本任務內修掉。
+
+- [ ] **Step 9: Commit**
 
 ```bash
-git add server/src/modules/knowledge/knowledge.visibility.ts server/src/modules/knowledge/retriever.types.ts server/src/modules/knowledge/retriever.pgvector.ts server/tests/knowledge-acl-retrieval.test.ts
+git add server/src/modules/knowledge/knowledge.visibility.ts server/src/modules/knowledge/retriever.types.ts server/src/modules/knowledge/retriever.pgvector.ts server/src/modules/knowledge/retriever.stub.ts server/src/modules/knowledge/retriever.staticIndex.ts server/tests/knowledge-acl-retrieval.test.ts server/tests/knowledge-retriever-pgvector.test.ts
 git commit -m "feat(knowledge): 檢索身分下推，pgvector 兩路候選 pre-filter 可見性"
 ```
 
@@ -958,58 +1004,56 @@ git commit -m "feat(knowledge): 檢索身分下推，pgvector 兩路候選 pre-f
 /**
  * 每個「拿知識庫檢索結果」的呼叫端都必須交出身分。
  * 報告那條最容易被忘記——它不在對話流程裡，卻能把整份文件彙整成可下載檔案。
+ *
+ * 以 spy retriever 攔下 principal，斷言呼叫端真的把 userId 傳下去了
+ * （只斷言函式 arity 不算數：改動前就會通過，沒有紅燈階段）。
  */
+const searchSpy = jest.fn().mockResolvedValue([]);
+jest.mock('@/modules/knowledge/retriever.pick', () => ({
+  __esModule: true,
+  pickRetriever: async () => ({ name: 'spy', search: searchSpy }),
+}));
+jest.mock('@/modules/knowledge/rerank', () => ({
+  __esModule: true,
+  rerankChunks: async (_t: string, _q: string, pool: unknown[]) => pool,
+}));
+
+import { composeSection } from '@/modules/report/report.compose';
 import { stubRetriever } from '@/modules/knowledge/retriever.stub';
 
-describe('檢索器介面一致性', () => {
+describe('檢索呼叫端交出身分', () => {
+  beforeEach(() => searchSpy.mockClear());
+
   it('stub 收 principal 而非 tenantId', async () => {
     const out = await stubRetriever.search({ tenantId: 't1', userId: 'u1' }, '請假');
     expect(Array.isArray(out)).toBe(true);
   });
 
-  it('composeSection 的簽名含 userId', () => {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const mod = require('@/modules/report/report.compose') as {
-      composeSection: (...args: unknown[]) => unknown;
-    };
-    // (tenantId, userId, section, ...) —— 至少三個具名參數
-    expect(mod.composeSection.length).toBeGreaterThanOrEqual(3);
+  it('composeSection 把 userId 傳進檢索器', async () => {
+    await composeSection(
+      't1',
+      'kevin',
+      { heading: 'H', query: '差旅規定' },
+      undefined,
+      { createMessage: async () => ({ text: '內容', usage: { input: 1, output: 1 } }) } as never,
+    );
+
+    expect(searchSpy).toHaveBeenCalled();
+    const [principal] = searchSpy.mock.calls[0] as [{ tenantId: string; userId: string }];
+    expect(principal).toEqual({ tenantId: 't1', userId: 'kevin' });
   });
 });
 ```
+
+> 若 `composeSection` 的 LLM 參數型別與上例不符，以該檔實際的 `LLMProvider` 介面為準
+> 建立最小替身；本測試只關心 `searchSpy` 收到的第一個引數。
 
 - [ ] **Step 2: 執行測試確認失敗**
 
 Run: `npm test -w server -- knowledge-acl-callsites`
 Expected: FAIL — 型別不符 / 參數個數不足
 
-- [ ] **Step 3: 改 stub 與 staticIndex**
-
-兩者的 `search` 簽名改為 `(principal: RetrievalPrincipal, query: string)`，函式開頭 `const { tenantId } = principal;`，其餘邏輯不變。
-
-`retriever.stub.ts` 加註解，把「不過濾」寫成明確決定：
-
-```ts
-/**
- * stub 為固定 FAQ（dev/測試路徑），**全部視為公開**、不套用可見性過濾。
- * 這是明確決定而非遺漏：stub 內容不含任何租戶資料。
- */
-```
-
-`retriever.staticIndex.ts` 於挑選候選處套用同樣的過濾（file 後端亦須與 db 行為一致，否則權限邏輯永遠沒被日常開發驗證）：
-
-```ts
-import { aclModeOf, visibilityScopesOf } from './knowledge.visibility';
-
-    const visible = aclModeOf(tenantId) === 'on' ? new Set(visibilityScopesOf(principal)) : null;
-    const candidates = idx.chunks.filter(
-      (c) => !visible || (c.visibilityScopes ?? []).some((s) => visible.has(s)),
-    );
-```
-
-（`candidates` 取代原本直接迭代 `idx.chunks` 之處。）
-
-- [ ] **Step 4: 改四個呼叫端**
+- [ ] **Step 3: 改四個呼叫端**
 
 `knowledge.agent-service.ts:183`：
 
@@ -1070,7 +1114,7 @@ export const queryTestSchema = z.object({
 });
 ```
 
-- [ ] **Step 5: 修正過期註解**
+- [ ] **Step 4: 修正過期註解**
 
 `server/src/modules/conversation/conversation.routes.ts:16` 改為：
 
@@ -1079,16 +1123,12 @@ export const queryTestSchema = z.object({
 // controller 內的 x-user-id fallback 僅供未掛 requireAuth 的測試路徑使用。
 ```
 
-- [ ] **Step 6: 修既有測試**
-
-`server/tests/knowledge-retriever-pgvector.test.ts` 內所有 `pgvectorRetriever.search('t1', …)` 改為 `pgvectorRetriever.search({ tenantId: 't1', userId: 'u1' }, …)`。該檔測的租戶未設 `knowledgeAcl`，預設 `off`，SQL 與斷言不受影響。
-
-- [ ] **Step 7: 全套測試 + 型別**
+- [ ] **Step 5: 全套測試 + 型別**
 
 Run: `npm test -w server && npm run typecheck -w server`
 Expected: 全綠。若仍有編譯錯，即為漏掉的呼叫端——那正是本設計採用介面下推的目的。
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add server/src/modules/knowledge server/src/modules/report server/src/modules/conversation/conversation.routes.ts server/tests
@@ -1661,10 +1701,45 @@ git commit -m "feat(knowledge): 批次匯入以資料夾層級指定可見性標
  * 且 MAX_PER_TENANT=500 而 shadow 是每次查詢一筆的高頻寫入——
  * 幾天內就會把真正的工具稽核紀錄整批擠掉。本測試是那道防線。
  */
+const executeRaw = jest.fn().mockResolvedValue(1);
+jest.mock('@/lib/db', () => ({
+  __esModule: true,
+  connectDb: async () => ({ $executeRaw: executeRaw, $queryRaw: jest.fn().mockResolvedValue([]) }),
+  DbWriteQueue: class {
+    enqueue(task: (db: unknown) => Promise<void>): void { void task({}); }
+    flush(): Promise<void> { return Promise.resolve(); }
+  },
+}));
+// setup-env.ts 預設 DATA_BACKEND='file'，不覆寫則 recordShadowBlocks 提早 return，
+// 兩個斷言都會空跑而「通過」。
+jest.mock('@/config/env', () => ({
+  __esModule: true,
+  env: { DATA_BACKEND: 'db', EMBEDDING_MODEL: 'test', KNOWLEDGE_RERANK: false, KNOWLEDGE_INDEX_DIR: '.' },
+}));
+
 import { auditStore } from '@/modules/audit/audit.store';
 import { recordShadowBlocks } from '@/modules/knowledge/knowledge.acl-shadow.repo';
 
+function sqlTextOf(call: unknown[]): string {
+  const parts = call[0] as unknown as { raw?: readonly string[] };
+  return Array.from(parts.raw ?? []).join('?');
+}
+
 describe('shadow 統計', () => {
+  beforeEach(() => executeRaw.mockClear());
+
+  it('寫進 knowledge_acl_shadow 並累加計數', async () => {
+    await recordShadowBlocks('t1', 'kevin', ['f1']);
+    const sql = executeRaw.mock.calls.map(sqlTextOf).join('\n');
+    expect(sql).toContain('knowledge_acl_shadow');
+    expect(sql).toContain('blocked_count');
+  });
+
+  it('沒有檔案被擋時不打 DB', async () => {
+    await recordShadowBlocks('t1', 'kevin', []);
+    expect(executeRaw).not.toHaveBeenCalled();
+  });
+
   it('高頻寫入不影響 auditStore 內容', async () => {
     const before = auditStore.list('t1', 1000).length;
     for (let i = 0; i < 600; i += 1) {
@@ -1837,6 +1912,10 @@ git commit -m "feat(knowledge): shadow 階段統計與 ACL 盤點 API"
 - Consumes: Task 7 與 Task 9 的端點
 
 > 本任務為前端工作，可獨立於後端排程；後端 1–9 完成後系統即可經 API 操作。
+>
+> **實作前先讀 `admin/src/pages/tabs/` 底下既有的知識庫分頁元件**，沿用其資料抓取、
+> 表單與樣式模式。本計畫刻意不預先寫出 JSX——計畫作者未讀過這些元件，
+> 憑空杜撰的程式碼會比誠實的散文更容易誤導。驗收以「與既有分頁風格一致」為準。
 
 - [ ] **Step 1: 標籤管理區塊**
 
