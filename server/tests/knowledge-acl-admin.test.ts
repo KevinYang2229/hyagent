@@ -13,6 +13,7 @@ import request from 'supertest';
 import { createApp } from '@/app';
 import { knowledgeStore } from '@/modules/knowledge/knowledge.store';
 import { tenantGrantableScopes } from '@/modules/authz/scope-catalog';
+import { scopePolicy } from '@/modules/authz/scope-policy';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 
 const app = createApp();
@@ -110,5 +111,37 @@ describe('知識庫標籤 admin API', () => {
     // 關鍵：標籤被移除後是空陣列（誰都看不到），不是「沒有限制」
     expect(file?.visibilityScopes).toEqual([]);
     expect(tenantGrantableScopes(tid).map((x) => x.id)).not.toContain('kb:hr');
+  });
+
+  /**
+   * 刪標籤留下孤兒授權，同名重建即靜默復權（見 scope-policy.test.ts 的單元測試）。
+   * 這裡驗證端到端：deleteLabel 這個 HTTP 端點真的把授權清掉、且回報筆數，
+   * 不是只驗證 scopePolicy.revokeScope 這個函式本身有沒有被寫對。
+   */
+  it('刪除標籤同時撤銷 scopePolicy 的孤兒授權，並回報 revokedGrants；同名重建不會復權', async () => {
+    const tid = tenantStore.createTenant('acl-admin-t6').id;
+    await request(app)
+      .post(`/api/admin/tenants/${tid}/knowledge/labels`)
+      .set(auth)
+      .send({ id: 'hr', label: '人資' })
+      .expect(201);
+    // 指派給兩個部門，比照 findings 的失效情境（人資部 + 稽核部）
+    scopePolicy.setPolicy(tid, { groups: { 人資部: ['kb:hr'], 稽核部: ['kb:hr'] }, accounts: {} });
+
+    const res = await request(app)
+      .delete(`/api/admin/tenants/${tid}/knowledge/labels/hr`)
+      .set(auth)
+      .expect(200);
+
+    expect(res.body.data.revokedGrants).toBe(2);
+    expect(scopePolicy.getPolicy(tid).groups).toEqual({ 人資部: [], 稽核部: [] });
+
+    // 隔天重建同名標籤：舊授權不該原封不動復活
+    await request(app)
+      .post(`/api/admin/tenants/${tid}/knowledge/labels`)
+      .set(auth)
+      .send({ id: 'hr', label: '人資（重建）' })
+      .expect(201);
+    expect(scopePolicy.groupScopes(tid, '稽核部')).toEqual([]);
   });
 });

@@ -139,6 +139,54 @@ export const scopePolicy = {
     persistFile();
   },
 
+  /**
+   * 從租戶政策中移除某個 scope：部門／帳號的零散授權，以及套餐（bundle）定義本身的 scopes。
+   * 回傳實際移除的授權筆數（命中的部門筆數 + 帳號筆數 + bundle 定義筆數），
+   * 供刪標籤這類「刪除操作可能連帶撤銷既有授權」的呼叫端回報給後台。
+   *
+   * 為什麼要主動清：groupScopes/accountScopes 解析時不做目錄驗證，原樣回傳已存字串
+   * （見 resolve-scopes.ts）。刪除操作本身不是提權，但「刪除 + 同名重建」是——
+   * 重建同一個顯而易見的 id（如 hr、finance）正是最可能發生的操作，若留著孤兒授權，
+   * 重建當下這些授權會在後台從未顯示過的情況下靜默復活。
+   *
+   * bundle 定義本身也要清（而不只是 groupBundles/accountBundles 的指派關聯）：
+   * 部門/帳號記的是 bundle id，不是展開後的 scopes，只清掉 bundle.scopes 裡的這個
+   * scope 即可讓所有指派到該 bundle 的部門/帳號自動失去這個 scope，不需要再另外遍歷
+   * groupBundles/accountBundles。
+   */
+  revokeScope(tenantId: string, scope: string): number {
+    const current = policies.get(tenantId);
+    if (!current) return 0;
+    let removed = 0;
+
+    const groups: Record<string, string[]> = {};
+    for (const [dept, scopes] of Object.entries(current.groups)) {
+      if (scopes.includes(scope)) removed += 1;
+      groups[dept] = scopes.filter((s) => s !== scope);
+    }
+
+    const accounts: Record<string, string[]> = {};
+    for (const [userId, scopes] of Object.entries(current.accounts)) {
+      if (scopes.includes(scope)) removed += 1;
+      accounts[userId] = scopes.filter((s) => s !== scope);
+    }
+
+    const bundles = current.bundles?.map((b) => {
+      if (b.scopes.includes(scope)) removed += 1;
+      return { ...b, scopes: b.scopes.filter((s) => s !== scope) };
+    });
+
+    if (removed === 0) return 0;
+
+    scopePolicy.setPolicy(tenantId, {
+      ...current,
+      groups,
+      accounts,
+      ...(bundles ? { bundles } : {}),
+    });
+    return removed;
+  },
+
   /** 移除某租戶授權政策（刪租戶級聯清理用） */
   purgeTenant(tenantId: string): void {
     policies.delete(tenantId);

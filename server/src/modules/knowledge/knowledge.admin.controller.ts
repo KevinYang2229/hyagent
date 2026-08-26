@@ -5,6 +5,7 @@
 import type { Request, Response } from 'express';
 import { AppError } from '@/utils/app-error';
 import { assertValidLabelId, kbScopeId } from '@/modules/authz/scope-catalog';
+import { scopePolicy } from '@/modules/authz/scope-policy';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 import type { IngestParams } from './ingest.service';
 import { deleteIndex, loadIndexText } from './knowledge.index.repo';
@@ -252,6 +253,15 @@ export const knowledgeAdminController = {
    * 仍把「查無」的空結果寫回 tenantStore——一個語意上該是 no-op 的請求，
    * 變成有持久化副作用的動作，故先確認租戶存在，不存在直接 404、不寫入。
    */
+  /**
+   * 刪標籤：清檔案 meta 與兩張表的投影（見上方迴圈），並一併從 scopePolicy 移除
+   * 該 scope 的部門／帳號／套餐授權——不清的話，這些授權在 getPolicy 的 prune 之下
+   * 後台看不見（孤兒），但資料仍在，隔天重建同名標籤（hr、finance 這類顯而易見的
+   * id 正是最可能發生的操作）就會讓舊授權原封不動靜默復活，且從未在後台顯示過。
+   * 設計「刪除操作絕不能是提權操作」——刪除本身不是，但「刪除 + 同名重建」是，
+   * 這裡是那個縫的補丁。revokedGrants 回報給後台，可提示「同時撤銷了 N 筆部門／
+   * 帳號授權」。
+   */
   async deleteLabel(req: Request, res: Response): Promise<void> {
     const tenantId = String(req.params.id);
     const labelId = String(req.params.labelId);
@@ -268,9 +278,10 @@ export const knowledgeAdminController = {
       await setFileVisibility(tenantId, f.fileId, next);
       replaceFileMeta(tenantId, { ...f, visibilityScopes: next });
     }
+    const revokedGrants = scopePolicy.revokeScope(tenantId, scope);
     const cur = tenantStore.getTenant(tenantId)?.knowledgeLabels ?? [];
     tenantStore.updateTenant(tenantId, { knowledgeLabels: cur.filter((l) => l.id !== labelId) });
-    res.json({ data: { affectedFiles: affected.length } });
+    res.json({ data: { affectedFiles: affected.length, revokedGrants } });
   },
 
   /**
