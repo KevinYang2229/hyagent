@@ -10,6 +10,7 @@ import { logger } from '@/lib/logger';
 import { normalizeLocale } from '@/lib/locale';
 import { rerankChunks } from '@/modules/knowledge/rerank';
 import { pickRetriever } from '@/modules/knowledge/retriever.pick';
+import { aclModeOf } from '@/modules/knowledge/knowledge.visibility';
 import type { KnowledgeChunk, RetrievalPrincipal } from '@/modules/knowledge/retriever.types';
 import { usageStore } from '@/modules/usage/usage.store';
 import { getEmbeddingProvider } from '@/lib/embedding';
@@ -708,10 +709,29 @@ export function pickChartColumns(table: StoredTable): { li: number; vi: number }
  * 圖表產製這一族函式（autoChart/autoChartFrom/buildComparisonChart/buildExactChart）
  * 對外仍以 tenantId 呼叫——它們也被多個測試直接呼叫，改動對外簽名的影響面遠超本次任務。
  * userId 為可選的第二個身分要素：composeSection 手上有真正的操作者，會一路往下傳；
- * 沒傳（測試或其他呼叫端）時退回以 tenantId 頂替，acl=off/shadow（預設）不受影響，
- * acl=on 時等同「未指名操作者」，只看不受標籤限制的表——比完全不過濾（舊行為）安全。
+ * off/shadow（預設，也是既有約 35 處測試呼叫所在）不受影響，因為過濾條件本來就只在
+ * acl==='on' 時才會被組進 SQL。
+ *
+ * 沒傳 userId 又剛好 acl==='on' 時才有事：退回以 tenantId 頂替 userId 丟進
+ * visibilityScopesOf，resolveScopes(tenantId, tenantId) 幾乎必然解析成 []（tenantId
+ * 不是真實使用者，查不到任何部門/帳號授權），而 SQL 的
+ * `visibility_scopes && ARRAY[]::text[]` 對任何列（含 NULL 與 {}）都是
+ * NULL/false——不是「只看不受限的表」，是**看到零張表**。這不會洩漏資料（fail-closed），
+ * 但會讓圖表在沒有任何錯誤或警告的情況下整批消失，是這個設計最想避免的靜默退化。
+ *
+ * 為什麼不乾脆把 userId 改成必填：那需要把它從 report.job.ts 的 params.userId
+ * 一路貫穿到 autoChart/buildExactChart，並同步改掉前述約 35 處測試呼叫，超出目前
+ * 範圍。保留可選參數但在這裡留下痕跡（warn），讓日後任何省略 userId 的新呼叫端
+ * 在 acl=on 的租戶上至少能從 log 回溯，而不是被當成「查無資料」悄悄放過。
  */
 function principalOf(tenantId: string, userId?: string): RetrievalPrincipal {
+  if (userId === undefined && aclModeOf(tenantId) === 'on') {
+    logger.warn(
+      { tenantId },
+      'report table access missing userId under acl=on; visibility scopes resolve to '
+        + 'empty and every table lookup will silently return nothing (all charts drop)',
+    );
+  }
   return { tenantId, userId: userId ?? tenantId };
 }
 
