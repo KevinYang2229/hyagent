@@ -85,8 +85,11 @@ describe('pgvector 可見性過濾', () => {
     await pgvectorRetriever.search({ tenantId: tid, userId: 'guest-1' }, 'HyCMS 是什麼');
 
     const sql = lastSqlText();
-    const occurrences = sql.split('visibility_scopes').length - 1;
-    expect(occurrences).toBeGreaterThanOrEqual(2); // dense + lexical
+    // 'visibility_scopes' 本身也出現在兩路的 select 清單裡（shadow 統計需要），
+    // 光數這個詞是恆真的——即使 pre-filter 整段被拿掉，計數依然是 2。
+    // 真正的 pre-filter 訊號是 `visibility_scopes &&`，必須各路各一（dense + lexical）。
+    const occurrences = sql.split('visibility_scopes &&').length - 1;
+    expect(occurrences).toBe(2); // dense + lexical
     invalidatePgvectorModelCache(tid);
   });
 
