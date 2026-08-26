@@ -48,7 +48,7 @@ const OK = JSON.stringify({
 
 describe('buildOutline', () => {
   it('解析正常 JSON', async () => {
-    const outline = await buildOutline('t1', '馬太鞍溪災害補助', 'zh-Hant', fakeLLM([OK]));
+    const outline = await buildOutline('t1', 'u1', '馬太鞍溪災害補助', 'zh-Hant', fakeLLM([OK]));
     expect(outline.title).toBe('馬太鞍溪災害補助報告');
     expect(outline.sections).toHaveLength(2);
     expect(outline.sections[0].query).toContain('誰可以申請');
@@ -56,7 +56,7 @@ describe('buildOutline', () => {
 
   it('容忍 JSON 前後綴（模型常加說明文字）', async () => {
     const llm = fakeLLM([`好的，以下是大綱：\n\`\`\`json\n${OK}\n\`\`\`\n希望有幫助`]);
-    const outline = await buildOutline('t1', '主題', undefined, llm);
+    const outline = await buildOutline('t1', 'u1', '主題', undefined, llm);
     expect(outline.sections).toHaveLength(2);
   });
 
@@ -68,7 +68,7 @@ describe('buildOutline', () => {
         query: `Q${i}？`,
       })),
     });
-    const outline = await buildOutline('t1', '主題', undefined, fakeLLM([many]));
+    const outline = await buildOutline('t1', 'u1', '主題', undefined, fakeLLM([many]));
     expect(outline.sections).toHaveLength(6);
   });
 
@@ -77,19 +77,19 @@ describe('buildOutline', () => {
       title: 'T',
       sections: [{ heading: 'A', query: 'a?' }, { heading: 'B' }, { query: 'c?' }],
     });
-    const outline = await buildOutline('t1', '主題', undefined, fakeLLM([dirty]));
+    const outline = await buildOutline('t1', 'u1', '主題', undefined, fakeLLM([dirty]));
     expect(outline.sections).toEqual([{ heading: 'A', query: 'a?' }]);
   });
 
   it('非 JSON 回應 → 拋錯（沒有大綱就沒有報告，不得降級）', async () => {
-    await expect(buildOutline('t1', '主題', undefined, fakeLLM(['我不知道']))).rejects.toThrow(
+    await expect(buildOutline('t1', 'u1', '主題', undefined, fakeLLM(['我不知道']))).rejects.toThrow(
       /大綱/,
     );
   });
 
   it('解析出零節 → 拋錯', async () => {
     const empty = JSON.stringify({ title: 'T', sections: [] });
-    await expect(buildOutline('t1', '主題', undefined, fakeLLM([empty]))).rejects.toThrow(/大綱/);
+    await expect(buildOutline('t1', 'u1', '主題', undefined, fakeLLM([empty]))).rejects.toThrow(/大綱/);
   });
 
   it('LLM 拋錯時原樣往上拋', async () => {
@@ -99,7 +99,7 @@ describe('buildOutline', () => {
         throw new Error('boom');
       },
     };
-    await expect(buildOutline('t1', '主題', undefined, llm)).rejects.toThrow();
+    await expect(buildOutline('t1', 'u1', '主題', undefined, llm)).rejects.toThrow();
   });
 });
 
@@ -144,7 +144,7 @@ describe('大綱看得到知識庫', () => {
       { id: '2', source: 'CC匯出.xlsx', sheet: '3-CC-參觀者來源', headers: ['類型', '自行預登'], rowCount: 5 },
     ]);
     const llm = fakeLLM([OK]);
-    await buildOutline('t1', '展覽數據', 'zh-Hant', llm);
+    await buildOutline('t1', 'u1', '展覽數據', 'zh-Hant', llm);
     const text = userText(llm);
     expect(text).toContain('報告主題：展覽數據');
     expect(text).toContain('2-CC-參觀者預登人數');
@@ -159,14 +159,14 @@ describe('大綱看得到知識庫', () => {
       })),
     );
     const llm = fakeLLM([OK]);
-    await buildOutline('t1', '展覽數據', 'zh-Hant', llm);
+    await buildOutline('t1', 'u1', '展覽數據', 'zh-Hant', llm);
     expect(userText(llm).match(/8-CC-參展商展區/g)).toHaveLength(1);
   });
 
   it('目錄取不到時只是退回原本行為，不讓整份報告產不出來', async () => {
     mockListTableCatalog.mockRejectedValue(new Error('db down'));
     const llm = fakeLLM([OK]);
-    const outline = await buildOutline('t1', '展覽數據', 'zh-Hant', llm);
+    const outline = await buildOutline('t1', 'u1', '展覽數據', 'zh-Hant', llm);
     expect(outline.sections).toHaveLength(2);
     expect(userText(llm)).toBe('報告主題：展覽數據');
   });
@@ -174,7 +174,7 @@ describe('大綱看得到知識庫', () => {
   it('知識庫是空的就不附目錄區塊', async () => {
     mockListTableCatalog.mockResolvedValue([]);
     const llm = fakeLLM([OK]);
-    await buildOutline('t1', '展覽數據', 'zh-Hant', llm);
+    await buildOutline('t1', 'u1', '展覽數據', 'zh-Hant', llm);
     expect(userText(llm)).toBe('報告主題：展覽數據');
   });
 });

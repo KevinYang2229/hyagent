@@ -138,13 +138,28 @@ export async function searchTableCatalog(
   return rows.map(toEntry);
 }
 
-/** 該租戶可用的表清單（不含資料列） */
-export async function listTableCatalog(tenantId: string): Promise<TableCatalogEntry[]> {
+/**
+ * 該租戶可用的表清單（不含資料列）。
+ *
+ * 目錄本身也會整段送進 LLM prompt（report.compose 的 catalogBlock、report.outline 的
+ * knowledgeOverview），不是「查無回退」那種只在成功路徑上才使用的中繼資料——沒過濾就是
+ * 檔名／欄位名外洩：使用者看不到列資料，但讀得到「有一張《薪資級距表》，欄位：職等、中位數」。
+ * 因此比照 searchTableCatalog/loadTable，套同一套 pre-filter 規則。
+ */
+export async function listTableCatalog(
+  principal: RetrievalPrincipal,
+): Promise<TableCatalogEntry[]> {
   if (env.DATA_BACKEND !== 'db') return [];
+  const { tenantId } = principal;
+  const visible =
+    aclModeOf(tenantId) === 'on'
+      ? Prisma.sql`and visibility_scopes && ${visibilityScopesOf(principal)}::text[]`
+      : Prisma.empty;
   const db = await connectDb();
   const rows = await db.$queryRaw<TableRow[]>`
     select id, source, sheet, caption, headers, row_count
     from knowledge_tables where tenant_id = ${tenantId}
+      ${visible}
     order by source, sheet
   `;
   return rows.map(toEntry);

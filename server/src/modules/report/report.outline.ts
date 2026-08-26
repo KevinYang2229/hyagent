@@ -101,11 +101,14 @@ const OUTLINE_CATALOG_LIMIT = 40;
  * 有三節是「知識庫查無相關資料」，四成篇幅是空的。
  *
  * 取不到就回空字串：少了這段只是退回原本的行為，不該讓整份報告產不出來。
+ *
+ * 目錄本身要依 userId 過濾可見性——這段概覽會整段送進大綱規劃器的 prompt，
+ * 未標記或無權限的表若被列進去，檔名／欄位名就外洩進 LLM 輸出（見 listTableCatalog 註解）。
  */
-async function knowledgeOverview(tenantId: string): Promise<string> {
+async function knowledgeOverview(tenantId: string, userId: string): Promise<string> {
   let catalog;
   try {
-    catalog = await listTableCatalog(tenantId);
+    catalog = await listTableCatalog({ tenantId, userId });
   } catch (err) {
     logger.warn({ err, tenantId }, '大綱取不到資料表目錄，改回只看主題規劃');
     return '';
@@ -123,11 +126,12 @@ async function knowledgeOverview(tenantId: string): Promise<string> {
 
 export async function buildOutline(
   tenantId: string,
+  userId: string,
   topic: string,
   locale: string | undefined,
   llm: LLMProvider,
 ): Promise<Outline> {
-  const overview = await knowledgeOverview(tenantId);
+  const overview = await knowledgeOverview(tenantId, userId);
   const catalogBlock = overview === '' ? '' : `\n\n知識庫實際擁有的資料表：\n${overview}`;
   const result = await llm.createMessage({
     system: outlineSystem(locale),

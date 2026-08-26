@@ -42,9 +42,9 @@ const HISTORY_MESSAGES = 6;
  * 第三年隨檢索排名消失，即使資料表其實有完整數值。
  *
  * 這是表格檢索的平行路徑，與 chunk 檢索走不同資料源（knowledge.tables.repo）。
- * 選表用的目錄（listTableCatalog）不過濾，實際取內容用的 loadTable 會依 principal
- * 套用可見性——漏掉 loadTable 的過濾就是「文件鎖起來了，但問它裡面的表格數字還是
- * 答得出來」那道側門，未過濾的候選只是被跳過（table 為 null 不進 previews）。
+ * 選表用的目錄（listTableCatalog）與取內容的 loadTable 都依 principal 套用可見性——
+ * 兩處都得過濾：目錄若不過濾，metadata（檔名／欄位名）本身就外洩進 LLM prompt，
+ * 不是「未過濾的候選只是被跳過」那種無害的中繼資料。
  */
 export async function loadTableContext(
   principal: RetrievalPrincipal,
@@ -52,7 +52,7 @@ export async function loadTableContext(
 ): Promise<string> {
   const { tenantId } = principal;
   try {
-    const catalog = await listTableCatalog(tenantId);
+    const catalog = await listTableCatalog(principal);
     if (catalog.length === 0) return '';
     const base = selectCatalog(catalog, query, 20);
     const selected = expandRequestedYears(base, catalog, query, 20);

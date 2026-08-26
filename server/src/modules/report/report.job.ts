@@ -80,7 +80,9 @@ export function startReportJob(params: StartReportParams, deps: ReportJobDeps = 
     await Promise.resolve();
     try {
       job.status = 'outlining';
-      const plan = await outline(params.tenantId, params.topic, params.locale, params.llm);
+      const plan = await outline(
+        params.tenantId, params.userId, params.topic, params.locale, params.llm,
+      );
       job.totalSections = plan.sections.length;
       job.status = 'composing';
 

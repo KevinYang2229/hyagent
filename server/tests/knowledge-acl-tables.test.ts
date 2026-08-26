@@ -39,7 +39,7 @@ function sqlTextOf(call: unknown[]): string {
   return Array.from(parts.raw ?? []).join('?');
 }
 
-import { searchTableCatalog } from '@/modules/knowledge/knowledge.tables.repo';
+import { listTableCatalog, loadTable, searchTableCatalog } from '@/modules/knowledge/knowledge.tables.repo';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 
 describe('標籤更新的原子性', () => {
@@ -52,6 +52,19 @@ describe('標籤更新的原子性', () => {
   });
 });
 
+/** 抓最後一次 $queryRaw 呼叫的完整 SQL 文字（template 字面 + 內嵌 Prisma.sql 片段） */
+function lastQueryRawSql(): string {
+  const call = queryRaw.mock.calls[queryRaw.mock.calls.length - 1] as unknown[];
+  const own = Array.from((call[0] as unknown as { raw: readonly string[] }).raw).join('?');
+  const nested = call
+    .slice(1)
+    .filter((a): a is { sql: string } =>
+      typeof a === 'object' && a !== null && typeof (a as { sql?: unknown }).sql === 'string')
+    .map((a) => a.sql)
+    .join(' ');
+  return `${own} ${nested}`;
+}
+
 describe('表格檢索沒有側門', () => {
   it('acl=on 時 searchTableCatalog 帶可見性條件', async () => {
     const t = tenantStore.createTenant('acl-tables-test');
@@ -62,14 +75,58 @@ describe('表格檢索沒有側門', () => {
     queryRaw.mockClear();
     await searchTableCatalog({ tenantId: t.id, userId: 'nobody' }, [1, 0, 0], 5);
 
-    const call = queryRaw.mock.calls[0] as unknown[];
-    const own = Array.from((call[0] as unknown as { raw: readonly string[] }).raw).join('?');
-    const nested = call
-      .slice(1)
-      .filter((a): a is { sql: string } =>
-        typeof a === 'object' && a !== null && typeof (a as { sql?: unknown }).sql === 'string')
-      .map((a) => a.sql)
-      .join(' ');
-    expect(`${own} ${nested}`).toContain('visibility_scopes');
+    expect(lastQueryRawSql()).toContain('visibility_scopes');
+  });
+
+  /**
+   * loadTable 是「以 id 直接取表」那道側門——目錄查詢（searchTableCatalog/listTableCatalog）
+   * 擋得住的可見性限制，若這裡不擋，繞過目錄直接指定 id 就能讀到不該看的表。
+   * 過去只有 searchTableCatalog 有這個斷言，loadTable 這道側門本身沒有測試守著。
+   */
+  it('acl=on 時 loadTable 帶可見性條件（繞過目錄直接指定 id 那道側門）', async () => {
+    const t = tenantStore.createTenant('acl-tables-loadtable-test');
+    tenantStore.updateTenant(t.id, {
+      knowledgeAcl: 'on',
+      knowledgeLabels: [{ id: 'hr', label: '人資' }],
+    });
+    queryRaw.mockClear();
+    await loadTable({ tenantId: t.id, userId: 'nobody' }, 'table-1');
+
+    expect(lastQueryRawSql()).toContain('visibility_scopes &&');
+  });
+
+  it('acl=off 時 loadTable 不帶可見性條件（遷移期行為零改變）', async () => {
+    const t = tenantStore.createTenant('acl-tables-loadtable-off-test');
+    tenantStore.updateTenant(t.id, { knowledgeAcl: 'off' });
+    queryRaw.mockClear();
+    await loadTable({ tenantId: t.id, userId: 'nobody' }, 'table-1');
+
+    expect(lastQueryRawSql()).not.toContain('visibility_scopes &&');
+  });
+
+  /**
+   * listTableCatalog 也會整段送進 LLM prompt（report.compose 的 catalogBlock、
+   * report.outline 的 knowledgeOverview），不過濾就是檔名／欄位名外洩——
+   * 修復前這支函式不吃 principal、也完全不過濾。
+   */
+  it('acl=on 時 listTableCatalog 帶可見性條件', async () => {
+    const t = tenantStore.createTenant('acl-tables-listcatalog-test');
+    tenantStore.updateTenant(t.id, {
+      knowledgeAcl: 'on',
+      knowledgeLabels: [{ id: 'hr', label: '人資' }],
+    });
+    queryRaw.mockClear();
+    await listTableCatalog({ tenantId: t.id, userId: 'nobody' });
+
+    expect(lastQueryRawSql()).toContain('visibility_scopes &&');
+  });
+
+  it('acl=off 時 listTableCatalog 不帶可見性條件（遷移期行為零改變）', async () => {
+    const t = tenantStore.createTenant('acl-tables-listcatalog-off-test');
+    tenantStore.updateTenant(t.id, { knowledgeAcl: 'off' });
+    queryRaw.mockClear();
+    await listTableCatalog({ tenantId: t.id, userId: 'nobody' });
+
+    expect(lastQueryRawSql()).not.toContain('visibility_scopes &&');
   });
 });

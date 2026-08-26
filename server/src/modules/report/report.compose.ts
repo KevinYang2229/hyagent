@@ -713,11 +713,14 @@ export function pickChartColumns(table: StoredTable): { li: number; vi: number }
  * acl==='on' 時才會被組進 SQL。
  *
  * 沒傳 userId 又剛好 acl==='on' 時才有事：退回以 tenantId 頂替 userId 丟進
- * visibilityScopesOf，resolveScopes(tenantId, tenantId) 幾乎必然解析成 []（tenantId
- * 不是真實使用者，查不到任何部門/帳號授權），而 SQL 的
- * `visibility_scopes && ARRAY[]::text[]` 對任何列（含 NULL 與 {}）都是
- * NULL/false——不是「只看不受限的表」，是**看到零張表**。這不會洩漏資料（fail-closed），
- * 但會讓圖表在沒有任何錯誤或警告的情況下整批消失，是這個設計最想避免的靜默退化。
+ * visibilityScopesOf → resolveScopes({tenantId, userId: tenantId})。tenantId 不是真實
+ * 使用者，getApplicant(tenantId) 找不到目錄項，回退到 UNKNOWN_DEPARTMENT（見
+ * user.directory.ts）——這正是設計 §3 掛公開 widget／訪客授權的鉤點：一旦該租戶把
+ * `kb:public` 之類的 scope 指派給 UNKNOWN_DEPARTMENT（訪客部門），resolveScopes 解析出
+ * 的就不是空陣列，而是「訪客能看的公開範圍」。失效長相因此是**用租戶 id 頂替出的假身分
+ * 拿到公開範圍的表**，不是「零張表」；只有在該租戶從未把任何 scope 授予訪客部門時才會
+ * 剛好等同零張表。方向仍是最小權限、不洩漏非公開資料（fail-closed 沒被打破），但範圍
+ * 判斷錯了就可能讓圖表看到不該被這個呼叫路徑看到的公開表，且沒有任何錯誤或警告。
  *
  * 為什麼不乾脆把 userId 改成必填：那需要把它從 report.job.ts 的 params.userId
  * 一路貫穿到 autoChart/buildExactChart，並同步改掉前述約 35 處測試呼叫，超出目前
@@ -728,8 +731,10 @@ function principalOf(tenantId: string, userId?: string): RetrievalPrincipal {
   if (userId === undefined && aclModeOf(tenantId) === 'on') {
     logger.warn(
       { tenantId },
-      'report table access missing userId under acl=on; visibility scopes resolve to '
-        + 'empty and every table lookup will silently return nothing (all charts drop)',
+      'report table access missing userId under acl=on; falls back to tenantId as the '
+        + 'principal, which resolves to the guest/UNKNOWN_DEPARTMENT scope grants (often '
+        + 'kb:public), not zero scopes — table lookups may see the tenant\'s public tables '
+        + 'rather than silently returning nothing',
     );
   }
   return { tenantId, userId: userId ?? tenantId };
@@ -1153,7 +1158,7 @@ export async function composeSection(
   const intent = `${section.heading}${section.query}`;
   let catalog: TableCatalogEntry[] = [];
   try {
-    catalog = await listTableCatalog(tenantId);
+    catalog = await listTableCatalog({ tenantId, userId });
   } catch (err) {
     logger.warn({ err, tenantId }, 'table catalog lookup failed; section falls back to excerpts only');
   }
