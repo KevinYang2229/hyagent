@@ -14,7 +14,16 @@ export interface KnowledgeChunk {
   score?: number;
 }
 
+/**
+ * 檢索身分。刻意不含 scopes——權限由檢索器內部經 resolveScopes 算出，
+ * 呼叫端無從捏造（傳錯的、傳成別人的、圖方便傳萬用值的，全都編譯得過）。
+ */
+export interface RetrievalPrincipal {
+  tenantId: string;
+  userId: string;
+}
+
 export interface KnowledgeRetriever {
   readonly name: string;
-  search(tenantId: string, query: string): Promise<KnowledgeChunk[]>;
+  search(principal: RetrievalPrincipal, query: string): Promise<KnowledgeChunk[]>;
 }

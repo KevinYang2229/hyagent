@@ -65,7 +65,7 @@ describe('staticIndexRetriever', () => {
     _setIndexForTest('rag-test', fixtureIndex);
     expect(hasStaticIndex('rag-test')).toBe(true);
 
-    const hits = await staticIndexRetriever.search('rag-test', 'HyCMS 是什麼');
+    const hits = await staticIndexRetriever.search({ tenantId: 'rag-test', userId: 'u1' }, 'HyCMS 是什麼');
     expect(hits[0].id).toBe('A'); // 與 query 完全同向
     expect(hits.map((h) => h.id)).not.toContain('B'); // 正交、被 MIN_SCORE 濾掉
     expect(hits[0].url).toBe('https://example.com/a');
@@ -74,7 +74,7 @@ describe('staticIndexRetriever', () => {
   it('無索引時回空陣列', async () => {
     _setIndexForTest('rag-test', null);
     // hasStaticIndex 觸發一次檔案讀取；預設路徑無檔 → 空
-    const hits = await staticIndexRetriever.search('rag-test', '任何問題');
+    const hits = await staticIndexRetriever.search({ tenantId: 'rag-test', userId: 'u1' }, '任何問題');
     expect(hits).toEqual([]);
   });
 });

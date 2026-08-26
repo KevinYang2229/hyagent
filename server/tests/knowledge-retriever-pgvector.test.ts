@@ -36,12 +36,19 @@ function mockQueries(candidates: Record<string, unknown>[]): void {
     .mockResolvedValueOnce(candidates);
 }
 
-/** 從某次 $queryRaw 呼叫的參數中取出內嵌的 Prisma.Sql 片段（lexicalBranch 或 Prisma.empty） */
+/**
+ * 從某次 $queryRaw 呼叫的參數中取出內嵌的 lexicalBranch 片段。
+ *
+ * 呼叫端現在還會內嵌一個 visible 片段（可見性條件，off 階段為 Prisma.empty），
+ * 它在模板中排在 lexicalBranch 之前，兩者都是帶 .sql 屬性的物件——取第一個相符的
+ * 會錯拿到 visible。lexicalBranch 恆為模板中最後一個內嵌值，取最後一個相符的即可。
+ */
 function lexicalFragmentIn(callArgs: unknown[]): { sql: string; values: unknown[] } | undefined {
-  return callArgs.find(
+  const matches = callArgs.filter(
     (a): a is { sql: string; values: unknown[] } =>
       typeof a === 'object' && a !== null && typeof (a as { sql?: unknown }).sql === 'string',
-  ) as { sql: string; values: unknown[] } | undefined;
+  );
+  return matches[matches.length - 1];
 }
 
 describe('pgvectorRetriever', () => {
@@ -52,12 +59,12 @@ describe('pgvectorRetriever', () => {
   it('未建索引時回空陣列', async () => {
     queryRaw.mockReset();
     queryRaw.mockResolvedValueOnce([]);
-    expect(await pgvectorRetriever.search('t1', '任何問題')).toEqual([]);
+    expect(await pgvectorRetriever.search({ tenantId: 't1', userId: 'u1' }, '任何問題')).toEqual([]);
   });
 
   it('空查詢不打資料庫', async () => {
     queryRaw.mockReset();
-    expect(await pgvectorRetriever.search('t1', '   ')).toEqual([]);
+    expect(await pgvectorRetriever.search({ tenantId: 't1', userId: 'u1' }, '   ')).toEqual([]);
     expect(queryRaw).not.toHaveBeenCalled();
   });
 
@@ -67,7 +74,7 @@ describe('pgvectorRetriever', () => {
       { id: 'B', url: 'u/b', title: '無關頁', text: '無關內容', cosine: 0.1 },
       { id: 'C', url: 'u/c', title: 'HyLib 圖書自動化', text: '圖書系統', cosine: 0.5 },
     ]);
-    const out = await pgvectorRetriever.search('t1', 'HyCMS 是什麼');
+    const out = await pgvectorRetriever.search({ tenantId: 't1', userId: 'u1' }, 'HyCMS 是什麼');
     // B：cosine 0.1 < MIN_SCORE 且無命中 → 淘汰
     expect(out.map((c) => c.id)).toEqual(['A', 'C']);
     // A 命中 hycms 一次：0.9 + 0.15
@@ -78,7 +85,7 @@ describe('pgvectorRetriever', () => {
     mockQueries([
       { id: 'D', url: 'u/d', title: 'SpaceMe 空間管理', text: '與問題語意不近', cosine: 0.05 },
     ]);
-    const out = await pgvectorRetriever.search('t1', 'SpaceMe 怎麼收費');
+    const out = await pgvectorRetriever.search({ tenantId: 't1', userId: 'u1' }, 'SpaceMe 怎麼收費');
     expect(out.map((c) => c.id)).toEqual(['D']);
     expect(out[0].score).toBeCloseTo(0.2); // 0.05 + 0.15
 
@@ -97,7 +104,7 @@ describe('pgvectorRetriever', () => {
 
   it('lexical 分支的 limit 之前必須有 order by（否則拿到的是任意 50 列）', async () => {
     mockQueries([{ id: 'A', url: 'u/a', title: 'HyEIP', text: '請假流程', cosine: 0.7 }]);
-    await pgvectorRetriever.search('t1', 'HyEIP 的請假流程');
+    await pgvectorRetriever.search({ tenantId: 't1', userId: 'u1' }, 'HyEIP 的請假流程');
 
     // asciiTerms 會抽出任何 ≥2 字元的 ASCII token，'hyeip' 在整站都在講 HyEIP 的租戶
     // 上會 like 命中好幾百列。沒有 order by 時 Postgres 就在實體掃描順序下取前 50 停手，
@@ -121,7 +128,7 @@ describe('pgvectorRetriever', () => {
       { id: 'A', url: 'u/a', title: 'HyCMS', text: '內容', cosine: 0.8 },
       { id: 'A', url: 'u/a', title: 'HyCMS', text: '內容', cosine: 0.8 },
     ]);
-    const out = await pgvectorRetriever.search('t1', 'HyCMS');
+    const out = await pgvectorRetriever.search({ tenantId: 't1', userId: 'u1' }, 'HyCMS');
     expect(out).toHaveLength(1);
   });
 
@@ -133,7 +140,7 @@ describe('pgvectorRetriever', () => {
     // 檢索器，判斷完緊接著呼叫同一個 retriever 的 search()——這兩步理應只查一次
     // knowledge_indexes，否則每個問答回合都會多打一次資料庫。
     expect(await hasPgvectorIndex('t1')).toBe(true);
-    const out = await pgvectorRetriever.search('t1', 'HyCMS');
+    const out = await pgvectorRetriever.search({ tenantId: 't1', userId: 'u1' }, 'HyCMS');
     expect(out.map((c) => c.id)).toEqual(['A']);
     // mockQueries 只準備了 2 筆回傳值（model、candidates）。若沒有快取，search 會
     // 自己再查一次 model，把「candidates」那筆誤當成 model 結果吃掉，接下來拿不到

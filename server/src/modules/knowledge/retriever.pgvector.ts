@@ -20,8 +20,9 @@ import { connectDb } from '@/lib/db';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 import { usageStore } from '@/modules/usage/usage.store';
 import { toVectorLiteral } from './knowledge.index.repo';
+import { aclModeOf, visibilityScopesOf } from './knowledge.visibility';
 import { asciiTerms, keepChunk, lexicalHits, POOL_SIZE, scoreOf } from './retriever.scoring';
-import type { KnowledgeChunk, KnowledgeRetriever } from './retriever.types';
+import type { KnowledgeChunk, KnowledgeRetriever, RetrievalPrincipal } from './retriever.types';
 
 /** lexical 那一路的取回上限：只為補 dense top-k 漏掉的精確命中，不必無限制 */
 const LEXICAL_LIMIT = 50;
@@ -78,7 +79,8 @@ export async function hasPgvectorIndex(tenantId: string): Promise<boolean> {
 
 export const pgvectorRetriever: KnowledgeRetriever = {
   name: 'pgvector',
-  async search(tenantId: string, query: string): Promise<KnowledgeChunk[]> {
+  async search(principal: RetrievalPrincipal, query: string): Promise<KnowledgeChunk[]> {
+    const { tenantId } = principal;
     const q = query.trim();
     if (!q) return [];
 
@@ -95,6 +97,17 @@ export const pgvectorRetriever: KnowledgeRetriever = {
     const vec = toVectorLiteral(queryVec);
     const db = await connectDb();
 
+    /**
+     * 可見性條件必須與 tenant_id 並排（pre-filter），不可撈回 Node 再濾。
+     * POOL_SIZE=20，post-filter 會讓權限窄的使用者候選池被無權 chunk 佔滿而濾剩零筆
+     * ——與 0006 移除 HNSW 索引時記載的 post-filter 問題是同一個。
+     * off / shadow 階段回 Prisma.empty，SQL 與導入前完全相同。
+     */
+    const visible =
+      aclModeOf(tenantId) === 'on'
+        ? Prisma.sql`and visibility_scopes && ${visibilityScopesOf(principal)}::text[]`
+        : Prisma.empty;
+
     // lexical 沒有詞可比對時只跑 dense 那一路，省一次全租戶掃描。
     // order by 不可省：asciiTerms 會抽出任何 ≥2 字元的 ASCII token，像「HyEIP 的請假流程」
     // 在整站都在講 HyEIP 的租戶上會命中好幾百列（英文問句更是幾乎命中整個語料庫）。
@@ -108,6 +121,7 @@ export const pgvectorRetriever: KnowledgeRetriever = {
           (select id, url, title, text, 1 - (embedding <=> ${vec}::halfvec(3072)) as cosine
            from knowledge_chunks
            where tenant_id = ${tenantId}
+             ${visible}
              and (lower(title) like any(${terms.map((t) => `%${t}%`)}::text[])
                or lower(text)  like any(${terms.map((t) => `%${t}%`)}::text[]))
            order by embedding <=> ${vec}::halfvec(3072)
@@ -118,6 +132,7 @@ export const pgvectorRetriever: KnowledgeRetriever = {
       (select id, url, title, text, 1 - (embedding <=> ${vec}::halfvec(3072)) as cosine
        from knowledge_chunks
        where tenant_id = ${tenantId}
+         ${visible}
        order by embedding <=> ${vec}::halfvec(3072)
        limit ${POOL_SIZE})
       ${lexicalBranch}

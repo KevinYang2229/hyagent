@@ -11,6 +11,7 @@ import { logger } from '@/lib/logger';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 import { usageStore } from '@/modules/usage/usage.store';
 import { indexPathFor } from './index-path';
+import { aclModeOf, visibilityScopesOf } from './knowledge.visibility';
 import type { KnowledgeIndexFile } from './knowledge-index.types';
 import {
   asciiTerms,
@@ -20,7 +21,7 @@ import {
   POOL_SIZE,
   scoreOf,
 } from './retriever.scoring';
-import type { KnowledgeChunk, KnowledgeRetriever } from './retriever.types';
+import type { KnowledgeChunk, KnowledgeRetriever, RetrievalPrincipal } from './retriever.types';
 
 // knowledge-rag.test.ts 由本模組 import cosineSimilarity，維持既有匯出路徑
 export { cosineSimilarity };
@@ -62,7 +63,8 @@ export function hasStaticIndex(tenantId: string): boolean {
 
 export const staticIndexRetriever: KnowledgeRetriever = {
   name: 'static-index',
-  async search(tenantId: string, query: string): Promise<KnowledgeChunk[]> {
+  async search(principal: RetrievalPrincipal, query: string): Promise<KnowledgeChunk[]> {
+    const { tenantId } = principal;
     const idx = loadIndex(tenantId);
     const q = query.trim();
     if (!idx || idx.chunks.length === 0 || !q) return [];
@@ -73,7 +75,12 @@ export const staticIndexRetriever: KnowledgeRetriever = {
     if (!queryVec) return [];
     // 混合檢索：語意相似度（dense）+ 專有名詞精確命中（lexical）融合
     const terms = asciiTerms(q);
-    return idx.chunks
+    // file 後端須與 db 行為一致，否則權限邏輯永遠沒被日常開發驗證
+    const visible = aclModeOf(tenantId) === 'on' ? new Set(visibilityScopesOf(principal)) : null;
+    const candidates = idx.chunks.filter(
+      (c) => !visible || (c.visibilityScopes ?? []).some((s) => visible.has(s)),
+    );
+    return candidates
       .map((c) => {
         const cosine = cosineSimilarity(queryVec, c.vector);
         const hits = terms.length ? lexicalHits(terms, `${c.title}\n${c.text}`) : 0;

@@ -39,7 +39,7 @@ async function main(): Promise<void> {
   const h5: number[] = [];
 
   for (const c of cases) {
-    const hits = await staticIndexRetriever.search('eval', c.question);
+    const hits = await staticIndexRetriever.search({ tenantId: 'eval', userId: 'eval' }, c.question);
     // 命中名次（1-based）：檢索片段 URL 含任一 expect 片段者
     const hitRanks = hits
       .map((h, i) => (c.expectUrlIncludes.some((sub) => h.url?.toLowerCase().includes(sub.toLowerCase())) ? i + 1 : 0))

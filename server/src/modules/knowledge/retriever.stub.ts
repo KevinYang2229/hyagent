@@ -3,7 +3,7 @@
  *
  * 僅供驗證「可插拔服務 + Router」流程跑通；真 RAG（chunk/embed/pgvector）為後續 iteration。
  */
-import type { KnowledgeChunk, KnowledgeRetriever } from './retriever.types';
+import type { KnowledgeChunk, KnowledgeRetriever, RetrievalPrincipal } from './retriever.types';
 
 const FAQ: KnowledgeChunk[] = [
   {
@@ -37,7 +37,11 @@ function hitScore(chunk: KnowledgeChunk, query: string): number {
 
 export const stubRetriever: KnowledgeRetriever = {
   name: 'stub',
-  async search(_tenantId: string, query: string): Promise<KnowledgeChunk[]> {
+  /**
+   * stub 為固定 FAQ（dev/測試路徑），**全部視為公開**、不套用可見性過濾。
+   * 這是明確決定而非遺漏：stub 內容不含任何租戶資料。
+   */
+  async search(_principal: RetrievalPrincipal, query: string): Promise<KnowledgeChunk[]> {
     const q = query.trim();
     if (!q) return [];
     return FAQ.map((c) => ({ ...c, score: hitScore(c, q) }))
