@@ -282,6 +282,11 @@ export async function refreshSuggestedPrompts(
  *
  * 與 refreshSuggestedPrompts 的差別：不理會 manual 鎖定——按鈕的語意是「重生自動句」，
  * 手動值仍蓋在它上面，直到管理者按恢復自動。該來源無內容時回 undefined 由呼叫端擋。
+ *
+ * 語料同樣要過濾：這格結果一樣是寫進 meta.suggestedPrompts、經免登入的
+ * GET /api/widget/config 送給任何拿到 pk_ 的訪客，過濾規則與 refreshSuggestedPrompts
+ * 完全一致——acl=off 沿用導入前行為（不過濾），off 以外（含 shadow）一律只用
+ * 訪客看得到的 chunk 當語料，見 filterGuestVisibleChunks 註解。
  */
 export async function regenerateSlot(
   tenantId: string,
@@ -290,7 +295,10 @@ export async function regenerateSlot(
 ): Promise<SuggestedPrompts | undefined> {
   const gen = beginGeneration(tenantId);
   try {
-    const chunks = splitChunksBySource(idx.chunks)[source];
+    const rawChunks = splitChunksBySource(idx.chunks)[source];
+    const mode = aclModeOf(tenantId);
+    const guestScopes = mode === 'off' ? [] : guestVisibilityScopesOf(tenantId);
+    const chunks = mode === 'off' ? rawChunks : filterGuestVisibleChunks(rawChunks, guestScopes);
     if (chunks.length === 0) return undefined;
     const material = sampleIndexForSuggestion({ ...idx, chunks });
     if (!material) return undefined;
