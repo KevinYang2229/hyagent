@@ -3,7 +3,10 @@ import { AppError } from '@/utils/app-error';
 import { conversationService } from './conversation.service';
 import type { MessageInput, StartInput, UpdateFieldsInput } from './conversation.schema';
 
-// MVP 未接 JWT：優先用 req.user.sub，否則用 x-user-id header，最後 demo-user
+// app.ts 已在本路由掛 requireAuth，req.user.sub 一定存在——這是權限計算的身分來源，
+// 不是可信輸入。x-user-id / demo-user 只是這條路由建好、requireAuth 尚未掛上時期的
+// 遺留 fallback，實際上是死碼（requireAuth 沒過就進不到這裡），留著也不構成安全風險，
+// 但在一個剛把身分變成權限依據的分支裡，字面讀起來容易被誤讀成「可用 header 指定身分」。
 function resolveUserId(req: Request): string {
   return req.user?.sub ?? req.header('x-user-id') ?? 'demo-user';
 }
