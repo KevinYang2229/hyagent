@@ -45,6 +45,14 @@ export interface IngestFileOptions {
    * 早發動的呼叫放棄寫入——N 個檔連續匯入等於白花 N-1 次呼叫。改由批次跑完統一觸發一次。
    */
   deferSuggestions?: boolean;
+  /**
+   * 匯入時的可見性標籤（kb:<labelId>）；未帶＝未標記，fail-closed 下對所有人不可見。
+   *
+   * 真相來源（KnowledgeFileMeta.visibilityScopes）與投影（每個 chunk 的 visibilityScopes）
+   * 都要寫，兩者缺一就是 bug：admin 檔案清單認真相來源做批次標籤操作，
+   * 檢索時 retriever 直接讀 chunk 上的投影，不會回頭查 meta。
+   */
+  visibilityScopes?: string[];
 }
 
 const MIN_TEXT_CHARS = 20;
@@ -123,6 +131,7 @@ export async function ingestFile(
   });
 
   const fileId = randomUUID();
+  const scopes = opts?.visibilityScopes;
   const fileChunks: IndexedChunk[] = pieces.map((t, i) => ({
     id: `${fileId}-${i}`,
     url: `file://${name}`,
@@ -130,6 +139,7 @@ export async function ingestFile(
     text: t,
     vector: vectors[i],
     fileId,
+    ...(scopes ? { visibilityScopes: scopes } : {}),
   }));
   if (summary) {
     // 標明「全文摘要」讓回答模型知道這是衍生內容，細節仍以原文 chunks 為準
@@ -140,6 +150,7 @@ export async function ingestFile(
       text: summary,
       vector: vectors[pieces.length],
       fileId,
+      ...(scopes ? { visibilityScopes: scopes } : {}),
     });
   }
 
@@ -190,6 +201,7 @@ export async function ingestFile(
     ingestedAt: generatedAt,
     format: parsed.format,
     fidelity: parsed.fidelity,
+    ...(scopes ? { visibilityScopes: scopes } : {}),
   };
   // files 走 delta 操作（而非整包覆蓋的 setMeta）：watcher CLI 與 server 是兩個 process，
   // 各自的記憶體快照只在啟動時同步一次，整包覆蓋會把另一個 process 期間新增的檔案蓋掉

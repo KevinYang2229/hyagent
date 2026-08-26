@@ -1,4 +1,7 @@
-/** 本機資料夾來源：子資料夾名=tenantId，過濾保留目錄與不支援副檔名，settle 搬檔。 */
+/**
+ * 本機資料夾來源：子資料夾名=tenantId，其下可選再一層標籤目錄（labelId），
+ * 過濾保留目錄與不支援副檔名，settle 搬檔。
+ */
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, existsSync, chmodSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -51,12 +54,32 @@ describe('LocalFolderSource.list', () => {
     expect(byName(items)).toEqual(['default/規章.txt']);
   });
 
-  it('不遞迴進租戶資料夾底下的子目錄', async () => {
-    write('default/規章.txt');
-    write('default/子目錄/深層.txt');
+  it('租戶資料夾下多一層目錄視為標籤層，該層的檔案照收；標籤目錄底下不再遞迴', async () => {
+    write('default/規章.txt'); // 未分層：直接放在租戶目錄下
+    write('default/hr/深層.txt'); // 標籤層：<root>/<tenantId>/<labelId>/<file>
+    write('default/hr/子目錄/更深.txt'); // 標籤目錄底下的子目錄，不再往下收
 
     const items = await new LocalFolderSource(root).list();
-    expect(byName(items)).toEqual(['default/規章.txt']);
+    expect(byName(items)).toEqual(['default/深層.txt', 'default/規章.txt']);
+  });
+
+  it('標籤層的項目帶對應的 labelId；未分層的項目 labelId 為 undefined', async () => {
+    write('default/規章.txt');
+    write('default/hr/政策.txt');
+
+    const items = await new LocalFolderSource(root).list();
+    expect(items.find((i) => i.name === '規章.txt')?.labelId).toBeUndefined();
+    expect(items.find((i) => i.name === '政策.txt')?.labelId).toBe('hr');
+  });
+
+  it('標籤層也擋 _done / _failed / 點開頭目錄', async () => {
+    write('default/hr/政策.txt');
+    write(`default/${DONE_DIR}/舊檔.txt`);
+    write(`default/${FAILED_DIR}/壞檔.txt`);
+    write('default/.hidden/也不該.txt');
+
+    const items = await new LocalFolderSource(root).list();
+    expect(byName(items)).toEqual(['default/政策.txt']);
   });
 
   it('回報 size 與 mtimeMs', async () => {

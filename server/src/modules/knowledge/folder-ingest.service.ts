@@ -6,6 +6,7 @@
  */
 import { AppError } from '@/utils/app-error';
 import { logger } from '@/lib/logger';
+import { kbScopeId } from '@/modules/authz/scope-catalog';
 import type { BatchSource, PendingItem } from './batch-source';
 import { ingestFile, removeFile } from './knowledge-file.service';
 import { loadIndexText } from './knowledge.index.repo';
@@ -240,11 +241,34 @@ async function ingestOne(
     return 'failed';
   }
 
+  /*
+   * 擋在門口：資料夾名對不上該租戶已知的可見性標籤，就不放行進 ingestFile。
+   *
+   * 批次匯入無人值守，fail-closed 下「匯入成功但沒人看得到」是最糟的狀態——
+   * embedding 的錢付了、資料庫空間佔了、chunkCount 漂亮地漲上去、管理面板一切正常，
+   * 但這些文件對所有人都不存在，而且不會有人來抱怨。錯誤區看得見、可處理，
+   * 且尚未花掉 embedding 的錢，故在這裡擋下而不是放進來再關燈。
+   */
+  const labels = tenantStore.getTenant(item.tenantId)?.knowledgeLabels ?? [];
+  const known = item.labelId && labels.some((l) => l.id === item.labelId);
+  if (!known) {
+    const reason = `未知的可見性標籤資料夾：${item.labelId ?? '（未分層）'}`;
+    logger.warn(
+      { tenantId: item.tenantId, name: item.name, labelId: item.labelId },
+      '匯入項目的資料夾未對應到已知標籤，歸檔至錯誤區',
+    );
+    await source.settle(item, 'failed', reason);
+    return 'failed';
+  }
+
   const attempt = async (): Promise<void> => {
     const buf = await source.read(item);
     const superseded = findSupersededFile(item.tenantId, item.name);
-    // deferSuggestions：推薦問句留到整輪結束統一重生
-    const meta = await ingestFile(item.tenantId, item.name, buf, { deferSuggestions: true });
+    // deferSuggestions：推薦問句留到整輪結束統一重生；visibilityScopes：資料夾層標籤直接投影
+    const meta = await ingestFile(item.tenantId, item.name, buf, {
+      deferSuggestions: true,
+      visibilityScopes: [kbScopeId(item.labelId!)],
+    });
     /*
      * 舊檔在新檔匯入成功「之後」才刪。反過來的話，匯入一失敗（P2028 交易逾時、embedding
      * 中斷）舊檔的 chunks 已經沒了、新的又沒進來，那個檔會整個從索引消失到某次重試成功

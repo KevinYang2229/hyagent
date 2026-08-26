@@ -245,3 +245,38 @@ describe('append-only 寫入與 deferSuggestions', () => {
     expect(mockRefreshSuggestions).not.toHaveBeenCalled();
   });
 });
+
+describe('ingestFile 的 visibilityScopes（批次匯入資料夾標籤）', () => {
+  it('opts.visibilityScopes 同時寫入 meta 真相來源與每個 chunk 的投影', async () => {
+    const t = tenantStore.createTenant('kfile-visibility');
+    const text = '請假規定：特休依年資計算。'.repeat(80); // 足量文字，含摘要 chunk 一併驗證
+
+    const meta = await ingestFile(t.id, '規章.txt', Buffer.from(text), {
+      deferSuggestions: true,
+      visibilityScopes: ['kb:hr'],
+    });
+
+    // 真相來源：KnowledgeFileMeta.visibilityScopes
+    expect(knowledgeStore.getMeta(t.id).files?.find((f) => f.fileId === meta.fileId)?.visibilityScopes).toEqual([
+      'kb:hr',
+    ]);
+
+    // 投影：每個 chunk（含全文摘要 chunk）都要帶上同一組 scopes，retriever 直接讀 chunk 上的投影
+    const fileChunks = readIndex(t.id).chunks.filter((c) => c.fileId === meta.fileId);
+    expect(fileChunks.length).toBeGreaterThan(0);
+    expect(fileChunks.every((c) => c.visibilityScopes?.length === 1 && c.visibilityScopes[0] === 'kb:hr')).toBe(
+      true,
+    );
+  });
+
+  it('未帶 visibilityScopes 時 meta 與 chunk 都不帶該欄位（既有 admin 單檔上傳行為不變）', async () => {
+    const t = tenantStore.createTenant('kfile-visibility-unset');
+    const meta = await ingestFile(t.id, '規章.txt', Buffer.from('公司規章內容說明。'.repeat(20)));
+
+    expect(
+      knowledgeStore.getMeta(t.id).files?.find((f) => f.fileId === meta.fileId)?.visibilityScopes,
+    ).toBeUndefined();
+    const fileChunks = readIndex(t.id).chunks.filter((c) => c.fileId === meta.fileId);
+    expect(fileChunks.every((c) => c.visibilityScopes === undefined)).toBe(true);
+  });
+});

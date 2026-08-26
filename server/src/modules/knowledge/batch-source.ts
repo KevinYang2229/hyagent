@@ -23,6 +23,21 @@ export interface PendingItem {
   size: number;
   /** 穩定性判定用；來源無此概念時為 null（視為永遠穩定） */
   mtimeMs: number | null;
+  /** 可見性標籤 id（本機來源＝租戶目錄下的第二層資料夾名）；未分層時 undefined */
+  labelId?: string;
+}
+
+/**
+ * 自匯入路徑取出 labelId：`<root>/<tenantId>/<labelId>/<file>`。
+ * 未分層（檔案直接放在租戶目錄下）回 undefined，由呼叫端依 fail-closed 規則擋下——
+ * 這裡刻意不做「擋門」判斷，純解析與擋門邏輯分開，好單獨測試。
+ */
+export function parseLabelFromRef(ref: string, root: string, tenantId: string): string | undefined {
+  const rel = ref.startsWith(root) ? ref.slice(root.length) : ref;
+  const segs = rel.split('/').filter(Boolean);
+  // segs = [tenantId, ...middle, filename]
+  if (segs[0] !== tenantId || segs.length < 3) return undefined;
+  return segs[1];
 }
 
 export type SettleOutcome = 'done' | 'failed';
@@ -47,7 +62,13 @@ function isReserved(name: string): boolean {
   return name.startsWith('_') || name.startsWith('.');
 }
 
-/** 本機（或已掛載的網路）資料夾來源：<root>/<tenantId>/<檔案> */
+/**
+ * 本機（或已掛載的網路）資料夾來源：`<root>/<tenantId>/<labelId>/<檔案>`。
+ *
+ * 標籤層是可選的一層：直接放在租戶目錄下的檔案（未分層）也會被列出，
+ * 只是其 `labelId` 為 undefined——是否放行由呼叫端（folder-ingest）依
+ * fail-closed 規則決定，本類別只負責誠實回報路徑長什麼樣子。
+ */
 export class LocalFolderSource implements BatchSource {
   constructor(private readonly root: string) {}
 
@@ -81,25 +102,65 @@ export class LocalFolderSource implements BatchSource {
       }
 
       for (const entry of entries) {
-        // 不遞迴：租戶資料夾底下的子目錄一律略過（_done/_failed 也在此被擋掉）
-        if (!entry.isFile() || isReserved(entry.name)) continue;
-        if (!SUPPORTED.has(extname(entry.name).toLowerCase())) continue;
+        // _done/_failed 等保留目錄與 . 開頭系統/同步中繼檔，兩層都要擋
+        if (isReserved(entry.name)) continue;
 
-        const ref = join(tenantPath, entry.name);
-        // stat 失敗通常是掃描期間被刪掉，靜默略過；其他錯誤記錄但不中斷
-        let st;
-        try {
-          st = await stat(ref);
-        } catch (err) {
-          const e = err as NodeJS.ErrnoException;
-          if (e.code === 'ENOENT') continue; // 掃描期間被刪掉，下一輪自然不會再出現
-          logger.warn({ err: e, path: ref }, '檔案 stat 失敗，略過');
+        if (entry.isFile()) {
+          // 未分層：檔案直接放在租戶目錄下，之後 parseLabelFromRef 會回 undefined
+          await this.collectFile(items, dir.name, tenantPath, entry.name);
           continue;
         }
-        items.push({ tenantId: dir.name, name: entry.name, ref, size: st.size, mtimeMs: st.mtimeMs });
+
+        if (entry.isDirectory()) {
+          // 標籤層：只往下一層找檔案，不再繼續遞迴（標籤目錄底下的子目錄一律略過）
+          const labelPath = join(tenantPath, entry.name);
+          let labelEntries;
+          try {
+            labelEntries = await readdir(labelPath, { withFileTypes: true });
+          } catch (err) {
+            const e = err as NodeJS.ErrnoException;
+            if (e.code === 'ENOENT' || e.code === 'ENOTDIR') continue;
+            logger.warn({ err: e, path: labelPath }, '標籤資料夾讀取失敗，略過');
+            continue;
+          }
+          for (const labelEntry of labelEntries) {
+            if (!labelEntry.isFile() || isReserved(labelEntry.name)) continue;
+            await this.collectFile(items, dir.name, labelPath, labelEntry.name);
+          }
+        }
       }
     }
     return items;
+  }
+
+  /** 單一候選檔案：篩副檔名、stat、算 labelId，成功才推進 items */
+  private async collectFile(
+    items: PendingItem[],
+    tenantId: string,
+    dirPath: string,
+    fileName: string,
+  ): Promise<void> {
+    if (!SUPPORTED.has(extname(fileName).toLowerCase())) return;
+
+    const ref = join(dirPath, fileName);
+    // stat 失敗通常是掃描期間被刪掉，靜默略過；其他錯誤記錄但不中斷
+    let st;
+    try {
+      st = await stat(ref);
+    } catch (err) {
+      const e = err as NodeJS.ErrnoException;
+      if (e.code === 'ENOENT') return; // 掃描期間被刪掉，下一輪自然不會再出現
+      logger.warn({ err: e, path: ref }, '檔案 stat 失敗，略過');
+      return;
+    }
+    items.push({
+      tenantId,
+      name: fileName,
+      ref,
+      size: st.size,
+      mtimeMs: st.mtimeMs,
+      labelId: parseLabelFromRef(ref, this.root, tenantId),
+    });
   }
 
   async read(item: PendingItem): Promise<Buffer> {

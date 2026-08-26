@@ -53,8 +53,10 @@ import {
 import type { BatchSource, PendingItem, SettleOutcome } from '@/modules/knowledge/batch-source';
 import { AppError } from '@/utils/app-error';
 
+// labelId 固定帶 'general'：本檔測的是穩定性判定/鎖/重試等既有管線行為，與資料夾標籤
+// 擋門邏輯（見 knowledge-acl-batch.test.ts）無關，這裡只要能過門即可，故給個固定合法值。
 function item(name: string, size: number, mtimeMs: number | null = 1000): PendingItem {
-  return { tenantId: 'default', name, ref: `/tmp/default/${name}`, size, mtimeMs };
+  return { tenantId: 'default', name, ref: `/tmp/default/${name}`, size, mtimeMs, labelId: 'general' };
 }
 
 describe('selectStable', () => {
@@ -155,8 +157,11 @@ beforeEach(() => {
   mockRefreshSuggestions.mockReset().mockResolvedValue(undefined);
   mockLoadIndexText.mockReset().mockResolvedValue({ generatedAt: '', model: 'm', source: 's', chunks: [] });
   mockGetMeta.mockReset().mockReturnValue({ files: [] });
-  // 預設每個資料夾名都對得上真租戶；查無租戶是各測試自行覆寫的例外情況
-  mockGetTenant.mockReset().mockReturnValue({ id: 'default', name: '預設租戶' });
+  // 預設每個資料夾名都對得上真租戶，且該租戶已登記 'general' 標籤（見 item() 的固定 labelId）；
+  // 查無租戶／標籤是各測試自行覆寫的例外情況
+  mockGetTenant
+    .mockReset()
+    .mockReturnValue({ id: 'default', name: '預設租戶', knowledgeLabels: [{ id: 'general', label: '一般' }] });
   // 預設取得鎖；「被別人握著」是各測試自行覆寫的例外情況
   mockAcquire.mockReset().mockImplementation(async (tenantId: string) => ({ tenantId, holder: 'me' }));
   mockRenew.mockReset().mockResolvedValue(undefined);
@@ -171,7 +176,9 @@ describe('runFolderIngestRound', () => {
     expect(result.done).toBe(2);
     expect(mockIngestFile).toHaveBeenCalledTimes(2);
     for (const call of mockIngestFile.mock.calls) {
-      expect(call[3]).toEqual({ deferSuggestions: true });
+      // labelId 固定為 'general'（見 item() 的註解），故 visibilityScopes 一律是 kb:general；
+      // 標籤本身的擋門/投影邏輯見 knowledge-acl-batch.test.ts
+      expect(call[3]).toEqual({ deferSuggestions: true, visibilityScopes: ['kb:general'] });
     }
   });
 
@@ -314,8 +321,12 @@ describe('runFolderIngestRound', () => {
   });
 
   it('鎖是每租戶各自一把：一個租戶被鎖不影響另一個', async () => {
-    const a: PendingItem = { tenantId: 'tenant-a', name: 'a.txt', ref: '/tmp/a/a.txt', size: 100, mtimeMs: 1 };
-    const b: PendingItem = { tenantId: 'tenant-b', name: 'b.txt', ref: '/tmp/b/b.txt', size: 100, mtimeMs: 1 };
+    const a: PendingItem = {
+      tenantId: 'tenant-a', name: 'a.txt', ref: '/tmp/a/a.txt', size: 100, mtimeMs: 1, labelId: 'general',
+    };
+    const b: PendingItem = {
+      tenantId: 'tenant-b', name: 'b.txt', ref: '/tmp/b/b.txt', size: 100, mtimeMs: 1, labelId: 'general',
+    };
     mockAcquire.mockImplementation(async (tenantId: string) =>
       tenantId === 'tenant-a' ? null : { tenantId, holder: 'me' },
     );
@@ -343,6 +354,7 @@ describe('runFolderIngestRound', () => {
       ref: '/tmp/tenant-a/a規章.txt',
       size: 100,
       mtimeMs: 1000,
+      labelId: 'general',
     };
     const tenantBItem: PendingItem = {
       tenantId: 'tenant-b',
@@ -350,6 +362,7 @@ describe('runFolderIngestRound', () => {
       ref: '/tmp/tenant-b/b規章.txt',
       size: 100,
       mtimeMs: 1000,
+      labelId: 'general',
     };
     const source = new FakeSource([tenantAItem, tenantBItem]);
     const result = await runTwice(source);
@@ -385,6 +398,7 @@ describe('runFolderIngestRound', () => {
       ref: '/tmp/acme/辦法.txt',
       size: 100,
       mtimeMs: 1000,
+      labelId: 'general',
     };
     const source = new FakeSource([item('規章.txt', 100), other]);
     const result = await runTwice(source, { ...OPTS, tenantFilter: 'acme' });
@@ -392,6 +406,7 @@ describe('runFolderIngestRound', () => {
     expect(result.done).toBe(1);
     expect(mockIngestFile).toHaveBeenCalledWith('acme', '辦法.txt', expect.any(Buffer), {
       deferSuggestions: true,
+      visibilityScopes: ['kb:general'],
     });
   });
 });
