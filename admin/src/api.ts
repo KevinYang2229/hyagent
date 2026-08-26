@@ -177,6 +177,28 @@ export interface KnowledgeFileMeta {
   name: string;
   chunks: number;
   ingestedAt: string;
+  /** 可見性標籤（kb:<labelId>）；未設＝未標記，fail-closed 下不可見 */
+  visibilityScopes?: string[];
+}
+/** 知識庫可見性標籤（id + 顯示名稱） */
+export interface KnowledgeLabel {
+  id: string;
+  label: string;
+}
+/** shadow 階段的單一檔案統計：被擋次數／樣本使用者／最後一次時間 */
+export interface KnowledgeShadowStat {
+  fileId: string;
+  blockedCount: number;
+  sampleUserIds: string[];
+  lastBlockedAt: string;
+}
+/** ACL 盤點：目前生效模式＋未標記／明確清空清單＋shadow 統計 */
+export interface KnowledgeAclReport {
+  mode: 'off' | 'shadow' | 'on';
+  unlabeled: KnowledgeFileMeta[];
+  explicitlyEmpty: KnowledgeFileMeta[];
+  shadowStats: KnowledgeShadowStat[];
+  shadowCaveat: string;
 }
 export type PromptSource = 'website' | 'file';
 export interface SuggestedPromptText {
@@ -365,8 +387,12 @@ export const api = {
     req<{ jobId: string; status: string }>('POST', `/admin/tenants/${id}/knowledge/ingest`, body ?? {}),
   getKnowledgeJob: (id: string, jobId: string) =>
     req<IngestJob>('GET', `/admin/tenants/${id}/knowledge/jobs/${jobId}`),
-  knowledgeQueryTest: (id: string, question: string) =>
-    req<{ hits: QueryHit[] }>('POST', `/admin/tenants/${id}/knowledge/query-test`, { question }),
+  /** asUserId 選填：留空以管理者身分查詢（權限最大，通常查得到全部，等於沒測到 ACL） */
+  knowledgeQueryTest: (id: string, question: string, asUserId?: string) =>
+    req<{ hits: QueryHit[] }>('POST', `/admin/tenants/${id}/knowledge/query-test`, {
+      question,
+      ...(asUserId ? { asUserId } : {}),
+    }),
   deleteKnowledge: (id: string) =>
     req<{ ok: boolean }>('DELETE', `/admin/tenants/${id}/knowledge`),
   /** 重新生成某來源的開場推薦詞（平時由索引異動自動觸發，這是補救入口） */
@@ -390,4 +416,23 @@ export const api = {
   },
   deleteKnowledgeFile: (id: string, fileId: string) =>
     req<{ fileId: string }>('DELETE', `/admin/tenants/${id}/knowledge/files/${fileId}`),
+
+  // ---- 知識庫可見性標籤 / ACL ----
+  listKnowledgeLabels: (id: string) =>
+    req<KnowledgeLabel[]>('GET', `/admin/tenants/${id}/knowledge/labels`),
+  createKnowledgeLabel: (id: string, input: KnowledgeLabel) =>
+    req<KnowledgeLabel>('POST', `/admin/tenants/${id}/knowledge/labels`, input),
+  updateKnowledgeLabel: (id: string, labelId: string, label: string) =>
+    req<KnowledgeLabel>('PATCH', `/admin/tenants/${id}/knowledge/labels/${labelId}`, { label }),
+  /** 刪除標籤：使用中的檔案回到未標記狀態；回應帶 affectedFiles 供最終確認訊息使用 */
+  deleteKnowledgeLabel: (id: string, labelId: string) =>
+    req<{ affectedFiles: number }>('DELETE', `/admin/tenants/${id}/knowledge/labels/${labelId}`),
+  setKnowledgeFileVisibility: (id: string, fileId: string, scopes: string[]) =>
+    req<{ fileId: string; scopes: string[] }>(
+      'PATCH',
+      `/admin/tenants/${id}/knowledge/files/${fileId}/visibility`,
+      { scopes },
+    ),
+  getKnowledgeAclReport: (id: string) =>
+    req<KnowledgeAclReport>('GET', `/admin/tenants/${id}/knowledge/acl-report`),
 };

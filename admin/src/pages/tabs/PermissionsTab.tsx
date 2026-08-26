@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type CSSProperties } from 'react';
 import { Checkbox, useToast } from '@hyagent/ui';
 import { api, type ScopeDef, type TenantPolicyView } from '../../api';
 import BundlesSection from './BundlesSection';
+import { formatDepartment, UNKNOWN_DEPARTMENT } from '../../components/department.util';
 
 /**
  * 權限分頁：以「能力」為中心——每個能力一列，直接選 未開通／全租戶／指定對象。
@@ -93,7 +94,9 @@ export default function PermissionsTab({
     policy.bundles
       .filter((b) => b.scopes.includes(id))
       .map((b) => {
-        const deps = policy.departments.filter((d) => (policy.groupBundles[d] ?? []).includes(b.id));
+        const deps = policy.departments
+          .filter((d) => (policy.groupBundles[d] ?? []).includes(b.id))
+          .map(formatDepartment);
         const users = policy.users
           .filter((u) => (policy.accountBundles[u.id] ?? []).includes(b.id))
           .map((u) => u.label);
@@ -247,7 +250,12 @@ export default function PermissionsTab({
                               checked={(policy.groups[dep] ?? []).includes(s.id)}
                               onChange={() => toggleDept(dep, s.id)}
                             />
-                            <span style={{ fontSize: 13.5 }}>{dep}</span>
+                            <span
+                              style={{ fontSize: 13.5 }}
+                              title={dep === UNKNOWN_DEPARTMENT ? '公開 widget 的訪客落在此桶' : undefined}
+                            >
+                              {formatDepartment(dep)}
+                            </span>
                           </label>
                         ))}
                       </div>

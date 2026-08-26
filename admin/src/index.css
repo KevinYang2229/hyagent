@@ -485,6 +485,9 @@ a {
 .badge-on {
   @apply bg-[var(--badge-success-bg)] text-[var(--status-positive)];
 }
+.badge-warn {
+  @apply bg-[var(--badge-warning-bg)] text-[var(--status-warning)];
+}
 .badge-off {
   @apply bg-[var(--bg-secondary)] text-[var(--text-secondary)];
 }
@@ -871,4 +874,15 @@ a {
 }
 .kfile-del:hover {
   color: var(--status-danger);
+}
+
+/* ---- 知識庫可見性標籤：檔案列的 chips（未標記＝fail-closed 無人可見，用 danger 紅刺眼提示） ---- */
+.kb-label-chips {
+  @apply mt-1.5 flex flex-wrap items-center gap-[6px];
+}
+.kb-label-chip {
+  @apply inline-flex items-center rounded-full border border-[var(--border-color)] bg-[var(--bg-secondary)] px-[9px] py-[2px] text-[11px] font-medium text-[var(--text-secondary)];
+}
+.kb-label-chip--warn {
+  @apply border-[var(--status-danger)] bg-[var(--badge-danger-bg)] font-semibold text-[var(--status-danger)];
 }

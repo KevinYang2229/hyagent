@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { Checkbox, useToast } from "@hyagent/ui";
 import {
   api,
   type IngestJob,
+  type KnowledgeAclReport,
   type KnowledgeFileMeta,
+  type KnowledgeLabel,
   type KnowledgeMeta,
   type KnowledgeSource,
   type PromptSource,
@@ -11,6 +13,13 @@ import {
   type SuggestedPromptText,
 } from "../../api";
 import NumberField from "../../components/NumberField";
+import {
+  countFilesWithLabel,
+  isValidLabelId,
+  kbScopeId,
+  labelNameFor,
+  stripKbPrefix,
+} from "./knowledgeAcl.util";
 
 const EMBEDDING_MODELS = ["text-embedding-3-large", "text-embedding-3-small"];
 type SourceKind = "website" | "file";
@@ -40,8 +49,23 @@ export default function KnowledgeTab({
   const [meta, setMeta] = useState<KnowledgeMeta | null>(null);
   const [job, setJob] = useState<IngestJob | null>(null);
   const [question, setQuestion] = useState("");
+  const [asUserId, setAsUserId] = useState(""); // 試查身分：留空＝以管理者身分（見 test()）
   const [hits, setHits] = useState<QueryHit[]>([]);
   const [uploading, setUploading] = useState(false);
+  // 可見性標籤：清單 + 新增／改名／刪除中的暫存狀態
+  const [labels, setLabels] = useState<KnowledgeLabel[]>([]);
+  const [newLabelId, setNewLabelId] = useState("");
+  const [newLabelName, setNewLabelName] = useState("");
+  const [addingLabel, setAddingLabel] = useState(false);
+  const [editingLabelId, setEditingLabelId] = useState<string | null>(null);
+  const [editLabelName, setEditLabelName] = useState("");
+  const [savingLabel, setSavingLabel] = useState(false);
+  // 檔案可見性多選編輯：editingFileId 為 null 代表沒有檔案在編輯中
+  const [editingFileId, setEditingFileId] = useState<string | null>(null);
+  const [editScopes, setEditScopes] = useState<string[]>([]); // labelId（未加 kb: 前綴）
+  const [savingVisibility, setSavingVisibility] = useState(false);
+  // ACL 盤點面板
+  const [aclReport, setAclReport] = useState<KnowledgeAclReport | null>(null);
   const [regenerating, setRegenerating] = useState<PromptSource | null>(null); // 手動重新生成開場推薦詞中的來源
   const [dragOver, setDragOver] = useState(false); // 拖放上傳區的 drag-over 高亮
   // 手動編輯中的來源與草稿（null = 沒有在編輯）
@@ -69,12 +93,27 @@ export default function KnowledgeTab({
     }
   }, [tenantId, onError]);
 
+  /** 標籤清單 + ACL 盤點：兩者都是「標籤異動後要重看」的資料，合併成一次載入 */
+  const loadAcl = useCallback(async () => {
+    try {
+      const [ls, report] = await Promise.all([
+        api.listKnowledgeLabels(tenantId),
+        api.getKnowledgeAclReport(tenantId),
+      ]);
+      setLabels(ls);
+      setAclReport(report);
+    } catch (e) {
+      onError(e);
+    }
+  }, [tenantId, onError]);
+
   useEffect(() => {
     load();
+    loadAcl();
     return () => {
       if (poll.current) clearInterval(poll.current);
     };
-  }, [load]);
+  }, [load, loadAcl]);
 
   const update = (patch: Partial<KnowledgeSource>) =>
     setSrc((s) => (s ? { ...s, ...patch } : s));
@@ -132,7 +171,7 @@ export default function KnowledgeTab({
 
   const test = async () => {
     try {
-      const { hits } = await api.knowledgeQueryTest(tenantId, question);
+      const { hits } = await api.knowledgeQueryTest(tenantId, question, asUserId.trim() || undefined);
       setHits(hits);
     } catch (e) {
       onError(e);
@@ -202,9 +241,106 @@ export default function KnowledgeTab({
     if (!confirm(`確定刪除檔案「${f.name}」？`)) return;
     try {
       await api.deleteKnowledgeFile(tenantId, f.fileId);
-      await load();
+      await Promise.all([load(), loadAcl()]);
     } catch (e) {
       onError(e);
+    }
+  };
+
+  // ---- 可見性標籤 CRUD ----
+
+  const addLabel = async () => {
+    const id = newLabelId.trim();
+    const label = newLabelName.trim();
+    if (!id || !label) return;
+    if (!isValidLabelId(id)) {
+      toast.error("標籤 id 只允許小寫英數與連字號");
+      return;
+    }
+    setAddingLabel(true);
+    try {
+      await api.createKnowledgeLabel(tenantId, { id, label });
+      setNewLabelId("");
+      setNewLabelName("");
+      await loadAcl();
+      toast.success("已新增標籤");
+    } catch (e) {
+      onError(e);
+    } finally {
+      setAddingLabel(false);
+    }
+  };
+
+  const startEditLabel = (l: KnowledgeLabel) => {
+    setEditingLabelId(l.id);
+    setEditLabelName(l.label);
+  };
+
+  const renameLabel = async (labelId: string) => {
+    const label = editLabelName.trim();
+    if (!label) return;
+    setSavingLabel(true);
+    try {
+      await api.updateKnowledgeLabel(tenantId, labelId, label);
+      setEditingLabelId(null);
+      await loadAcl();
+      toast.success("已更新標籤名稱");
+    } catch (e) {
+      onError(e);
+    } finally {
+      setSavingLabel(false);
+    }
+  };
+
+  /**
+   * 刪除標籤前用目前已載入的檔案清單自行算出 affectedFiles——DELETE API 要刪除完成
+   * 後才回報這個數字，此時使用者已經按下確認，來不及反悔；確認對話框必須在動手前
+   * 就給出準確數字，數字才有意義。
+   */
+  const removeLabel = async (l: KnowledgeLabel) => {
+    const affected = countFilesWithLabel(meta?.files ?? [], l.id);
+    const warn =
+      affected > 0
+        ? `\n\n${affected} 份文件目前套用此標籤，刪除後這些文件將回到未標記狀態（無人可見）。`
+        : "";
+    if (!confirm(`確定刪除標籤「${l.label}」（${l.id}）？${warn}`)) return;
+    try {
+      const { affectedFiles } = await api.deleteKnowledgeLabel(tenantId, l.id);
+      await Promise.all([load(), loadAcl()]);
+      toast.success(
+        affectedFiles > 0
+          ? `已刪除標籤，${affectedFiles} 份文件回到未標記狀態`
+          : "已刪除標籤",
+      );
+    } catch (e) {
+      onError(e);
+    }
+  };
+
+  // ---- 檔案可見性多選編輯 ----
+
+  const startEditFile = (f: KnowledgeFileMeta) => {
+    setEditingFileId(f.fileId);
+    setEditScopes((f.visibilityScopes ?? []).map(stripKbPrefix));
+  };
+
+  const toggleEditScope = (labelId: string) =>
+    setEditScopes((cur) =>
+      cur.includes(labelId) ? cur.filter((x) => x !== labelId) : [...cur, labelId],
+    );
+
+  const saveFileVisibility = async (f: KnowledgeFileMeta) => {
+    setSavingVisibility(true);
+    try {
+      const scopes = editScopes.map(kbScopeId);
+      await api.setKnowledgeFileVisibility(tenantId, f.fileId, scopes);
+      setEditingFileId(null);
+      await Promise.all([load(), loadAcl()]);
+      toast.success("已更新可見性");
+    } catch (e) {
+      onError(e);
+    } finally {
+      setSavingVisibility(false);
     }
   };
 
@@ -449,6 +585,100 @@ export default function KnowledgeTab({
             </div>
           </div>
         </div>
+
+        <div className="card">
+          <div className="card-head">
+            <div>
+              <div className="card-title">可見性標籤</div>
+              <div className="card-desc">
+                標籤決定哪些人看得到哪些文件；未標記的文件 fail-closed，無人可見。
+              </div>
+            </div>
+          </div>
+          <div className="card-body">
+            <div className="form-grid">
+              <div className="field">
+                <label className="field-label">標籤 id</label>
+                <input
+                  className="input"
+                  value={newLabelId}
+                  onChange={(e) => setNewLabelId(e.target.value)}
+                  placeholder="例：hr"
+                  disabled={addingLabel}
+                />
+                <span className="field-hint">小寫英數與連字號，建立後不可改</span>
+              </div>
+              <div className="field">
+                <label className="field-label">顯示名稱</label>
+                <input
+                  className="input"
+                  value={newLabelName}
+                  onChange={(e) => setNewLabelName(e.target.value)}
+                  placeholder="例：人資"
+                  disabled={addingLabel}
+                />
+              </div>
+            </div>
+            <div className="form-actions">
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={addLabel}
+                disabled={addingLabel || !newLabelId.trim() || !newLabelName.trim()}
+              >
+                {addingLabel ? "新增中…" : "新增標籤"}
+              </button>
+            </div>
+          </div>
+          <ul className="list">
+            {labels.map((l) => (
+              <li key={l.id} className="row">
+                <div className="row-main">
+                  {editingLabelId === l.id ? (
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <input
+                        className="input"
+                        style={{ maxWidth: 220 }}
+                        value={editLabelName}
+                        onChange={(e) => setEditLabelName(e.target.value)}
+                        disabled={savingLabel}
+                      />
+                      <button
+                        className="btn btn-primary btn-sm"
+                        onClick={() => renameLabel(l.id)}
+                        disabled={savingLabel || !editLabelName.trim()}
+                      >
+                        儲存
+                      </button>
+                      <button
+                        className="btn btn-sm"
+                        onClick={() => setEditingLabelId(null)}
+                        disabled={savingLabel}
+                      >
+                        取消
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="row-title">{l.label}</div>
+                      <div className="row-sub">{l.id}</div>
+                    </>
+                  )}
+                </div>
+                {editingLabelId !== l.id && (
+                  <div className="row-actions">
+                    <button className="btn btn-sm" onClick={() => startEditLabel(l)}>
+                      改名
+                    </button>
+                    <button className="btn btn-danger btn-sm" onClick={() => removeLabel(l)}>
+                      刪除
+                    </button>
+                  </div>
+                )}
+              </li>
+            ))}
+            {labels.length === 0 && <li className="empty">尚未建立任何標籤。</li>}
+          </ul>
+        </div>
       </div>
 
       <div className="kb-col">
@@ -479,6 +709,74 @@ export default function KnowledgeTab({
                           {f.chunks} 個段落 ·{" "}
                           {new Date(f.ingestedAt).toLocaleString()}
                         </div>
+                        {/* 標籤 chips：未標記／已清空都是無人可見，fail-closed 下等於白花錢，
+                            用 danger 紅刺眼提示，不能跟正常標籤混在一起不顯眼 */}
+                        <div className="kb-label-chips">
+                          {f.visibilityScopes === undefined ? (
+                            <span className="kb-label-chip kb-label-chip--warn">
+                              未標記（無人可見）
+                            </span>
+                          ) : f.visibilityScopes.length === 0 ? (
+                            <span className="kb-label-chip kb-label-chip--warn">
+                              已清空（無人可見）
+                            </span>
+                          ) : (
+                            f.visibilityScopes.map((s) => (
+                              <span key={s} className="kb-label-chip">
+                                {labelNameFor(labels, s)}
+                              </span>
+                            ))
+                          )}
+                          <button
+                            type="button"
+                            className="btn btn-sm"
+                            onClick={() =>
+                              editingFileId === f.fileId ? setEditingFileId(null) : startEditFile(f)
+                            }
+                          >
+                            {editingFileId === f.fileId ? "取消" : "編輯標籤"}
+                          </button>
+                        </div>
+                        {editingFileId === f.fileId && (
+                          <div style={{ marginTop: 8 }}>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+                              {labels.length === 0 && (
+                                <span className="row-sub">
+                                  尚未建立任何標籤，請先在上方「可見性標籤」新增。
+                                </span>
+                              )}
+                              {labels.map((l) => (
+                                <label
+                                  key={l.id}
+                                  style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}
+                                >
+                                  <Checkbox
+                                    checked={editScopes.includes(l.id)}
+                                    onChange={() => toggleEditScope(l.id)}
+                                  />
+                                  <span style={{ fontSize: 13.5 }}>{l.label}</span>
+                                </label>
+                              ))}
+                            </div>
+                            <div className="row-actions" style={{ marginTop: 8 }}>
+                              <button
+                                type="button"
+                                className="btn btn-primary btn-sm"
+                                onClick={() => saveFileVisibility(f)}
+                                disabled={savingVisibility}
+                              >
+                                儲存
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-sm"
+                                onClick={() => setEditingFileId(null)}
+                              >
+                                取消
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                       <div className="row-actions">
                         <button
@@ -672,6 +970,15 @@ export default function KnowledgeTab({
                 查詢
               </button>
             </div>
+            <div className="field" style={{ marginTop: 10 }}>
+              <label className="field-label">以此使用者身分查詢（選填）</label>
+              <input
+                className="input"
+                value={asUserId}
+                onChange={(e) => setAsUserId(e.target.value)}
+                placeholder="留空＝以管理者身分（權限最大，通常查得到全部）"
+              />
+            </div>
           </div>
           <ul className="list">
             {hits.map((h, i) => (
@@ -689,6 +996,118 @@ export default function KnowledgeTab({
           </ul>
         </div>
       </div>
+
+      {aclReport && (
+        <div className="card" style={{ gridColumn: "1 / -1" }}>
+          <div className="card-head">
+            <div>
+              <div className="card-title">ACL 盤點</div>
+              <div className="card-desc">
+                目前生效模式與可見性標記完整度；shadow 模式下另附被擋統計，用於補標漏網文件。
+              </div>
+            </div>
+            <span
+              className={`badge ${
+                aclReport.mode === "on"
+                  ? "badge-on"
+                  : aclReport.mode === "shadow"
+                    ? "badge-warn"
+                    : "badge-off"
+              }`}
+            >
+              {aclReport.mode === "off"
+                ? "關閉（未啟用權限過濾）"
+                : aclReport.mode === "shadow"
+                  ? "Shadow（觀察中，尚未實際擋人）"
+                  : "已啟用"}
+            </span>
+          </div>
+          <div className="card-body">
+            <div className="row-sub" style={{ marginBottom: 16 }}>
+              {aclReport.shadowCaveat}
+            </div>
+
+            {/* unlabeled（從未標記＝待辦）與 explicitlyEmpty（已清空＝已完成的決定）分開列，
+                兩者查詢效果相同但語意不同，混在一起會讓「還沒做」跟「做過了」分不清 */}
+            <div style={{ fontWeight: 500, marginBottom: 8 }}>
+              未標記文件（待辦，共 {aclReport.unlabeled.length} 份）
+            </div>
+            <ul className="list" style={{ marginBottom: 16 }}>
+              {aclReport.unlabeled.map((f) => (
+                <li key={f.fileId} className="row">
+                  <div className="row-main">
+                    <div className="row-title">{f.name}</div>
+                  </div>
+                </li>
+              ))}
+              {aclReport.unlabeled.length === 0 && (
+                <li className="empty">沒有未標記的文件。</li>
+              )}
+            </ul>
+
+            <div style={{ fontWeight: 500, marginBottom: 8 }}>
+              明確清空（已決定無人可見，共 {aclReport.explicitlyEmpty.length} 份）
+            </div>
+            <ul className="list" style={{ marginBottom: 16 }}>
+              {aclReport.explicitlyEmpty.map((f) => (
+                <li key={f.fileId} className="row">
+                  <div className="row-main">
+                    <div className="row-title">{f.name}</div>
+                  </div>
+                </li>
+              ))}
+              {aclReport.explicitlyEmpty.length === 0 && (
+                <li className="empty">沒有明確清空的文件。</li>
+              )}
+            </ul>
+
+            <div style={{ fontWeight: 500, marginBottom: 8 }}>
+              Shadow 被擋統計（{aclReport.shadowStats.length} 筆）
+            </div>
+            {aclReport.shadowStats.length === 0 ? (
+              <div className="empty">尚無統計資料。</div>
+            ) : (
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 13.5 }}>
+                  <thead>
+                    <tr>
+                      <th style={aclThStyle}>檔名</th>
+                      <th style={aclThStyle}>被擋次數</th>
+                      <th style={aclThStyle}>樣本使用者</th>
+                      <th style={aclThStyle}>最後時間</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {aclReport.shadowStats.map((s) => (
+                      <tr key={s.fileId}>
+                        <td style={aclTdStyle}>
+                          {(meta.files ?? []).find((f) => f.fileId === s.fileId)?.name ?? s.fileId}
+                        </td>
+                        <td style={aclTdStyle}>{s.blockedCount}</td>
+                        <td style={aclTdStyle}>{s.sampleUserIds.join("、") || "—"}</td>
+                        <td style={aclTdStyle}>{new Date(s.lastBlockedAt).toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
+const aclThStyle: CSSProperties = {
+  textAlign: "left",
+  padding: "8px 10px",
+  borderBottom: "1px solid var(--border-color)",
+  fontWeight: 500,
+  whiteSpace: "nowrap",
+};
+const aclTdStyle: CSSProperties = {
+  padding: "6px 10px",
+  borderBottom: "1px solid var(--border-color)",
+  verticalAlign: "middle",
+};

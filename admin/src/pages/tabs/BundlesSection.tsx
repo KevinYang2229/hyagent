@@ -1,6 +1,7 @@
 import { useState, type CSSProperties } from 'react';
 import { Checkbox } from '@hyagent/ui';
 import type { ScopeDef, SkillBundle, TenantPolicyView } from '../../api';
+import { formatDepartment, UNKNOWN_DEPARTMENT } from '../../components/department.util';
 
 const thStyle: CSSProperties = {
   textAlign: 'left',
@@ -272,7 +273,8 @@ export default function BundlesSection({
                 {policy.departments.map((dep) => (
                   <AssignRow
                     key={`g-${dep}`}
-                    label={dep}
+                    label={formatDepartment(dep)}
+                    sub={dep === UNKNOWN_DEPARTMENT ? '公開 widget 的訪客落在此桶' : undefined}
                     assigned={policy.groupBundles[dep] ?? []}
                     bundles={policy.bundles}
                     onToggle={(id) => toggleAssign('groupBundles', dep, id)}
