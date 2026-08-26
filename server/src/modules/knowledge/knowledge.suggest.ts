@@ -12,9 +12,10 @@ import { getLLMProvider } from '@/lib/llm';
 import { logger } from '@/lib/logger';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 import { usageStore } from '@/modules/usage/usage.store';
+import { aclModeOf, guestVisibilityScopesOf } from './knowledge.visibility';
 // KnowledgeIndexText（不含向量）而非 KnowledgeIndexFile：本模組只讀 text/title/fileId，
 // 收窄型別讓呼叫端可以省下整份向量的傳輸；完整索引仍可直接指派進來
-import type { KnowledgeIndexText } from './knowledge-index.types';
+import type { ChunkText, KnowledgeIndexText } from './knowledge-index.types';
 import { knowledgeStore } from './knowledge.store';
 import type { SuggestedPrompts } from './knowledge.store';
 import {
@@ -51,6 +52,24 @@ export function stripCommonPrefix(titles: string[]): string[] {
     // 共同前綴可能落在分隔符之前（如剝到「凌網資訊」而留下「 › 智慧閱讀」），一併清掉開頭分隔符
     .map((t) => t.slice(prefixLen).replace(/^[\s›>|/\\\-–—:：]+/, '').trim())
     .filter(Boolean);
+}
+
+/**
+ * 推薦問句的語料只能取「訪客看得到」的 chunk。
+ *
+ * refreshSuggestedPrompts 的結果是每租戶單一份、寫進 meta.suggestedPrompts，
+ * 而 GET /api/widget/config 不掛 requireAuth——任何拿到 pk_ 的人都讀得到。
+ * 未標記（undefined）＝待辦、[]＝明確標成誰都不能看，兩者都不該貢獻語料；
+ * 標了非公開標籤（與訪客可見範圍無交集）的 chunk 同樣不該貢獻——即使檔案本身
+ * 查不到內容，主題／檔名式樣的句子（如「想了解 2026 年組織調整的適用範圍嗎？」）
+ * 本身就是存在性外洩。acl=off 時沿用導入前行為（不過濾，因為那時所有內容本來就
+ * 該對所有人一視同仁）；shadow 也要過濾——這裡外洩的是另一個管道（開場推薦問句），
+ * 不是「shadow 不影響使用者」原則要保護的主要問答路徑。
+ */
+export function filterGuestVisibleChunks(chunks: ChunkText[], guestScopes: string[]): ChunkText[] {
+  if (guestScopes.length === 0) return [];
+  const allowed = new Set(guestScopes);
+  return chunks.filter((c) => (c.visibilityScopes ?? []).some((s) => allowed.has(s)));
 }
 
 /** 從索引抽出餵給 LLM 的素材：等距文字摘錄 ＋（多 title 時）主題清單 */
@@ -200,6 +219,11 @@ export async function refreshSuggestedPrompts(
   try {
     const bySource = splitChunksBySource(idx.chunks);
     const current = knowledgeStore.getMeta(tenantId).suggestedPrompts ?? {};
+    // 推薦問句經免登入的 GET /api/widget/config 送給任何拿到 pk_ 的訪客；acl=off 沿用
+    // 導入前行為（不過濾），off 以外（含 shadow）一律只用訪客看得到的 chunk 當語料——
+    // 見 filterGuestVisibleChunks 註解。
+    const mode = aclModeOf(tenantId);
+    const guestScopes = mode === 'off' ? [] : guestVisibilityScopesOf(tenantId);
 
     // 逐格決定該格「generated」的新內容；兩格併發，彼此不影響。
     // 這裡只決定 generated，manual 留給 await 之後重讀 meta 時才決定，見下方函式註解。
@@ -208,8 +232,10 @@ export async function refreshSuggestedPrompts(
         const slot = current[key] ?? {};
         // 手動鎖定：整格跳過，不呼叫 LLM（生成了也用不到）——沿用舊的 generated 即可
         if (slot.manual) return [key, slot.generated] as const;
-        // 該來源已無內容：清掉 generated，不留指向已刪內容的句子
-        const chunks = bySource[key];
+        const rawChunks = bySource[key];
+        const chunks = mode === 'off' ? rawChunks : filterGuestVisibleChunks(rawChunks, guestScopes);
+        // 該來源已無「訪客看得到」的內容：清掉 generated，不留指向已隱藏內容的句子
+        // ——包含「有內容但全部未標記／非公開」與「本來就沒內容」兩種情況。
         if (chunks.length === 0) return [key, undefined] as const;
         const material = sampleIndexForSuggestion({ ...idx, chunks });
         // 抽樣素材為空（chunks 皆空白）：不視為錯誤，維持原樣

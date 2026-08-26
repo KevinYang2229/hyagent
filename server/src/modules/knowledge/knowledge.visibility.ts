@@ -26,6 +26,19 @@ export function visibilityScopesOf(principal: RetrievalPrincipal): string[] {
 }
 
 /**
+ * 訪客（未登入、無真實身分）能看到的 kb: scope 集合。
+ *
+ * 以 tenantId 頂替 userId 丟進 resolveScopes：getApplicant(tenantId) 查無目錄項，
+ * 回退到 UNKNOWN_DEPARTMENT（見 user.directory.ts）——這正是設計 §3 掛公開 widget
+ * 授權的鉤點，該租戶把 kb:public 之類的 scope 指派給訪客部門就是從這裡生效。
+ * 與 report.compose.ts 的 principalOf 用的是同一套退化邏輯，這裡收斂成單一函式，
+ * 好讓「誰是訪客」的定義只有一份——widget（推薦問句）與報告降級路徑都呼叫它。
+ */
+export function guestVisibilityScopesOf(tenantId: string): string[] {
+  return visibilityScopesOf({ tenantId, userId: tenantId });
+}
+
+/**
  * 設定某檔的可見性標籤，同時更新兩張表的投影。
  *
  * 兩句**必須同一交易且封裝成單一函式**：漏掉 knowledge_tables 就是一道側門，
