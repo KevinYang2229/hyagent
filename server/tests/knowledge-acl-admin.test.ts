@@ -13,6 +13,7 @@ import request from 'supertest';
 import { createApp } from '@/app';
 import { knowledgeStore } from '@/modules/knowledge/knowledge.store';
 import { tenantGrantableScopes } from '@/modules/authz/scope-catalog';
+import { tenantStore } from '@/modules/tenant/tenant.store';
 
 const app = createApp();
 const auth = { 'x-admin-key': 'test-admin-key' };
@@ -34,7 +35,7 @@ function seedFile(tenantId: string, fileId: string, scopes?: string[]): void {
 
 describe('知識庫標籤 admin API', () => {
   it('建立標籤後出現在可授予 scope 清單', async () => {
-    const tid = 'acl-admin-t1';
+    const tid = tenantStore.createTenant('acl-admin-t1').id;
     await request(app)
       .post(`/api/admin/tenants/${tid}/knowledge/labels`)
       .set(auth)
@@ -52,8 +53,16 @@ describe('知識庫標籤 admin API', () => {
       .expect(400);
   });
 
+  it('對不存在的租戶建標籤回 404', async () => {
+    await request(app)
+      .post('/api/admin/tenants/acl-admin-no-such-tenant/knowledge/labels')
+      .set(auth)
+      .send({ id: 'hr', label: '人資' })
+      .expect(404);
+  });
+
   it('標註檔案後讀得回標籤', async () => {
-    const tid = 'acl-admin-t3';
+    const tid = tenantStore.createTenant('acl-admin-t3').id;
     await request(app)
       .post(`/api/admin/tenants/${tid}/knowledge/labels`)
       .set(auth)
@@ -83,7 +92,7 @@ describe('知識庫標籤 admin API', () => {
   });
 
   it('刪除標籤：回報使用中文件數，且該檔變成未標記而非公開', async () => {
-    const tid = 'acl-admin-t5';
+    const tid = tenantStore.createTenant('acl-admin-t5').id;
     await request(app)
       .post(`/api/admin/tenants/${tid}/knowledge/labels`)
       .set(auth)

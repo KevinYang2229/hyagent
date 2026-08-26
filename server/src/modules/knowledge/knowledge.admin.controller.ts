@@ -17,15 +17,20 @@ import { pickRetriever } from './retriever.pick';
 import { setFileVisibility } from './knowledge.visibility';
 
 /**
- * 寫入該租戶的 knowledgeLabels（標籤 CRUD 三個端點共用）。
+ * 確認租戶存在，否則 404；本檔的區域慣例，比照 admin.controller.ts:40-44、
+ * form.admin.controller.ts:18、llm-config.service.ts:36 三處各自定義的同名寫法
+ * ——這三處都各自持有一份，是這個 repo 對「查無租戶」的既有約定，不為了 DRY 抽公用。
  *
- * 先 getOrCreateTenant：updateTenant 對不存在的租戶 id 會靜默 no-op（見其註解），
- * 而知識庫標籤是以管理者提供的租戶 id 為準操作，不應要求該租戶必須先走過
- * POST /tenants 的隨機 id 流程才能建標籤。
+ * 標籤 CRUD 會寫入 tenantStore（Tenant.knowledgeLabels），對不存在的租戶 id
+ * 呼叫 updateTenant 會靜默 no-op（見其註解）；曾經改用「不存在就自動建立」的做法，
+ * 但那會讓打錯字的租戶 id 也能建出一個沒有 scopesMigrated／grantedScopes／API key
+ * 的空殼租戶，且下次開機會被 migrateTenantScopes 自動授權——比對不存在的租戶
+ * 回 404 造成更大的破口，故改回沿用既有慣例：查無租戶就是 404，不做任何寫入。
  */
-function updateKnowledgeLabels(tenantId: string, labels: { id: string; label: string }[]): void {
-  tenantStore.getOrCreateTenant(tenantId);
-  tenantStore.updateTenant(tenantId, { knowledgeLabels: labels });
+function ensureTenant(id: string) {
+  const tenant = tenantStore.getTenant(id);
+  if (!tenant) throw AppError.notFound('租戶不存在');
+  return tenant;
 }
 
 /**
@@ -208,57 +213,72 @@ export const knowledgeAdminController = {
     res.json({ data: tenantStore.getTenant(tenantId)?.knowledgeLabels ?? [] });
   },
 
-  /** 建立可見性標籤：id 格式錯誤或已存在皆回 400 */
+  /**
+   * 建立可見性標籤：id 格式錯誤回 400（格式檢查與租戶是否存在無關，故先做）；
+   * 查無租戶回 404；id 已存在回 400。
+   */
   async createLabel(req: Request, res: Response): Promise<void> {
     const tenantId = String(req.params.id);
     const { id, label } = req.body as { id: string; label: string };
     assertValidLabelId(id);
+    ensureTenant(tenantId);
     const cur = tenantStore.getTenant(tenantId)?.knowledgeLabels ?? [];
     if (cur.some((l) => l.id === id)) throw AppError.badRequest(`標籤已存在：${id}`);
-    updateKnowledgeLabels(tenantId, [...cur, { id, label }]);
+    tenantStore.updateTenant(tenantId, { knowledgeLabels: [...cur, { id, label }] });
     res.status(201).json({ data: { id, label } });
   },
 
-  /** 更新標籤顯示名稱；查無此標籤回 404 */
+  /** 更新標籤顯示名稱；查無租戶或查無此標籤皆回 404 */
   async updateLabel(req: Request, res: Response): Promise<void> {
     const tenantId = String(req.params.id);
     const labelId = String(req.params.labelId);
     const { label } = req.body as { label: string };
+    ensureTenant(tenantId);
     const cur = tenantStore.getTenant(tenantId)?.knowledgeLabels ?? [];
     if (!cur.some((l) => l.id === labelId)) throw AppError.notFound(`標籤不存在：${labelId}`);
-    updateKnowledgeLabels(
-      tenantId,
-      cur.map((l) => (l.id === labelId ? { ...l, label } : l)),
-    );
+    tenantStore.updateTenant(tenantId, {
+      knowledgeLabels: cur.map((l) => (l.id === labelId ? { ...l, label } : l)),
+    });
     res.json({ data: { id: labelId, label } });
   },
 
   /**
    * 刪除標籤：使用中的文件回到「未標記（鎖住）」，**不得變公開**
    * ——刪除操作絕不能是提權操作。
+   *
+   * 先 ensureTenant 才動手：對查無租戶的 id（例如打錯字）發 DELETE，
+   * 若不先擋，會在完全查不到任何受影響檔案、也查不到任何標籤的情況下，
+   * 仍把「查無」的空結果寫回 tenantStore——一個語意上該是 no-op 的請求，
+   * 變成有持久化副作用的動作，故先確認租戶存在，不存在直接 404、不寫入。
    */
   async deleteLabel(req: Request, res: Response): Promise<void> {
     const tenantId = String(req.params.id);
     const labelId = String(req.params.labelId);
+    ensureTenant(tenantId);
     const scope = kbScopeId(labelId);
     const meta = knowledgeStore.getMeta(tenantId);
     const affected = (meta.files ?? []).filter((f) => (f.visibilityScopes ?? []).includes(scope));
 
     for (const f of affected) {
       const next = (f.visibilityScopes ?? []).filter((s) => s !== scope);
+      // 順序：先寫 DB 投影，再寫記憶體真相來源。DB 是比較可能失敗的一端，
+      // 先寫它可以確保失敗時記憶體還沒動、請求誠實回 500、狀態維持一致；
+      // 反過來則會出現「管理者以為已收緊權限，但檢索端投影還是舊值」的視窗。
       await setFileVisibility(tenantId, f.fileId, next);
-      // 真相來源同步
       replaceFileMeta(tenantId, { ...f, visibilityScopes: next });
     }
     const cur = tenantStore.getTenant(tenantId)?.knowledgeLabels ?? [];
-    updateKnowledgeLabels(
-      tenantId,
-      cur.filter((l) => l.id !== labelId),
-    );
+    tenantStore.updateTenant(tenantId, { knowledgeLabels: cur.filter((l) => l.id !== labelId) });
     res.json({ data: { affectedFiles: affected.length } });
   },
 
-  /** 標註檔案可見性；未知標籤或查無檔案皆回錯誤 */
+  /**
+   * 標註檔案可見性；未知標籤或查無檔案皆回錯誤。
+   *
+   * 不呼叫 ensureTenant：本端點不寫入 tenantStore，只讀 knowledgeLabels 做驗證，
+   * 查無租戶時 valid 自然是空集合，任何非空 scopes 都會被判定為未知標籤而回 400，
+   * 沒有 deleteLabel 那種「查無仍會持久化寫入」的破口，故沿用既有行為即可。
+   */
   async setFileVisibilityHandler(req: Request, res: Response): Promise<void> {
     const tenantId = String(req.params.id);
     const fileId = String(req.params.fileId);
@@ -273,8 +293,9 @@ export const knowledgeAdminController = {
     const file = (meta.files ?? []).find((f) => f.fileId === fileId);
     if (!file) throw AppError.notFound(`查無檔案：${fileId}`);
 
-    replaceFileMeta(tenantId, { ...file, visibilityScopes: scopes });
+    // 順序同 deleteLabel：先 DB 投影、後記憶體真相來源（原本這裡兩者順序相反，已修正統一）。
     await setFileVisibility(tenantId, fileId, scopes);
+    replaceFileMeta(tenantId, { ...file, visibilityScopes: scopes });
     res.json({ data: { fileId, scopes } });
   },
 };
