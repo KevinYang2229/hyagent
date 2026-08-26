@@ -15,6 +15,7 @@ import {
 import NumberField from "../../components/NumberField";
 import {
   countFilesWithLabel,
+  fileLabelState,
   isValidLabelId,
   kbScopeId,
   labelNameFor,
@@ -698,6 +699,7 @@ export default function KnowledgeTab({
                   const ext = f.name
                     .slice(f.name.lastIndexOf(".") + 1)
                     .toLowerCase();
+                  const labelState = fileLabelState(f.visibilityScopes);
                   return (
                     <li key={f.fileId} className="row">
                       <span className="kfile-ext" data-ext={ext}>
@@ -712,16 +714,16 @@ export default function KnowledgeTab({
                         {/* 標籤 chips：未標記／已清空都是無人可見，fail-closed 下等於白花錢，
                             用 danger 紅刺眼提示，不能跟正常標籤混在一起不顯眼 */}
                         <div className="kb-label-chips">
-                          {f.visibilityScopes === undefined ? (
+                          {labelState === "unlabeled" ? (
                             <span className="kb-label-chip kb-label-chip--warn">
                               未標記（無人可見）
                             </span>
-                          ) : f.visibilityScopes.length === 0 ? (
+                          ) : labelState === "empty" ? (
                             <span className="kb-label-chip kb-label-chip--warn">
                               已清空（無人可見）
                             </span>
                           ) : (
-                            f.visibilityScopes.map((s) => (
+                            (f.visibilityScopes ?? []).map((s) => (
                               <span key={s} className="kb-label-chip">
                                 {labelNameFor(labels, s)}
                               </span>
