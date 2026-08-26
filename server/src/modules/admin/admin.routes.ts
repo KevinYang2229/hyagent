@@ -14,8 +14,12 @@ import {
 import { knowledgeAdminController } from '@/modules/knowledge/knowledge.admin.controller';
 import {
   fileParamSchema,
+  fileVisibilitySchema,
   ingestSchema,
   jobParamSchema,
+  labelCreateSchema,
+  labelParamSchema,
+  labelUpdateSchema,
   queryTestSchema,
   sourceSchema,
   suggestionManualSchema,
@@ -248,6 +252,33 @@ router.delete(
   '/tenants/:id/knowledge/files/:fileId',
   validate({ params: fileParamSchema }),
   asyncHandler(knowledgeAdminController.deleteFile),
+);
+
+// ---- 知識庫可見性標籤：CRUD + 檔案標註 ----
+router.get(
+  '/tenants/:id/knowledge/labels',
+  validate({ params: tenantParamSchema }),
+  asyncHandler(knowledgeAdminController.listLabels),
+);
+router.post(
+  '/tenants/:id/knowledge/labels',
+  validate({ params: tenantParamSchema, body: labelCreateSchema }),
+  asyncHandler(knowledgeAdminController.createLabel),
+);
+router.patch(
+  '/tenants/:id/knowledge/labels/:labelId',
+  validate({ params: labelParamSchema, body: labelUpdateSchema }),
+  asyncHandler(knowledgeAdminController.updateLabel),
+);
+router.delete(
+  '/tenants/:id/knowledge/labels/:labelId',
+  validate({ params: labelParamSchema }),
+  asyncHandler(knowledgeAdminController.deleteLabel),
+);
+router.patch(
+  '/tenants/:id/knowledge/files/:fileId/visibility',
+  validate({ params: fileParamSchema, body: fileVisibilitySchema }),
+  asyncHandler(knowledgeAdminController.setFileVisibilityHandler),
 );
 
 export const adminRouter = router;

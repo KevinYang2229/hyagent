@@ -293,6 +293,22 @@ export const tenantStore = {
     return tenants.get(id);
   },
 
+  /**
+   * 取得租戶；不存在則以呼叫端指定的 id（而非 createTenant 的隨機 hex id）建立一個最小殼並回傳。
+   *
+   * 供知識庫標籤等「管理操作以外部既有 id 為準」的功能使用——管理者用租戶自己的識別字串
+   * 建標籤時不應被要求先跑過一次完整的 createTenant 隨機 id 流程，否則 updateTenant 對
+   * 不存在的 id 靜默 no-op（見其註解），標籤會看似建立成功、實際上沒有寫入任何地方。
+   */
+  getOrCreateTenant(id: string): Tenant {
+    const existing = tenants.get(id);
+    if (existing) return existing;
+    const tenant: Tenant = { id, name: id, allowedOrigins: ['*'], createdAt: new Date().toISOString() };
+    tenants.set(id, tenant);
+    persist();
+    return tenant;
+  },
+
   listTenants(): Tenant[] {
     return [...tenants.values()];
   },

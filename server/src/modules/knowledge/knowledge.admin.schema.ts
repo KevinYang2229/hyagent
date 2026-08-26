@@ -13,6 +13,8 @@ export const sourceSchema = z.object({
   chunkChars: z.coerce.number().int().min(200).max(4000).default(800),
   embeddingModel: z.string().default('text-embedding-3-large'),
   rerank: z.coerce.boolean().default(true),
+  // 網站來源的可見性標籤（整個來源一組）；未帶時保留既有值（見 saveSource 呼叫端）
+  visibilityScopes: z.array(z.string()).optional(),
 });
 
 /** 觸發解析（POST /knowledge/ingest 的 body）：可部分覆寫已存設定 */
@@ -61,3 +63,21 @@ export const suggestionManualSchema = z.object({
     })
     .nullable(),
 });
+
+/** 建立標籤（POST /knowledge/labels） */
+export const labelCreateSchema = z.object({
+  id: z.string().min(1).max(40),
+  label: z.string().min(1).max(60),
+});
+
+/** 更新標籤顯示名稱（PATCH /knowledge/labels/:labelId） */
+export const labelUpdateSchema = z.object({ label: z.string().min(1).max(60) });
+
+/** 標籤 path 參數：需保留 :labelId（z.object 預設會剝除未列出的 key） */
+export const labelParamSchema = z.object({
+  id: z.string().min(1),
+  labelId: z.string().min(1),
+});
+
+/** 檔案可見性標註（PATCH /knowledge/files/:fileId/visibility） */
+export const fileVisibilitySchema = z.object({ scopes: z.array(z.string()).default([]) });

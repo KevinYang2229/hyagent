@@ -4,14 +4,42 @@
  */
 import type { Request, Response } from 'express';
 import { AppError } from '@/utils/app-error';
+import { assertValidLabelId, kbScopeId } from '@/modules/authz/scope-catalog';
+import { tenantStore } from '@/modules/tenant/tenant.store';
 import type { IngestParams } from './ingest.service';
 import { deleteIndex, loadIndexText } from './knowledge.index.repo';
 import { ingestFile, removeFile } from './knowledge-file.service';
 import { getJob, getRunningJobForTenant, startIngestJob } from './knowledge.job';
-import { knowledgeStore, type KnowledgeSource } from './knowledge.store';
+import { knowledgeStore, type KnowledgeFileMeta, type KnowledgeSource } from './knowledge.store';
 import { regenerateSlot } from './knowledge.suggest';
 import { splitChunksBySource, type SourceKey } from './prompt-slots';
 import { pickRetriever } from './retriever.pick';
+import { setFileVisibility } from './knowledge.visibility';
+
+/**
+ * 寫入該租戶的 knowledgeLabels（標籤 CRUD 三個端點共用）。
+ *
+ * 先 getOrCreateTenant：updateTenant 對不存在的租戶 id 會靜默 no-op（見其註解），
+ * 而知識庫標籤是以管理者提供的租戶 id 為準操作，不應要求該租戶必須先走過
+ * POST /tenants 的隨機 id 流程才能建標籤。
+ */
+function updateKnowledgeLabels(tenantId: string, labels: { id: string; label: string }[]): void {
+  tenantStore.getOrCreateTenant(tenantId);
+  tenantStore.updateTenant(tenantId, { knowledgeLabels: labels });
+}
+
+/**
+ * 以「移除舊筆＋新增新筆」取代單一 fileId 的 meta，語意上等同 upsert。
+ *
+ * knowledgeStore.addFileMeta 是 delta「新增」操作（見其註解），對已存在的 fileId
+ * 直接呼叫只會把新舊兩筆一起塞進 files 陣列——之後任何用 fileId 找檔的呼叫端
+ * （含 Array.prototype.find）都可能撈到舊的那筆，讓標籤異動看似沒生效。
+ * 先移除同 fileId 舊筆再新增，才是這裡要的「更新」語意。
+ */
+function replaceFileMeta(tenantId: string, file: KnowledgeFileMeta): void {
+  knowledgeStore.removeFileMeta(tenantId, file.fileId, {});
+  knowledgeStore.addFileMeta(tenantId, file, {});
+}
 
 /** 由已存來源設定組出 ingest 參數；未設定起始網址則擋下 */
 function ingestParamsFor(tenantId: string): IngestParams {
@@ -172,5 +200,81 @@ export const knowledgeAdminController = {
     const removed = await removeFile(tenantId, fileId);
     if (!removed) throw AppError.notFound('檔案不存在');
     res.json({ data: { fileId } });
+  },
+
+  /** 列出該租戶已建立的可見性標籤 */
+  async listLabels(req: Request, res: Response): Promise<void> {
+    const tenantId = String(req.params.id);
+    res.json({ data: tenantStore.getTenant(tenantId)?.knowledgeLabels ?? [] });
+  },
+
+  /** 建立可見性標籤：id 格式錯誤或已存在皆回 400 */
+  async createLabel(req: Request, res: Response): Promise<void> {
+    const tenantId = String(req.params.id);
+    const { id, label } = req.body as { id: string; label: string };
+    assertValidLabelId(id);
+    const cur = tenantStore.getTenant(tenantId)?.knowledgeLabels ?? [];
+    if (cur.some((l) => l.id === id)) throw AppError.badRequest(`標籤已存在：${id}`);
+    updateKnowledgeLabels(tenantId, [...cur, { id, label }]);
+    res.status(201).json({ data: { id, label } });
+  },
+
+  /** 更新標籤顯示名稱；查無此標籤回 404 */
+  async updateLabel(req: Request, res: Response): Promise<void> {
+    const tenantId = String(req.params.id);
+    const labelId = String(req.params.labelId);
+    const { label } = req.body as { label: string };
+    const cur = tenantStore.getTenant(tenantId)?.knowledgeLabels ?? [];
+    if (!cur.some((l) => l.id === labelId)) throw AppError.notFound(`標籤不存在：${labelId}`);
+    updateKnowledgeLabels(
+      tenantId,
+      cur.map((l) => (l.id === labelId ? { ...l, label } : l)),
+    );
+    res.json({ data: { id: labelId, label } });
+  },
+
+  /**
+   * 刪除標籤：使用中的文件回到「未標記（鎖住）」，**不得變公開**
+   * ——刪除操作絕不能是提權操作。
+   */
+  async deleteLabel(req: Request, res: Response): Promise<void> {
+    const tenantId = String(req.params.id);
+    const labelId = String(req.params.labelId);
+    const scope = kbScopeId(labelId);
+    const meta = knowledgeStore.getMeta(tenantId);
+    const affected = (meta.files ?? []).filter((f) => (f.visibilityScopes ?? []).includes(scope));
+
+    for (const f of affected) {
+      const next = (f.visibilityScopes ?? []).filter((s) => s !== scope);
+      await setFileVisibility(tenantId, f.fileId, next);
+      // 真相來源同步
+      replaceFileMeta(tenantId, { ...f, visibilityScopes: next });
+    }
+    const cur = tenantStore.getTenant(tenantId)?.knowledgeLabels ?? [];
+    updateKnowledgeLabels(
+      tenantId,
+      cur.filter((l) => l.id !== labelId),
+    );
+    res.json({ data: { affectedFiles: affected.length } });
+  },
+
+  /** 標註檔案可見性；未知標籤或查無檔案皆回錯誤 */
+  async setFileVisibilityHandler(req: Request, res: Response): Promise<void> {
+    const tenantId = String(req.params.id);
+    const fileId = String(req.params.fileId);
+    const { scopes } = req.body as { scopes: string[] };
+    const valid = new Set(
+      (tenantStore.getTenant(tenantId)?.knowledgeLabels ?? []).map((l) => kbScopeId(l.id)),
+    );
+    const bad = scopes.filter((s) => !valid.has(s));
+    if (bad.length) throw AppError.badRequest(`未知的標籤：${bad.join('、')}`);
+
+    const meta = knowledgeStore.getMeta(tenantId);
+    const file = (meta.files ?? []).find((f) => f.fileId === fileId);
+    if (!file) throw AppError.notFound(`查無檔案：${fileId}`);
+
+    replaceFileMeta(tenantId, { ...file, visibilityScopes: scopes });
+    await setFileVisibility(tenantId, fileId, scopes);
+    res.json({ data: { fileId, scopes } });
   },
 };
