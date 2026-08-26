@@ -69,16 +69,24 @@ export function tableDescriptor(t: {
     .join(' ');
 }
 
-/** 寫入某檔案的所有結構化表；空陣列為 no-op。vectors 省略時 embedding 留空（選表退回 bigram） */
+/**
+ * 寫入某檔案的所有結構化表；空陣列為 no-op。vectors 省略時 embedding 留空（選表退回 bigram）。
+ *
+ * visibilityScopes 省略時寫 NULL（＝未標記待辦），不得寫成空陣列（＝明確標成誰都不能看，
+ * 語意不同）。呼叫端須與 fileMeta／fileChunks 用同一個算好的 scopes 值，三處同源，
+ * 否則同一檔案的 chunks 能看、表格看不到（或反過來）就是下一個 bug。
+ */
 export async function saveTables(
   tenantId: string,
   fileId: string,
   source: string,
   tables: ParsedTable[],
   vectors?: number[][],
+  visibilityScopes?: string[],
 ): Promise<number> {
   if (env.DATA_BACKEND !== 'db' || tables.length === 0) return 0;
   const db = await connectDb();
+  const scopes = visibilityScopes ?? null;
   const values = tables.map((t, i) => {
     const vec = vectors?.[i];
     const embedding = vec
@@ -86,11 +94,13 @@ export async function saveTables(
       : Prisma.sql`null`;
     return Prisma.sql`(${randomUUID()}, ${tenantId}, ${fileId}, ${source}, ${t.sheet},
                        ${t.caption ?? null}, ${JSON.stringify(t.headers)}::jsonb,
-                       ${JSON.stringify(t.rows)}::jsonb, ${t.rows.length}, ${embedding})`;
+                       ${JSON.stringify(t.rows)}::jsonb, ${t.rows.length}, ${embedding},
+                       ${scopes})`;
   });
   return db.$executeRaw`
     insert into knowledge_tables
-      (id, tenant_id, file_id, source, sheet, caption, headers, rows, row_count, embedding)
+      (id, tenant_id, file_id, source, sheet, caption, headers, rows, row_count, embedding,
+       visibility_scopes)
     values ${Prisma.join(values)}
   `;
 }

@@ -176,7 +176,7 @@ export async function ingestFile(
       } catch (err) {
         logger.warn({ err, tenantId, name }, '資料表描述 embedding 失敗，選表將退回字面比對');
       }
-      const n = await saveTables(tenantId, fileId, name, parsed.tables, tableVectors);
+      const n = await saveTables(tenantId, fileId, name, parsed.tables, tableVectors, scopes);
       logger.info({ tenantId, name, tables: parsed.tables.length, rows: n }, '結構化表已留存');
     } catch (err) {
       logger.warn({ err, tenantId, name }, '結構化表留存失敗，匯入照常完成（報告將無法畫精確圖）');
