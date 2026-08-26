@@ -19,7 +19,7 @@ import type { Session } from '@/modules/conversation/conversation.types';
 import { usageStore } from '@/modules/usage/usage.store';
 import { rerankChunks } from './rerank';
 import { pickRetriever } from './retriever.pick';
-import type { KnowledgeChunk } from './retriever.types';
+import type { KnowledgeChunk, RetrievalPrincipal } from './retriever.types';
 import { listTableCatalog, loadTable } from './knowledge.tables.repo';
 import {
   expandRequestedYears,
@@ -41,15 +41,16 @@ const HISTORY_MESSAGES = 6;
  * 一般知識問答也要讀結構化試算表。只靠 top-5 文字 chunk 會使「最近三年」的
  * 第三年隨檢索排名消失，即使資料表其實有完整數值。
  *
- * 這是表格檢索的平行路徑，與 chunk 檢索走不同資料源（knowledge.tables.repo），
- * 尚未套用 ACL 標籤過濾。簽名先收 userId 供呼叫端統一交出身分、也讓日後補上
- * 表格層級可見性時不必再改一次呼叫鏈；現階段函式本體暫不使用。
+ * 這是表格檢索的平行路徑，與 chunk 檢索走不同資料源（knowledge.tables.repo）。
+ * 選表用的目錄（listTableCatalog）不過濾，實際取內容用的 loadTable 會依 principal
+ * 套用可見性——漏掉 loadTable 的過濾就是「文件鎖起來了，但問它裡面的表格數字還是
+ * 答得出來」那道側門，未過濾的候選只是被跳過（table 為 null 不進 previews）。
  */
 export async function loadTableContext(
-  tenantId: string,
-  _userId: string,
+  principal: RetrievalPrincipal,
   query: string,
 ): Promise<string> {
+  const { tenantId } = principal;
   try {
     const catalog = await listTableCatalog(tenantId);
     if (catalog.length === 0) return '';
@@ -59,7 +60,7 @@ export async function loadTableContext(
     const count = Math.min(selected.length, Math.max(3, requestedYearCount(query) * 2));
     const previews: string[] = [];
     for (const entry of selected.slice(0, count)) {
-      const table = await loadTable(tenantId, entry.id);
+      const table = await loadTable(principal, entry.id);
       if (table) previews.push(tablePreview(table));
     }
     return previews.join('\n\n');
@@ -187,10 +188,11 @@ export const knowledgeAgentService: AgentService = {
     const query = await resolveQuery(session, userText, llm, history);
 
     // 兩階段檢索：向量取候選池 → LLM（Haiku）重排出最相關前 K 筆
+    const principal = { tenantId: session.tenantId, userId: session.userId };
     const retriever = await pickRetriever(session.tenantId);
-    const pool = await retriever.search({ tenantId: session.tenantId, userId: session.userId }, query);
+    const pool = await retriever.search(principal, query);
     const chunks = await rerankChunks(session.tenantId, query, pool, FINAL_K);
-    const tableContext = await loadTableContext(session.tenantId, session.userId, query);
+    const tableContext = await loadTableContext(principal, query);
 
     let reply: string;
     if (chunks.length === 0 && tableContext === '') {

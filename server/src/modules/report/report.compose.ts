@@ -10,7 +10,7 @@ import { logger } from '@/lib/logger';
 import { normalizeLocale } from '@/lib/locale';
 import { rerankChunks } from '@/modules/knowledge/rerank';
 import { pickRetriever } from '@/modules/knowledge/retriever.pick';
-import type { KnowledgeChunk } from '@/modules/knowledge/retriever.types';
+import type { KnowledgeChunk, RetrievalPrincipal } from '@/modules/knowledge/retriever.types';
 import { usageStore } from '@/modules/usage/usage.store';
 import { getEmbeddingProvider } from '@/lib/embedding';
 import {
@@ -704,12 +704,24 @@ export function pickChartColumns(table: StoredTable): { li: number; vi: number }
   return { li, vi };
 }
 
+/**
+ * 圖表產製這一族函式（autoChart/autoChartFrom/buildComparisonChart/buildExactChart）
+ * 對外仍以 tenantId 呼叫——它們也被多個測試直接呼叫，改動對外簽名的影響面遠超本次任務。
+ * userId 為可選的第二個身分要素：composeSection 手上有真正的操作者，會一路往下傳；
+ * 沒傳（測試或其他呼叫端）時退回以 tenantId 頂替，acl=off/shadow（預設）不受影響，
+ * acl=on 時等同「未指名操作者」，只看不受標籤限制的表——比完全不過濾（舊行為）安全。
+ */
+function principalOf(tenantId: string, userId?: string): RetrievalPrincipal {
+  return { tenantId, userId: userId ?? tenantId };
+}
+
 async function autoChartFrom(
   tenantId: string,
   entry: TableCatalogEntry,
   kind?: string,
+  userId?: string,
 ): Promise<SectionChart | undefined> {
-  const table = await loadTable(tenantId, entry.id);
+  const table = await loadTable(principalOf(tenantId, userId), entry.id);
   if (!table) return undefined;
   // 選不出「維度 + 量值」就不畫：畫一張把年份當長度的圖，比沒有圖更糟
   const picked = pickChartColumns(table);
@@ -720,7 +732,7 @@ async function autoChartFrom(
     value: table.headers[picked.vi],
     ...(kind ? { kind } : {}),
     title: `${table.sheet}${table.caption ? `（${table.caption}）` : ''}`,
-  });
+  }, userId);
 }
 
 /**
@@ -735,6 +747,7 @@ export async function autoChart(
   shortlist: TableCatalogEntry[],
   query: string,
   used: Set<string>,
+  userId?: string,
 ): Promise<SectionChart | undefined> {
   /*
    * 排除整份報告已經用過的表。自動補圖只看「最相關的表 + 欄位型別」，同一張表很容易
@@ -752,7 +765,7 @@ export async function autoChart(
      */
     let best: { id: string; chart: SectionChart } | undefined;
     for (const entry of pool.slice(0, AUTO_CHART_TRIES)) {
-      const chart = await autoChartFrom(tenantId, entry, 'donut');
+      const chart = await autoChartFrom(tenantId, entry, 'donut', userId);
       if (chart?.kind !== 'donut') continue;
       if (!best || chart.points.length > best.chart.points.length) best = { id: entry.id, chart };
       if (best.chart.points.length >= 3) break;
@@ -771,7 +784,7 @@ export async function autoChart(
    * 資料裡到處都是——賭單張等於把「有沒有圖」交給排序的運氣。
    */
   for (const entry of pool.slice(0, AUTO_CHART_TRIES)) {
-    const chart = await autoChartFrom(tenantId, entry);
+    const chart = await autoChartFrom(tenantId, entry, undefined, userId);
     if (chart) {
       used.add(entry.id);
       return chart;
@@ -795,12 +808,13 @@ async function buildComparisonChart(
   tenantId: string,
   ref: ChartRef,
   tables: { id: string; series: string }[],
+  userId?: string,
 ): Promise<SectionChart | undefined> {
   const picked = tables.slice(0, MAX_SERIES);
   const loaded: { series: string; table: StoredTable; values: Map<string, number> }[] = [];
 
   for (const item of picked) {
-    const table = await loadTable(tenantId, item.id);
+    const table = await loadTable(principalOf(tenantId, userId), item.id);
     if (!table) return undefined;
     const li = table.headers.indexOf(ref.label);
     const vi = table.headers.indexOf(ref.value);
@@ -951,12 +965,15 @@ function buildSlicedChart(
 export async function buildExactChart(
   tenantId: string,
   ref: ChartRef,
+  userId?: string,
 ): Promise<SectionChart | undefined> {
   // 跨表對比：一張圖的數字來自多張表，每張貢獻一個數列
-  if (ref.tables && ref.tables.length >= 2) return buildComparisonChart(tenantId, ref, ref.tables);
+  if (ref.tables && ref.tables.length >= 2) {
+    return buildComparisonChart(tenantId, ref, ref.tables, userId);
+  }
 
   if (ref.table === undefined) return undefined;
-  const table = await loadTable(tenantId, ref.table);
+  const table = await loadTable(principalOf(tenantId, userId), ref.table);
   if (!table) return undefined;
 
   // values 給了多個欄位就走分組長條；只有一個或沒給則沿用單數列路徑
@@ -1129,7 +1146,7 @@ export async function composeSection(
     const embedder = getEmbeddingProvider(tenantStore.getTenant(tenantId)?.llmConfig);
     const { vectors, tokens } = await embedder.embed([intent], model);
     usageStore.recordEmbeddingUsage(tenantId, tokens, model, embedder.keySource);
-    semantic = await searchTableCatalog(tenantId, vectors[0], CATALOG_LIMIT * 6);
+    semantic = await searchTableCatalog({ tenantId, userId }, vectors[0], CATALOG_LIMIT * 6);
   } catch (err) {
     // 向量不可用（未回填、embedding 失敗、file 後端）就只剩字面——不夠準，但比沒有好
     logger.warn({ err, tenantId }, '語意選表失敗，本節只用字面比對');
@@ -1152,7 +1169,7 @@ export async function composeSection(
   const previewTables = Math.min(shortlist.length, Math.max(PREVIEW_TABLES, requestedYearCount(intent) * 2));
   for (const entry of shortlist.slice(0, previewTables)) {
     try {
-      const table = await loadTable(tenantId, entry.id);
+      const table = await loadTable({ tenantId, userId }, entry.id);
       if (table) previews.push(tablePreview(table));
     } catch (err) {
       logger.warn({ err, tenantId, table: entry.id }, 'table preview load failed');
@@ -1187,7 +1204,7 @@ export async function composeSection(
     const exact: SectionChart[] = [];
     for (const ref of refOut.refs) {
       try {
-        const built = await buildExactChart(tenantId, ref);
+        const built = await buildExactChart(tenantId, ref, userId);
         if (!built) continue;
         exact.push(built);
         // 模型挑的也要記進去，否則後面的節會用自動補圖再畫一次同一張表。
@@ -1210,6 +1227,7 @@ export async function composeSection(
           shortlist,
           `${section.heading}${section.query}`,
           opts.usedTables ?? new Set(),
+          userId,
         );
         if (auto) {
           charts = [auto];

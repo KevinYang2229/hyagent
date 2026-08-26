@@ -21,14 +21,13 @@ describe('知識庫問答的多年度表格內容', () => {
       rowCount: 1,
     })));
     listTableCatalog.mockResolvedValue(entries);
-    loadTable.mockImplementation(async (_tenantId: string, id: string) => {
+    loadTable.mockImplementation(async (_principal: unknown, id: string) => {
       const entry = entries.find((item) => item.id === id);
       return entry ? { ...entry, rows: [[id.slice(-4), id]] } : null;
     });
 
     const context = await loadTableContext(
-      'tenant',
-      'user',
+      { tenantId: 'tenant', userId: 'user' },
       '臺北國際自行車展與工具機展最近三年參展商家數',
     );
 
