@@ -104,6 +104,7 @@ export const knowledgeAdminController = {
     const body = req.body as Partial<KnowledgeSource>;
     // 有帶覆寫參數時先存起來，再依最終設定啟動 job
     if (body.startUrl) {
+      if (body.visibilityScopes) assertKnownScopes(tenantId, body.visibilityScopes);
       knowledgeStore.saveSource(tenantId, {
         ...knowledgeStore.getSource(tenantId),
         ...body,
