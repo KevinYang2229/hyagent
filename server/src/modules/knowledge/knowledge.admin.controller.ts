@@ -14,7 +14,8 @@ import { knowledgeStore, type KnowledgeFileMeta, type KnowledgeSource } from './
 import { regenerateSlot } from './knowledge.suggest';
 import { splitChunksBySource, type SourceKey } from './prompt-slots';
 import { pickRetriever } from './retriever.pick';
-import { setFileVisibility } from './knowledge.visibility';
+import { aclModeOf, setFileVisibility } from './knowledge.visibility';
+import { listShadowStats } from './knowledge.acl-shadow.repo';
 
 /**
  * 確認租戶存在，否則 404；本檔的區域慣例，比照 admin.controller.ts:40-44、
@@ -297,5 +298,24 @@ export const knowledgeAdminController = {
     await setFileVisibility(tenantId, fileId, scopes);
     replaceFileMeta(tenantId, { ...file, visibilityScopes: scopes });
     res.json({ data: { fileId, scopes } });
+  },
+
+  /**
+   * ACL 盤點：unlabeled（NULL＝從未標記，待辦）與 explicitlyEmpty（[]＝已決定誰都不能看）
+   * 分開列，兩者查詢效果相同但語意不同。
+   */
+  async aclReport(req: Request, res: Response): Promise<void> {
+    const tenantId = String(req.params.id);
+    const files = knowledgeStore.getMeta(tenantId).files ?? [];
+    res.json({
+      data: {
+        mode: aclModeOf(tenantId),
+        unlabeled: files.filter((f) => f.visibilityScopes === undefined),
+        explicitlyEmpty: files.filter((f) => f.visibilityScopes?.length === 0),
+        shadowStats: await listShadowStats(tenantId),
+        shadowCaveat:
+          'shadow 以候選池內的結果估算，會低估影響：因候選池被無權文件佔滿而未進入 top-k 的有權文件不會被計入。回報零影響不等於切換 on 後零影響。',
+      },
+    });
   },
 };

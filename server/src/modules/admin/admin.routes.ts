@@ -280,5 +280,10 @@ router.patch(
   validate({ params: fileParamSchema, body: fileVisibilitySchema }),
   asyncHandler(knowledgeAdminController.setFileVisibilityHandler),
 );
+router.get(
+  '/tenants/:id/knowledge/acl-report',
+  validate({ params: tenantParamSchema }),
+  asyncHandler(knowledgeAdminController.aclReport),
+);
 
 export const adminRouter = router;

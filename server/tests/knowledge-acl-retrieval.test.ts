@@ -84,7 +84,9 @@ describe('pgvector 可見性過濾', () => {
     invalidatePgvectorModelCache(tid);
     mockQueries([]);
     await pgvectorRetriever.search({ tenantId: tid, userId: 'guest-2' }, 'HyCMS 是什麼');
-    expect(lastSqlText()).not.toContain('visibility_scopes');
+    // visibility_scopes 欄位本身仍在 select 清單中（shadow 統計需要），
+    // 這裡守的是「不加過濾條件」——off 與 shadow 皆不應出現 `visibility_scopes &&` 這道 pre-filter。
+    expect(lastSqlText()).not.toContain('visibility_scopes &&');
     invalidatePgvectorModelCache(tid);
   });
 
