@@ -75,7 +75,7 @@ describe('表格檢索沒有側門', () => {
     queryRaw.mockClear();
     await searchTableCatalog({ tenantId: t.id, userId: 'nobody' }, [1, 0, 0], 5);
 
-    expect(lastQueryRawSql()).toContain('visibility_scopes');
+    expect(lastQueryRawSql()).toContain('visibility_scopes &&');
   });
 
   /**
