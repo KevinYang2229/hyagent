@@ -105,6 +105,7 @@ beforeEach(() => {
   mockGetTenant.mockReset().mockReturnValue({
     id: 'acme',
     name: '客戶 A',
+    knowledgeAcl: 'on',
     knowledgeLabels: [{ id: 'hr', label: '人資' }],
   });
   mockAcquire.mockReset().mockImplementation(async (tenantId: string) => ({ tenantId, holder: 'me' }));
@@ -146,7 +147,7 @@ describe('批次匯入擋門：資料夾標籤', () => {
   });
 
   it('租戶未設定任何 knowledgeLabels：任何標籤一律擋下', async () => {
-    mockGetTenant.mockReturnValue({ id: 'acme', name: '客戶 A' }); // 無 knowledgeLabels 欄位
+    mockGetTenant.mockReturnValue({ id: 'acme', name: '客戶 A', knowledgeAcl: 'on' }); // 無 knowledgeLabels 欄位
     const source = new FakeSource([item('政策.pdf', 'hr')]);
     const result = await runTwice(source);
 
@@ -160,5 +161,51 @@ describe('批次匯入擋門：資料夾標籤', () => {
 
     expect(result.retry).toBe(0);
     expect(result.failed).toBe(1);
+  });
+});
+
+/**
+ * off/shadow：閘門必須不生效，行為與 acl 功能導入前完全相同。
+ *
+ * 這道閘是本功能新加的行為，既有部署多半是扁平的 <root>/<tenantId>/*.pdf，沒有標籤層——
+ * 若閘門不看 aclMode，off 時所有既有檔案都會被判「未知標籤」，watcher 下一輪把 inbox
+ * 全部歸檔到 _failed/，違反「off＝行為零改變」這個遷移安全論證的基礎。
+ */
+describe('批次匯入擋門：off/shadow 一律放行、匯入為未標記', () => {
+  it.each(['off', 'shadow'] as const)('acl=%s：未知標籤仍放行，ingestFile 不帶 visibilityScopes', async (mode) => {
+    mockGetTenant.mockReturnValue({
+      id: 'acme', name: '客戶 A', knowledgeAcl: mode, knowledgeLabels: [{ id: 'hr', label: '人資' }],
+    });
+    const source = new FakeSource([item('神秘檔.pdf', 'finance')]);
+    const result = await runTwice(source);
+
+    expect(result.done).toBe(1);
+    expect(result.failed).toBe(0);
+    expect(mockIngestFile).toHaveBeenCalledWith('acme', '神秘檔.pdf', expect.any(Buffer), {
+      deferSuggestions: true,
+    });
+  });
+
+  it.each(['off', 'shadow'] as const)('acl=%s：未分層（labelId undefined）也放行，匯入為未標記', async (mode) => {
+    mockGetTenant.mockReturnValue({ id: 'acme', name: '客戶 A', knowledgeAcl: mode });
+    const source = new FakeSource([item('直接放這.pdf', undefined)]);
+    const result = await runTwice(source);
+
+    expect(result.done).toBe(1);
+    expect(result.failed).toBe(0);
+    expect(mockIngestFile).toHaveBeenCalledWith('acme', '直接放這.pdf', expect.any(Buffer), {
+      deferSuggestions: true,
+    });
+  });
+
+  it('未設定 knowledgeAcl（未設＝off）：亦放行，匯入為未標記', async () => {
+    mockGetTenant.mockReturnValue({ id: 'acme', name: '客戶 A' }); // 無 knowledgeAcl 欄位
+    const source = new FakeSource([item('政策.pdf', 'hr')]);
+    const result = await runTwice(source);
+
+    expect(result.done).toBe(1);
+    expect(mockIngestFile).toHaveBeenCalledWith('acme', '政策.pdf', expect.any(Buffer), {
+      deferSuggestions: true,
+    });
   });
 });
