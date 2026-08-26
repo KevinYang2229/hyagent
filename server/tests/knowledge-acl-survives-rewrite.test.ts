@@ -1,9 +1,14 @@
 /**
- * 標籤必須在「載入 → 寫回」的來回中存活。
+ * visibility_scopes 讀寫對稱性的正確性守護。
  *
- * ingestFile / removeFile 都走 loadIndex → saveIndex（刪光整租戶再塞回）。
- * loadIndex 若沒把 visibility_scopes 撈回來，寫回時就是 NULL——
- * 每上傳一個新檔就清空所有既有標籤，fail-closed 下等於知識庫無預警失聲。
+ * 寫入端（ingestFile/removeFile 分別走 appendChunks/removeFileChunks）會寫 visibility_scopes；
+ * 讀取端（loadIndex/loadIndexText）必須讀得回來——讀寫對稱本身就是正確性要求。
+ *
+ * loadIndexText 是活路徑（refreshSuggestedPrompts 用它取推薦問句語料），需對稱的回歸測試。
+ *
+ * NULL（從未標記）與 []（明確標成誰都不能看）必須區分，盤點報表依此分辨「待辦」與「已決定」。
+ *
+ * saveIndex 語意為整份取代（用於 knowledge-migrate-to-db.ts 一次性遷移，磁碟 JSON → DB）。
  */
 const executeRaw = jest.fn().mockResolvedValue(1);
 const queryRaw = jest.fn();
