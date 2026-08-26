@@ -3,7 +3,7 @@
  */
 import type { KnowledgeChunk } from '@/modules/knowledge/retriever.types';
 
-const search = jest.fn<Promise<KnowledgeChunk[]>, [string, string]>();
+const search = jest.fn<Promise<KnowledgeChunk[]>, [{ tenantId: string; userId: string }, string]>();
 jest.mock('@/modules/knowledge/retriever.pick', () => ({
   __esModule: true,
   pickRetriever: async () => ({ name: 'fake', search }),
@@ -71,6 +71,7 @@ describe('composeSection', () => {
     const llm = fakeLLM('設籍於受災區域者可申請，每戶三萬元。');
     const section = await composeSection(
       't1',
+      'u1',
       { heading: '申請資格', query: '誰可以申請？' },
       'zh-Hant',
       llm,
@@ -87,7 +88,7 @@ describe('composeSection', () => {
   it('零命中時不呼叫 LLM，hits 為 0、body 留空由 renderer 補固定語句', async () => {
     search.mockResolvedValue([]);
     const llm = fakeLLM('不該被呼叫');
-    const section = await composeSection('t1', { heading: '金額', query: 'q？' }, undefined, llm);
+    const section = await composeSection('t1', 'u1', { heading: '金額', query: 'q？' }, undefined, llm);
     expect(section.hits).toBe(0);
     expect(section.body).toBe('');
     expect(section.sources).toEqual([]);
@@ -98,6 +99,7 @@ describe('composeSection', () => {
     search.mockResolvedValue(CHUNKS);
     const section = await composeSection(
       't1',
+      'u1',
       { heading: '期限', query: 'q？' },
       undefined,
       failingLLM(),
@@ -111,7 +113,7 @@ describe('composeSection', () => {
   it('檢索拋錯時該節記為查無資料，不讓一節拖垮整份', async () => {
     search.mockRejectedValue(new Error('pgvector down'));
     const llm = fakeLLM('不該被呼叫');
-    const section = await composeSection('t1', { heading: 'A', query: 'q？' }, undefined, llm);
+    const section = await composeSection('t1', 'u1', { heading: 'A', query: 'q？' }, undefined, llm);
     expect(section.hits).toBe(0);
     expect(llm.calls).toHaveLength(0);
   });
@@ -127,13 +129,13 @@ describe('composeSection', () => {
     // 第一節
     search.mockResolvedValueOnce(firstChunks);
     const llm1 = fakeLLM('第一節內文');
-    await composeSection('t1', { heading: '第一章', query: '第一節問題？' }, undefined, llm1);
-    expect(search).toHaveBeenCalledWith('t1', '第一節問題？');
+    await composeSection('t1', 'u1', { heading: '第一章', query: '第一節問題？' }, undefined, llm1);
+    expect(search).toHaveBeenCalledWith({ tenantId: 't1', userId: 'u1' }, '第一節問題？');
 
     // 第二節
     search.mockResolvedValueOnce(secondChunks);
     const llm2 = fakeLLM('第二節內文');
-    await composeSection('t1', { heading: '第二章', query: '第二節問題？' }, undefined, llm2);
+    await composeSection('t1', 'u1', { heading: '第二章', query: '第二節問題？' }, undefined, llm2);
 
     // 驗證第二節的 prompt 只含自己的材料
     const secondPrompt = llm2.calls[0].messages[0].content
@@ -149,18 +151,19 @@ describe('composeSection', () => {
     search.mockResolvedValue([]);
     await composeSection(
       't1',
+      'u1',
       { heading: '申請資格', query: '誰可以申請馬太鞍溪災害補助？' },
       undefined,
       fakeLLM('x'),
     );
-    expect(search).toHaveBeenCalledWith('t1', '誰可以申請馬太鞍溪災害補助？');
+    expect(search).toHaveBeenCalledWith({ tenantId: 't1', userId: 'u1' }, '誰可以申請馬太鞍溪災害補助？');
   });
 
   describe('usageStore.recordLLMUsage 記錄', () => {
     it('彙整成功時記錄用量', async () => {
       search.mockResolvedValue(CHUNKS);
       const llm = fakeLLM('成功的內文');
-      await composeSection('t1', { heading: 'H', query: 'q' }, undefined, llm);
+      await composeSection('t1', 'u1', { heading: 'H', query: 'q' }, undefined, llm);
       expect(recordLLMUsage).toHaveBeenCalledTimes(1);
       expect(recordLLMUsage).toHaveBeenCalledWith('t1', expect.objectContaining({
         text: '成功的內文',
@@ -170,20 +173,20 @@ describe('composeSection', () => {
 
     it('零命中時不記錄用量（未呼叫 LLM）', async () => {
       search.mockResolvedValue([]);
-      await composeSection('t1', { heading: 'H', query: 'q' }, undefined, fakeLLM('不呼叫'));
+      await composeSection('t1', 'u1', { heading: 'H', query: 'q' }, undefined, fakeLLM('不呼叫'));
       expect(recordLLMUsage).toHaveBeenCalledTimes(0);
     });
 
     it('彙整 LLM 拋錯時不記錄用量', async () => {
       search.mockResolvedValue(CHUNKS);
-      await composeSection('t1', { heading: 'H', query: 'q' }, undefined, failingLLM());
+      await composeSection('t1', 'u1', { heading: 'H', query: 'q' }, undefined, failingLLM());
       expect(recordLLMUsage).toHaveBeenCalledTimes(0);
     });
 
     it('LLM 回空字串時（降級）仍記錄用量', async () => {
       search.mockResolvedValue(CHUNKS);
       const llm = fakeLLM('');
-      await composeSection('t1', { heading: 'H', query: 'q' }, undefined, llm);
+      await composeSection('t1', 'u1', { heading: 'H', query: 'q' }, undefined, llm);
       expect(recordLLMUsage).toHaveBeenCalledTimes(1);
     });
   });
@@ -193,6 +196,7 @@ describe('composeSection', () => {
       search.mockResolvedValue(CHUNKS);
       const section = await composeSection(
         't1',
+        'u1',
         { heading: 'H', query: 'q' },
         'zh-TW',
         failingLLM(),
@@ -205,6 +209,7 @@ describe('composeSection', () => {
       search.mockResolvedValue(CHUNKS);
       const section = await composeSection(
         't1',
+        'u1',
         { heading: 'H', query: 'q' },
         'en',
         failingLLM(),
@@ -217,6 +222,7 @@ describe('composeSection', () => {
       search.mockResolvedValue(CHUNKS);
       const section = await composeSection(
         't1',
+        'u1',
         { heading: 'H', query: 'q' },
         undefined,
         failingLLM(),

@@ -28,6 +28,7 @@ describe('知識庫問答的多年度表格內容', () => {
 
     const context = await loadTableContext(
       'tenant',
+      'user',
       '臺北國際自行車展與工具機展最近三年參展商家數',
     );
 

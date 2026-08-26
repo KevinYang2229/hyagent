@@ -91,7 +91,9 @@ export function startReportJob(params: StartReportParams, deps: ReportJobDeps = 
       const usedTables = new Set<string>();
       for (const section of plan.sections) {
         sections.push(
-          await compose(params.tenantId, section, params.locale, params.llm, { usedTables }),
+          await compose(params.tenantId, params.userId, section, params.locale, params.llm, {
+            usedTables,
+          }),
         );
         job.doneSections += 1;
       }

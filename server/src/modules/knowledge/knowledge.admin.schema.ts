@@ -19,7 +19,11 @@ export const sourceSchema = z.object({
 export const ingestSchema = sourceSchema.partial();
 
 /** 測試查詢（POST /knowledge/query-test 的 body） */
-export const queryTestSchema = z.object({ question: z.string().min(1) });
+export const queryTestSchema = z.object({
+  question: z.string().min(1),
+  /** 以此使用者身分試查；未帶時用管理者自身 */
+  asUserId: z.string().min(1).optional(),
+});
 
 /** job 進度查詢的 path 參數：需保留 :jobId（z.object 預設會剝除未列出的 key） */
 export const jobParamSchema = z.object({

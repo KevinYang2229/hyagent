@@ -13,7 +13,7 @@ jest.mock('@/modules/report/report.outline', () => ({
 }));
 jest.mock('@/modules/report/report.compose', () => ({
   __esModule: true,
-  composeSection: async (_t: string, s: { heading: string; query: string }) => ({
+  composeSection: async (_t: string, _u: string, s: { heading: string; query: string }) => ({
     heading: s.heading,
     query: s.query,
     body: '內文',

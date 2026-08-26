@@ -104,7 +104,7 @@ describe('admin 測試查詢端點', () => {
     await knowledgeAdminController.queryTest(req, res);
 
     // 寫死 staticIndexRetriever 的舊實作會讓這裡是 0 呼叫、回傳 hits: []——正是那個靜默錯誤
-    expect(pgvectorSearch).toHaveBeenCalledWith('t1', 'HyCMS 是什麼');
+    expect(pgvectorSearch).toHaveBeenCalledWith({ tenantId: 't1', userId: 'admin' }, 'HyCMS 是什麼');
     expect(staticSearch).not.toHaveBeenCalled();
     const { hits } = json.mock.calls[0][0].data as {
       hits: { title: string; snippet: string }[];
@@ -122,7 +122,7 @@ describe('admin 測試查詢端點', () => {
     const { req, res } = reqRes();
     await knowledgeAdminController.queryTest(req, res);
 
-    expect(staticSearch).toHaveBeenCalledWith('t1', 'HyCMS 是什麼');
+    expect(staticSearch).toHaveBeenCalledWith({ tenantId: 't1', userId: 'admin' }, 'HyCMS 是什麼');
     expect(pgvectorSearch).not.toHaveBeenCalled();
   });
 });

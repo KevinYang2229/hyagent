@@ -73,9 +73,12 @@ export const knowledgeAdminController = {
    */
   async queryTest(req: Request, res: Response): Promise<void> {
     const tenantId = String(req.params.id);
-    const { question } = req.body as { question: string };
+    const { question, asUserId } = req.body as { question: string; asUserId?: string };
     const retriever = await pickRetriever(tenantId);
-    const hits = await retriever.search(tenantId, question);
+    // 管理者權限最大，用自身身分試查永遠成功、等於沒測到。
+    // 權限上線後管理者最需要回答的是「HR 的小明看不看得到這份」。
+    const userId = asUserId ?? (req.user?.sub ?? 'admin');
+    const hits = await retriever.search({ tenantId, userId }, question);
     res.json({
       data: {
         hits: hits.map((h) => ({

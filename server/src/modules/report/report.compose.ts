@@ -1080,6 +1080,7 @@ export interface ComposeOptions {
 
 export async function composeSection(
   tenantId: string,
+  userId: string,
   section: OutlineSection,
   locale: string | undefined,
   llm: LLMProvider,
@@ -1091,7 +1092,7 @@ export async function composeSection(
   let chunks: KnowledgeChunk[] = [];
   try {
     const retriever = await pickRetriever(tenantId);
-    const pool = await retriever.search(tenantId, section.query);
+    const pool = await retriever.search({ tenantId, userId }, section.query);
     chunks = await rerankChunks(tenantId, section.query, pool, env.REPORT_SECTION_TOP_K);
   } catch (err) {
     logger.warn({ err, tenantId, query: section.query }, 'report section retrieval failed');

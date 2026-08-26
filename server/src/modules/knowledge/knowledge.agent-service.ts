@@ -40,8 +40,16 @@ const HISTORY_MESSAGES = 6;
 /**
  * 一般知識問答也要讀結構化試算表。只靠 top-5 文字 chunk 會使「最近三年」的
  * 第三年隨檢索排名消失，即使資料表其實有完整數值。
+ *
+ * 這是表格檢索的平行路徑，與 chunk 檢索走不同資料源（knowledge.tables.repo），
+ * 尚未套用 ACL 標籤過濾。簽名先收 userId 供呼叫端統一交出身分、也讓日後補上
+ * 表格層級可見性時不必再改一次呼叫鏈；現階段函式本體暫不使用。
  */
-export async function loadTableContext(tenantId: string, query: string): Promise<string> {
+export async function loadTableContext(
+  tenantId: string,
+  _userId: string,
+  query: string,
+): Promise<string> {
   try {
     const catalog = await listTableCatalog(tenantId);
     if (catalog.length === 0) return '';
@@ -180,9 +188,9 @@ export const knowledgeAgentService: AgentService = {
 
     // 兩階段檢索：向量取候選池 → LLM（Haiku）重排出最相關前 K 筆
     const retriever = await pickRetriever(session.tenantId);
-    const pool = await retriever.search(session.tenantId, query);
+    const pool = await retriever.search({ tenantId: session.tenantId, userId: session.userId }, query);
     const chunks = await rerankChunks(session.tenantId, query, pool, FINAL_K);
-    const tableContext = await loadTableContext(session.tenantId, query);
+    const tableContext = await loadTableContext(session.tenantId, session.userId, query);
 
     let reply: string;
     if (chunks.length === 0 && tableContext === '') {

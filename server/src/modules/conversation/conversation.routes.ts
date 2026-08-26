@@ -13,7 +13,8 @@ import {
 
 const router = Router();
 
-// MVP：未掛 requireAuth，userId 取自 x-user-id header（方便 curl demo）
+// userId 取自 requireAuth 注入的 req.user.sub（見 app.ts 掛載順序）；
+// controller 內的 x-user-id fallback 僅供未掛 requireAuth 的測試路徑使用。
 router.post('/', validate({ body: startSchema }), asyncHandler(conversationController.start));
 
 router.get(

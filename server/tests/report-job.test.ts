@@ -24,8 +24,10 @@ const outline: Outline = {
   ],
 };
 
-function sectionWith(hits: number): (t: string, s: { heading: string; query: string }) => Promise<ReportSection> {
-  return async (_t, s) => ({
+function sectionWith(
+  hits: number,
+): (t: string, u: string, s: { heading: string; query: string }) => Promise<ReportSection> {
+  return async (_t, _u, s) => ({
     heading: s.heading,
     query: s.query,
     body: hits > 0 ? '內文' : '',
@@ -154,7 +156,7 @@ describe('startReportJob', () => {
       { tenantId: 't1', userId: 'u1', topic: '主題', llm },
       {
         outline: async () => outline,
-        compose: async (_t, s) => {
+        compose: async (_t, _u, s) => {
           call += 1;
           return {
             heading: s.heading,
@@ -305,7 +307,7 @@ describe('purgeFinishedReportJobs', () => {
       { tenantId: 't1', userId: 'u1', topic: '主題', llm },
       {
         outline: async () => outline,
-        compose: async (_t, s) => {
+        compose: async (_t, _u, s) => {
           await gate;
           return { heading: s.heading, query: s.query, body: '內文', sources: [], hits: 1 };
         },
