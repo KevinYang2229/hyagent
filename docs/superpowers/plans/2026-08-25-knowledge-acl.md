@@ -1696,6 +1696,121 @@ git commit -m "feat(knowledge): 批次匯入以資料夾層級指定可見性標
 
 ---
 
+### Task 8B: 表格入庫時蓋上可見性標籤
+
+**Files:**
+- Modify: `server/src/modules/knowledge/knowledge.tables.repo.ts`（`saveTables`）
+- Modify: `server/src/modules/knowledge/knowledge-file.service.ts`（呼叫端）
+- Test: `server/tests/knowledge-acl-tables-ingest.test.ts`（新增）
+
+**Interfaces:**
+- Consumes: Task 8 的 `IngestFileOptions.visibilityScopes`；Task 3 的 `knowledge_tables.visibility_scopes`
+- Produces: `saveTables(..., visibilityScopes?: string[])`
+
+**為什麼要有這個任務**（Task 8 審查發現，非 Task 8 引入）：
+
+Task 6 讓 `searchTableCatalog` 與 `loadTable` 依 `visibility_scopes` 過濾，
+但 [`saveTables`](../../../server/src/modules/knowledge/knowledge.tables.repo.ts) 的 insert
+欄位清單**不含該欄**：
+
+```sql
+insert into knowledge_tables
+  (id, tenant_id, file_id, source, sheet, caption, headers, rows, row_count, embedding)
+```
+
+於是任何帶表格的檔案，其 `knowledge_tables` 列的 `visibility_scopes` 恆為 `NULL`。
+`acl=on` 時 `NULL && scopes[]` 恆為假——**該表格對所有人都撈不到，包含原本有權限的人**。
+
+方向是 fail-closed（不外洩），所以是可用性缺口不是安全漏洞。但它的形狀很糟：
+chunks 查得到、表格查不到，症狀是「問文件內容答得出來、問裡面的數字就說沒有」。
+
+管理者事後用 admin API 標註可以救（`setFileVisibility` 會更新兩張表），但批次匯入無人值守，
+沒有人會回頭重標一個「看起來匯入成功」的檔案。
+
+- [ ] **Step 1: 寫失敗測試**
+
+`server/tests/knowledge-acl-tables-ingest.test.ts`：
+
+```ts
+/**
+ * 表格入庫時必須蓋上可見性標籤。
+ *
+ * 查詢端（searchTableCatalog / loadTable）已依 visibility_scopes 過濾，
+ * 但入庫端若不寫該欄，任何帶表格的檔案其表格對所有人恆不可見——
+ * 症狀是「問文件內容答得出來、問裡面的數字就說沒有」。
+ */
+const executeRaw = jest.fn().mockResolvedValue(1);
+jest.mock('@/lib/db', () => ({
+  __esModule: true,
+  connectDb: async () => ({ $executeRaw: executeRaw, $queryRaw: jest.fn().mockResolvedValue([]) }),
+  DbWriteQueue: class {
+    enqueue(task: (db: unknown) => Promise<void>): void { void Promise.resolve(task({})).catch(() => {}); }
+    flush(): Promise<void> { return Promise.resolve(); }
+  },
+}));
+jest.mock('@/config/env', () => ({
+  __esModule: true,
+  env: {
+    DATA_BACKEND: 'db', EMBEDDING_MODEL: 'test', KNOWLEDGE_RERANK: false,
+    KNOWLEDGE_INDEX_DIR: '.', LOG_LEVEL: 'silent', NODE_ENV: 'test',
+  },
+}));
+
+import { saveTables } from '@/modules/knowledge/knowledge.tables.repo';
+
+function sqlTextOf(call: unknown[]): string {
+  const parts = call[0] as unknown as { raw?: readonly string[] };
+  return Array.from(parts.raw ?? []).join('?');
+}
+
+describe('表格入庫的可見性投影', () => {
+  beforeEach(() => executeRaw.mockClear());
+
+  it('insert 欄位清單含 visibility_scopes', async () => {
+    await saveTables('t1', 'f1', [
+      { id: 'tb1', source: 'x.xlsx', sheet: 'S1', caption: '', headers: ['a'], rows: [['1']], rowCount: 1 },
+    ] as never, ['kb:hr']);
+
+    const sql = executeRaw.mock.calls.map(sqlTextOf).join('\n');
+    expect(sql).toContain('knowledge_tables');
+    expect(sql).toContain('visibility_scopes');
+  });
+});
+```
+
+> 上例的 `saveTables` 參數形狀以該檔實際簽名為準——**先讀 `knowledge.tables.repo.ts`**，
+> 依實際的 table 物件型別與參數順序調整，不要硬套。重點是斷言 insert 含該欄。
+
+- [ ] **Step 2: 執行測試確認失敗**
+
+Run: `npm test -w server -- knowledge-acl-tables-ingest`
+Expected: FAIL — SQL 不含 `visibility_scopes`
+
+- [ ] **Step 3: 改 `saveTables`**
+
+加一個選填參數（比照 `IndexedChunk.visibilityScopes` 的語意：未傳＝`NULL`＝未標記），
+insert 欄位清單與每列的 values 都加上該欄。
+
+- [ ] **Step 4: 接上呼叫端**
+
+`knowledge-file.service.ts` 呼叫 `saveTables` 之處，把 Task 8 已算好的 `scopes`
+（同一個寫進 `fileMeta` 與 `fileChunks` 的變數）一併傳入。
+**三處必須同源**——meta、chunks、tables 用的是同一個值，不要各自重算。
+
+- [ ] **Step 5: 執行測試確認通過 + 全套**
+
+Run: `npm test -w server -- knowledge-acl-tables-ingest && npm test -w server && npm run typecheck -w server`
+Expected: 全綠
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add server/src/modules/knowledge/knowledge.tables.repo.ts server/src/modules/knowledge/knowledge-file.service.ts server/tests/knowledge-acl-tables-ingest.test.ts
+git commit -m "fix(knowledge): 表格入庫時蓋上可見性標籤，補齊 Task 6 的查詢端落差"
+```
+
+---
+
 ### Task 9: shadow 統計與盤點 API
 
 **Files:**
