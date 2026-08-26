@@ -147,6 +147,57 @@ describe('知識庫標籤 admin API', () => {
 });
 
 /**
+ * PUT /knowledge/source 的 visibilityScopes 此前不驗證是否為該租戶已知標籤
+ * ——同一個 sourceSchema 欄位，PATCH .../files/:fileId/visibility 有驗、
+ * PUT .../knowledge/source 沒有，是同一條規則的兩處各寫一份、其中一份漏寫。
+ */
+describe('PUT /knowledge/source 的 visibilityScopes 驗證已知標籤', () => {
+  it('未知標籤回 400', async () => {
+    const tid = tenantStore.createTenant('acl-source-scope-unknown').id;
+    await request(app)
+      .put(`/api/admin/tenants/${tid}/knowledge/source`)
+      .set(auth)
+      .send({
+        startUrl: 'https://example.com', maxPages: 10, chunkChars: 800,
+        embeddingModel: 'm', rerank: true, visibilityScopes: ['kb:nope'],
+      })
+      .expect(400);
+  });
+
+  it('已知標籤正常儲存', async () => {
+    const tid = tenantStore.createTenant('acl-source-scope-known').id;
+    await request(app)
+      .post(`/api/admin/tenants/${tid}/knowledge/labels`)
+      .set(auth)
+      .send({ id: 'public', label: '公開' })
+      .expect(201);
+
+    const res = await request(app)
+      .put(`/api/admin/tenants/${tid}/knowledge/source`)
+      .set(auth)
+      .send({
+        startUrl: 'https://example.com', maxPages: 10, chunkChars: 800,
+        embeddingModel: 'm', rerank: true, visibilityScopes: ['kb:public'],
+      })
+      .expect(200);
+
+    expect(res.body.data.visibilityScopes).toEqual(['kb:public']);
+  });
+
+  it('不帶 visibilityScopes 仍照常儲存（該欄位選填，未涉及驗證路徑）', async () => {
+    const tid = tenantStore.createTenant('acl-source-scope-omitted').id;
+    await request(app)
+      .put(`/api/admin/tenants/${tid}/knowledge/source`)
+      .set(auth)
+      .send({
+        startUrl: 'https://example.com', maxPages: 10, chunkChars: 800,
+        embeddingModel: 'm', rerank: true,
+      })
+      .expect(200);
+  });
+});
+
+/**
  * 三態旗標的控制面：patchTenantSchema 此前沒有 knowledgeAcl 欄位，PATCH tenant
  * 沒有端點可切換，上線程序「切 shadow、切 on」與「回滾＝改一個字，三十秒」都做不到，
  * 實際要人工改持久化 JSON／DB 列再重啟——而白名單（tenant.store.ts 的 updateTenant）

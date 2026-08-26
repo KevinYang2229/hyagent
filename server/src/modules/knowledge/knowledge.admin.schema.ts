@@ -13,7 +13,15 @@ export const sourceSchema = z.object({
   chunkChars: z.coerce.number().int().min(200).max(4000).default(800),
   embeddingModel: z.string().default('text-embedding-3-large'),
   rerank: z.coerce.boolean().default(true),
-  // 網站來源的可見性標籤（整個來源一組）；未帶時保留既有值（見 saveSource 呼叫端）
+  /**
+   * 網站來源的可見性標籤（整個來源一組）。
+   *
+   * 「未帶時保留既有值」只在 POST /knowledge/ingest（knowledge.admin.controller.ts 的
+   * ingest handler）成立——那裡是 `{ ...knowledgeStore.getSource(tenantId), ...body }`
+   * 的 merge 寫法。PUT /knowledge/source（saveSource）不是：knowledgeStore.saveSource
+   * 直接把 body 整包存成新的 KnowledgeSource（`{ ...src, updatedAt }`），不帶這個欄位
+   * 就等於把既有值清掉，不是「保留」。
+   */
   visibilityScopes: z.array(z.string()).optional(),
 });
 

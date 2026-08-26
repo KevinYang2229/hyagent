@@ -48,6 +48,21 @@ function replaceFileMeta(tenantId: string, file: KnowledgeFileMeta): void {
   knowledgeStore.addFileMeta(tenantId, file, {});
 }
 
+/**
+ * 檢查 scopes 是否都是該租戶已知的可見性標籤；未知者集中回一個 400。
+ *
+ * 原本只有 setFileVisibilityHandler 有這道檢查，saveSource（網站來源的
+ * visibilityScopes）沒有——同一個 sourceSchema 欄位，檔案端點驗、來源端點不驗，
+ * 是同一條規則的兩處各寫一份、其中一份漏寫，不是刻意的行為差異，故抽成共用函式。
+ */
+function assertKnownScopes(tenantId: string, scopes: string[]): void {
+  const valid = new Set(
+    (tenantStore.getTenant(tenantId)?.knowledgeLabels ?? []).map((l) => kbScopeId(l.id)),
+  );
+  const bad = scopes.filter((s) => !valid.has(s));
+  if (bad.length) throw AppError.badRequest(`未知的標籤：${bad.join('、')}`);
+}
+
 /** 由已存來源設定組出 ingest 參數；未設定起始網址則擋下 */
 function ingestParamsFor(tenantId: string): IngestParams {
   const s = knowledgeStore.getSource(tenantId);
@@ -78,7 +93,9 @@ export const knowledgeAdminController = {
 
   async saveSource(req: Request, res: Response): Promise<void> {
     const tenantId = String(req.params.id);
-    const saved = knowledgeStore.saveSource(tenantId, req.body as Omit<KnowledgeSource, 'updatedAt'>);
+    const body = req.body as Omit<KnowledgeSource, 'updatedAt'>;
+    if (body.visibilityScopes) assertKnownScopes(tenantId, body.visibilityScopes);
+    const saved = knowledgeStore.saveSource(tenantId, body);
     res.json({ data: saved });
   },
 
@@ -295,11 +312,7 @@ export const knowledgeAdminController = {
     const tenantId = String(req.params.id);
     const fileId = String(req.params.fileId);
     const { scopes } = req.body as { scopes: string[] };
-    const valid = new Set(
-      (tenantStore.getTenant(tenantId)?.knowledgeLabels ?? []).map((l) => kbScopeId(l.id)),
-    );
-    const bad = scopes.filter((s) => !valid.has(s));
-    if (bad.length) throw AppError.badRequest(`未知的標籤：${bad.join('、')}`);
+    assertKnownScopes(tenantId, scopes);
 
     const meta = knowledgeStore.getMeta(tenantId);
     const file = (meta.files ?? []).find((f) => f.fileId === fileId);
@@ -318,11 +331,27 @@ export const knowledgeAdminController = {
   async aclReport(req: Request, res: Response): Promise<void> {
     const tenantId = String(req.params.id);
     const files = knowledgeStore.getMeta(tenantId).files ?? [];
+    /*
+     * 網站來源的可見性標籤是整個來源一組（KnowledgeSource.visibilityScopes），不是逐檔
+     * ——盤面只掃 meta.files 結構上看不到它。失效情境：租戶主力語料是爬來的官網，
+     * 管理者把所有「檔案」都標好，面板顯示「未標記 0 筆」，切 on 後整個網站語料的
+     * visibility_scopes 卻是 NULL、對所有人消失，而盤點報表從頭到尾沒說過一句話。
+     * 這裡把來源當成一筆獨立項目列出，讓遷移進度指標不會說謊。
+     * configured=false（未設定 startUrl，本來就沒有網站語料）時 unlabeled/explicitlyEmpty
+     * 一律回 false——沒有內容就沒有「待標記」這件事，避免空租戶被算進待辦清單。
+     */
+    const source = knowledgeStore.getSource(tenantId);
+    const sourceConfigured = !!source.startUrl;
     res.json({
       data: {
         mode: aclModeOf(tenantId),
         unlabeled: files.filter((f) => f.visibilityScopes === undefined),
         explicitlyEmpty: files.filter((f) => f.visibilityScopes?.length === 0),
+        source: {
+          configured: sourceConfigured,
+          unlabeled: sourceConfigured && source.visibilityScopes === undefined,
+          explicitlyEmpty: sourceConfigured && source.visibilityScopes?.length === 0,
+        },
         shadowStats: await listShadowStats(tenantId),
         shadowCaveat:
           'shadow 以候選池內的結果估算，會低估影響，有兩個獨立來源：'
