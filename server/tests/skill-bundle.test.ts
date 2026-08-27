@@ -9,6 +9,10 @@ import { tenantStore } from '@/modules/tenant/tenant.store';
 
 const app = createApp();
 
+// 本檔多處直接呼叫 scopePolicy.setPolicy 造資料（繞過 HTTP），比照 resolve-scopes/scope-policy
+// 等測試檔在每案例後清空，不留下孤兒 policy entries。
+afterEach(() => scopePolicy.clear());
+
 // kevin 在 mock 名錄屬「行銷部」；建獨立租戶避免污染 default
 function makeTenant() {
   return tenantStore.createTenant(`bundle-test-${Date.now()}-${Math.random()}`);

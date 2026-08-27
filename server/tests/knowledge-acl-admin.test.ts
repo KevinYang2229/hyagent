@@ -19,6 +19,12 @@ import { tenantStore } from '@/modules/tenant/tenant.store';
 const app = createApp();
 const auth = { 'x-admin-key': 'test-admin-key' };
 
+// 本檔「刪除標籤同時撤銷孤兒授權」案例直接呼叫 scopePolicy.setPolicy 造資料（繞過 HTTP），
+// 比照其餘會寫 scopePolicy 的測試檔（resolve-scopes/scope-policy/admin-policy 等）在每案例後清空，
+// 不依賴「每個 jest 測試檔各自持有獨立模組實例」這件事本身去保證乾淨——那是目前的實作細節，
+// 不是這裡要驗證的東西，顯式清理才是不管未來 test runner／isolation 策略怎麼變都成立的保證。
+afterEach(() => scopePolicy.clear());
+
 /** 在 meta 中放一筆檔案，供標註與刪除標籤的案例使用 */
 function seedFile(tenantId: string, fileId: string, scopes?: string[]): void {
   knowledgeStore.addFileMeta(
