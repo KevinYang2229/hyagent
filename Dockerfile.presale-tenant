@@ -4,7 +4,11 @@
 # 為何用 tsx 啟動：server.mjs 會 `import '@hyagent/sdk/server'`，而該 export 指向 raw TS
 # （sdk/src/server.ts），純 node 無法直接載入；tsx（server 的 devDependency）可即時轉譯。
 
-FROM node:20-slim AS runtime
+# 基底映像走 Google 的 Docker Hub 快取（mirror.gcr.io），不直接拉 docker.io。
+# Zeabur 的 build 節點是共用出口 IP，匿名拉取很容易撞上 Docker Hub 的速率限制而
+# 整個 build 掛掉（429 Too Many Requests）。mirror.gcr.io 是透通快取，digest 與
+# Docker Hub 上的同一個 tag 完全相同，換的只是拉取來源，不是映像本身。
+FROM mirror.gcr.io/library/node:20-slim AS runtime
 WORKDIR /app
 # 注意：不要設 NODE_ENV=production，否則 npm ci 會略過 devDependencies（tsx 在其中）
 
