@@ -27,8 +27,18 @@ import type { SourceKey } from './prompt-slots';
 import { invalidatePgvectorModelCache } from './retriever.pgvector';
 import { invalidateIndexCache } from './retriever.staticIndex';
 
-/** 單次 INSERT 的最大列數：3072 維 × 200 列約 2.4MB statement，遠低於 Postgres 限制 */
+/**
+ * 單次 INSERT 的最大列數。
+ *
+ * 實測 halfvec(3072) 的文字字面值一列約 59KB（不是舊註解寫的 27KB），200 列就是
+ * 約 12MB 的 statement 字串，Prisma 送出時還會再複製一份。列數本身遠低於 Postgres
+ * 的限制，真正的成本在記憶體——所以匯入路徑改走 appendChunksStreamed 之後，實際批量
+ * 由上游的 embed 批次（EMBED_BATCH=64）決定，這裡只是上限。
+ */
 export const CHUNK_INSERT_BATCH = 200;
+
+/** 補償刪除單次 in (...) 的最大 id 數；Postgres 的繫結參數上限是 65535 */
+const ID_DELETE_BATCH = 1000;
 
 /** 依來源別的 chunk 計數；對應 KnowledgeIndexMeta.chunkCountBySource */
 export type ChunkCounts = Record<SourceKey, number>;
@@ -333,10 +343,15 @@ async function deleteChunksByIds(
   ids: string[],
 ): Promise<void> {
   if (ids.length === 0) return;
-  await db.$executeRaw`
-    delete from knowledge_chunks
-    where tenant_id = ${tenantId} and id in (${Prisma.join(ids)})
-  `;
+  // 分段下刪除：大檔的補償範圍可達上萬筆 id，一次全塞進 in (...) 會撞 Postgres 的
+  // 65535 個繫結參數上限——補償本身失敗就等於留下孤兒，這是最不該省的地方
+  for (let i = 0; i < ids.length; i += ID_DELETE_BATCH) {
+    const slice = ids.slice(i, i + ID_DELETE_BATCH);
+    await db.$executeRaw`
+      delete from knowledge_chunks
+      where tenant_id = ${tenantId} and id in (${Prisma.join(slice)})
+    `;
+  }
 }
 
 /**
@@ -362,26 +377,36 @@ async function deleteChunksByIds(
  */
 async function appendChunksToDb(
   tenantId: string,
-  chunks: IndexedChunk[],
+  batches: AsyncIterable<IndexedChunk[]>,
   meta: { model: string; source: string },
-): Promise<void> {
+): Promise<number> {
   const db = await connectDb();
+  // 補償範圍＝「上游交給我們的每一筆」，不是「插入成功的每一筆」：失敗的那道 INSERT
+  // 可能已經寫進去一部分，而串流下上游還沒產出的批次根本不曾存在，不必也不能刪。
+  const writtenIds: string[] = [];
+  let total = 0;
   try {
-    for (let i = 0; i < chunks.length; i += CHUNK_INSERT_BATCH) {
-      const batch = chunks.slice(i, i + CHUNK_INSERT_BATCH);
-      const values = batch.map(
-        (c) => Prisma.sql`(${tenantId}, ${c.id}, ${c.url}, ${c.title}, ${c.text}, ${c.fileId ?? null},
-                          ${c.visibilityScopes ?? null}, ${toVectorLiteral(c.vector)}::halfvec(3072))`,
-      );
-      await db.$executeRaw`
-        insert into knowledge_chunks (tenant_id, id, url, title, text, file_id, visibility_scopes, embedding)
-        values ${Prisma.join(values)}
-        on conflict (tenant_id, id) do update set
-          url = excluded.url, title = excluded.title, text = excluded.text,
-          file_id = excluded.file_id, visibility_scopes = excluded.visibility_scopes,
-          embedding = excluded.embedding
-      `;
+    for await (const incoming of batches) {
+      for (const c of incoming) writtenIds.push(c.id);
+      for (let i = 0; i < incoming.length; i += CHUNK_INSERT_BATCH) {
+        const batch = incoming.slice(i, i + CHUNK_INSERT_BATCH);
+        if (batch.length === 0) continue;
+        const values = batch.map(
+          (c) => Prisma.sql`(${tenantId}, ${c.id}, ${c.url}, ${c.title}, ${c.text}, ${c.fileId ?? null},
+                            ${c.visibilityScopes ?? null}, ${toVectorLiteral(c.vector)}::halfvec(3072))`,
+        );
+        await db.$executeRaw`
+          insert into knowledge_chunks (tenant_id, id, url, title, text, file_id, visibility_scopes, embedding)
+          values ${Prisma.join(values)}
+          on conflict (tenant_id, id) do update set
+            url = excluded.url, title = excluded.title, text = excluded.text,
+            file_id = excluded.file_id, visibility_scopes = excluded.visibility_scopes,
+            embedding = excluded.embedding
+        `;
+        total += batch.length;
+      }
     }
+    if (total === 0) return 0;
 
     // metadata 擺最後，且同樣納入補償範圍：它是「這批 chunks 已經好了」的宣告，
     // 提早寫會讓檢索器在 chunks 還沒到齊時就把索引當成最新的
@@ -391,18 +416,23 @@ async function appendChunksToDb(
       on conflict (tenant_id) do update set
         generated_at = excluded.generated_at, updated_at = now()
     `;
+    return total;
   } catch (err) {
     /*
      * 沒有交易可以回滾，所以自己把殘骸收掉，否則會留下孤兒 chunks：
      * ingestFile 每次重試都重新產一個 randomUUID 當 fileId，重試寫的是另一組 id，
      * 上一次的殘留永遠不會被覆寫，也不會出現在 meta.files 裡——admin 看不到、刪不掉，
      * 檢索卻照樣撈得到。機器人於是拿一份沒人知道存在的資料作答。
+     *
+     * 注意這條路徑只救得了「查詢失敗」。process 直接被 SIGKILL（容器 OOM）時
+     * catch 根本不會執行，殘骸只能靠 scripts/knowledge-reconcile 事後清——
+     * 峰值記憶體因此是這條管線的正確性議題，不只是效能議題。
      */
     try {
-      await deleteChunksByIds(db, tenantId, chunks.map((c) => c.id));
+      await deleteChunksByIds(db, tenantId, writtenIds);
     } catch (cleanupErr) {
       logger.error(
-        { err: cleanupErr, tenantId, chunks: chunks.length },
+        { err: cleanupErr, tenantId, chunks: writtenIds.length },
         '附加失敗後的補償刪除也失敗，knowledge_chunks 可能殘留孤兒列（需人工清理）',
       );
     }
@@ -505,10 +535,56 @@ export async function appendChunks(
   meta: { model: string; source: string },
 ): Promise<void> {
   if (chunks.length === 0) return;
-  if (env.DATA_BACKEND === 'db') await appendChunksToDb(tenantId, chunks, meta);
-  else appendChunksToFile(tenantId, chunks, meta);
+  await appendChunksStreamed(tenantId, singleBatch(chunks), meta);
+}
+
+/** 把既有的整包呼叫包成單批串流，讓兩條路徑共用同一份寫入與補償邏輯 */
+async function* singleBatch(chunks: IndexedChunk[]): AsyncGenerator<IndexedChunk[]> {
+  yield chunks;
+}
+
+/**
+ * 串流附加：上游每產出一批 chunks 就立刻寫出去，寫完才回頭要下一批。
+ *
+ * 與 appendChunks 的差別**只在記憶體**，寫入語意完全相同（只 INSERT、不包交易、
+ * metadata 擺最後、失敗補償刪除）。大檔匯入必須走這條：整份檔案的向量同時存在於
+ * 記憶體會讓峰值隨檔案大小線性成長，撞到容器上限就是 SIGKILL——而被 SIGKILL 的
+ * process 執行不到任何 catch，補償刪除等於不存在（見 appendChunksToDb 的註解）。
+ *
+ * 回傳實際寫入的列數，供呼叫端寫進 meta——由寫入層回報而非上游自己數，兩邊才不會分歧。
+ */
+export async function appendChunksStreamed(
+  tenantId: string,
+  batches: AsyncIterable<IndexedChunk[]>,
+  meta: { model: string; source: string },
+): Promise<number> {
+  const total =
+    env.DATA_BACKEND === 'db'
+      ? await appendChunksToDb(tenantId, batches, meta)
+      : await appendChunksToFileStreamed(tenantId, batches, meta);
+  if (total === 0) return 0;
   invalidateIndexCache(tenantId);
   invalidatePgvectorModelCache(tenantId);
+  return total;
+}
+
+/**
+ * file 後端的串流附加：**刻意先收齊再一次寫檔**。
+ *
+ * 這裡的寫入是「整份 JSON 覆寫」，逐批寫等於把每一批的成本乘上整份索引的大小，
+ * 而且中途失敗會留下寫了一半的檔案——正是 file 後端本來沒有的問題。記憶體上界是
+ * db 後端（正式環境）的議題；file 後端服務的是本機開發與 CLI，資料量本就有限。
+ */
+async function appendChunksToFileStreamed(
+  tenantId: string,
+  batches: AsyncIterable<IndexedChunk[]>,
+  meta: { model: string; source: string },
+): Promise<number> {
+  const all: IndexedChunk[] = [];
+  for await (const batch of batches) all.push(...batch);
+  if (all.length === 0) return 0;
+  appendChunksToFile(tenantId, all, meta);
+  return all.length;
 }
 
 /** 移除指定 fileId 的所有 chunks；該檔本來就沒有 chunk 時回 false（不失效快取） */

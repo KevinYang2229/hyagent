@@ -30,7 +30,7 @@ export interface IngestProgress {
   embedded: number;
 }
 
-const EMBED_BATCH = 64;
+export const EMBED_BATCH = 64;
 /**
  * 單次 embedding 請求的字元上限。
  *
@@ -62,8 +62,37 @@ export function planEmbedBatches(texts: string[]): string[][] {
 }
 
 /**
+ * 分批向量化，每批算完立刻 yield 出去，**不累積整份向量**。
+ *
+ * 這是大檔匯入的記憶體上界所在。halfvec(3072) 的一個向量在 V8 裡約 25KB，轉成寫入用的
+ * 文字字面值又是 59KB；「先全部算完再全部寫出」的寫法讓峰值隨檔案大小線性成長，1200 個
+ * chunk 實測就從 43MB 漲到 330MB，容器記憶體一到頂就是 SIGKILL——沒有例外、沒有 500、
+ * 沒有補償刪除，只留下孤兒 chunks 和瀏覽器端一個看起來毫不相干的 CORS 錯誤。
+ *
+ * 呼叫端消化完一批才會拿到下一批（generator 的背壓天生如此），峰值於是被壓在 O(單批)。
+ * offset 是該批第一筆在原始 texts 中的索引，供呼叫端對回自己的資料。
+ */
+export async function* embedBatchesStreamed(
+  embedder: EmbeddingProvider,
+  texts: string[],
+  model: string,
+  onBatch?: (tokens: number, embedded: number) => void,
+): AsyncGenerator<{ vectors: number[][]; offset: number }> {
+  let offset = 0;
+  for (const batch of planEmbedBatches(texts)) {
+    const res = await embedder.embed(batch, model);
+    yield { vectors: res.vectors, offset };
+    offset += batch.length;
+    onBatch?.(res.tokens, offset);
+  }
+}
+
+/**
  * 分批向量化，回傳與輸入順序對應的向量。
  * onBatch 於每批完成後呼叫（用量歸戶／進度回報），失敗時已完成的批次用量仍已記錄。
+ *
+ * **會把整份向量握在記憶體裡**，僅適用於總量可控的呼叫端（如表格描述句，一張表一筆）。
+ * 使用者上傳的檔案走 embedBatchesStreamed，理由見該函式註解。
  */
 export async function embedInBatches(
   embedder: EmbeddingProvider,
@@ -72,10 +101,8 @@ export async function embedInBatches(
   onBatch?: (tokens: number, embedded: number) => void,
 ): Promise<number[][]> {
   const vectors: number[][] = [];
-  for (const batch of planEmbedBatches(texts)) {
-    const res = await embedder.embed(batch, model);
-    vectors.push(...res.vectors);
-    onBatch?.(res.tokens, vectors.length);
+  for await (const { vectors: batch } of embedBatchesStreamed(embedder, texts, model, onBatch)) {
+    vectors.push(...batch);
   }
   return vectors;
 }

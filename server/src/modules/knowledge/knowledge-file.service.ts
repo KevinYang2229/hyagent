@@ -12,7 +12,7 @@ import { tenantStore } from '@/modules/tenant/tenant.store';
 import { usageStore } from '@/modules/usage/usage.store';
 import { AppError } from '@/utils/app-error';
 import {
-  appendChunks,
+  appendChunksStreamed,
   countChunksBySource,
   loadIndex,
   loadIndexMeta,
@@ -24,6 +24,7 @@ import {
 import {
   carryOverFileChunks,
   chunkMarkdown,
+  embedBatchesStreamed,
   embedInBatches,
   normalizeDocText,
   squash,
@@ -56,6 +57,15 @@ export interface IngestFileOptions {
 }
 
 const MIN_TEXT_CHARS = 20;
+
+/**
+ * 單檔切塊數上限。
+ *
+ * 串流寫入之後峰值記憶體已與檔案大小脫鉤，這道閘擋的是另一件事：一個異常巨大的檔案
+ * 會安靜地跑上幾十分鐘、付掉對應的 embedding 費用，使用者只看到轉圈。與其讓它跑，
+ * 不如當場回 422 講清楚。實務參考值：正式環境最大的一份 xlsx 約 1,900 個 chunk。
+ */
+const MAX_FILE_CHUNKS = 20_000;
 
 /** 摘要輸入上限：超長文件截前段即可（摘要只求鳥瞰，兼顧 token 成本） */
 const SUMMARY_MAX_INPUT_CHARS = 24000;
@@ -113,6 +123,11 @@ export async function ingestFile(
   }
   const source = knowledgeStore.getSource(tenantId);
   const pieces = chunkMarkdown(text, source.chunkChars);
+  if (pieces.length > MAX_FILE_CHUNKS) {
+    throw AppError.unprocessable(
+      `檔案切出 ${pieces.length} 個片段，超過單檔上限 ${MAX_FILE_CHUNKS}；請拆成多個檔案再匯入`,
+    );
+  }
 
   // 單一 chunk 就是全文本身，摘要無增益；多 chunk 才值得花一次 LLM 呼叫
   const summary = pieces.length >= 2 ? await summarizeText(tenantId, name, text) : null;
@@ -125,38 +140,62 @@ export async function ingestFile(
   // 模型一致性：同一份索引只能用同一個 embedding 模型
   const model = existing?.model ?? source.embeddingModel;
   const embedder = getEmbeddingProvider(tenantStore.getTenant(tenantId)?.llmConfig);
-  // 必須分批：整份文件一次送出會撞 embeddings 端點的 300k tokens/request 上限（400 Invalid 'input'）
-  const vectors = await embedInBatches(embedder, toEmbed, model, (tokens) => {
-    usageStore.recordEmbeddingUsage(tenantId, tokens, model, embedder.keySource);
-  });
 
   const fileId = randomUUID();
   const scopes = opts?.visibilityScopes;
-  const fileChunks: IndexedChunk[] = pieces.map((t, i) => ({
-    id: `${fileId}-${i}`,
-    url: `file://${name}`,
-    title: name,
-    text: t,
-    vector: vectors[i],
-    fileId,
-    ...(scopes ? { visibilityScopes: scopes } : {}),
-  }));
-  if (summary) {
-    // 標明「全文摘要」讓回答模型知道這是衍生內容，細節仍以原文 chunks 為準
-    fileChunks.push({
-      id: `${fileId}-summary`,
-      url: `file://${name}`,
-      title: `${name}（全文摘要）`,
-      text: summary,
-      vector: vectors[pieces.length],
-      fileId,
-      ...(scopes ? { visibilityScopes: scopes } : {}),
-    });
-  }
+  /** 以「在 toEmbed 中的位置」還原成 chunk；索引落在 pieces 之後的那一筆就是全文摘要 */
+  const chunkAt = (i: number, vector: number[]): IndexedChunk =>
+    i < pieces.length
+      ? {
+          id: `${fileId}-${i}`,
+          url: `file://${name}`,
+          title: name,
+          text: pieces[i],
+          vector,
+          fileId,
+          ...(scopes ? { visibilityScopes: scopes } : {}),
+        }
+      : {
+          // 標明「全文摘要」讓回答模型知道這是衍生內容，細節仍以原文 chunks 為準
+          id: `${fileId}-summary`,
+          url: `file://${name}`,
+          title: `${name}（全文摘要）`,
+          text: summary as string,
+          vector,
+          fileId,
+          ...(scopes ? { visibilityScopes: scopes } : {}),
+        };
+
+  /*
+   * 逐批 embed → 逐批寫入 → 釋放。峰值記憶體是 O(單批) 而非 O(整份檔案)。
+   *
+   * 分批 embed 本來就是必須的（整份一次送出會撞 embeddings 端點的 300k tokens/request
+   * 上限），但舊寫法把每批結果累積成完整的 vectors 陣列才交給寫入層，等於自己把峰值
+   * 拉回 O(整份檔案)：1200 個 chunk 的 xlsx 光向量與寫入字面值實測就要 330MB，容器
+   * 記憶體一到頂 process 直接被 SIGKILL。那不是 500 錯誤——是連 catch 都執行不到的
+   * 猝死，補償刪除失效、殘骸留在資料庫，瀏覽器端只看得到一個沒有 CORS 標頭的 502。
+   */
+  const chunkCount = await appendChunksStreamed(
+    tenantId,
+    (async function* () {
+      for await (const { vectors, offset } of embedBatchesStreamed(
+        embedder,
+        toEmbed,
+        model,
+        (tokens) => usageStore.recordEmbeddingUsage(tenantId, tokens, model, embedder.keySource),
+      )) {
+        yield vectors.map((v, k) => chunkAt(offset + k, v));
+      }
+    })(),
+    { model, source: existing?.source ?? `file://${name}` },
+  );
 
   /*
    * 結構化表與 chunks 並存：chunks 回答「這在講什麼」，表回答「數字是多少」。
    * 失敗不得中斷匯入——沒有表只是報告畫不了精確圖，而 chunks 已經付過 embedding 的錢。
+   *
+   * 擺在 chunks 寫入**之後**：chunks 失敗會拋出，這裡就不會執行，也就不會留下
+   * 「表在、chunks 不在」的孤兒表（表沒有 chunks 那套補償刪除）。
    */
   if (parsed.tables?.length) {
     try {
@@ -164,6 +203,9 @@ export async function ingestFile(
        * 表的描述句也 embed 一份，供報告依語意挑表。與 chunks 分開：
        * chunks 是「內容」的向量，這裡是「這張表在講什麼」的向量，用途與粒度都不同。
        * embedding 失敗不阻斷——沒有向量只是選表退回字面比對。
+       *
+       * 這裡沿用整包版的 embedInBatches：一張表只有一句描述，總量以工作表數計，
+       * 不像 chunks 會隨檔案大小成長。
        */
       let tableVectors: number[][] | undefined;
       try {
@@ -183,12 +225,6 @@ export async function ingestFile(
     }
   }
 
-  // 點狀附加：只寫本檔的 chunks，不重寫整份索引（見 knowledge.index.repo 的 appendChunks 註解）
-  await appendChunks(tenantId, fileChunks, {
-    model,
-    source: existing?.source ?? `file://${name}`,
-  });
-
   // 計數在 DB 端聚合，不搬任何列回來。原本是「既有快照 + 本次新增」就地拼出，除了要先
   // 付一次全量載入的代價，併發匯入時還會短暫偏低；寫入後直接 count 既便宜又是權威值。
   const counts = await countChunksBySource(tenantId);
@@ -197,7 +233,8 @@ export async function ingestFile(
   const fileMeta: KnowledgeFileMeta = {
     fileId,
     name,
-    chunks: fileChunks.length,
+    // 由寫入層回報實際列數，不由上游自己數——兩邊分歧時後台顯示的數字就是假的
+    chunks: chunkCount,
     ingestedAt: generatedAt,
     format: parsed.format,
     fidelity: parsed.fidelity,

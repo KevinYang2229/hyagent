@@ -461,3 +461,87 @@ describe('deleteIndex（db 後端，追加需求）', () => {
     expect(stmts.some((s) => s.includes('delete') && s.includes('knowledge_indexes'))).toBe(true);
   });
 });
+
+/**
+ * 串流附加：與 appendChunks 的寫入語意完全相同，差別只在「上游不必先把整份向量算完」。
+ *
+ * 正式環境就是敗在那個「先算完」：整份檔案的向量同時存在記憶體，容器上限一到 process
+ * 被 SIGKILL——沒有例外、沒有補償刪除，資料庫留下 9,000 筆孤兒 chunks。因此這裡測的是
+ * 節奏（寫完一批才要下一批）與補償範圍（只刪上游真的交出來過的 id）。
+ */
+describe('appendChunksStreamed（db 後端）', () => {
+  const meta = { model: 'text-embedding-3-large', source: 'file://TM 匯出.xlsx' };
+
+  const batchOf = (tag: string, n: number): { id: string; url: string; title: string; text: string; vector: number[]; fileId: string }[] =>
+    Array.from({ length: n }, (_, i) => ({
+      id: `${tag}-${i}`,
+      url: 'file://TM 匯出.xlsx',
+      title: 'TM 匯出.xlsx',
+      text: `第 ${tag}-${i} 段`,
+      vector: [i, 0.5, -1],
+      fileId: 'F-stream',
+    }));
+
+  /** 記錄「產出第 n 批」與「送出第 n 道 insert」的先後，用來證明兩者交錯 */
+  function tracedProducer(tags: string[], size: number, log: string[]): AsyncGenerator<ReturnType<typeof batchOf>> {
+    return (async function* () {
+      for (const tag of tags) {
+        log.push(`produce:${tag}`);
+        yield batchOf(tag, size);
+      }
+    })();
+  }
+
+  it('寫完一批才回頭要下一批——上游不得被一次抽乾', async () => {
+    const { appendChunksStreamed } = loadRepoInDbMode();
+    const log: string[] = [];
+    executeRaw.mockImplementation(async (...call: unknown[]) => {
+      log.push(sqlTextOf(call).includes('knowledge_indexes') ? 'meta' : 'insert');
+      return 0;
+    });
+
+    await appendChunksStreamed('t1', tracedProducer(['a', 'b', 'c'], 10, log), meta);
+
+    // 抽乾的實作會是 produce,produce,produce,insert,insert,insert——那正是 OOM 的形狀
+    expect(log).toEqual([
+      'produce:a', 'insert',
+      'produce:b', 'insert',
+      'produce:c', 'insert',
+      'meta',
+    ]);
+  });
+
+  it('回傳實際寫入列數，供呼叫端寫進 meta', async () => {
+    const { appendChunksStreamed } = loadRepoInDbMode();
+    const total = await appendChunksStreamed('t1', tracedProducer(['a', 'b'], 7, []), meta);
+    expect(total).toBe(14);
+  });
+
+  it('中途失敗 → 補償只刪已產出的批次，且不再向上游要資料', async () => {
+    const { appendChunksStreamed } = loadRepoInDbMode();
+    const log: string[] = [];
+    const boom = new Error('connection reset');
+    // 第一批 insert 成功，第二批炸掉
+    executeRaw.mockResolvedValueOnce(0).mockRejectedValueOnce(boom).mockResolvedValue(0);
+
+    await expect(appendChunksStreamed('t1', tracedProducer(['a', 'b', 'c'], 5, log), meta)).rejects.toBe(boom);
+
+    // 第三批連產都不該產——上游還沒付出的 embedding 費用不必白花
+    expect(log).toEqual(['produce:a', 'produce:b']);
+
+    const del = executeRaw.mock.calls.find((c) => sqlTextOf(c).includes('delete'));
+    expect(del).toBeDefined();
+    const bound = bindValuesOf(del as unknown[]);
+    // 兩批共 10 筆都要納入補償：失敗的那道 INSERT 可能已經寫進去一部分
+    expect(bound).toHaveLength(11); // tenantId + 10 個 id
+    expect(bound).toEqual(expect.arrayContaining(['t1', 'a-0', 'b-4']));
+  });
+
+  it('一筆都沒產出時完全不打 DB，也不寫 metadata', async () => {
+    const { appendChunksStreamed } = loadRepoInDbMode();
+    const total = await appendChunksStreamed('t1', tracedProducer([], 0, []), meta);
+    expect(total).toBe(0);
+    // metadata 是「這批 chunks 已經好了」的宣告，沒有 chunks 就沒有什麼好宣告
+    expect(executeRaw).not.toHaveBeenCalled();
+  });
+});
