@@ -52,6 +52,8 @@ export interface Tenant {
   grantedScopes?: string[];
   /** 月度 LLM token 配額；0 或未設＝不限 */
   quotaMonthlyLlmTokens?: number;
+  /** 知識庫 ACL 三態旗標：off＝不過濾（預設）／shadow＝觀察不擋／on＝強制過濾 */
+  knowledgeAcl?: 'off' | 'shadow' | 'on';
   createdAt: string;
 }
 export interface ApiKey {
@@ -192,11 +194,22 @@ export interface KnowledgeShadowStat {
   sampleUserIds: string[];
   lastBlockedAt: string;
 }
-/** ACL 盤點：目前生效模式＋未標記／明確清空清單＋shadow 統計 */
+/**
+ * 網站來源的可見性標記狀態：來源的標籤是整個來源一組（不是逐檔），
+ * 檔案清單看不到它——configured=false（未設定 startUrl）時 unlabeled/explicitlyEmpty
+ * 一律為 false，沒有網站語料就談不上「待標記」。
+ */
+export interface KnowledgeAclSourceStatus {
+  configured: boolean;
+  unlabeled: boolean;
+  explicitlyEmpty: boolean;
+}
+/** ACL 盤點：目前生效模式＋未標記／明確清空清單＋網站來源狀態＋shadow 統計 */
 export interface KnowledgeAclReport {
   mode: 'off' | 'shadow' | 'on';
   unlabeled: KnowledgeFileMeta[];
   explicitlyEmpty: KnowledgeFileMeta[];
+  source: KnowledgeAclSourceStatus;
   shadowStats: KnowledgeShadowStat[];
   shadowCaveat: string;
 }
@@ -291,7 +304,12 @@ export const api = {
     req<{ tenant: Tenant; publishableKey: string }>('POST', '/admin/tenants', input),
   updateTenant: (
     id: string,
-    patch: Partial<Pick<Tenant, 'name' | 'allowedOrigins' | 'ssoSecret' | 'appearance' | 'quotaMonthlyLlmTokens'>>,
+    patch: Partial<
+      Pick<
+        Tenant,
+        'name' | 'allowedOrigins' | 'ssoSecret' | 'appearance' | 'quotaMonthlyLlmTokens' | 'knowledgeAcl'
+      >
+    >,
   ) => req<Tenant>('PATCH', `/admin/tenants/${id}`, patch),
   deleteTenant: (id: string) => req<{ id: string }>('DELETE', `/admin/tenants/${id}`),
   listScopes: () => req<ScopeDef[]>('GET', '/admin/scopes'),

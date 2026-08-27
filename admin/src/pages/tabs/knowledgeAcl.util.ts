@@ -60,3 +60,51 @@ export function fileLabelState(visibilityScopes: string[] | undefined): FileLabe
   if (visibilityScopes.length === 0) return 'empty';
   return 'labeled';
 }
+
+/** 每租戶三態旗標，需與 server patchTenantSchema 的 knowledgeAcl enum 同步 */
+export type AclMode = 'off' | 'shadow' | 'on';
+
+/**
+ * 切到某模式是否需要二次確認。
+ * 只有切到 on 會讓未標記／明確清空的內容立即對所有人不可見，是唯一有代價的方向；
+ * 切回 off 或切到 shadow 都不會讓任何東西消失（shadow 只是照常回答、觀察記錄），
+ * 不需要二次確認。
+ */
+export function needsAclOnConfirm(mode: AclMode): boolean {
+  return mode === 'on';
+}
+
+/**
+ * ACL 盤點裡的網站來源是否需要警示。
+ * 來源的可見性標籤是整個來源一組，不在檔案清單裡——面板若只看檔案清單，
+ * 會出現「未標記 0 筆」但切到 on 後整個網站語料消失的情況。只有「有設定
+ * 來源」且「來源本身未標記」時才算：沒設定來源（configured=false）代表
+ * 沒有網站語料，談不上未標記。
+ */
+export function sourceNeedsAclWarning(source: { configured: boolean; unlabeled: boolean }): boolean {
+  return source.configured && source.unlabeled;
+}
+
+/**
+ * 切到 on 前的二次確認訊息：把未標記／明確清空的文件數、網站來源是否未標記，
+ * 在使用者按下去「之前」攤開來——設計文件承諾「回滾成本＝改一個字，三十秒」，
+ * 但那是退場的代價；進場的代價（誰會突然消失）也要讓人看得到，不能決策當下是盲的。
+ */
+export function buildAclOnConfirmMessage(report: {
+  unlabeledCount: number;
+  explicitlyEmptyCount: number;
+  source: { configured: boolean; unlabeled: boolean };
+}): string {
+  const lines = [
+    '切換為「啟用」後，以下內容將立即對所有人不可見：',
+    `・未標記文件：${report.unlabeledCount} 份`,
+    `・明確清空文件：${report.explicitlyEmptyCount} 份`,
+  ];
+  if (sourceNeedsAclWarning(report.source)) {
+    lines.push(
+      '・網站來源尚未標記可見性：整個網站爬取語料將全部消失（來源標籤是整組的，不在檔案清單內，不算進以上兩個數字）！',
+    );
+  }
+  lines.push('', '確定要切換為「啟用」嗎？');
+  return lines.join('\n');
+}
