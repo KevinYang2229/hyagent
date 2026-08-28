@@ -19,6 +19,7 @@ import { getLLMProvider } from '@/lib/llm';
 import { indexPathFor } from '@/modules/knowledge/index-path';
 import { startIngestJob } from '@/modules/knowledge/knowledge.job';
 import { knowledgeStore } from '@/modules/knowledge/knowledge.store';
+import { tenantStore } from '@/modules/tenant/tenant.store';
 import type { KnowledgeIndexFile } from '@/modules/knowledge/knowledge-index.types';
 
 const app = createApp();
@@ -134,6 +135,43 @@ describe('POST /admin/tenants/:id/knowledge/suggestion', () => {
       .set(auth)
       .send({ source: 'file' })
       .expect(422);
+  });
+
+  /*
+   * regenerateSlot 有多條路都回失敗，先前全被 controller 壓成同一句「請稍後再試」。
+   * ACL 過濾掉全部語料時重試永遠不會成功——訊息必須說出「要去標可見性」，
+   * 否則管理者會一直重按按鈕（實際發生過）。
+   */
+  it('acl=shadow 且內容未標記 → 422，訊息要指向標記可見性而非「請稍後再試」', async () => {
+    const t = tenantStore.createTenant('sug-admin-acl-shadow');
+    tenantStore.updateTenant(t.id, { knowledgeAcl: 'shadow' });
+    writeIndex(t.id, [chunk]); // chunk 無 visibilityScopes ＝未標記
+    knowledgeStore.setMeta(t.id, { status: 'ready', chunkCount: 1 });
+    mockLLM('{"zh-Hant":"不該被呼叫","en":"should not be called"}');
+
+    const res = await request(app)
+      .post(`/api/admin/tenants/${t.id}/knowledge/suggestion`)
+      .set(auth)
+      .send({ source: 'website' })
+      .expect(422);
+
+    expect(res.body.error.message).toContain('訪客');
+    expect(res.body.error.message).not.toContain('請稍後再試');
+  });
+
+  it('acl=off 時 LLM 失敗仍維持「請稍後再試」（可重試的那條路不能被新訊息蓋掉）', async () => {
+    const tenantId = 'sug-admin-fail-msg';
+    writeIndex(tenantId, [chunk]);
+    knowledgeStore.setMeta(tenantId, { status: 'ready', chunkCount: 1 });
+    mockLLM('這不是 JSON');
+
+    const res = await request(app)
+      .post(`/api/admin/tenants/${tenantId}/knowledge/suggestion`)
+      .set(auth)
+      .send({ source: 'website' })
+      .expect(422);
+
+    expect(res.body.error.message).toContain('請稍後再試');
   });
 
   it('解析任務進行中時回 409', async () => {

@@ -206,7 +206,7 @@ describe('regenerateSlot（後台「重新生成推薦問句」按鈕）依 acl 
 
     const result = await regenerateSlot(tenantId, 'website', idx);
 
-    expect(result).toBeUndefined();
+    expect(result).toEqual({ ok: false, reason: 'no-visible-chunks' });
     expect(mockCreate).not.toHaveBeenCalled();
   });
 
@@ -231,7 +231,10 @@ describe('regenerateSlot（後台「重新生成推薦問句」按鈕）依 acl 
 
     const result = await regenerateSlot(tenantId, 'website', idx);
 
-    expect(result).toEqual({ 'zh-Hant': '補助要附什麼文件？', en: 'What documents are needed?' });
+    expect(result).toEqual({
+      ok: true,
+      prompts: { 'zh-Hant': '補助要附什麼文件？', en: 'What documents are needed?' },
+    });
     expect(mockCreate).toHaveBeenCalledTimes(1);
     const material = (mockCreate.mock.calls[0][0].messages[0].content[0] as { text: string }).text;
     expect(material).toContain('本公司提供智慧閱讀服務');
@@ -253,7 +256,7 @@ describe('regenerateSlot（後台「重新生成推薦問句」按鈕）依 acl 
 
     const result = await regenerateSlot(tenantId, 'website', idx);
 
-    expect(result).toBeUndefined();
+    expect(result).toEqual({ ok: false, reason: 'no-visible-chunks' });
     expect(mockCreate).not.toHaveBeenCalled();
   });
 
@@ -268,7 +271,10 @@ describe('regenerateSlot（後台「重新生成推薦問句」按鈕）依 acl 
 
     const result = await regenerateSlot(tenantId, 'website', idx);
 
-    expect(result).toEqual({ 'zh-Hant': '補助要附什麼文件？', en: 'What documents are needed?' });
+    expect(result).toEqual({
+      ok: true,
+      prompts: { 'zh-Hant': '補助要附什麼文件？', en: 'What documents are needed?' },
+    });
     expect(mockCreate).toHaveBeenCalledTimes(1);
     const material = (mockCreate.mock.calls[0][0].messages[0].content[0] as { text: string }).text;
     expect(material).toContain('申請補助需檢附身分證明');

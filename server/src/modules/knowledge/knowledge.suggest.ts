@@ -278,10 +278,30 @@ export async function refreshSuggestedPrompts(
 }
 
 /**
+ * 單格重生的結果。失敗一律帶原因：這支函式有四條互不相干的失敗路徑，其中
+ * no-visible-chunks 重試永遠不會成功（要去標可見性），generation-failed 則值得重試。
+ * 先前一律回 undefined，呼叫端只能給同一句「請稍後再試」，把「這裡永遠不會好」
+ * 誤導成「再按一次看看」——正式環境實際踩過，管理者重匯知識庫數次仍卡住。
+ */
+export type RegenerateOutcome =
+  | { ok: true; prompts: SuggestedPrompts }
+  | { ok: false; reason: RegenerateFailure };
+
+export type RegenerateFailure =
+  /** ACL 過濾後語料為空：該來源有內容，但沒有一顆是訪客看得到的 */
+  | 'no-visible-chunks'
+  /** 抽樣素材為空白（chunk 文字都是空字串） */
+  | 'blank-material'
+  /** LLM 呼叫失敗或輸出不合格 */
+  | 'generation-failed'
+  /** 生成期間有更晚的呼叫完成，本次結果已過期 */
+  | 'superseded';
+
+/**
  * 只重新生成指定來源那一格（後台按鈕用）。
  *
  * 與 refreshSuggestedPrompts 的差別：不理會 manual 鎖定——按鈕的語意是「重生自動句」，
- * 手動值仍蓋在它上面，直到管理者按恢復自動。該來源無內容時回 undefined 由呼叫端擋。
+ * 手動值仍蓋在它上面，直到管理者按恢復自動。該來源無內容時回失敗原因由呼叫端擋。
  *
  * 語料同樣要過濾：這格結果一樣是寫進 meta.suggestedPrompts、經免登入的
  * GET /api/widget/config 送給任何拿到 pk_ 的訪客，過濾規則與 refreshSuggestedPrompts
@@ -292,31 +312,32 @@ export async function regenerateSlot(
   tenantId: string,
   source: SourceKey,
   idx: KnowledgeIndexText,
-): Promise<SuggestedPrompts | undefined> {
+): Promise<RegenerateOutcome> {
   const gen = beginGeneration(tenantId);
   try {
     const rawChunks = splitChunksBySource(idx.chunks)[source];
     const mode = aclModeOf(tenantId);
     const guestScopes = mode === 'off' ? [] : guestVisibilityScopesOf(tenantId);
     const chunks = mode === 'off' ? rawChunks : filterGuestVisibleChunks(rawChunks, guestScopes);
-    if (chunks.length === 0) return undefined;
+    // 呼叫端已先擋掉「該來源根本沒有 chunk」，走到這裡為空只可能是 ACL 濾掉了全部
+    if (chunks.length === 0) return { ok: false, reason: 'no-visible-chunks' };
     const material = sampleIndexForSuggestion({ ...idx, chunks });
-    if (!material) return undefined;
+    if (!material) return { ok: false, reason: 'blank-material' };
 
     const generated = await generateOne(tenantId, material);
-    if (!generated) return undefined;
+    if (!generated) return { ok: false, reason: 'generation-failed' };
     if (!isLatestGeneration(tenantId, gen)) {
       logger.warn({ tenantId }, 'suggested prompt 單格重生期間已有更新的呼叫，放棄過期寫入');
-      return undefined;
+      return { ok: false, reason: 'superseded' };
     }
 
     const meta = knowledgeStore.getMeta(tenantId);
     const slots = { ...(meta.suggestedPrompts ?? {}) };
     slots[source] = { ...(slots[source] ?? {}), generated };
     knowledgeStore.setMeta(tenantId, { ...meta, suggestedPrompts: slots });
-    return generated;
+    return { ok: true, prompts: generated };
   } catch (err) {
     logger.warn({ err, tenantId, source }, 'suggested prompt 單格重生失敗');
-    return undefined;
+    return { ok: false, reason: 'generation-failed' };
   }
 }

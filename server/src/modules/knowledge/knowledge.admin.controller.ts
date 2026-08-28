@@ -12,7 +12,7 @@ import { deleteIndex, loadIndexText } from './knowledge.index.repo';
 import { ingestFile, removeFile } from './knowledge-file.service';
 import { getJob, getRunningJobForTenant, startIngestJob } from './knowledge.job';
 import { knowledgeStore, type KnowledgeFileMeta, type KnowledgeSource } from './knowledge.store';
-import { regenerateSlot } from './knowledge.suggest';
+import { regenerateSlot, type RegenerateFailure } from './knowledge.suggest';
 import { splitChunksBySource, type SourceKey } from './prompt-slots';
 import { pickRetriever } from './retriever.pick';
 import { aclModeOf, setFileVisibility } from './knowledge.visibility';
@@ -77,6 +77,31 @@ function ingestParamsFor(tenantId: string): IngestParams {
     chunkChars: s.chunkChars,
     embeddingModel: s.embeddingModel,
   };
+}
+
+/**
+ * 單格重生失敗 → HTTP 錯誤。四條失敗路徑的「該怎麼辦」完全不同，不可共用一句訊息：
+ * no-visible-chunks 重試永遠不會成功（要去標可見性或切回 off），superseded 則是
+ * 純粹的時序競爭、原地重按即可。先前一律回「請稍後再試」，把前者誤導成後者。
+ */
+function regenerateError(reason: RegenerateFailure, mode: 'off' | 'shadow' | 'on'): AppError {
+  switch (reason) {
+    case 'no-visible-chunks': {
+      const label = mode === 'on' ? '啟用' : '觀察（shadow）';
+      return AppError.unprocessable(
+        `該來源有索引內容，但在「${label}」模式下沒有任何訪客看得到的內容可當語料`
+          + '——推薦問句會經免登入的 widget 送給任何訪客，故未標記與非公開的內容一律排除。'
+          + '請先標記檔案可見性、並確認訪客部門已獲對應的 kb: 授權，或切回「關閉」模式。'
+          + '（重試不會改變結果）',
+      );
+    }
+    case 'blank-material':
+      return AppError.unprocessable('該來源的索引內容為空白，無法生成推薦詞');
+    case 'superseded':
+      return AppError.conflict('生成期間索引已被其他操作更新，請重新操作');
+    case 'generation-failed':
+      return AppError.unprocessable('推薦詞生成失敗，請稍後再試');
+  }
 }
 
 export const knowledgeAdminController = {
@@ -170,9 +195,9 @@ export const knowledgeAdminController = {
       throw AppError.unprocessable('該來源尚無索引內容');
     }
 
-    const generated = await regenerateSlot(tenantId, source, idx);
-    // 失敗時 meta 會留著舊句，不能改讀 meta 充數；一律據實回報讓管理者可以重試
-    if (!generated) throw AppError.unprocessable('推薦詞生成失敗，請稍後再試');
+    const outcome = await regenerateSlot(tenantId, source, idx);
+    // 失敗時 meta 會留著舊句，不能改讀 meta 充數；一律據實回報並說明原因
+    if (!outcome.ok) throw regenerateError(outcome.reason, aclModeOf(tenantId));
     res.json({ data: { source, slot: knowledgeStore.getMeta(tenantId).suggestedPrompts?.[source] } });
   },
 
