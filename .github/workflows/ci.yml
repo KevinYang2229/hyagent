@@ -40,7 +40,9 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:17
+        # pgvector/pgvector 而非官方 postgres：0005_knowledge.sql 需要 `create extension vector`，
+        # 官方映像沒帶 pgvector，套 migration 會 ERROR: extension "vector" is not available。
+        image: pgvector/pgvector:pg17
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: oa_agent_test
