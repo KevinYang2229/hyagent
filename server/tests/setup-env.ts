@@ -17,6 +17,13 @@ process.env.OA_AGENT_DATA_DIR ??= mkdtempSync(join(tmpdir(), 'oa-agent-test-'));
 // 測試絕不能打到真 DB；db 模式的種子要等 initTenantStore()，測試不跑 boot 流程會缺預設租戶。
 process.env.DATA_BACKEND ??= 'file';
 
+// db 模式測試（knowledge-index-repo-db、report-store-db 等 6 支）會把 DATA_BACKEND 翻成 'db'
+// 再 isolateModules 重載 env；env schema 於 DATA_BACKEND=db 時強制要求 DATABASE_URL，缺了就
+// process.exit(1) 打死整個 jest 進程。本機靠 server/.env 剛好補上，CI 沒有 .env 就整包紅。
+// 這些測試一律 jest.mock('@/lib/db')，不會真的連線，故給一個明確不可用的假值即可；
+// 用假值而非真 URL 也是防線：萬一哪天有測試漏 mock，會連線失敗而不是靜靜寫進開發者的真 DB。
+process.env.DATABASE_URL ??= 'postgresql://test:test@127.0.0.1:1/oa_agent_test_never_connected';
+
 // 靜態加密固定關閉（'' 在 env schema 視為未設定）：本機 .env 可能有 DATA_ENCRYPTION_KEY，
 // 測試需確定性的明文預設；要驗證加密的測試自行以 isolateModules 注入金鑰。
 process.env.DATA_ENCRYPTION_KEY ??= '';
