@@ -12,7 +12,7 @@
 
 - 系統邊界、元件責任及外部依賴。
 - 租戶、帳號、認證、Scope 與 ACL 的判斷方式。
-- 對話辦單、知識庫、報告與外部整合的系統流程。
+- 對話填寫表單、知識庫、報告與外部整合的系統流程。
 - 核心資料實體、狀態機、API 與錯誤契約。
 - 安全、持久化、限流、配額、稽核及部署設計。
 - 現況實作與正式上線前缺口。
@@ -68,14 +68,14 @@ flowchart LR
 
 ### 3.1 信任邊界
 
-| 邊界 | 信任原則 |
-|---|---|
-| Browser → Server | Browser 傳入的 User ID、Role、Scope 均不可信，必須由 Token／後端政策解析 |
-| Host Site → Widget | `postMessage` 及 Query Parameter 不可直接授權；身分須透過簽章 SSO Token 交換 |
-| Tenant → Tenant | `tenantId` 是硬隔離邊界，跨租戶資料查詢應回 404 |
-| LLM → Tool Executor | 模型輸出的工具名稱與參數皆不可信，執行前需驗證 Schema、Scope 與狀態 |
-| Server → External System | 需設定 Timeout、錯誤映射、簽章、重試及必要的冪等機制 |
-| Admin Browser → Admin API | 使用短效 Admin JWT；主控 `ADMIN_API_KEY` 不得進入 Browser |
+| 邊界                      | 信任原則                                                                     |
+| ------------------------- | ---------------------------------------------------------------------------- |
+| Browser → Server          | Browser 傳入的 User ID、Role、Scope 均不可信，必須由 Token／後端政策解析     |
+| Host Site → Widget        | `postMessage` 及 Query Parameter 不可直接授權；身分須透過簽章 SSO Token 交換 |
+| Tenant → Tenant           | `tenantId` 是硬隔離邊界，跨租戶資料查詢應回 404                              |
+| LLM → Tool Executor       | 模型輸出的工具名稱與參數皆不可信，執行前需驗證 Schema、Scope 與狀態          |
+| Server → External System  | 需設定 Timeout、錯誤映射、簽章、重試及必要的冪等機制                         |
+| Admin Browser → Admin API | 使用短效 Admin JWT；主控 `ADMIN_API_KEY` 不得進入 Browser                    |
 
 ## 4. 系統架構
 
@@ -131,16 +131,16 @@ flowchart TB
 
 ### 4.2 Monorepo 元件責任
 
-| Workspace／目錄 | 責任 |
-|---|---|
-| `client/` | 第一方對話介面、嵌入 iframe、動態表單及報告下載 |
-| `admin/` | 租戶、外觀、權限、表單、知識庫、Webhook、用量、報告及稽核管理 |
-| `server/` | REST API、Agent Runtime、權限、資料儲存與外部連接器 |
-| `schemas/` | 內建表單的 Schema 單一事實來源 |
-| `shared/` | 前後端共用 TypeScript 型別 |
-| `ui/` | 共用設計系統與展示元件 |
-| `sdk/` | Headless REST Client、Widget 控制與事件橋接 |
-| `presale/` | Widget、自訂 UI 與 Webhook Receiver 整合範例 |
+| Workspace／目錄 | 責任                                                          |
+| --------------- | ------------------------------------------------------------- |
+| `client/`       | 第一方對話介面、嵌入 iframe、動態表單及報告下載               |
+| `admin/`        | 租戶、外觀、權限、表單、知識庫、Webhook、用量、報告及稽核管理 |
+| `server/`       | REST API、Agent Runtime、權限、資料儲存與外部連接器           |
+| `schemas/`      | 內建表單的 Schema 單一事實來源                                |
+| `shared/`       | 前後端共用 TypeScript 型別                                    |
+| `ui/`           | 共用設計系統與展示元件                                        |
+| `sdk/`          | Headless REST Client、Widget 控制與事件橋接                   |
+| `presale/`      | Widget、自訂 UI 與 Webhook Receiver 整合範例                  |
 
 ## 5. 身分、租戶與帳號連結
 
@@ -151,20 +151,20 @@ Tenant identity：這次請求屬於哪個客戶／整合方
 User identity：這次請求代表哪個終端使用者
 ```
 
-| 維度 | 來源 | 解析結果 |
-|---|---|---|
-| Tenant | `x-api-key`、`Authorization: ApiKey` 或 Widget `?key=pk_` | `req.tenant`、`req.apiKeyType` |
-| User | `Authorization: Bearer <accessToken>` | `req.user.sub`、Role、登入方式與 SSO Tenant Claim |
+| 維度   | 來源                                                      | 解析結果                                          |
+| ------ | --------------------------------------------------------- | ------------------------------------------------- |
+| Tenant | `x-api-key`、`Authorization: ApiKey` 或 Widget `?key=pk_` | `req.tenant`、`req.apiKeyType`                    |
+| User   | `Authorization: Bearer <accessToken>`                     | `req.user.sub`、Role、登入方式與 SSO Tenant Claim |
 
 未帶 API Key 時，`resolveTenant` 為向後相容會落到 Default Tenant。正式環境若不需要舊版相容，應評估取消此 Fail-open 行為。
 
 ### 5.2 API Key 類型
 
-| 類型 | 可放置位置 | 用途 | 儲存方式 |
-|---|---|---|---|
-| `pk_` Publishable Key | Browser、Widget Query | 解析租戶、讀取 Widget 設定及呼叫一般使用者 API | 原始值只在建立時顯示，Store 保存 SHA-256 Hash |
-| `sk_` Secret Key | Server-to-server | 租戶高權限自助設定，例如 BYO LLM Key | 原始值只在建立時顯示，Store 保存 SHA-256 Hash |
-| `ADMIN_API_KEY` | Server-to-server Header | 平台管理 API | Deployment Secret |
+| 類型                  | 可放置位置              | 用途                                           | 儲存方式                                      |
+| --------------------- | ----------------------- | ---------------------------------------------- | --------------------------------------------- |
+| `pk_` Publishable Key | Browser、Widget Query   | 解析租戶、讀取 Widget 設定及呼叫一般使用者 API | 原始值只在建立時顯示，Store 保存 SHA-256 Hash |
+| `sk_` Secret Key      | Server-to-server        | 租戶高權限自助設定，例如 BYO LLM Key           | 原始值只在建立時顯示，Store 保存 SHA-256 Hash |
+| `ADMIN_API_KEY`       | Server-to-server Header | 平台管理 API                                   | Deployment Secret                             |
 
 ### 5.3 帳密登入
 
@@ -244,13 +244,13 @@ Effective Scopes
 
 ### 6.2 Scope 類型
 
-| 類型 | 範例 | 說明 |
-|---|---|---|
-| Base Scope | `oa:read`、`oa:write` | 目前所有使用者預設擁有，不可由後台取消 |
-| Service Scope | `service:form`、`service:knowledge`、`service:agent`、`service:report` | 控制 Agent Service 是否可用 |
-| Tool Scope | `email:write`、`calendar:read`、`erp:read` | 控制個別工具執行能力 |
-| Form Scope | `form:leave-request` | 控制特定表單是否可用 |
-| Knowledge Scope | `kb:finance` | 控制具該可見性標籤的文件是否可被檢索 |
+| 類型            | 範例                                                                   | 說明                                   |
+| --------------- | ---------------------------------------------------------------------- | -------------------------------------- |
+| Base Scope      | `oa:read`、`oa:write`                                                  | 目前所有使用者預設擁有，不可由後台取消 |
+| Service Scope   | `service:form`、`service:knowledge`、`service:agent`、`service:report` | 控制 Agent Service 是否可用            |
+| Tool Scope      | `email:write`、`calendar:read`、`erp:read`                             | 控制個別工具執行能力                   |
+| Form Scope      | `form:leave-request`                                                   | 控制特定表單是否可用                   |
+| Knowledge Scope | `kb:finance`                                                           | 控制具該可見性標籤的文件是否可被檢索   |
 
 `service:report` 成本較高，不在新租戶預設 Service Scope 中，需管理者明確授予。
 
@@ -304,13 +304,13 @@ flowchart TD
 
 ### 7.1 Service Registry
 
-| Service | Scope | 責任 |
-|---|---|---|
-| Form Agent | `service:form` | 表單選擇、Slot Filling、驗證、確認與送出 |
-| Knowledge Agent | `service:knowledge` | RAG 問答 |
-| Agent Service | `service:agent` | 多工具代理工作 |
-| Report Agent | `service:report` | 建立非同步知識報告 |
-| Assistant | Always enabled | 一般回覆與安全 Fallback，不代表可繞過其他服務權限 |
+| Service         | Scope               | 責任                                              |
+| --------------- | ------------------- | ------------------------------------------------- |
+| Form Agent      | `service:form`      | 表單選擇、Slot Filling、驗證、確認與送出          |
+| Knowledge Agent | `service:knowledge` | RAG 問答                                          |
+| Agent Service   | `service:agent`     | 多工具代理工作                                    |
+| Report Agent    | `service:report`    | 建立非同步知識報告                                |
+| Assistant       | Always enabled      | 一般回覆與安全 Fallback，不代表可繞過其他服務權限 |
 
 ### 7.2 意圖分流
 
@@ -336,18 +336,18 @@ LLM 不得直接呼叫資料庫或外部 OA。
 
 ### 8.1 表單 Definition
 
-| 層 | 系統消費者 |
-|---|---|
-| Data | AJV 驗證、LLM Tool Input、OA Payload 基礎 |
-| Field | Client 元件 Registry、Label、Options、Help、Links |
-| Validation | 必填、條件及跨欄規則 |
-| Agent | 詢問順序、Prompt、確認話術與意圖詞 |
-| Layout | 表單分組、順序及多步驟 UI |
-| Workflow | 簽核關卡與狀態展示 |
-| Policy | 請假時數等領域規則 |
-| OA | Connector Endpoint、欄位映射及回應解析 |
+| 層         | 系統消費者                                        |
+| ---------- | ------------------------------------------------- |
+| Data       | AJV 驗證、LLM Tool Input、OA Payload 基礎         |
+| Field      | Client 元件 Registry、Label、Options、Help、Links |
+| Validation | 必填、條件及跨欄規則                              |
+| Agent      | 詢問順序、Prompt、確認話術與意圖詞                |
+| Layout     | 表單分組、順序及多步驟 UI                         |
+| Workflow   | 簽核關卡與狀態展示                                |
+| Policy     | 請假時數等領域規則                                |
+| OA         | Connector Endpoint、欄位映射及回應解析            |
 
-### 8.2 辦單 Sequence
+### 8.2 填寫表單 Sequence
 
 ```mermaid
 sequenceDiagram
@@ -432,10 +432,10 @@ sequenceDiagram
 
 ### 9.2 儲存與檢索後端
 
-| 模式 | Index | Retrieval |
-|---|---|---|
-| `file` | `knowledge-index.<tenantId>.json` | 載入記憶體後以 JavaScript 計算 Cosine |
-| `db` | PostgreSQL `knowledge_chunks` + `halfvec(3072)` | pgvector 精確 Dense Search 與 Lexical Candidate 聯集 |
+| 模式   | Index                                           | Retrieval                                            |
+| ------ | ----------------------------------------------- | ---------------------------------------------------- |
+| `file` | `knowledge-index.<tenantId>.json`               | 載入記憶體後以 JavaScript 計算 Cosine                |
+| `db`   | PostgreSQL `knowledge_chunks` + `halfvec(3072)` | pgvector 精確 Dense Search 與 Lexical Candidate 聯集 |
 
 目前資料量下刻意不使用 HNSW ANN，避免 Tenant Post-filter 造成小租戶無結果。單一租戶資料達十萬級 Chunks 時，才應以 Tenant Partition 或 Partial Index 重新評估 ANN。
 
@@ -508,14 +508,14 @@ sequenceDiagram
 
 ### 10.2 狀態與約束
 
-| 狀態 | 意義 |
-|---|---|
-| `queued` | 已排入工作 |
-| `outlining` | 正在產生章節大綱 |
-| `composing` | 正在檢索、撰寫與渲染 |
-| `done` | 所有登錄格式已完成 |
-| `empty` | 全部章節均無資料，不建立檔案 |
-| `failed` | 工作失敗 |
+| 狀態        | 意義                         |
+| ----------- | ---------------------------- |
+| `queued`    | 已排入工作                   |
+| `outlining` | 正在產生章節大綱             |
+| `composing` | 正在檢索、撰寫與渲染         |
+| `done`      | 所有登錄格式已完成           |
+| `empty`     | 全部章節均無資料，不建立檔案 |
+| `failed`    | 工作失敗                     |
 
 約束：
 
@@ -569,10 +569,10 @@ sequenceDiagram
 
 ### 11.4 OA Connector
 
-| 模式 | 用途 | 現況 |
-|---|---|---|
-| Stub | Demo 送單、額度與計時模擬簽核 | 已實作 |
-| HTTP | 正式 OA 送單、查詢及簽核 | 有骨架，待取得外部規格 |
+| 模式 | 用途                          | 現況                   |
+| ---- | ----------------------------- | ---------------------- |
+| Stub | Demo 送單、額度與計時模擬簽核 | 已實作                 |
+| HTTP | 正式 OA 送單、查詢及簽核      | 有骨架，待取得外部規格 |
 
 HTTP Connector 正式化需定義：認證方式、Timeout、Retry、冪等鍵、欄位 Mapping、錯誤碼 Mapping、附件傳輸及簽核狀態同步。
 
@@ -607,20 +607,20 @@ erDiagram
 
 ### 12.2 實體與識別鍵
 
-| 實體 | 主鍵／識別 | 隔離與生命週期 |
-|---|---|---|
-| Tenant | `id` | 平台層建立；刪除需清理所有租戶資源 |
-| API Key | Key Hash | 屬於 Tenant；可撤銷；原始值不落地 |
-| Session | `id` | 以 `tenantId + userId` 做 Owner Check |
-| Attachment | `id` | 綁 Session；Session 清理時回收孤兒 |
-| Submission | `tenantId + oaRequestId` | 保存送出結果與 User |
-| Tenant Form | `tenantId + formId` | 租戶 Definition 覆寫／擴充 |
-| Scope Policy | `tenantId` | 整包 Policy 覆寫 |
-| Knowledge Source | `tenantId` | 保存來源、Index Meta、Files、Labels 相關狀態 |
-| Knowledge Chunk | Tenant-scoped ID | 向量、文字、來源及 Visibility Metadata |
-| Webhook | `id` | 屬於 Tenant，可停用或刪除 |
-| Report Doc | `reportId + format` | Tenant + User Owner，依 `expiresAt` 過期 |
-| Audit Log | Auto ID | Tenant-scoped、Append-oriented |
+| 實體             | 主鍵／識別               | 隔離與生命週期                               |
+| ---------------- | ------------------------ | -------------------------------------------- |
+| Tenant           | `id`                     | 平台層建立；刪除需清理所有租戶資源           |
+| API Key          | Key Hash                 | 屬於 Tenant；可撤銷；原始值不落地            |
+| Session          | `id`                     | 以 `tenantId + userId` 做 Owner Check        |
+| Attachment       | `id`                     | 綁 Session；Session 清理時回收孤兒           |
+| Submission       | `tenantId + oaRequestId` | 保存送出結果與 User                          |
+| Tenant Form      | `tenantId + formId`      | 租戶 Definition 覆寫／擴充                   |
+| Scope Policy     | `tenantId`               | 整包 Policy 覆寫                             |
+| Knowledge Source | `tenantId`               | 保存來源、Index Meta、Files、Labels 相關狀態 |
+| Knowledge Chunk  | Tenant-scoped ID         | 向量、文字、來源及 Visibility Metadata       |
+| Webhook          | `id`                     | 屬於 Tenant，可停用或刪除                    |
+| Report Doc       | `reportId + format`      | Tenant + User Owner，依 `expiresAt` 過期     |
+| Audit Log        | Auto ID                  | Tenant-scoped、Append-oriented               |
 
 ### 12.3 Account Link 現況
 
@@ -681,19 +681,19 @@ Helmet / CORS
 
 ### 13.4 HTTP 狀態原則
 
-| Status | 適用情境 |
-|---|---|
-| 400 | 業務輸入錯誤、不可授予 Scope、狀態不允許操作 |
-| 401 | 缺少／無效／過期 Token 或 API Key |
-| 403 | 已識別但權限不足、Key 類型錯誤、Tenant Binding 不一致 |
-| 404 | 路由不存在、資源不存在或跨 Tenant／Owner 隔離 |
-| 409 | 工作衝突、重複資源或同 Tenant Report Job 執行中 |
-| 413 | 上傳超過大小限制 |
-| 422 | Request Schema、檔案內容或指定輸出格式無法處理 |
-| 429 | Rate Limit 或配額超限 |
-| 502 | LLM／OA 等上游服務錯誤或租戶 Provider Key 失效 |
-| 503 | 必要外部依賴尚未 Ready |
-| 500 | 未預期內部錯誤；正式環境不得回傳 Stack 或敏感細節 |
+| Status | 適用情境                                              |
+| ------ | ----------------------------------------------------- |
+| 400    | 業務輸入錯誤、不可授予 Scope、狀態不允許操作          |
+| 401    | 缺少／無效／過期 Token 或 API Key                     |
+| 403    | 已識別但權限不足、Key 類型錯誤、Tenant Binding 不一致 |
+| 404    | 路由不存在、資源不存在或跨 Tenant／Owner 隔離         |
+| 409    | 工作衝突、重複資源或同 Tenant Report Job 執行中       |
+| 413    | 上傳超過大小限制                                      |
+| 422    | Request Schema、檔案內容或指定輸出格式無法處理        |
+| 429    | Rate Limit 或配額超限                                 |
+| 502    | LLM／OA 等上游服務錯誤或租戶 Provider Key 失效        |
+| 503    | 必要外部依賴尚未 Ready                                |
+| 500    | 未預期內部錯誤；正式環境不得回傳 Stack 或敏感細節     |
 
 ### 13.5 冪等要求
 
@@ -801,47 +801,47 @@ CORS_ORIGIN=https://hyagent.zeabur.app,https://hyagent-admin.zeabur.app
 
 ## 17. 安全威脅與控制
 
-| 威脅 | 現有控制 | 缺口／建議 |
-|---|---|---|
-| 偽造 User ID | User ID 取自 JWT `sub` | 移除 Controller 的 `x-user-id` 測試 Fallback 死碼，避免未來誤掛路由 |
-| 跨租戶 Token 重用 | Session／資源以 Tenant + User 查詢 | P0：強制比較 SSO JWT Tenant 與 API Key Tenant |
-| 公開 Widget 讀敏感 KB | Tenant 層禁止授予 `kb:*` | 正式環境停用 Default Tenant `*` Origin，持續測試 Guest Department |
-| API Key 洩漏 | `pk_`／`sk_` 分級，Store 僅存 Hash | Key Rotation、Last-used、IP／用途限制可列後續 |
-| Secret 落地外洩 | 可設定靜態加密 | Production Fail-fast 要求 `DATA_ENCRYPTION_KEY`，建立 Rotation Runbook |
-| LLM 越權呼叫工具 | Tool Registry 重新解析 Scope + Audit | 所有新 Tool 必須強制經 Registry，不允許旁路 Connector |
-| Prompt Injection | 只將授權 Chunks 送入 LLM | 加入內容／指令邊界、輸出驗證及攻擊測試 |
-| 重複送單 | Confirming 狀態 Guard | 增加 OA Idempotency Key 與提交鎖 |
-| Webhook 偽造／重放 | HMAC 簽章 | 增加 Timestamp、Event ID、Tolerance 與 Receiver 冪等說明 |
-| SSRF | PDF Renderer 列印時封鎖網路 | 網站擷取來源與 Webhook URL 仍需 URL／Private IP Policy |
-| 惡意附件 | 大小限制 | 增加 MIME／副檔名白名單、AV Scan、隔離下載 |
+| 威脅                  | 現有控制                             | 缺口／建議                                                             |
+| --------------------- | ------------------------------------ | ---------------------------------------------------------------------- |
+| 偽造 User ID          | User ID 取自 JWT `sub`               | 移除 Controller 的 `x-user-id` 測試 Fallback 死碼，避免未來誤掛路由    |
+| 跨租戶 Token 重用     | Session／資源以 Tenant + User 查詢   | P0：強制比較 SSO JWT Tenant 與 API Key Tenant                          |
+| 公開 Widget 讀敏感 KB | Tenant 層禁止授予 `kb:*`             | 正式環境停用 Default Tenant `*` Origin，持續測試 Guest Department      |
+| API Key 洩漏          | `pk_`／`sk_` 分級，Store 僅存 Hash   | Key Rotation、Last-used、IP／用途限制可列後續                          |
+| Secret 落地外洩       | 可設定靜態加密                       | Production Fail-fast 要求 `DATA_ENCRYPTION_KEY`，建立 Rotation Runbook |
+| LLM 越權呼叫工具      | Tool Registry 重新解析 Scope + Audit | 所有新 Tool 必須強制經 Registry，不允許旁路 Connector                  |
+| Prompt Injection      | 只將授權 Chunks 送入 LLM             | 加入內容／指令邊界、輸出驗證及攻擊測試                                 |
+| 重複送單              | Confirming 狀態 Guard                | 增加 OA Idempotency Key 與提交鎖                                       |
+| Webhook 偽造／重放    | HMAC 簽章                            | 增加 Timestamp、Event ID、Tolerance 與 Receiver 冪等說明               |
+| SSRF                  | PDF Renderer 列印時封鎖網路          | 網站擷取來源與 Webhook URL 仍需 URL／Private IP Policy                 |
+| 惡意附件              | 大小限制                             | 增加 MIME／副檔名白名單、AV Scan、隔離下載                             |
 
 ## 18. 現況缺口與優先級
 
-| 優先級 | 項目 | 影響 | 建議完成條件 |
-|---|---|---|---|
-| P0 | SSO Token 與 API Key Tenant Binding | 可能使跨 Tenant 身分被重用 | Middleware 統一拒絕 Tenant 不一致並完成整合測試 |
-| P0 | 正式 Identity Provider | Mock Directory／共用密碼不適合正式環境 | 完成 OIDC／企業 SSO、停權、登出與 Claim Mapping |
-| P0 | 真 OA Connector 的冪等與錯誤契約 | 可能重複送單或無法判斷結果 | 定義 Idempotency Key、Timeout、Retry、Mapping 與 E2E 測試 |
-| P1 | Webhook 防重放與持久化 Queue | 重啟或長時間故障可能遺失通知 | Event ID、Timestamp、持久化重試與 Dead-letter |
-| P1 | Report Job 持久化 | 重啟後工作狀態遺失 | Job 狀態、租戶鎖與恢復流程落 DB |
-| P1 | Production Encryption Fail-fast | Secret 可能明文落地 | Production 未設 Encryption Key 時拒絕啟動或明確告警阻擋 |
-| P1 | Attachment 安全與 Object Storage | DB 膨脹、惡意檔案 | S3／R2、AV Scan、Signed URL 與 Retention |
-| P2 | Account Link Entity | 多 IdP／帳號合併無法管理 | 建立 Issuer + Subject 映射與解除綁定流程 |
-| P2 | 跨對話 Memory | 使用者需重複提供偏好 | 有明確回訪需求後再建立 User Memory 與刪除控制 |
-| P2 | Retrieval ANN | 大規模 Tenant 查詢延遲 | Tenant 達容量門檻後，以 Partition／Partial Index 驗證召回率 |
+| 優先級 | 項目                                | 影響                                   | 建議完成條件                                                |
+| ------ | ----------------------------------- | -------------------------------------- | ----------------------------------------------------------- |
+| P0     | SSO Token 與 API Key Tenant Binding | 可能使跨 Tenant 身分被重用             | Middleware 統一拒絕 Tenant 不一致並完成整合測試             |
+| P0     | 正式 Identity Provider              | Mock Directory／共用密碼不適合正式環境 | 完成 OIDC／企業 SSO、停權、登出與 Claim Mapping             |
+| P0     | 真 OA Connector 的冪等與錯誤契約    | 可能重複送單或無法判斷結果             | 定義 Idempotency Key、Timeout、Retry、Mapping 與 E2E 測試   |
+| P1     | Webhook 防重放與持久化 Queue        | 重啟或長時間故障可能遺失通知           | Event ID、Timestamp、持久化重試與 Dead-letter               |
+| P1     | Report Job 持久化                   | 重啟後工作狀態遺失                     | Job 狀態、租戶鎖與恢復流程落 DB                             |
+| P1     | Production Encryption Fail-fast     | Secret 可能明文落地                    | Production 未設 Encryption Key 時拒絕啟動或明確告警阻擋     |
+| P1     | Attachment 安全與 Object Storage    | DB 膨脹、惡意檔案                      | S3／R2、AV Scan、Signed URL 與 Retention                    |
+| P2     | Account Link Entity                 | 多 IdP／帳號合併無法管理               | 建立 Issuer + Subject 映射與解除綁定流程                    |
+| P2     | 跨對話 Memory                       | 使用者需重複提供偏好                   | 有明確回訪需求後再建立 User Memory 與刪除控制               |
+| P2     | Retrieval ANN                       | 大規模 Tenant 查詢延遲                 | Tenant 達容量門檻後，以 Partition／Partial Index 驗證召回率 |
 
 ## 19. 測試策略與系統驗收
 
 ### 19.1 測試層次
 
-| 層次 | 重點 |
-|---|---|
-| Unit | Schema Engine、Scope Resolver、ACL、Scoring、Mapping、State Guard |
-| Integration | Route + Middleware + Store、DB Repository、Provider Stub、Webhook Retry |
-| Security | Cross-tenant、Owner Check、Guest Scope、Tenant Binding、Secret Redaction、SSRF |
-| Contract | OA、Webhook、LLM Provider、Embedding、SDK 與 OpenAPI |
-| E2E | Login／SSO → Conversation → Confirm → Submit → Webhook／Report |
-| Deployment | CORS、Health、Ready、Migration、Restart Recovery、PDF Renderer |
+| 層次        | 重點                                                                           |
+| ----------- | ------------------------------------------------------------------------------ |
+| Unit        | Schema Engine、Scope Resolver、ACL、Scoring、Mapping、State Guard              |
+| Integration | Route + Middleware + Store、DB Repository、Provider Stub、Webhook Retry        |
+| Security    | Cross-tenant、Owner Check、Guest Scope、Tenant Binding、Secret Redaction、SSRF |
+| Contract    | OA、Webhook、LLM Provider、Embedding、SDK 與 OpenAPI                           |
+| E2E         | Login／SSO → Conversation → Confirm → Submit → Webhook／Report                 |
+| Deployment  | CORS、Health、Ready、Migration、Restart Recovery、PDF Renderer                 |
 
 ### 19.2 必要系統驗收案例
 
@@ -860,20 +860,20 @@ CORS_ORIGIN=https://hyagent.zeabur.app,https://hyagent-admin.zeabur.app
 
 ## 20. 需求追蹤矩陣
 
-| 產品能力 | 系統元件 | 主要資料 | 主要驗證 |
-|---|---|---|---|
-| 帳號登入 | Auth Routes／Service、JWT Utils | User Directory、Token | 401、Refresh Rotation、停權 |
-| SSO 帳號連結 | resolveTenant、SSO Exchange、Tenant Secret | Tenant、JWT Claims | Signature、Expiry、Tenant Binding |
-| 對話辦單 | Conversation、Form Agent、Form Engine | Session、Definition | Owner、Scope、State、Schema |
-| 表單送出 | Tool Registry、Submit Registry、OA Connector | Submission、Audit | Confirm、Idempotency、Tool Scope |
-| 知識問答 | Knowledge Agent、Retriever | Chunks、Labels、Scope Policy | Tenant Filter、ACL、Threshold |
-| 報告 | Report Agent、Job、Composer、Renderer | Report Job／Docs | Service Scope、Owner、TTL |
-| 租戶管理 | Admin API／Portal | Tenant、API Keys | Admin Auth、Secret Redaction |
-| 權限管理 | Scope Catalog／Policy／Resolver | Scope Policy、Bundle | Grantable Validation、No `kb:*` at Tenant |
-| 外部嵌入 | Widget、Config API、CORS | Appearance、Allowed Origins | Origin、Publishable Key、SSO |
-| 事件回拋 | Webhook Dispatcher | Endpoint、Audit／Delivery | HMAC、Retry、Idempotency |
-| 用量治理 | Usage、Rate Limit、Quota | Tenant Usage | Tenant/User Key、429 |
-| 營運稽核 | Logger、Audit Store | Audit Log | Tenant Filter、Sensitive Data Redaction |
+| 產品能力     | 系統元件                                     | 主要資料                     | 主要驗證                                  |
+| ------------ | -------------------------------------------- | ---------------------------- | ----------------------------------------- |
+| 帳號登入     | Auth Routes／Service、JWT Utils              | User Directory、Token        | 401、Refresh Rotation、停權               |
+| SSO 帳號連結 | resolveTenant、SSO Exchange、Tenant Secret   | Tenant、JWT Claims           | Signature、Expiry、Tenant Binding         |
+| 對話填寫表單 | Conversation、Form Agent、Form Engine        | Session、Definition          | Owner、Scope、State、Schema               |
+| 表單送出     | Tool Registry、Submit Registry、OA Connector | Submission、Audit            | Confirm、Idempotency、Tool Scope          |
+| 知識問答     | Knowledge Agent、Retriever                   | Chunks、Labels、Scope Policy | Tenant Filter、ACL、Threshold             |
+| 報告         | Report Agent、Job、Composer、Renderer        | Report Job／Docs             | Service Scope、Owner、TTL                 |
+| 租戶管理     | Admin API／Portal                            | Tenant、API Keys             | Admin Auth、Secret Redaction              |
+| 權限管理     | Scope Catalog／Policy／Resolver              | Scope Policy、Bundle         | Grantable Validation、No `kb:*` at Tenant |
+| 外部嵌入     | Widget、Config API、CORS                     | Appearance、Allowed Origins  | Origin、Publishable Key、SSO              |
+| 事件回拋     | Webhook Dispatcher                           | Endpoint、Audit／Delivery    | HMAC、Retry、Idempotency                  |
+| 用量治理     | Usage、Rate Limit、Quota                     | Tenant Usage                 | Tenant/User Key、429                      |
+| 營運稽核     | Logger、Audit Store                          | Audit Log                    | Tenant Filter、Sensitive Data Redaction   |
 
 ## 21. 待決議事項
 
@@ -897,4 +897,3 @@ CORS_ORIGIN=https://hyagent.zeabur.app,https://hyagent-admin.zeabur.app
 - [`../DEPLOY.zeabur.md`](../DEPLOY.zeabur.md)：Zeabur 部署與環境變數。
 - `/api/openapi.json`：Machine-readable API Contract。
 - `/api/docs`：Swagger UI。
-
