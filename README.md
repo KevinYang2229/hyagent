@@ -1,4 +1,4 @@
-# HyAgent（v1.0.0）
+# HyAgent（v1.1.0）
 
 **通用 AI Agent 整合平台**（Universal AI Agent Integration Platform）：可嵌入既有站台或獨立使用的多租戶 Agent，讓使用者以自然語言完成跨系統任務。平台**不綁定特定業務系統或業務領域**——OA 是目前第一個落地的整合場景，不是產品邊界（完整定位見 [`docs/PRODUCT_SPEC.md`](docs/PRODUCT_SPEC.md)）。
 

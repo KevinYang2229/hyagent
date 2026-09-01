@@ -1,7 +1,7 @@
 # HyAgent 系統分析文件（SA）
 
 > 文件版本：1.0  
-> 對應產品版本：HyAgent v1.0.0  
+> 對應產品版本：HyAgent v1.1.0  
 > 文件日期：2026-08-27  
 > 文件類型：System Analysis / As-Is System Specification  
 > 上游需求文件：[`PRODUCT_SPEC.md`](PRODUCT_SPEC.md)

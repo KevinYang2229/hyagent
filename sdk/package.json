@@ -1,6 +1,6 @@
 {
   "name": "@hyagent/sdk",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "HyAgent 整合 SDK（瀏覽器端）：headless REST 客戶端 + widget 事件/控制橋接。",
   "private": true,
   "type": "module",

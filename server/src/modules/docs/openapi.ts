@@ -11,7 +11,7 @@ export const openapiSpec = {
   openapi: "3.0.3",
   info: {
     title: "HyAgent API",
-    version: "1.0.0",
+    version: "1.1.0",
     description:
       "對話式表單填寫 Agent 的整合 API（多租戶）。嵌入 widget、SDK、webhook 共用此 API。",
   },
