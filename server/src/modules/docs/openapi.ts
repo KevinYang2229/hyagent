@@ -75,9 +75,9 @@ export const openapiSpec = {
             "application/json": {
               schema: {
                 type: "object",
-                required: ["userId", "password"],
+                required: ["username", "password"],
                 properties: {
-                  userId: { type: "string" },
+                  username: { type: "string" },
                   password: { type: "string" },
                 },
               },
