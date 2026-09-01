@@ -1,6 +1,6 @@
 # @hyagent/sdk
 
-OA Agent 整合 SDK（瀏覽器端）。提供兩種整合方式，共用同一組租戶設定：
+HyAgent 整合 SDK（瀏覽器端）。提供兩種整合方式，共用同一組租戶設定：
 
 - **headless REST**：開發者自建 UI，直接呼叫對話 / 表單 API。
 - **widget 橋接**：程式化開關內建 widget、訂閱事件。

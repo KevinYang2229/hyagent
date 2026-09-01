@@ -86,7 +86,7 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, () => {
   console.log(`模擬租戶網站已啟動： http://localhost:${PORT}`);
-  console.log(`  → OA Agent:    ${OA_ORIGIN}`);
+  console.log(`  → HyAgent:    ${OA_ORIGIN}`);
   console.log(`  → 租戶 pk:     ${TENANT_PK.slice(0, 12)}…`);
   console.log(`  → 登入使用者:  ${DEMO_USER_NAME}(${DEMO_USER_ID})`);
 });

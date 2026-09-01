@@ -47,7 +47,7 @@ async function main(): Promise<void> {
   const server = http.createServer(app);
 
   server.listen(env.PORT, () => {
-    logger.info({ port: env.PORT, env: env.NODE_ENV, backend: env.DATA_BACKEND }, 'OA Agent (MVP) listening');
+    logger.info({ port: env.PORT, env: env.NODE_ENV, backend: env.DATA_BACKEND }, 'HyAgent (MVP) listening');
   });
 
   const shutdown = (signal: string): void => {

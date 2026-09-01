@@ -2,7 +2,7 @@
  * 第二個測試網站：SDK 自訂 UI 示範（Surface 2）。
  *
  * 與 tenant-backend（widget 版）的差異：
- *   - 不載入 OA widget、不用 iframe。
+ *   - 不載入 HyAgent widget、不用 iframe。
  *   - 前端用 @hyagent/sdk（headless）拿資料，UI 完全自己畫（見 app.ts / index.html）。
  *
  * 本服務負責：
@@ -96,7 +96,7 @@ const server = http.createServer((req, res) => {
 await buildApp();
 server.listen(PORT, () => {
   console.log(`SDK 自訂 UI 網站已啟動： http://localhost:${PORT}`);
-  console.log(`  → OA Agent:   ${OA_ORIGIN}`);
+  console.log(`  → HyAgent:   ${OA_ORIGIN}`);
   console.log(`  → 租戶 pk:    ${TENANT_PK.slice(0, 12)}…（其 allowedOrigins 須含 http://localhost:${PORT} 或 *）`);
   console.log(`  → 登入使用者: ${DEMO_USER_NAME}(${DEMO_USER_ID})`);
 });

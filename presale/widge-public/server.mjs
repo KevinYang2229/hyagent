@@ -63,7 +63,7 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, () => {
   console.log(`模擬租戶網站（純前端嵌入版）已啟動： http://localhost:${PORT}`);
-  console.log(`  → OA Agent:  ${OA_ORIGIN}`);
+  console.log(`  → HyAgent:  ${OA_ORIGIN}`);
   console.log(`  → 租戶 pk:   ${TENANT_PK.slice(0, 12)}…`);
   console.log(`  → SSO:       關閉（使用者於 widget 內自行登入）`);
 });

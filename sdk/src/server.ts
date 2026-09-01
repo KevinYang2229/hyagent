@@ -2,7 +2,7 @@
  * @hyagent/sdk/server — 伺服器端 SSO 工具（給「整合方後端」用）。
  *
  * 用途：整合方在自己的後端，於使用者登入後，用該租戶的 ssoSecret 簽一張「終端使用者 token」，
- * 交給前端塞進 OA widget（data-user-token）。OA Agent 收到後驗章換發本系統 token，達成免登入。
+ * 交給前端塞進 HyAgent widget（data-user-token）。HyAgent 收到後驗章換發本系統 token，達成免登入。
  *
  * 注意：依賴 jsonwebtoken，僅供 Node 端使用；瀏覽器端請用主入口 createOAAgent。
  * ssoSecret 是後端機密，切勿外洩到前端。
@@ -27,7 +27,7 @@ export interface SignUserTokenOptions extends UserTokenClaims {
 }
 
 /**
- * 用租戶 ssoSecret 簽一張 OA Agent SSO user token。
+ * 用租戶 ssoSecret 簽一張 HyAgent SSO user token。
  * 回傳的字串交給前端，作為 widget 的 data-user-token 或 SDK 的 userToken。
  */
 export function signUserToken(opts: SignUserTokenOptions): string {
@@ -41,7 +41,7 @@ export function signUserToken(opts: SignUserTokenOptions): string {
 }
 
 /**
- * 驗證一張 user token（測試 / 除錯用；正式環境的驗章由 OA Agent 後端負責）。
+ * 驗證一張 user token（測試 / 除錯用；正式環境的驗章由 HyAgent 後端負責）。
  * 失敗會丟出 jsonwebtoken 的錯誤。
  */
 export function verifyUserToken(token: string, secret: string): UserTokenClaims {
@@ -52,7 +52,7 @@ export function verifyUserToken(token: string, secret: string): UserTokenClaims 
 
 export type WebhookEventType = 'form.submitted';
 
-/** OA Agent 投遞的 webhook 事件（接收端收到的 body 形狀） */
+/** HyAgent 投遞的 webhook 事件（接收端收到的 body 形狀） */
 export interface WebhookEvent {
   id: string;
   type: WebhookEventType;

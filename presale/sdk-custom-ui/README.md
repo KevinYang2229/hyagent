@@ -18,7 +18,7 @@
 
 ## 執行
 
-前提：OA Agent server 已啟動，且 `TENANT_PK` 對應的租戶
+前提：HyAgent server 已啟動，且 `TENANT_PK` 對應的租戶
 **`allowedOrigins` 含 `http://localhost:4200`（或 `*`）且有 `ssoSecret`**。
 
 ```bash

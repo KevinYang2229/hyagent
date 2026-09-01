@@ -1,4 +1,4 @@
-# OA Agent — presale demo「widge-tenant」（模擬租戶網站 + SSO 免登入）
+# HyAgent — presale demo「widge-tenant」（模擬租戶網站 + SSO 免登入）
 # build context = repo 根目錄（server.mjs 透過 monorepo workspaces 解析 @hyagent/sdk）
 #
 # 為何用 tsx 啟動：server.mjs 會 `import '@hyagent/sdk/server'`，而該 export 指向 raw TS

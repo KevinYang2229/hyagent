@@ -1,5 +1,5 @@
 /**
- * @hyagent/sdk — OA Agent 整合 SDK（瀏覽器端）。
+ * @hyagent/sdk — HyAgent 整合 SDK（瀏覽器端）。
  *
  * 提供兩種整合方式，共用同一組租戶設定（公開金鑰 + 選用 SSO token）：
  *   1) headless REST：開發者自建 UI，直接呼叫對話 / 表單 API。

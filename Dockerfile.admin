@@ -1,4 +1,4 @@
-# OA Agent — admin 後台（Vite 靜態網站，用 nginx 提供）
+# HyAgent — admin 後台（Vite 靜態網站，用 nginx 提供）
 # build context = repo 根目錄
 
 # ---- build stage ----

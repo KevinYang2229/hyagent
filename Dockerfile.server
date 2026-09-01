@@ -1,4 +1,4 @@
-# OA Agent — server 服務（Express API）
+# HyAgent — server 服務（Express API）
 # build context = repo 根目錄（monorepo workspaces 需從 root 安裝才解析得到 @hyagent/*）
 
 # ---- build stage：裝全部依賴 + 編譯 TS ----

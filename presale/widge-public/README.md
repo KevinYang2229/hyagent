@@ -21,14 +21,14 @@ widget 在右下角顯示**預設浮動按鈕**，點擊彈出聊天室；使用
 ```
 瀏覽器開 http://localhost:4001（模擬對方網站）
    │
-   └─ 頁面直接注入 OA widget：<script src="OA/widget.js" data-key=pk_>
+   └─ 頁面直接注入 HyAgent widget：<script src="OA/widget.js" data-key=pk_>
          （沒有 data-user-token → 不做免登入）
          → 點開小幫手，使用者在 widget 內自行登入後對話
 ```
 
 ## 執行
 
-前提：OA Agent server 已在 `http://localhost:3000` 啟動，且有一個租戶（取得其 `pk_…`）。
+前提：HyAgent server 已在 `http://localhost:3000` 啟動，且有一個租戶（取得其 `pk_…`）。
 這版**不需要**租戶設定 ssoSecret。
 
 ```bash
@@ -41,7 +41,7 @@ open http://localhost:4001
 | 變數 | 預設 | 說明 |
 |------|------|------|
 | `PORT` | `4001` | 此模擬網站的埠 |
-| `OA_ORIGIN` | `http://localhost:3000` | OA Agent 來源 |
+| `OA_ORIGIN` | `http://localhost:3000` | HyAgent 來源 |
 | `TENANT_PK` | （test 租戶的 pk） | 租戶公開金鑰（pk 可放前端） |
 
 ## 正式環境怎麼接

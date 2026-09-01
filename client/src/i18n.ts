@@ -39,7 +39,7 @@ const zhHant = {
     now: "現在",
   },
   app: {
-    title: "OA Agent",
+    title: "HyAgent",
     greeting: "你好，我是 {{name}}。直接用自然語言描述你的需求即可 👋",
     aiName: "AI 小幫手",
     conn: {
@@ -243,7 +243,7 @@ const en = {
     now: "Now",
   },
   app: {
-    title: "OA Agent",
+    title: "HyAgent",
     greeting:
       "Hi, I'm {{name}}. Just describe your request in your own words 👋",
     aiName: "AI Assistant",

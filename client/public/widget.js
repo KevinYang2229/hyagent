@@ -1,5 +1,5 @@
 /**
- * OA Agent 嵌入式聊天 widget（POC）。
+ * HyAgent 嵌入式聊天 widget（POC）。
  *
  * 第三方網站只要加一行即可接入：
  *   <script src="https://<你的網域>/widget.js"></script>

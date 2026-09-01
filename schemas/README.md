@@ -1,6 +1,6 @@
 # Schema 說明文件
 
-`schemas/<formId>/` 是整個 OA Agent 的**單一事實來源（single source of truth）**：一張表單由數個 JSON 檔定義，後端的驗證引擎、LLM 工具、簽核流程，以及前端的表單渲染，全部由這些 JSON 衍生。**新增一張表單 = 新增一個資料夾，不需改編排層程式。**
+`schemas/<formId>/` 是整個 HyAgent 的**單一事實來源（single source of truth）**：一張表單由數個 JSON 檔定義，後端的驗證引擎、LLM 工具、簽核流程，以及前端的表單渲染，全部由這些 JSON 衍生。**新增一張表單 = 新增一個資料夾，不需改編排層程式。**
 
 > 型別 canonical 定義在 [`shared/src/index.ts`](../shared/src/index.ts)，前後端共用；後端透過 [`server/src/modules/form/form.types.ts`](../server/src/modules/form/form.types.ts) 再匯出。
 
