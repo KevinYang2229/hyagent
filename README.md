@@ -1,6 +1,8 @@
 # HyAgent（v1.0.0）
 
-對話式 OA Agent。員工用自然語言描述需求，Agent 透過對話補齊欄位（slot-filling）、驗證、請使用者確認後送出。**已內建三張表單：請假單（leave-request）、國內出差報銷（business-trip-domestic）、外出登記（outing-registration）**，schema-driven、LLM 驅動、OA 以 stub 模擬。
+**通用 AI Agent 整合平台**（Universal AI Agent Integration Platform）：可嵌入既有站台或獨立使用的多租戶 Agent，讓使用者以自然語言完成跨系統任務。平台**不綁定特定業務系統或業務領域**——OA 是目前第一個落地的整合場景，不是產品邊界（完整定位見 [`docs/PRODUCT_SPEC.md`](docs/PRODUCT_SPEC.md)）。
+
+對話式表單填寫是其中一種互動方式：Agent 透過對話補齊欄位（slot-filling）、驗證、請使用者確認後送出。**首批內建三張表單：請假單（leave-request）、國內出差報銷（business-trip-domestic）、外出登記（outing-registration）**，schema-driven、LLM 驅動，外部系統目前以 stub 模擬。接一個新的業務系統（HR / ERP / CRM / ITSM…）= 加一份 schema 與連接器設定，**不改編排層程式**。
 
 同一個對話介面另有兩條路：**知識庫問答**（RAG 檢索企業文件回答）與**報告**（依檢索結果彙整成可下載文件，見下方「報告」一節）。多租戶、權限（scope）、用量配額與後台管理見 [`INTEGRATION.md`](INTEGRATION.md)，部署見 [`DEPLOY.zeabur.md`](DEPLOY.zeabur.md)。
 
@@ -25,14 +27,14 @@
 
 | 層         | 檔                       | 用途                                          | 狀態 |
 | ---------- | ------------------------ | --------------------------------------------- | ---- |
-| Data       | `data.schema.json`       | 資料形狀（JSON Schema = OA 契約）             | ✅   |
+| Data       | `data.schema.json`       | 資料形狀（JSON Schema = 外部系統資料契約）    | ✅   |
 | Field      | `field.schema.json`      | 欄位 UI 元件 + 標籤 + 選項                    | ✅   |
 | Validation | `validation.schema.json` | 必填 + 跨欄商規                               | ✅   |
 | Agent      | `agent.schema.json`      | 詢問順序、提示、確認話術                      | ✅   |
 | Layout     | `layout.schema.json`     | 版面：欄位分組、顯示順序、多步驟（>1 section）| ✅   |
 | Workflow   | `workflow.schema.json`   | 簽核關卡：送出後計算 approved/current/pending | ✅   |
 
-> Layout / Workflow 為選用層：表單沒有定義時，前端 fallback 成扁平單頁、後端不帶簽核進度。三張表單目前皆已定義 Layout；簽核狀態於 Demo 以時間自動推進（真串接時改由 OA 連接器查詢）。
+> Layout / Workflow 為選用層：表單沒有定義時，前端 fallback 成扁平單頁、後端不帶簽核進度。三張表單目前皆已定義 Layout；簽核狀態於 Demo 以時間自動推進（真串接時改由外部系統連接器查詢）。
 
 新增一張表單 = 在 `schemas/` 加一個資料夾，**不需改編排層程式**。
 
@@ -152,7 +154,7 @@ curl -s -X POST localhost:3000/api/conversations/<id>/messages \
   -d '{"message":"確認"}'
 ```
 
-Agent 會逐一問缺漏欄位 → 必填齊全後出摘要請你回「確認」→ 送出 stub OA，回 `oaRequestId: STUB-...`。
+Agent 會逐一問缺漏欄位 → 必填齊全後出摘要請你回「確認」→ 送到 stub 連接器，回 `oaRequestId: STUB-...`。
 
 ## 報告（依知識庫檢索彙整成可下載文件）
 
@@ -200,15 +202,15 @@ server/src/
   config/env.ts                 環境變數（含 LLM_ / KNOWLEDGE_ / REPORT_ / OA_）
   lib/llm/                      LLM provider 抽象 + Claude / OpenAI / local 實作（tool use + prompt caching）
   lib/embedding/                embedding provider 抽象（雲端 / 地端）
-  lib/oa/                       OA 連接器抽象 + StubOAConnector + http 骨架
+  lib/oa/                       外部系統連接器抽象 + StubOAConnector + http 實作（目前唯一 adapter：OA）
   modules/form/                 schema-core：型別 / Ajv 引擎 / loader / registry / 工具生成 / approvals（簽核關卡狀態）/ field-links（條款連結與明確同意）
   modules/conversation/         session store（記憶體 + file/db 持久化）+ slot-filling agent loop + 意圖分流 + REST
   modules/knowledge/            知識庫：檔案解析 / 切塊 / 索引（pgvector 或靜態索引）/ 檢索 + 重排 / 試算表結構化留存
   modules/report/               報告：大綱 → 逐節彙整（含圖表）→ 綜合節 → renderer 登錄表（md / html / pdf）
   modules/tenant/ authz/ usage/ 多租戶、scope 權限、用量與配額
-  modules/leave/                請假最終驗證 → 送 OA + workflow
-  modules/business-trip/        國內出差報銷最終驗證 → 送 OA + workflow
-  modules/outing/               外出登記最終驗證 → 送 OA + workflow
+  modules/leave/                請假最終驗證 → 送外部系統 + workflow
+  modules/business-trip/        國內出差報銷最終驗證 → 送外部系統 + workflow
+  modules/outing/               外出登記最終驗證 → 送外部系統 + workflow
 client/src/
   api.ts                        對話 / 表單 / 報告 API client（型別取自 @hyagent/shared）
   App.tsx                       對話畫面 + 狀態管理
@@ -220,13 +222,13 @@ schemas/<formId>/*.json         六層表單 Definition（前後端共用單一�
 
 **送出守門**：`submit` 只在「使用者上一輪已看到摘要（status=confirming）且本輪確認」時才執行，伺服器端硬守，LLM 無法跳過。確認畫面的手動編輯走 `PATCH /fields`，同樣經 `form.engine` 驗證後才存回 `session.values`，因此畫面所見即送出所送。
 
-## 部署拓撲：前端 + BFF + 真 OA
+## 部署拓撲：前端 + BFF + 外部業務系統
 
-這台 server 的**位置**像 gateway（前端的唯一入口、前端永不直接碰真 OA），但**職責**比薄 gateway 重得多——它擁有 schema、跑 LLM Agent、維護對話 session、做驗證，所以本質是 **BFF / 編排層（orchestration layer）**。
+這台 server 的**位置**像 gateway（前端的唯一入口、前端永不直接碰後端業務系統），但**職責**比薄 gateway 重得多——它擁有 schema、跑 LLM Agent、維護對話 session、做驗證，所以本質是 **BFF / 編排層（orchestration layer）**。
 
 > 嚴格說 BFF 綁單一前端；本 server 還餵 admin、嵌入式 widget、SDK 等多個前端，故更精確是「application backend，同時扮演 BFF + 整合層」。「前端 + BFF」是夠用的心智模型。
 
-**現況**：2 層，第三層真 OA 由 stub 假裝。
+**現況**：2 層，第三層的外部業務系統由 stub 假裝（目前唯一實作的連接器是 OA）。
 
 ```text
 [前端 client/widget/admin] ──HTTP──> [BFF：schema + LLM Agent + 驗證 + REST]
@@ -236,7 +238,7 @@ schemas/<formId>/*.json         六層表單 Definition（前後端共用單一�
 **上線後**：3 層，stub 換成真連接器。
 
 ```text
-[前端] ──HTTP──> [BFF / 編排層] ──HTTP──> [真 OA 後端（公司系統，可在另一台伺服器）]
+[前端] ──HTTP──> [BFF / 編排層] ──HTTP──> [外部業務系統（OA / HR / ERP…，可在另一台伺服器）]
                       └─ getOAConnector() → httpOAConnector（真送單／查額度／查真實簽核狀態）
 ```
 
@@ -265,4 +267,5 @@ schemas/<formId>/*.json         六層表單 Definition（前後端共用單一�
 - 地端模型：`LLM_PROVIDER=local` + `LLM_BASE_URL` 指向自架 OpenAI 相容端點（vLLM / Ollama），資料不出機房；embedding 另以 `EMBEDDING_PROVIDER=local` + `EMBEDDING_BASE_URL` 地端化。選地端時絕不 fallback 回雲端。租戶亦可於後台「AI 模型」選「地端」（沿用部署層端點，租戶不自帶 URL）。
 - 租戶 BYO key：每租戶可自帶 OpenAI / Anthropic API key 與 provider/model（`llmConfig`），未設定 fallback 平台 env 金鑰；用量按「模型 × key 來源」歸戶（`/api/admin/tenants/:id/usage` 含預估成本）。設定入口：sk_ 自助 `PUT /api/tenant/llm-config` 或 admin 後台「AI 模型」卡片。
 - 持久化：`DATA_BACKEND`（`file` / `db`）— `file` 為記憶體 + JSON 檔（dev 預設）；`db` 為記憶體 + Postgres write-through（Prisma，`DATABASE_URL` 必填、boot fail-fast），涵蓋全部 10 個 runtime store（audit 於 DB 留全史、其餘與 file 同語意），store 介面不變；知識庫索引的兩種後端與檢索差異見 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) 的「知識庫檢索後端」。API key 只存 sha256 雜湊（簽發當下顯示一次）；設 `DATA_ENCRYPTION_KEY`（64 hex）後租戶 BYO LLM key 與 ssoSecret 以 AES-256-GCM 加密落地，舊明文資料開機自動補雜湊/加密。DDL 見 `server/db/migrations/`。
-- OA：`OA_CONNECTOR`（`stub` / `http`）— `http` 連接器已實作（[`lib/oa/http.connector.ts`](server/src/lib/oa/http.connector.ts)）；切到 `http` 需設 `OA_BASE_URL`（boot 時 fail-fast 檢查）。真 OA 規格到位後**改的是 `schemas/<formId>/oa.schema.json`（端點路徑 / request 欄位映射 / 回應映射），不是連接器程式**。尚未涵蓋的三處（附件本體、真實簽核狀態查詢、`getLeaveBalance` 端點仍寫死於連接器）見 [`docs/HANDOFF-OA-HTTP.md`](docs/HANDOFF-OA-HTTP.md)
+- 外部系統：`OA_CONNECTOR`（`stub` / `http`；變數名沿用歷史，實際是外部系統連接器的開關）— `http` 連接器已實作（[`lib/oa/http.connector.ts`](server/src/lib/oa/http.connector.ts)）；切到 `http` 需設 `OA_BASE_URL`（boot 時 fail-fast 檢查）。對方系統規格到位後**改的是 `schemas/<formId>/oa.schema.json`（端點路徑 / request 欄位映射 / 回應映射），不是連接器程式**。尚未涵蓋的三處（附件本體、真實簽核狀態查詢、`getLeaveBalance` 端點仍寫死於連接器）見 [`docs/HANDOFF-OA-HTTP.md`](docs/HANDOFF-OA-HTTP.md)。
+  > **方向**：`lib/oa/` 目前是唯一的外部系統出口，但它的送出映射本來就由 schema 驅動、與 OA 無關。目標是把它抽成 Connector Registry + 通用 HTTP Connector，**OA 降為其中一個 adapter**，讓 HR / ERP / CRM / ITSM 以相同機制接入——列為正式上線前缺口，見 [`docs/PRODUCT_SPEC.md`](docs/PRODUCT_SPEC.md) 第 12 節。
