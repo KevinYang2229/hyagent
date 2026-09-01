@@ -61,7 +61,7 @@ const userToken = signUserToken({
 ```
 
 > 主入口（`@hyagent/sdk`）是瀏覽器端；server 子入口依賴 `jsonwebtoken`，僅供 Node 使用。
-> 完整可跑範例見 [examples/tenant-backend](../examples/tenant-backend)。
+> 完整可跑範例見 [presale/widge-tenant](../presale/widge-tenant)。
 
 ## 認證模型
 

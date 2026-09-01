@@ -9,7 +9,7 @@
  *   2. /styles.css  — landing page 樣式。
  *   3. /            — landing page，注入 OA 來源與租戶金鑰，bootstrap 載入 widget。
  *
- * 執行（從 repo 根目錄）：node examples/tenant-backend/server.mjs → 開 http://localhost:4000
+ * 執行（從 repo 根目錄）：node presale/widge-tenant/server.mjs → 開 http://localhost:4000
  * 設定見同目錄 .env（server 會自動載入）：PORT / OA_ORIGIN / TENANT_PK / TENANT_SSO_SECRET / DEMO_USER_*
  */
 import http from 'node:http';

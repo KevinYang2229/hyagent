@@ -48,7 +48,7 @@ Management Portal（admin 後台）
 | 目標元件 | 現況對應（程式） | 狀態 |
 | --- | --- | --- |
 | Conversation Manager | `modules/conversation/`（session store + agent loop） | ✅ |
-| Authentication | JWT login + SSO exchange（`modules/auth/`） | ✅（缺 OAuth） |
+| Authentication | JWT login + SSO exchange（`modules/auth/`） | 🟡 demo 級，五項缺口見 [HANDOFF-SSO](HANDOFF-SSO.md) §4 |
 | Context Builder | resolve-tenant + user directory + session history | 🟡 缺 Memory |
 | Intent Router | `conversation/intent-router.ts`（Haiku 分類器） | ✅ |
 | Skill Router | `conversation/service.registry.ts`（sticky + enabledFor） | ✅ |
@@ -61,6 +61,7 @@ Management Portal（admin 後台）
 | Tool Executor | `modules/tools/`（scope 檢查 + `modules/audit/`） | ✅ |
 | Dynamic Form | 六層 schema 引擎（`modules/form/`） | ✅ |
 | API / Webhook | `lib/connectors/` + `modules/webhook/` | ✅ |
+| OA Connector | `lib/oa/`（`OA_CONNECTOR=stub \| http`；端點與欄位映射由 `schemas/<formId>/oa.schema.json` 經 `oa.mapper.ts` 驅動） | 🟡 送單已通，三處缺口見 [HANDOFF-OA-HTTP](HANDOFF-OA-HTTP.md) §5 |
 | RAG / Vector DB | `DATA_BACKEND` 切換 file / pgvector；索引持久化見「知識庫檢索後端」 | ✅ |
 | Workflow / BPM | workflow schema（Demo 以時間推進） | 🔴 真 BPM 待接 |
 | Memory | — | 🔴 未實作 |
@@ -109,8 +110,9 @@ HNSW 索引的 2000 維上限，只有 `halfvec`（上限 4000 維）建得了�
 | **Skill Ranking** | 出現「兩個 skill 搶同一意圖」的真實衝突 | 目前 keywords + 分類器足夠，ranking 是為不存在的問題買保險 |
 | **Community / Marketplace** | 內建 skill 數 > 20 且有第三方供給 | 規模未到，維護成本 > 價值 |
 | **真 BPM / Workflow 引擎** | 公司 OA 簽核規格到位 | 等外部規格，非工程自主 |
-| **真 OA HTTP Connector** | 公司 OA 端點/欄位規格到位 | 骨架已就緒（`lib/oa/http.connector.ts`），改三個對接點即可 |
-| **真實身分來源 / OAuth** | 導入正式部署、SSO 決策定案 | 目前 mock 名錄 + SSO handoff 足夠 demo |
+| **OA 送單對接** | 公司 OA 端點/欄位規格到位 | 連接器（`lib/oa/http.connector.ts`）已完成且不該改，要改的是每張表單的 `oa.schema.json` |
+| **OA 介面補完**（簽核狀態查詢／附件本體／額度端點） | 同上，且 OA 的查詢與收附件方式確認 | 這三處**填 schema 解決不了**：`OAConnector` 沒有查簽核的方法（現為本地時間推演）、`Attachment` 只有 metadata 沒有檔案、`LEAVE_BALANCE_PATH` 寫死於程式。見 [HANDOFF-OA-HTTP](HANDOFF-OA-HTTP.md) §5 |
+| **真實身分來源 / OAuth** | 導入正式部署、SSO 決策定案 | 目前 mock 名錄 + SSO handoff 足夠 demo；上線前必補的五項（鎖 `algorithms`／驗 `iss`+`aud`／強制 `exp`／replay 防護／名錄回退）見 [HANDOFF-SSO](HANDOFF-SSO.md) §4 |
 
 ## 不做清單（明確排除，避免反覆糾結）
 

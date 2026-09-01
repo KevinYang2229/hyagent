@@ -15,14 +15,14 @@
 
 ```bash
 # 從 repo 根目錄（OA server 需已啟動）
-node examples/webhook-receiver/server.mjs
+node presale/webhook-receiver/server.mjs
 open http://localhost:4300       # 收件匣頁面
 ```
 
 然後產生一筆事件（二選一）：
 
 - **真人操作**：在示範網站（[tenant-backend](../tenant-backend) 或 [sdk-custom-ui](../sdk-custom-ui)）用**同一個租戶**完成一張表單送出。
-- **一鍵觸發（免 LLM）**：`node examples/webhook-receiver/trigger.mjs` —— SSO → 建對話 → 填欄位 → 送出，立刻觸發一筆 `form.submitted`。
+- **一鍵觸發（免 LLM）**：`node presale/webhook-receiver/trigger.mjs` —— SSO → 建對話 → 填欄位 → 送出，立刻觸發一筆 `form.submitted`。
 
 事件會出現在這個服務的 console，並在收件匣頁面 **<http://localhost:4300/>**（根路徑，不是 `/webhook`）顯示。
 收件匣存記憶體，接收端重啟即歸零。

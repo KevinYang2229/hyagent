@@ -4,7 +4,7 @@
 widget 在右下角顯示**預設浮動按鈕**，點擊彈出聊天室。
 這支服務模擬「**整合方（租戶）自己的後端 + 網站**」，也可當作交給整合方的**參考實作**。
 
-> 想改成「用自己的按鈕開啟、藏掉浮動鈕」或「完全自建 UI」，見 [examples/sdk-custom-ui](../sdk-custom-ui)。
+> 想改成「用自己的按鈕開啟、藏掉浮動鈕」或「完全自建 UI」，見 [presale/sdk-custom-ui](../sdk-custom-ui)。
 
 ## 流程
 
@@ -26,7 +26,7 @@ widget 在右下角顯示**預設浮動按鈕**，點擊彈出聊天室。
 
 ```bash
 # 從 repo 根目錄（jsonwebtoken 由 workspace hoist，免另外安裝）
-node examples/tenant-backend/server.mjs
+node presale/widge-tenant/server.mjs
 # 開瀏覽器
 open http://localhost:4000
 ```
@@ -45,7 +45,7 @@ open http://localhost:4000
 
 ```bash
 TENANT_PK=pk_xxx TENANT_SSO_SECRET=你的secret DEMO_USER_NAME=小明 \
-  node examples/tenant-backend/server.mjs
+  node presale/widge-tenant/server.mjs
 ```
 
 ## 正式環境對照

@@ -34,7 +34,7 @@ hyagent/
 ├─ server/             後端 Express（schema 引擎 + 對話 Agent + 知識庫 + 報告 + REST）
 ├─ client/             前端 Vite + React + TS（對話 + schema-driven 表單）
 ├─ admin/              後台 Vite + React + TS（租戶／權限／知識庫／表單 Designer／報告／稽核）
-├─ presale/            整合範例（公開 widget、租戶 widget、自製 UI、webhook receiver）
+├─ presale/            整合範例（公開 widget、租戶 widget、自製 UI、webhook receiver、mock OA）
 └─ docs/               架構決策文件（ARCHITECTURE.md）
 ```
 
@@ -218,11 +218,11 @@ schemas/<formId>/*.json         六層表單 Definition（前後端共用單一�
                       └─ getOAConnector() → httpOAConnector（真送單／查額度／查真實簽核狀態）
 ```
 
-差別只在最後一步：環境變數 `OA_CONNECTOR=stub` 換成 `http`、實作 `lib/oa/http.connector.ts`。**前端、schema、BFF 邏輯皆不動**，三層各自獨立部署。
+差別只在最後一步：環境變數 `OA_CONNECTOR=stub` 換成 `http`。連接器本身（[`lib/oa/http.connector.ts`](server/src/lib/oa/http.connector.ts)）已實作完成且**不需修改**——端點、送出欄位映射、回應解析全由各表單的 `schemas/<formId>/oa.schema.json` 驅動（見 [`oa.mapper.ts`](server/src/lib/oa/oa.mapper.ts)）。**前端、BFF 邏輯皆不動**，三層各自獨立部署。
 
 **共用 schema 不會把前後端綁死**：schema JSON 只住後端（[`form.loader.ts`](server/src/modules/form/form.loader.ts) 以 `fs` 讀 `schemas/`），前端執行時用 `GET /api/forms/:formId` 取得 Definition，**bundle 內零張 schema**。前後端唯一共用的是 `@hyagent/shared` 的 TypeScript 型別，屬 build 期便利、runtime 會被編譯掉。
 
-**gateway 典型該管的現況**：認證已接 JWT（dev 為 mock 名錄 + 共用密碼，上線前換真實身分來源）、session 已可持久化（`DATA_BACKEND=db`）、限流／配額已補齊（兩層守門：[`tenant-rate-limit.ts`](server/src/middlewares/tenant-rate-limit.ts) 依「租戶＋使用者」防突發轟炸、[`tenant-quota.ts`](server/src/middlewares/tenant-quota.ts) 依 `quotaMonthlyLlmTokens` 對照當月 usage 分桶做月配額，掛在會觸發 LLM 計費的 `/api/conversations`）；**尚未補**：真實身分來源（換掉 mock 名錄）。
+**gateway 典型該管的現況**：認證已接 JWT（dev 為 mock 名錄 + 共用密碼，上線前換真實身分來源）、session 已可持久化（`DATA_BACKEND=db`）、限流／配額已補齊（兩層守門：[`tenant-rate-limit.ts`](server/src/middlewares/tenant-rate-limit.ts) 依「租戶＋使用者」防突發轟炸、[`tenant-quota.ts`](server/src/middlewares/tenant-quota.ts) 依 `quotaMonthlyLlmTokens` 對照當月 usage 分桶做月配額，掛在會觸發 LLM 計費的 `/api/conversations`）；**尚未補**：真實身分來源（換掉 mock 名錄）——SSO 現況、五個待辦缺口與驗收清單見 [`docs/HANDOFF-SSO.md`](docs/HANDOFF-SSO.md)。
 
 ## 已實作 vs 延後
 
@@ -235,7 +235,7 @@ schemas/<formId>/*.json         六層表單 Definition（前後端共用單一�
 - ✅ OpenAI provider：[`lib/llm/openai.provider.ts`](server/src/lib/llm/openai.provider.ts)（Chat Completions + function calling；`local` 端點重用之）
 - ✅ 報告：依知識庫檢索彙整成可下載文件（`md` / `html`，探測到 Chromium 時另有 `pdf`），含由結構化試算表算出的精確圖表（單表／跨表對比）與收尾的綜合觀察節；對話觸發、非同步產生，需另外授予 `service:report` scope（見「報告」一節）
 - ✅ 條款連結與明確同意：`FieldSpec.links` 在欄位旁顯示可點擊條款（URL 僅允許 `http(s)://` 或單斜線起始的站內路徑，於 `validateDefinition` 擋下），`requiresTrue` 的欄位**必須由使用者親自勾選**——引擎不把 `false` 當已填，Agent 的欄位說明也明文禁止代為推定同意。後台表單 Designer 可設定，`client/public/legal/` 有三份示範條款頁
-- 🔜 延後（架構留 seam）：真 OA HTTP 連接器（含真實簽核狀態查詢）
+- 🔜 延後（架構留 seam）：真 OA HTTP 連接器——連接器與 schema 驅動的映射已完成，缺附件本體與真實簽核狀態查詢，見 [`docs/HANDOFF-OA-HTTP.md`](docs/HANDOFF-OA-HTTP.md)；本機可用 `node presale/oa-mock/server.mjs` 頂替真 OA 開發
 
 ## 可抽換層
 
@@ -243,4 +243,4 @@ schemas/<formId>/*.json         六層表單 Definition（前後端共用單一�
 - 地端模型：`LLM_PROVIDER=local` + `LLM_BASE_URL` 指向自架 OpenAI 相容端點（vLLM / Ollama），資料不出機房；embedding 另以 `EMBEDDING_PROVIDER=local` + `EMBEDDING_BASE_URL` 地端化。選地端時絕不 fallback 回雲端。租戶亦可於後台「AI 模型」選「地端」（沿用部署層端點，租戶不自帶 URL）。
 - 租戶 BYO key：每租戶可自帶 OpenAI / Anthropic API key 與 provider/model（`llmConfig`），未設定 fallback 平台 env 金鑰；用量按「模型 × key 來源」歸戶（`/api/admin/tenants/:id/usage` 含預估成本）。設定入口：sk_ 自助 `PUT /api/tenant/llm-config` 或 admin 後台「AI 模型」卡片。
 - 持久化：`DATA_BACKEND`（`file` / `db`）— `file` 為記憶體 + JSON 檔（dev 預設）；`db` 為記憶體 + Postgres write-through（Prisma，`DATABASE_URL` 必填、boot fail-fast），涵蓋全部 10 個 runtime store（audit 於 DB 留全史、其餘與 file 同語意），store 介面不變；知識庫索引的兩種後端與檢索差異見 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) 的「知識庫檢索後端」。API key 只存 sha256 雜湊（簽發當下顯示一次）；設 `DATA_ENCRYPTION_KEY`（64 hex）後租戶 BYO LLM key 與 ssoSecret 以 AES-256-GCM 加密落地，舊明文資料開機自動補雜湊/加密。DDL 見 `server/db/migrations/`。
-- OA：`OA_CONNECTOR`（`stub` / `http`）— `http` 連接器骨架已就緒（[`lib/oa/http.connector.ts`](server/src/lib/oa/http.connector.ts)）；切到 `http` 需設 `OA_BASE_URL`（boot 時 fail-fast 檢查）。真 OA 規格到位後只需調整檔內三個「對接點」（端點路徑 / request body 映射 / 回應映射）
+- OA：`OA_CONNECTOR`（`stub` / `http`）— `http` 連接器已實作（[`lib/oa/http.connector.ts`](server/src/lib/oa/http.connector.ts)）；切到 `http` 需設 `OA_BASE_URL`（boot 時 fail-fast 檢查）。真 OA 規格到位後**改的是 `schemas/<formId>/oa.schema.json`（端點路徑 / request 欄位映射 / 回應映射），不是連接器程式**。尚未涵蓋的三處（附件本體、真實簽核狀態查詢、`getLeaveBalance` 端點仍寫死於連接器）見 [`docs/HANDOFF-OA-HTTP.md`](docs/HANDOFF-OA-HTTP.md)

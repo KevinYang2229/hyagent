@@ -23,7 +23,7 @@
 
 ```bash
 # 從 repo 根目錄
-node examples/sdk-custom-ui/server.mjs
+node presale/sdk-custom-ui/server.mjs
 open http://localhost:4200
 ```
 

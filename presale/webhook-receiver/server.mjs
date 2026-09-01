@@ -10,7 +10,7 @@
  *   A. 直接設 WEBHOOK_SECRET（你先用管理 API 登記端點時拿到的 whsec_…）。
  *   B. 設 ADMIN_API_KEY + TENANT_ID → 啟動時自動向 OA 管理 API 登記本服務並取回 secret。
  *
- * 執行（從 repo 根目錄）：node examples/webhook-receiver/server.mjs → 看 console，並可開 http://localhost:4300 看收件匣
+ * 執行（從 repo 根目錄）：node presale/webhook-receiver/server.mjs → 看 console，並可開 http://localhost:4300 看收件匣
  */
 import http from 'node:http';
 import fs from 'node:fs';

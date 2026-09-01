@@ -5,7 +5,7 @@
  * 送出成功後，OA 會把 form.submitted 投遞到該租戶登記的 webhook 端點（即 server.mjs 那支）。
  *
  * 執行（從 repo 根目錄，需 OA backend 在跑）：
- *   node examples/webhook-receiver/trigger.mjs
+ *   node presale/webhook-receiver/trigger.mjs
  * 然後重新整理收件匣 http://localhost:4300/ 看新紀錄。
  *
  * 設定沿用同目錄 .env：OA_ORIGIN / TENANT_PK / TENANT_SSO_SECRET / DEMO_USER_ID / DEMO_USER_NAME

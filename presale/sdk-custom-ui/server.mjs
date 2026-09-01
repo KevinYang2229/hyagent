@@ -10,7 +10,7 @@
  *   2. /app.js      — 用 esbuild 把 app.ts（含 SDK）打包成瀏覽器 ESM。
  *   3. /            — 自訂 UI 頁面，注入 OA 來源與租戶金鑰。
  *
- * 執行（從 repo 根目錄）：node examples/sdk-custom-ui/server.mjs → 開 http://localhost:4200
+ * 執行（從 repo 根目錄）：node presale/sdk-custom-ui/server.mjs → 開 http://localhost:4200
  */
 import http from 'node:http';
 import fs from 'node:fs';
