@@ -1,30 +1,30 @@
 # HyAgent 產品規格文件
 
-> 文件版本：1.0  
+> 文件版本：1.1
 > 對應產品版本：HyAgent v1.0.0  
-> 文件日期：2026-08-27  
-> 文件狀態：依目前程式碼與既有設計文件整理的現況規格（As-Is）
+> 文件日期：2026-08-31
+> 文件狀態：通用表單與外部系統整合目標規格（To-Be）；尚未完成部分依第 12 節追蹤
 
 ## 1. 文件目的
 
 本文件定義 HyAgent 目前的產品定位、使用者角色、功能範圍、主要流程、權限與資料隔離、整合方式、非功能需求及已知限制，作為產品、設計、開發、測試、維運與外部整合團隊的共同基準。
 
-本文件描述的是目前專案已具備的產品能力。未完成、僅有骨架或正式上線前仍需替換的部分，會明確標示為「限制」或「待辦」，不視為已完成承諾。
+本文件同時描述目前能力與通用表單整合的目標能力。尚未完成、僅有骨架或正式上線前仍需替換的部分，會明確列入第 12 節，不視為已完成承諾。
 
 ## 2. 產品摘要
 
 ### 2.1 產品名稱
 
-HyAgent — Agent-Native OA
+HyAgent — Universal AI Agent Integration Platform（通用 AI Agent 整合平台）
 
 ### 2.2 產品定位
 
-HyAgent 是一個可嵌入既有企業網站或獨立使用的多租戶 AI 工作助理平台。使用者可用自然語言辦理 OA 表單、查詢企業知識及產生報告；管理者則可透過後台管理租戶、權限、表單、知識庫、外觀、Webhook、用量、報告與稽核紀錄。
+HyAgent 是一個可嵌入既有網站或獨立使用的多租戶 AI Agent 整合平台。使用者可用自然語言執行跨系統任務、填寫客製化表單、查詢知識及產生報告；管理者則可透過後台管理租戶、權限、Agent 能力、表單、外部系統整合、知識庫、外觀、Webhook、用量與稽核紀錄。平台不綁定特定產品、系統或業務領域。
 
 ### 2.3 核心價值
 
-- 降低 OA 表單的理解與填寫成本，由 AI 逐步補齊欄位。
-- 以 Schema 作為表單、驗證、畫面、Agent 與 OA 契約的單一事實來源。
+- 降低跨系統業務表單的理解與填寫成本，由 AI 逐步補齊欄位。
+- 以 Schema 與 Integration Definition 作為表單、驗證、畫面、Agent 與外部系統資料契約的單一事實來源。
 - 讓不同企業、部門、群組及帳號擁有不同的 AI 服務與資料存取範圍。
 - 透過 Widget、SDK、SSO、REST API 與 Webhook 接入既有站台。
 - 以權限檢查、租戶隔離、送出確認及稽核機制降低 AI 越權與誤操作風險。
@@ -34,24 +34,24 @@ HyAgent 是一個可嵌入既有企業網站或獨立使用的多租戶 AI 工�
 - 企業員工：以對話完成表單、查詢內部知識及產生報告。
 - 租戶管理者：設定企業租戶、權限、知識庫、表單與整合項目。
 - 系統管理者：管理整體平台、租戶及營運狀態。
-- 外部系統開發者：將 HyAgent 嵌入企業入口網站或串接 OA 系統。
+- 外部系統開發者：將 HyAgent 嵌入企業入口網站，或串接 OA、HR、ERP、CRM、ITSM 及其他內外部 API。
 
 ## 3. 產品目標與非目標
 
 ### 3.1 目前產品目標
 
-1. 提供繁體中文為主的自然語言 OA 辦單體驗。
+1. 提供繁體中文為主的自然語言跨系統任務處理體驗，表單只是其中一種互動與資料收集方式。
 2. 支援多租戶、帳號身分、Scope 權限及跨租戶資料隔離。
-3. 讓企業能以低程式碼方式新增或調整 Schema-driven 表單。
+3. 讓企業能以低程式碼方式新增或調整 Schema-driven 表單，並將同一套 Agent 編排能力配置到不同外部系統。
 4. 提供企業文件的 RAG 問答與具來源約束的報告產生能力。
 5. 支援嵌入式 Widget、Headless SDK、SSO handoff 與 Webhook。
 6. 提供可操作的租戶管理後台與用量／稽核資訊。
 
 ### 3.2 目前非目標
 
-- 不取代企業既有 OA、HR、ERP 或簽核系統；HyAgent 是前端體驗與編排／整合層。
+- 不取代企業既有 OA、HR、ERP、CRM、ITSM 或其他業務系統；HyAgent 是前端體驗與編排／整合層。
 - 不以 Prompt 作為真正的資料安全邊界；權限必須由後端與工具執行層強制檢查。
-- 不保證未接正式 OA 連接器時的送單與簽核資料具有正式效力。
+- 不保證未接正式外部系統連接器時的送單、建檔或簽核資料具有正式效力。
 - 不將未經知識庫檢索支持的內容包裝成企業事實。
 
 ## 4. 角色與權限模型
@@ -62,7 +62,7 @@ HyAgent 是一個可嵌入既有企業網站或獨立使用的多租戶 AI 工�
 | 特定群組／帳號 | 依租戶權限政策識別的使用者集合 | 使用額外服務或存取特定知識範圍 |
 | 租戶管理者 | 管理單一企業租戶的人員 | 設定表單、知識庫、權限、外觀、Webhook、API Key、SSO 與報告 |
 | 平台管理者 | 管理 HyAgent 平台的人員 | 建立／刪除租戶、檢視全平台設定及使用管理 API |
-| 外部系統 | 入口網站、OA、Webhook Receiver | SSO 交換、API 呼叫、接收送單事件 |
+| 外部系統 | 入口網站、OA、HR、ERP、CRM、ITSM、Webhook Receiver 或其他 API | SSO 交換、表單資料接收、API 呼叫及事件交換 |
 
 ### 4.1 授權原則
 
@@ -75,7 +75,7 @@ HyAgent 是一個可嵌入既有企業網站或獨立使用的多租戶 AI 工�
 
 ## 5. 核心使用情境
 
-### 5.1 對話式辦單
+### 5.1 對話式任務與表單處理
 
 1. 使用者登入第一方 Client，或由宿主站台透過 SSO handoff 進入嵌入式 Widget。
 2. 使用者選擇表單，或以自然語言描述需求讓系統判斷意圖。
@@ -84,7 +84,7 @@ HyAgent 是一個可嵌入既有企業網站或獨立使用的多租戶 AI 工�
 5. 欄位完整後，系統顯示摘要並進入確認狀態。
 6. 使用者可在表單畫面手動修正欄位；修正內容仍由後端驗證。
 7. 只有在使用者已看過摘要且明確確認後，後端才能送出。
-8. 送出成功後回傳 OA Request ID、簽核狀態，並視租戶設定投遞 Webhook。
+8. 送出成功後回傳標準化 Submission Result（外部單號、狀態與可選導向網址），並視租戶設定投遞 Webhook。
 
 ### 5.2 企業知識問答
 
@@ -151,13 +151,15 @@ HyAgent 是一個可嵌入既有企業網站或獨立使用的多租戶 AI 工�
 | Layout | 欄位分組、排序與多步驟畫面 | 選用 |
 | Workflow | 送出後簽核關卡 | 選用 |
 | Policy | 工時等領域計算政策 | 選用 |
-| OA | OA 端點、欄位映射與回應解析 | 需要送正式 OA 時使用 |
+| Integration | 目標連接器、操作、認證參照、欄位映射、回應解析、錯誤映射與冪等策略 | 需要送至外部系統時使用 |
 
-目前內建表單：
+目前內建的 OA 情境表單可作為範例模板，而非 Agent 的固定能力邊界：
 
 - 請假單（`leave-request`）
 - 國內出差報銷（`business-trip-domestic`）
 - 外出登記（`outing-registration`）
+
+租戶亦可建立例如 CRM 客戶建檔、ITSM 報修、ERP 採購需求或自訂內部 API 操作等表單，不需新增專屬 Agent 類型。
 
 主要要求：
 
@@ -165,8 +167,12 @@ HyAgent 是一個可嵌入既有企業網站或獨立使用的多租戶 AI 工�
 - 支援文字、密碼、數字、多行文字、下拉、單選、多選、日期、時間、勾選及附件元件。
 - 手動修改欄位必須送回後端驗證後才更新 Session。
 - 明確同意欄位必須由使用者主動設為 `true`，Agent 不得代替同意。
-- 附件單檔上限為 10 MB；送出時只將附件 Metadata 交給 OA 連接器。
+- 附件單檔上限為 10 MB；送出時依 Integration Definition 決定傳送 Metadata、檔案內容或外部儲存 URL。
 - 送出必須通過「已呈現摘要」與「本輪明確確認」兩道伺服器端條件。
+- 表單 Definition 不得直接保存密碼、Token 或 API Key，只能引用租戶層的加密 Credential。
+- 同一張表單可在不同租戶綁定不同 Integration；變更目標系統不應要求修改 Agent 編排核心或重寫前端頁面。
+- 連接器須將各外部系統回應正規化為一致的 `externalId`、`status`、`message`、`redirectUrl` 與 `rawReference`（選用）結果。
+- 無外部系統的表單可設定為僅保存 Submission、投遞 Webhook，或交由自訂 Connector 執行。
 
 ### 6.4 知識庫
 
@@ -204,6 +210,7 @@ HyAgent 是一個可嵌入既有企業網站或獨立使用的多租戶 AI 工�
 | 外觀 | AI 名稱、Logo、歡迎語、主色、主題、語言與 Widget 位置，支援即時預覽 |
 | 權限 | 管理群組、帳號與 Scope Policy，檢視平台 Scope Catalog |
 | 表單 | 查看、建立或更新租戶表單，進入視覺化 Designer |
+| 外部系統整合 | 管理 Connector、Base URL、Credential、操作、欄位／狀態映射與連線測試；敏感值僅可新增或輪替，不可明文讀回 |
 | 知識庫 | 管理來源、匯入工作、檔案、標籤、ACL、建議問題與查詢測試 |
 | Webhook | 新增、停用、啟用與刪除回呼端點 |
 | 用量 | 查看對話、訊息、送出及 LLM 使用資訊 |
@@ -221,7 +228,8 @@ HyAgent 是一個可嵌入既有企業網站或獨立使用的多租戶 AI 工�
 | SDK | 提供 Headless REST Client、Widget 控制與事件橋接 |
 | Webhook | 表單送出成功後以 HMAC 簽章投遞 `form.submitted`，支援指數退避重試 |
 | BYO LLM Key | 租戶可設定 Anthropic 或 OpenAI Provider、Model 與 API Key；Key 須先驗證且回傳時遮罩 |
-| OA Connector | 可切換 Stub 或 HTTP Connector；前端與 Schema 不需因 Connector 替換而改動 |
+| Integration Connector | 以統一介面支援 Stub、通用 HTTP／REST、Webhook 及自訂 Adapter；各表單以 Integration Definition 選擇連接器與操作，前端與 Agent 不需因目標系統替換而改動 |
+| Credential | 由租戶集中管理 API Key、Bearer Token、Basic Auth、OAuth 2.0 Client Credentials 或自訂密鑰；表單只保存 Credential Reference |
 
 ## 7. 主要狀態模型
 
@@ -237,7 +245,7 @@ collecting → confirming → submitting → submitted
 |---|---|
 | `collecting` | 收集與驗證欄位 |
 | `confirming` | 已呈現摘要，等待使用者確認或修改 |
-| `submitting` | 正在呼叫 OA／領域服務 |
+| `submitting` | 正在呼叫表單所配置的外部系統／領域服務 |
 | `submitted` | 送出成功 |
 | `cancelled` | 使用者取消 |
 | `failed` | 執行失敗，可依錯誤類型決定是否重試 |
@@ -257,7 +265,8 @@ queued → outlining → composing → done
 | Tenant | 租戶識別、Allowed Origins、外觀、SSO、LLM 與服務設定 |
 | API Key | 租戶解析及公開／秘密存取能力 |
 | Session | 對話、欄位值、訊息與狀態 |
-| Submission | 已送出表單及 OA Request ID |
+| Submission | 已送出表單、目標 Integration、標準化結果及外部系統單號 |
+| Integration | 租戶的外部系統連接器、操作、Credential Reference、映射與重試設定 |
 | Attachment | 對話附件內容與 Metadata |
 | Scope Policy | 群組／帳號對 Scope 的授權規則 |
 | Tenant Form | 租戶自訂表單 Definition |
@@ -286,6 +295,7 @@ queued → outlining → composing → done
 - `/api/admin/auth/login`：管理者登入。
 - `/api/admin/tenants/*`：租戶、API Key、Webhook、用量、外觀與服務管理。
 - `/api/admin/tenants/:id/forms/*`：表單 Definition 管理。
+- `/api/admin/tenants/:id/integrations/*`：外部系統 Connector、Credential Reference、操作映射與連線測試。
 - `/api/admin/tenants/:id/knowledge/*`：知識來源、匯入、檔案、標籤、ACL 與測試。
 - `/api/admin/tenants/:id/reports/*`：租戶報告查詢與下載。
 - `/api/admin/tenants/:id/audit*`：稽核紀錄。
@@ -326,7 +336,7 @@ queued → outlining → composing → done
 - Monorepo 以 npm Workspaces 管理 `shared`、`ui`、`sdk`、`server`、`client` 與 `admin`。
 - TypeScript 型別由 `@hyagent/shared` 共用。
 - 表單定義與流程應優先透過 Schema 擴充，避免修改編排核心。
-- LLM、Embedding、OA 與儲存層皆應保持可抽換介面。
+- LLM、Embedding、外部系統 Connector 與儲存層皆應保持可抽換介面。
 - 程式異動應通過 Build、Typecheck、Lint 與相關測試。
 
 ### 10.5 可及性與使用體驗
@@ -342,7 +352,7 @@ queued → outlining → composing → done
 
 ```text
 hyagent-admin  ─┐
-hyagent-client ─┼── HTTPS ──> hyagent-server ──> LLM / PostgreSQL / OA / Webhook
+hyagent-client ─┼── HTTPS ──> hyagent-server ──> LLM / PostgreSQL / Integration Connectors / Webhook
 外部宿主站台 ──┘
 ```
 
@@ -355,7 +365,7 @@ hyagent-client ─┼── HTTPS ──> hyagent-server ──> LLM / PostgreSQ
 - `ADMIN_API_KEY`：機器對機器管理 API；不得暴露於瀏覽器。
 - `DATA_BACKEND`、`DATABASE_URL`：正式多實例環境建議使用 DB 模式。
 - `LLM_PROVIDER`、`LLM_MODEL` 及對應 Provider Key。
-- `OA_CONNECTOR`：目前預設 Stub，正式整合需切換 HTTP Connector。
+- `INTEGRATION_CONNECTOR_DEFAULT`：未指定連接器時的預設實作；開發環境可使用 Stub，正式環境應由租戶／表單指定 Integration。
 - `REPORT_PDF_BROWSER`：PDF Renderer 使用的 Chromium 路徑。
 
 ## 12. 目前限制與正式上線前缺口
@@ -363,7 +373,7 @@ hyagent-client ─┼── HTTPS ──> hyagent-server ──> LLM / PostgreSQ
 | 項目 | 現況／風險 | 建議 |
 |---|---|---|
 | 正式身分來源 | 一般登入仍有 Mock 帳號／共用開發密碼模式 | 串接企業 OIDC／身分提供者，建立穩定的外部帳號對應 |
-| OA 串接 | 預設由 Stub OA 模擬送單與簽核 | 完成 HTTP OA Connector、錯誤映射、冪等及整合測試 |
+| 通用外部系統串接 | 現有實作若仍由 Stub OA 模擬送單與簽核，尚未完整落實 Integration Definition | 建立 Connector Registry 與通用 HTTP Connector，補齊 Credential 管理、欄位／回應／錯誤映射、冪等、逾時重試及契約測試；再將 OA 降為其中一個 Adapter |
 | API Key 生命週期 | 目前已以 SHA-256 雜湊保存，原始 Key 只在建立時顯示 | 補齊 Key 輪替、Last-used、到期政策與操作手冊 |
 | File Backend | 記憶體／本機檔案不適合多實例，部分資料重啟即失 | 正式環境使用 PostgreSQL，檔案量增長時改用 S3／R2 |
 | Webhook 工作佇列 | 目前為行內非同步重試 | 規模或可靠度需求提高時改用 BullMQ／持久化 Queue |
@@ -379,13 +389,14 @@ hyagent-client ─┼── HTTPS ──> hyagent-server ──> LLM / PostgreSQ
 1. 管理者建立租戶、設定 Allowed Origins、外觀與 SSO。
 2. 管理者核發 `pk_` Key，並將 Widget 嵌入白名單宿主站台。
 3. 宿主登入者可透過 SSO 免輸入 HyAgent 密碼進入 Widget。
-4. 使用者以自然語言完成任一內建表單，能修改欄位、看摘要、明確確認並成功送出。
-5. 未授權使用者無法使用被限制服務或查到受限制文件。
-6. 管理者上傳知識檔、設定可見性標籤，查詢測試能反映不同帳號 Scope。
-7. 有 `service:report` 權限的使用者可建立報告、查看進度並下載可用格式。
-8. 表單送出可觸發具 HMAC 簽章的 Webhook。
-9. 管理者可查看用量、報告與稽核紀錄。
-10. 跨租戶存取、無效 Token、未允許 Origin 與超出配額皆被後端拒絕並回明確錯誤。
+4. 管理者不修改 Agent 編排核心，即可建立一張客製化表單、綁定非 OA 的測試 Integration，並完成欄位映射與連線測試。
+5. 使用者以自然語言完成該客製化表單，能修改欄位、看摘要、明確確認並成功送出，且取得標準化外部單號與狀態。
+6. 未授權使用者無法使用被限制服務或查到受限制文件。
+7. 管理者上傳知識檔、設定可見性標籤，查詢測試能反映不同帳號 Scope。
+8. 有 `service:report` 權限的使用者可建立報告、查看進度並下載可用格式。
+9. 表單送出可觸發具 HMAC 簽章的 Webhook。
+10. 管理者可查看用量、報告與稽核紀錄，且稽核紀錄能識別表單、Integration 與外部單號。
+11. 跨租戶存取、無效 Token、未允許 Origin 與超出配額皆被後端拒絕並回明確錯誤。
 
 ## 14. 成功指標建議
 
@@ -405,7 +416,9 @@ hyagent-client ─┼── HTTPS ──> hyagent-server ──> LLM / PostgreSQ
 | 名詞 | 說明 |
 |---|---|
 | Tenant | 租戶，一個企業或獨立整合方的資料與設定邊界 |
-| Integration | 系統整合，讓 HyAgent 與宿主站台、OA 或其他服務交換身分、資料與事件 |
+| Integration | 租戶可配置的系統整合定義，描述 HyAgent 如何透過 Connector 與 OA、HR、ERP、CRM、ITSM 或其他服務交換資料與事件 |
+| Connector | 實作統一送出介面的 Adapter，例如通用 HTTP、Webhook、特定產品 API 或 Stub |
+| Credential Reference | 表單／Integration 對租戶加密憑證的參照，不包含明文秘密 |
 | SSO | 單一登入，使用者登入宿主站台後可免登入進入 HyAgent |
 | RBAC | 依角色配置權限的存取控制方式 |
 | ACL | 對特定資源列出可存取主體或條件的存取控制清單 |
