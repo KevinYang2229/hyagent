@@ -4,6 +4,21 @@
 
 同一個對話介面另有兩條路：**知識庫問答**（RAG 檢索企業文件回答）與**報告**（依檢索結果彙整成可下載文件，見下方「報告」一節）。多租戶、權限（scope）、用量配額與後台管理見 [`INTEGRATION.md`](INTEGRATION.md)，部署見 [`DEPLOY.zeabur.md`](DEPLOY.zeabur.md)。
 
+## 文件地圖
+
+| 文件 | 讀它來回答 |
+| ---- | ---------- |
+| [`README.md`](README.md)（本檔） | 這是什麼、怎麼跑起來、schema 六層與部署拓撲 |
+| [`schemas/README.md`](schemas/README.md) | 各層欄位規格、引擎怎麼消費、**如何新增/設定一張表單** |
+| [`INTEGRATION.md`](INTEGRATION.md) | 對外整合：多租戶、API Key、widget/SDK、SSO handoff、webhook、後台管理 |
+| [`DEPLOY.zeabur.md`](DEPLOY.zeabur.md) | 部署：Zeabur 前後端分服務、四個 Dockerfile、環境變數清單 |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | 目標架構、現況對照、演進觸發點——決定「要不要做某個平台機制」時查它 |
+| [`docs/PRODUCT_SPEC.md`](docs/PRODUCT_SPEC.md) | 產品規格（To-Be）：通用表單與外部系統整合的目標規格 |
+| [`docs/SYSTEM_ANALYSIS.md`](docs/SYSTEM_ANALYSIS.md) | 系統分析（As-Is）：現況系統規格 |
+| [`docs/HANDOFF-OA-HTTP.md`](docs/HANDOFF-OA-HTTP.md) | 交接：把表單送進真 OA（`OA_CONNECTOR=http`）的待辦與驗收 |
+| [`docs/HANDOFF-SSO.md`](docs/HANDOFF-SSO.md) | 交接：SSO handoff 從 demo 做到可上線的待辦與驗收 |
+| [`docs/knowledge-reimport-manifest.md`](docs/knowledge-reimport-manifest.md) | 知識庫清空當下各租戶原本有什麼，供重新匯入對照 |
+
 ## 核心理念：一份 Schema 當唯一來源
 
 表單以 `schemas/<formId>/` 下的六層 JSON 定義，程式由此生成驗證與 Agent 工具：
@@ -35,7 +50,7 @@ hyagent/
 ├─ client/             前端 Vite + React + TS（對話 + schema-driven 表單）
 ├─ admin/              後台 Vite + React + TS（租戶／權限／知識庫／表單 Designer／報告／稽核）
 ├─ presale/            整合範例（公開 widget、租戶 widget、自製 UI、webhook receiver、mock OA）
-└─ docs/               架構決策文件（ARCHITECTURE.md）
+└─ docs/               架構決策、產品／系統規格、串接交接文件（見上方「文件地圖」）
 ```
 
 `server` 與 `client` 都 import `@hyagent/shared`，型別不再各寫一份。**但 server 一律只用 `import type`**——部署映像只帶編譯後的 `server/dist`，執行期載入 shared 的 TypeScript 原始檔會直接爆掉，所以要共用的執行期函式（如條款連結判斷）改寫在 server 自己的模組（[`field-links.ts`](server/src/modules/form/field-links.ts)）。
@@ -86,10 +101,11 @@ npm run dev:admin    # 後台 http://localhost:5174
 # 4.（離線）驗證 schema 引擎，不需 key
 npm run smoke
 
-# build / typecheck / test 全部 workspace
+# build / typecheck / test / lint 全部 workspace
 npm run build
 npm run typecheck
 npm test
+npm run lint         # 或 npm run lint:fix
 ```
 
 打開 http://localhost:5173 即可用對話畫面填寫請假單；前端 dev server 會把 `/api`、`/healthz` proxy 到後端 3000。
@@ -108,8 +124,14 @@ npm test
 | GET    | `/api/reports/:id/download?format=md`     | 下載報告（`format` 由後端登錄表決定：`md` / `html`，探測到 Chromium 時另有 `pdf`） |
 | GET    | `/api/admin/tenants/:id/reports`          | 後台：查該租戶的報告（`from` / `to` / `q` 皆選填）           |
 | GET    | `/api/admin/tenants/:id/reports/:reportId/download?format=md` | 後台：下載報告（不比對建立者，改以稽核留軌跡） |
+| GET    | `/healthz`                                | 存活檢查：回 `{ status, llm: { provider, model } }`；不打 LLM、不查 DB |
+| GET    | `/readyz`                                 | 就緒檢查：`db` 模式實際 ping 資料庫，不可達回 503，讓編排器停止導流 |
 
 > 對話 API 需 JWT：先 `POST /api/auth/login`（dev 環境為 mock 帳號 `kevin`/`hyweb` + `AUTH_DEV_PASSWORD`）取得 accessToken，之後帶 `Authorization: Bearer <token>`。widget/SDK 另可走租戶 `ssoSecret` 的 SSO handoff（`/api/auth/sso/exchange`）。`/api/reports/*` 同樣需要 JWT——`<a href>` 一般導覽不會帶 Authorization header，前端需改用 fetch 取 blob 後觸發下載。
+
+> **互動式 API 文件**：server 起來後開 <http://localhost:3000/api/docs>（Swagger UI），原始規格在 `GET /api/openapi.json`。規格由 [`server/src/modules/docs/openapi.ts`](server/src/modules/docs/openapi.ts) 維護，涵蓋對外整合面的主要端點與三種認證維度（`x-api-key` 租戶金鑰 / `Authorization: Bearer` 使用者 JWT / `x-admin-key` 管理 API）——上面這張表只列對話與報告，整合面端點以該規格與 [`INTEGRATION.md`](INTEGRATION.md) 為準。
+
+> **舊路徑相容**：`/api/v1/*` 仍可用，server 於路由前把 `req.url` 改寫成 `/api/*`（同一次請求完成，保留 method / body / headers，不走 HTTP 轉址）。確認外部串接皆改用無 `v1` 的路徑後即可移除。
 
 ### Demo（curl）
 
