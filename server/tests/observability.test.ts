@@ -43,4 +43,19 @@ describe('readiness / liveness', () => {
     expect(res.body.status).toBe('ok');
     expect(res.body.llm.provider).toBeTruthy();
   });
+
+  // Cloud Run 的 GFE 會攔截根路徑「精確的 /healthz」自行回 404（請求進不到容器），
+  // 所以前端與同源代理都改探 /api/* 這組別名；兩條路徑必須給出相同結果。
+  it('/api/healthz 與 /api/readyz：Cloud Run 用的別名，與根路徑等價', async () => {
+    const [health, root] = await Promise.all([
+      request(app).get('/api/healthz'),
+      request(app).get('/healthz'),
+    ]);
+    expect(health.status).toBe(200);
+    expect(health.body).toEqual(root.body);
+
+    const ready = await request(app).get('/api/readyz');
+    expect(ready.status).toBe(200);
+    expect(ready.body.status).toBe('ready');
+  });
 });

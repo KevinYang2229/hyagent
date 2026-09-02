@@ -63,7 +63,10 @@ export function createApp(): Express {
   // 存活檢查（liveness）：process 有回應即 200。server 能啟動即代表 LLM provider 的 API key
   // 通過 env 驗證（見 config/env fail-fast），故回報 provider/model 供前端顯示「AI 已連線」。
   // 此處不實際呼叫 LLM、不查 DB，避免額外費用與延遲——依賴健康度由 /readyz 負責。
-  app.get('/healthz', (_req, res) => {
+  // 同時掛 /api/healthz：Google Cloud Run 的前端（GFE）會攔截根路徑「精確的 /healthz」
+  // 自行回 404，請求根本進不到容器（實測 /healthz/ 與 /HEALTHZ 都正常，只有這一條被攔）。
+  // 根路徑保留給 Zeabur/K8s 等以 /healthz 做探針的平台，前端一律改探 /api/healthz。
+  app.get(['/healthz', '/api/healthz'], (_req, res) => {
     res.status(200).json({
       status: 'ok',
       llm: { provider: env.LLM_PROVIDER, model: env.LLM_MODEL },
@@ -72,7 +75,7 @@ export function createApp(): Express {
 
   // 就緒檢查（readiness）：確認外部依賴可服務——db 模式下實際 ping 資料庫，不可達回 503，
   // 讓編排器（Zeabur/K8s）在 DB 斷線時停止導流。file 模式無外部依賴，恆 ready。
-  app.get('/readyz', async (_req, res) => {
+  app.get(['/readyz', '/api/readyz'], async (_req, res) => {
     const dbOk = await pingDb();
     res.status(dbOk ? 200 : 503).json({
       status: dbOk ? 'ready' : 'unready',

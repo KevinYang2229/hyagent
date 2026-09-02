@@ -231,13 +231,16 @@ export const auth = {
 
 export const api = {
   /**
-   * 健康檢查：探測後端 /healthz 是否可達。
+   * 健康檢查：探測後端 /api/healthz 是否可達。
    * server 能回應即代表 LLM provider 的 API key 已通過啟動驗證（AI 可正常呼叫）。
    * 公開端點、不需帶 token；任何網路/非 2xx 皆視為離線回 false。
+   *
+   * 走 /api 而非根路徑的 /healthz：Cloud Run 的 GFE 會攔截精確的 /healthz 自行回 404，
+   * 請求進不到容器，指示燈會恆為離線。/api/* 不受影響（也順帶吃到 nginx 的同源代理）。
    */
   async health(): Promise<boolean> {
     try {
-      const res = await fetch(`${API_ORIGIN}/healthz`, { method: 'GET' });
+      const res = await fetch(`${API_ORIGIN}/api/healthz`, { method: 'GET' });
       return res.ok;
     } catch {
       return false;
