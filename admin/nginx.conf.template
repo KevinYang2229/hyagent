@@ -1,0 +1,50 @@
+# admin 後台：靜態網站 + /api 同源反向代理
+# 變數與機制說明同 client/nginx.conf.template。
+#
+#   PORT          監聽埠（Cloud Run 注入，預設 8080）
+#   API_UPSTREAM  後端 server 的 origin
+
+map $host $api_upstream {
+    default "${API_UPSTREAM}";
+}
+map $api_upstream $api_host {
+    "~^https?://([^/:]+)" $1;
+    default                $api_upstream;
+}
+
+server {
+    listen ${PORT};
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    resolver 169.254.169.254 8.8.8.8 valid=30s ipv6=off;
+
+    # 靜態資源帶長快取（檔名含 hash，可安全長期快取）
+    location /assets/ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+        try_files $uri =404;
+    }
+
+    location /api/ {
+        proxy_pass $api_upstream$request_uri;
+
+        proxy_set_header Host $api_host;
+        proxy_ssl_server_name on;
+        proxy_ssl_name        $api_host;
+
+        proxy_set_header X-Real-IP          $remote_addr;
+        proxy_set_header X-Forwarded-For    $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto  $scheme;
+        proxy_set_header X-Forwarded-Host   $host;
+
+        proxy_http_version 1.1;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}

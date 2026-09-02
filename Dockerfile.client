@@ -31,6 +31,19 @@ RUN npm run build -w client
 
 # ---- serve stage ----
 FROM mirror.gcr.io/library/nginx:alpine AS runtime
-COPY client/nginx.conf /etc/nginx/conf.d/default.conf
+# nginx 官方 entrypoint 會把 /etc/nginx/templates/*.template 經 envsubst 展開到
+# /etc/nginx/conf.d/，所以輸出檔名就是 default.conf（蓋掉映像內建那份）。
+COPY client/nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build /app/client/dist /usr/share/nginx/html
+
+# envsubst 預設會把「所有」環境變數都當成替換目標，$uri / $host 這類 nginx 內建變數
+# 只要撞名就會被清空。用 filter 鎖死只替換這兩個。
+ENV NGINX_ENVSUBST_FILTER='^(PORT|API_UPSTREAM)$'
+# Cloud Run 會注入 PORT；其他平台沿用這個預設值
+ENV PORT=8080
+# 後端 server 的 origin —— 部署時務必覆寫成實際網址（Cloud Run 上設成 server 服務的 URL）。
+# 這是 runtime 環境變數，改了重啟即可，不必重 build 映像。
+# 保持預設會讓 /api 打到容器自己的 3000 埠而回 502（比靜態站回 405 好認）。
+ENV API_UPSTREAM=http://127.0.0.1:3000
+
 EXPOSE 8080

@@ -76,8 +76,10 @@ Zeabur 連上 GitHub repo 後，會 watch 指定分支；**每次 `git push` 到
 
 7. 在同一個 Project 再 **Add Service → Git → 選同一個 hyagent repo**。
 8. **把服務名稱設成 `client`** → Zeabur 自動使用 `Dockerfile.client`。並到 **Variables** 加：
-   - `VITE_API_BASE = https://hyagent-server.zeabur.app` ← 填服務 A 的 Domain
-     （Vite 會在 **build 階段** 把這個值 bake 進前端 bundle；改了要重新 build 才生效）
+   - `API_UPSTREAM = https://hyagent-server.zeabur.app` ← 填服務 A 的 Domain。
+     nginx 會把 `/api/*` 與 `/healthz` 同源代理到後端（**runtime 讀取，改了重啟即可**）。
+   - `VITE_API_BASE` **留空**：走相對路徑交給上面的代理。要讓瀏覽器直打後端才填，
+     但那是 **build 階段** bake 進 bundle，改了得重新 build，且得另外設 `CORS_ORIGIN`。
    - 若服務名稱不是 `client`，再加 `ZBPACK_DOCKERFILE_NAME = client`（後綴）。
 9. **Networking → 產生 Domain**（例：`hyagent.zeabur.app`）。記下來，回填到 server 的 `CORS_ORIGIN`。
 
@@ -85,7 +87,8 @@ Zeabur 連上 GitHub repo 後，會 watch 指定分支；**每次 `git push` 到
 
 10. 在同一個 Project 再 **Add Service → Git → 選同一個 hyagent repo**。
 11. **把服務名稱設成 `admin`** → Zeabur 自動使用 `Dockerfile.admin`。並到 **Variables** 加：
-    - `VITE_API_BASE = https://hyagent-server.zeabur.app` ← 同樣填服務 A 的 Domain（build 階段 bake）
+    - `API_UPSTREAM = https://hyagent-server.zeabur.app` ← 同樣填服務 A 的 Domain（runtime 代理）
+    - `VITE_API_BASE` 留空即可，理由同 client
     - `VITE_WIDGET_ORIGIN = https://hyagent.zeabur.app` ← 填服務 B（client）的 Domain，供「外觀」分頁的預覽 iframe 使用。**不設會 fallback 到 `localhost:5173`，公開後台會因連到私有網段被瀏覽器封鎖而看不到預覽。**
     - 若服務名稱不是 `admin`，再加 `ZBPACK_DOCKERFILE_NAME = admin`（後綴）。
 12. **Networking → 產生 Domain**（例：`hyagent-admin.zeabur.app`）。記下來，連同 client 一起回填到 server 的 `CORS_ORIGIN`。
@@ -132,14 +135,16 @@ Zeabur 連上 GitHub repo 後，會 watch 指定分支；**每次 `git push` 到
 
 | 變數                     | 必填   | 說明                                                                                  |
 | ------------------------ | ------ | ------------------------------------------------------------------------------------- |
-| `VITE_API_BASE`          | ✅     | server 的對外網址，build 時 bake 進 bundle                                            |
+| `API_UPSTREAM`           | ✅     | server 的對外網址。nginx 把 `/api/*`、`/healthz` 同源代理過去，**runtime 讀取** |
+| `VITE_API_BASE`          | 選填   | 留空＝走相對路徑吃上面的代理（建議）。填了就是瀏覽器直打後端，build 時 bake 進 bundle，另需 server 放行 CORS |
 | `ZBPACK_DOCKERFILE_NAME` | 視情況 | 僅當服務「名稱」不是 `client` 時才需要；值是後綴 `client`（不是 `Dockerfile.client`） |
 
 ### admin 服務
 
 | 變數                     | 必填   | 說明                                                                                                                                                              |
 | ------------------------ | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `VITE_API_BASE`          | ✅     | server 的對外網址，build 時 bake 進 bundle（admin 的 `api.ts` 走 `${VITE_API_BASE}/api`）                                                                         |
+| `API_UPSTREAM`           | ✅     | server 的對外網址。nginx 把 `/api/*` 同源代理過去，**runtime 讀取**                                                                                              |
+| `VITE_API_BASE`          | 選填   | 留空＝走相對路徑吃上面的代理（建議）。填了就是瀏覽器直打後端（`api.ts` 走 `${VITE_API_BASE}/api`），build 時 bake，另需 server 放行 CORS                        |
 | `VITE_WIDGET_ORIGIN`     | 建議   | client（widget）的對外網址，build 時 bake 進 bundle，供「外觀」分頁預覽 iframe 使用。不設會 fallback `localhost:5173`，公開後台預覽會被瀏覽器封鎖（連到私有網段） |
 | `VITE_DEMO_SITE_URL`     | 選填   | 「外觀」分頁「開啟示範網站」按鈕的外部網址，build 時 bake；不設用程式內建預設（presale demo 網址）                                                                |
 | `ZBPACK_DOCKERFILE_NAME` | 視情況 | 僅當服務「名稱」不是 `admin` 時才需要；值是後綴 `admin`（不是 `Dockerfile.admin`）                                                                                |
@@ -201,13 +206,15 @@ docker run --rm -p 3000:3000 -e ANTHROPIC_API_KEY=sk-xxx \
   -e JWT_REFRESH_SECRET=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))") \
   oa-server
 
-# client（把 VITE_API_BASE 指向上面的 server）
-docker build -f Dockerfile.client --build-arg VITE_API_BASE=http://localhost:3000 -t oa-client .
-docker run --rm -p 8080:8080 oa-client   # 開 http://localhost:8080
+# client（API_UPSTREAM 指向上面的 server；host.docker.internal 讓容器連得到宿主機）
+docker build -f Dockerfile.client -t oa-client .
+docker run --rm -p 8080:8080 -e API_UPSTREAM=http://host.docker.internal:3000 oa-client
+# 開 http://localhost:8080
 
-# admin（同樣把 VITE_API_BASE 指向 server；用不同的對外埠避免和 client 撞）
-docker build -f Dockerfile.admin --build-arg VITE_API_BASE=http://localhost:3000 -t oa-admin .
-docker run --rm -p 8081:8080 oa-admin    # 開 http://localhost:8081
+# admin（同樣指向 server；用不同的對外埠避免和 client 撞）
+docker build -f Dockerfile.admin -t oa-admin .
+docker run --rm -p 8081:8080 -e API_UPSTREAM=http://host.docker.internal:3000 oa-admin
+# 開 http://localhost:8081
 ```
 
 ## 七、知識庫資料夾批次匯入（選用）
