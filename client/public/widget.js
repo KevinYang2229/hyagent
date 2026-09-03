@@ -5,6 +5,7 @@
  *   <script src="https://<你的網域>/widget.js"></script>
  *
  * 載入後在右下角注入一顆浮動按鈕，點擊彈出聊天視窗（iframe 載入 OA panel 的 ?embed=1 模式）。
+ * 面板標題列另有放大鈕：放大後面板置中撐大並蓋上背景遮罩，點遮罩或 Esc 還原。
  * 純 vanilla JS、零依賴、樣式全用 inline + 唯一 id 命名，避免污染宿主頁面。
  */
 (function () {
@@ -110,6 +111,7 @@
 
   var Z = 2147483000; // 盡量蓋在宿主頁面之上
   var open = false;
+  var expanded = false; // 放大模式：面板置中撐大並蓋上背景遮罩
   var iframe = null; // 延遲建立：首次點開才載入，避免拖慢宿主頁
 
   // ---- 浮動按鈕樣式（注入 scoped <style>，僅作用於 widget 自身元素，不污染宿主頁）----
@@ -273,6 +275,25 @@
       .catch(function () {});
   }
 
+  // ---- 放大模式的背景遮罩 ----
+  // 蓋在宿主頁之上、面板之下；點一下即還原成小視窗（與 Esc 同效）。
+  var backdrop = document.createElement("div");
+  backdrop.id = "oa-agent-backdrop";
+  backdrop.style.cssText = [
+    "position:fixed",
+    "top:0",
+    "left:0",
+    "right:0",
+    "bottom:0",
+    "background:rgba(15,23,42,.45)",
+    "backdrop-filter:blur(2px)",
+    "-webkit-backdrop-filter:blur(2px)",
+    "z-index:" + (Z - 1),
+    "display:none",
+    "opacity:0",
+    "transition:opacity .2s ease",
+  ].join(";");
+
   // ---- 聊天彈窗容器 ----
   var panel = document.createElement("div");
   panel.id = "oa-agent-panel";
@@ -295,9 +316,24 @@
     "transition:opacity .15s ease, transform .15s ease",
   ].join(";");
 
-  // 手機（窄螢幕）改為近全螢幕；回到桌機寬度時還原尺寸並重套四角定位。
-  // 兩邊都要把另一組定位屬性歸零（left/top ↔ right/bottom），否則切換後殘值會把面板推出畫面。
-  function applyMobile() {
+  // 面板幾何：放大模式 > 手機（窄螢幕）近全螢幕 > 桌機四角小視窗。
+  // 每個分支都要把另一組定位屬性歸零（left/top ↔ right/bottom、margin），否則切換後殘值會把面板推出畫面。
+  function applyPanelGeometry() {
+    if (expanded && window.innerWidth > 480) {
+      // 置中：四邊 inset 歸零 + margin:auto，寬高取「設計上限」與「視窗扣掉留白」的較小者
+      panel.style.margin = "auto";
+      panel.style.top = "0";
+      panel.style.left = "0";
+      panel.style.right = "0";
+      panel.style.bottom = "0";
+      panel.style.width = "min(1180px, calc(100vw - 48px))";
+      panel.style.height = "min(820px, calc(100vh - 48px))";
+      panel.style.maxWidth = "calc(100vw - 48px)";
+      panel.style.maxHeight = "calc(100vh - 48px)";
+      panel.style.borderRadius = "16px";
+      return;
+    }
+    panel.style.margin = "";
     if (window.innerWidth <= 480) {
       panel.style.top = "auto";
       panel.style.left = "0";
@@ -305,18 +341,28 @@
       panel.style.bottom = "0";
       panel.style.width = "100vw";
       panel.style.height = "100vh";
+      // 手機全螢幕要一併放寬 max-width，否則被預設的 calc(100vw - 40px) 夾住而右側留白
+      panel.style.maxWidth = "100vw";
       panel.style.maxHeight = "100vh";
       panel.style.borderRadius = "0";
     } else {
       panel.style.width = "400px";
       panel.style.height = "640px";
+      panel.style.maxWidth = "calc(100vw - 40px)";
       panel.style.maxHeight = "calc(100vh - 120px)";
       panel.style.borderRadius = "16px";
       applyPosition();
     }
   }
-  applyMobile();
-  window.addEventListener("resize", applyMobile);
+  applyPanelGeometry();
+  window.addEventListener("resize", function () {
+    // 縮到手機寬度時本來就已是全螢幕，放大模式沒有意義 → 自動還原（順便收掉遮罩）
+    if (expanded && window.innerWidth <= 480) setExpanded(false);
+    else {
+      applyPanelGeometry();
+      notifyExpanded();
+    }
+  });
 
   function setOpen(next) {
     open = next;
@@ -327,6 +373,8 @@
         iframe.title = title;
         iframe.style.cssText =
           "width:100%;height:100%;border:none;display:block;";
+        // 面板載好才收得到 message：載入完成回報一次，SPA 才知道要不要顯示放大鈕
+        iframe.addEventListener("load", notifyExpanded);
         panel.appendChild(iframe);
       }
       panel.style.display = "block";
@@ -336,6 +384,8 @@
         panel.style.transform = "translateY(0)";
       });
     } else {
+      // 收起時一併還原放大狀態，下次點開回到小視窗（與宿主頁的預期一致）
+      if (expanded) setExpanded(false);
       panel.style.opacity = "0";
       panel.style.transform = "translateY(8px)";
       setTimeout(function () {
@@ -343,6 +393,52 @@
       }, 150);
     }
   }
+
+  // 放大／還原：面板置中撐大 + 背景遮罩；手機（≤480）本來就全螢幕，一律當作未放大。
+  // 面板內的 SPA 會依自身寬度自動切成雙欄（聊天 + 表單明細側欄），這裡只負責容器尺寸。
+  function setExpanded(next) {
+    expanded = !!next && window.innerWidth > 480;
+    applyPanelGeometry();
+    if (expanded) {
+      backdrop.style.display = "block";
+      requestAnimationFrame(function () {
+        backdrop.style.opacity = "1";
+      });
+    } else {
+      backdrop.style.opacity = "0";
+      setTimeout(function () {
+        if (!expanded) backdrop.style.display = "none";
+      }, 200);
+    }
+    // 放大時藏起浮動按鈕：它 z-index 在遮罩之上，留著會浮在暗幕上很突兀（收起仍可用標題列的 ✕）
+    if (showLauncher) btn.style.display = expanded ? "none" : "";
+    notifyExpanded();
+  }
+
+  // 回報面板內的 SPA：目前是否放大（讓按鈕圖示與實際狀態一致），以及這個視窗寬度能不能放大。
+  // available 必須由這裡告知——面板內的 CSS media query 量到的是 iframe 自己的寬（永遠是小視窗的
+  // 400px），無從分辨「桌機小視窗」與「手機全螢幕」，只有宿主頁這一層知道真正的視窗寬度。
+  function notifyExpanded() {
+    if (!iframe || !iframe.contentWindow) return;
+    try {
+      iframe.contentWindow.postMessage(
+        {
+          type: "oa-agent:expanded",
+          expanded: expanded,
+          available: window.innerWidth > 480,
+        },
+        origin,
+      );
+    } catch (_e) {}
+  }
+
+  // 遮罩點擊 / Esc：還原成小視窗（不直接關閉，避免誤觸就中斷對話）
+  backdrop.addEventListener("click", function () {
+    setExpanded(false);
+  });
+  document.addEventListener("keydown", function (e) {
+    if (expanded && (e.key === "Escape" || e.key === "Esc")) setExpanded(false);
+  });
 
   btn.addEventListener("click", function () {
     setOpen(!open);
@@ -383,6 +479,8 @@
       return;
     var type = e.data.type;
     if (type === "oa-agent:close") setOpen(false);
+    // 面板內標題列的放大／還原鈕
+    if (type === "oa-agent:expand") setExpanded(e.data.expanded !== false);
     // 轉發給宿主頁：DOM CustomEvent（window.addEventListener('oa-agent:submitted', …)）＋可選全域 callback
     try {
       window.dispatchEvent(new CustomEvent(type, { detail: e.data }));
@@ -394,7 +492,8 @@
     }
   });
 
-  // 宿主頁可程式化控制：OAAgent.open() / close() / toggle()；onEvent 可在載入前先指定（保留之）
+  // 宿主頁可程式化控制：OAAgent.open() / close() / toggle() / expand() / collapse()；
+  // onEvent 可在載入前先指定（保留之）
   window.OAAgent = window.OAAgent || {};
   window.OAAgent.open = function () {
     setOpen(true);
@@ -405,9 +504,17 @@
   window.OAAgent.toggle = function () {
     setOpen(!open);
   };
+  window.OAAgent.expand = function () {
+    if (!open) setOpen(true);
+    setExpanded(true);
+  };
+  window.OAAgent.collapse = function () {
+    setExpanded(false);
+  };
 
   // 宿主頁可能把 script 放在 <head>，此時 body 尚未存在 → 等 DOM ready 再掛載
   function mount() {
+    document.body.appendChild(backdrop);
     document.body.appendChild(panel);
     // 預設掛上浮動按鈕；data-launcher="none" 時略過（由宿主自己的按鈕觸發）
     if (showLauncher) document.body.appendChild(btn);

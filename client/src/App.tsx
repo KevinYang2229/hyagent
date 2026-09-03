@@ -166,6 +166,10 @@ export default function App() {
   const [paneOpen, setPaneOpen] = useState(false); // 表單明細預設收合
   const [pickerOpen, setPickerOpen] = useState(true); // 「要辦理什麼？」可收合，預設展開
   const [knowledgeEnabled, setKnowledgeEnabled] = useState(true); // 知識庫服務是否啟用（依租戶）
+  // 嵌入模式的放大狀態：真正撐大面板的是外層 widget.js，這裡只記狀態決定按鈕圖示／文案。
+  // canExpand 也由 widget.js 告知——手機（面板已全螢幕）沒得放大，就不顯示這顆鈕。
+  const [expanded, setExpanded] = useState(false);
+  const [canExpand, setCanExpand] = useState(true);
   const [suggestedPrompts, setSuggestedPrompts] = useState<SuggestedPrompts[] | undefined>();
   // 主題優先序：data-theme（宿主明確）> 嵌入時略過本地記憶（避免與第一方 App 共用 localStorage 互相干擾，
   // 改由租戶 theme/預設決定）> 第一方 App 才讀本地記憶 > 預設淺色。後端 theme 於下方 effect 補上。
@@ -304,6 +308,33 @@ export default function App() {
   useEffect(() => {
     scrollToEnd();
   }, [messages, busy, scrollToEnd]);
+
+  // 嵌入模式：以外層 widget.js 回報的放大狀態為準；Esc 在面板內按下時也要能還原
+  // （焦點在 iframe 內時，宿主頁的 keydown 收不到，必須由這裡自己處理）。
+  useEffect(() => {
+    if (!EMBED) return;
+    const onMessage = (e: MessageEvent) => {
+      const data = e.data as
+        | { type?: string; expanded?: boolean; available?: boolean }
+        | null;
+      if (!data || data.type !== 'oa-agent:expanded') return;
+      setExpanded(!!data.expanded);
+      if (typeof data.available === 'boolean') setCanExpand(data.available);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      setExpanded((cur) => {
+        if (cur) window.parent.postMessage({ type: 'oa-agent:expand', expanded: false }, '*');
+        return false;
+      });
+    };
+    window.addEventListener('message', onMessage);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('message', onMessage);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, []);
 
   // AI 連線狀態：登入後探測 /healthz（server 起得來＝LLM key 已通過驗證），並每 30s 重探一次
   useEffect(() => {
@@ -614,6 +645,14 @@ export default function App() {
     window.parent.postMessage({ type: 'oa-agent:close' }, '*');
   }
 
+  // 嵌入模式：請外層 widget.js 放大／還原面板（放大時 widget 會蓋上背景遮罩）。
+  // 先樂觀更新本地狀態讓圖示即時反應，widget 完成後會回 oa-agent:expanded 校正（例如手機不放大）。
+  function toggleExpand() {
+    const next = !expanded;
+    setExpanded(next);
+    window.parent.postMessage({ type: 'oa-agent:expand', expanded: next }, '*');
+  }
+
   const valueEntries = Object.entries(values).filter(
     ([, v]) =>
       v !== null && v !== undefined && v !== '' && !(Array.isArray(v) && v.length === 0),
@@ -707,11 +746,36 @@ export default function App() {
           <div className="embed-brand">
             {logoUrl && <img src={logoUrl} alt="" className="embed-logo" />}
             <span className="embed-title">{aiName}</span>
+            {/* 小視窗寬度有限，連線狀態／使用者／單況只在放大後才顯示（與整頁模式同一組樣式） */}
+            {expanded && (
+              <span
+                className={`conn conn-${conn}`}
+                role="status"
+                aria-live="polite"
+                title={t(`app.conn.${conn}`)}
+              >
+                <span className="conn-dot" aria-hidden="true" />
+                {t(`app.conn.${conn}`)}
+              </span>
+            )}
           </div>
           <div className="embed-actions">
+            {expanded && (
+              <span className="embed-meta">
+                <span className="app-meta-item">
+                  <span className="app-meta-label">{t('app.user')}</span>
+                  <span className="app-meta-value">{authUser.name}</span>
+                </span>
+                <span className="app-meta-sep" aria-hidden="true" />
+                <Badge status={status ? STATUS_BADGE[status] : 'normal'}>
+                  {status ? t(`app.status.${status}`) : t('app.statusInitial')}
+                </Badge>
+                <span className="app-meta-sep" aria-hidden="true" />
+              </span>
+            )}
             <button
               type="button"
-              className="embed-btn"
+              className={`embed-btn${expanded ? ' embed-btn-wide' : ''}`}
               onClick={reset}
               title={t('app.reset')}
               aria-label={t('app.reset')}
@@ -731,7 +795,49 @@ export default function App() {
                 <polyline points="1 20 1 14 7 14" />
                 <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
               </svg>
+              {expanded && <span className="embed-btn-text">{t('app.reset')}</span>}
             </button>
+            {/* 放大／還原：交給外層 widget.js 撐大面板並蓋遮罩 */}
+            {canExpand && (
+            <button
+              type="button"
+              className="embed-btn"
+              onClick={toggleExpand}
+              title={expanded ? t('app.collapseWidget') : t('app.expandWidget')}
+              aria-label={expanded ? t('app.collapseWidget') : t('app.expandWidget')}
+              aria-pressed={expanded}
+            >
+              <svg
+                viewBox="0 0 24 24"
+                width="16"
+                height="16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                {expanded ? (
+                  /* 還原：四角箭頭朝內 */
+                  <>
+                    <polyline points="9 3 9 9 3 9" />
+                    <polyline points="15 3 15 9 21 9" />
+                    <polyline points="9 21 9 15 3 15" />
+                    <polyline points="15 21 15 15 21 15" />
+                  </>
+                ) : (
+                  /* 放大：四角箭頭朝外 */
+                  <>
+                    <polyline points="3 9 3 3 9 3" />
+                    <polyline points="21 9 21 3 15 3" />
+                    <polyline points="3 15 3 21 9 21" />
+                    <polyline points="21 15 21 21 15 21" />
+                  </>
+                )}
+              </svg>
+            </button>
+            )}
             <button
               type="button"
               className="embed-btn"
