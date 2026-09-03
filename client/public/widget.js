@@ -44,9 +44,10 @@
   //   data-form        預選表單類型，如 leave-request
   //   data-locale      介面語言，如 zh-Hant / en
   //   data-theme       外觀 light / dark
-  //   data-position    浮動按鈕位置 right（預設）/ left
-  //   data-offset-x    距側邊距離（px，預設 20）
-  //   data-offset-y    距底部距離（px，預設 20；調高可避開頁面既有的 go-to-top 按鈕）
+  //   data-position    浮動按鈕位置 br 右下（預設）/ bl 左下 / tr 右上 / tl 左上
+  //                    （相容舊值：right→br、left→bl）
+  //   data-offset-x    距側邊（左或右，依 position）距離（px，預設 20）
+  //   data-offset-y    距上／下緣（依 position）距離（px，預設 20；調高可避開頁面既有的 go-to-top 按鈕）
   //   data-user-token  SSO handoff：宿主簽發的終端使用者 token（免內部帳密登入）
   function attr(name) {
     var v = script.getAttribute(name);
@@ -57,10 +58,20 @@
   var title = explicitTitle || "OA 小幫手";
   // 宿主明確指定的主題／位置（data-*）；有指定就優先，後端外觀不再覆寫。
   var explicitTheme = attr("data-theme");
+  // 四角位置；舊版只有 right/left（＝右下/左下），保留相容。無法辨識的值一律當沒設。
+  var VALID_POSITIONS = { br: 1, bl: 1, tr: 1, tl: 1 };
+  function normalizePosition(v) {
+    if (typeof v !== "string") return null;
+    var p = v.trim().toLowerCase();
+    if (p === "right") return "br";
+    if (p === "left") return "bl";
+    return VALID_POSITIONS[p] ? p : null;
+  }
+  // 有帶 data-position（即使值不合法）就視為宿主已明確指定，後端 appearance 不再覆寫
   var explicitPosition = attr("data-position");
-  var position = explicitPosition === "left" ? "left" : "right";
+  var position = normalizePosition(explicitPosition) || "br";
   // 啟動按鈕距邊距（px）：宿主 data-offset-x/y 優先，否則稍後採後端 appearance；預設 20。
-  // offsetY 調高可把按鈕往上抬，避開宿主頁既有的 go-to-top 等按鈕。
+  // offsetY 是距「下緣」（br/bl）或「上緣」（tr/tl）的距離；調高可避開宿主頁既有的 go-to-top 等按鈕。
   function clampOffset(v) {
     var n = parseInt(v, 10);
     return isNaN(n) ? 20 : Math.max(0, Math.min(200, n));
@@ -134,6 +145,27 @@
       "}",
       "#oa-agent-launcher:hover .oa-agent-label,#oa-agent-launcher:focus-visible .oa-agent-label{",
       "opacity:1;visibility:visible;transform:translateY(-50%) translateX(0);",
+      "}",
+      // 標籤掛點依位置調整（data-oa-pos 由 applyPosition 寫入）：
+      // 左下貼著左邊緣，標籤要改掛按鈕右側才有空間；上排兩角則一律掛按鈕正下方（置中）。
+      '#oa-agent-launcher[data-oa-pos="bl"] .oa-agent-label{',
+      "right:auto;left:calc(100% + 12px);",
+      "transform:translateY(-50%) translateX(-10px);",
+      "}",
+      '#oa-agent-launcher[data-oa-pos="bl"]:hover .oa-agent-label,',
+      '#oa-agent-launcher[data-oa-pos="bl"]:focus-visible .oa-agent-label{',
+      "transform:translateY(-50%) translateX(0);",
+      "}",
+      '#oa-agent-launcher[data-oa-pos="tl"] .oa-agent-label,',
+      '#oa-agent-launcher[data-oa-pos="tr"] .oa-agent-label{',
+      "right:auto;left:50%;top:calc(100% + 12px);",
+      "transform:translateX(-50%) translateY(-10px);",
+      "}",
+      '#oa-agent-launcher[data-oa-pos="tl"]:hover .oa-agent-label,',
+      '#oa-agent-launcher[data-oa-pos="tl"]:focus-visible .oa-agent-label,',
+      '#oa-agent-launcher[data-oa-pos="tr"]:hover .oa-agent-label,',
+      '#oa-agent-launcher[data-oa-pos="tr"]:focus-visible .oa-agent-label{',
+      "transform:translateX(-50%) translateY(0);",
       "}",
       "@keyframes oa-agent-hop{",
       "0%,80%,100%{transform:translateY(0) rotate(0);}",
@@ -215,10 +247,10 @@
           btn.setAttribute("aria-label", title);
         }
         if (ap.primaryColor) applyPrimary(ap.primaryColor);
-        // 位置與邊距：宿主未用 data-* 覆寫時，採用後端 appearance（bl→左下、br→右下；offset px）
+        // 位置與邊距：宿主未用 data-* 覆寫時，採用後端 appearance（br/bl/tr/tl；offset px）
         // theme 不在此處理：面板內 SPA 會自行套用租戶 theme，且尊重使用者在 widget 內的手動切換偏好。
         if (!explicitPosition && ap.position) {
-          position = ap.position === "bl" ? "left" : "right";
+          position = normalizePosition(ap.position) || position;
         }
         if (explicitOffsetX === null && ap.offsetX != null)
           offsetX = clampOffset(ap.offsetX);
@@ -251,15 +283,24 @@
     "transition:opacity .15s ease, transform .15s ease",
   ].join(";");
 
-  // 手機（窄螢幕）改為近全螢幕
+  // 手機（窄螢幕）改為近全螢幕；回到桌機寬度時還原尺寸並重套四角定位。
+  // 兩邊都要把另一組定位屬性歸零（left/top ↔ right/bottom），否則切換後殘值會把面板推出畫面。
   function applyMobile() {
     if (window.innerWidth <= 480) {
+      panel.style.top = "auto";
+      panel.style.left = "0";
       panel.style.right = "0";
       panel.style.bottom = "0";
       panel.style.width = "100vw";
       panel.style.height = "100vh";
       panel.style.maxHeight = "100vh";
       panel.style.borderRadius = "0";
+    } else {
+      panel.style.width = "400px";
+      panel.style.height = "640px";
+      panel.style.maxHeight = "calc(100vh - 120px)";
+      panel.style.borderRadius = "16px";
+      applyPosition();
     }
   }
   applyMobile();
@@ -295,19 +336,24 @@
     setOpen(!open);
   });
 
-  // 啟動按鈕／面板定位：left 靠左下、right（預設）靠右下，並依 offsetX/offsetY 邊距擺放。
+  // 啟動按鈕／面板定位：br 右下（預設）/ bl 左下 / tr 右上 / tl 左上，依 offsetX/offsetY 邊距擺放。
   // 抽成函式以便後端 appearance（position/offset）非同步回來時動態重套；pos 省略時沿用目前 position。
+  // data-oa-pos 同步寫到按鈕上，供 CSS 決定 .oa-agent-label 掛在哪一側。
   function applyPosition(pos) {
-    if (pos) position = pos === "left" ? "left" : "right";
-    var left = position === "left";
+    if (pos) position = normalizePosition(pos) || position;
+    var left = position === "bl" || position === "tl";
+    var top = position === "tl" || position === "tr";
+    btn.setAttribute("data-oa-pos", position);
     btn.style.left = left ? offsetX + "px" : "auto";
     btn.style.right = left ? "auto" : offsetX + "px";
-    btn.style.bottom = offsetY + "px";
-    // 面板：桌機依邊距定位（底部再往上讓開按鈕）；手機為全螢幕，由 applyMobile 處理、不套邊距
+    btn.style.top = top ? offsetY + "px" : "auto";
+    btn.style.bottom = top ? "auto" : offsetY + "px";
+    // 面板：桌機依邊距定位（縱向再讓開按鈕 68px）；手機為全螢幕，由 applyMobile 處理、不套邊距
     if (window.innerWidth > 480) {
       panel.style.left = left ? offsetX + "px" : "auto";
       panel.style.right = left ? "auto" : offsetX + "px";
-      panel.style.bottom = offsetY + 68 + "px";
+      panel.style.top = top ? offsetY + 68 + "px" : "auto";
+      panel.style.bottom = top ? "auto" : offsetY + 68 + "px";
     }
   }
   applyPosition(position);

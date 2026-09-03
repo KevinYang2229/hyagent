@@ -5,6 +5,8 @@ import { api, type Tenant } from "../../api";
 const POSITIONS = [
   { v: "br", label: "右下" },
   { v: "bl", label: "左下" },
+  { v: "tr", label: "右上" },
+  { v: "tl", label: "左上" },
 ] as const;
 
 // 介面支援語系（對應 client i18n：zh-Hant / en）
@@ -159,7 +161,7 @@ export default function AppearanceTab({
             </div>
 
             <div className="field">
-              <label className="field-label">距底部（px）</label>
+              <label className="field-label">距上／下緣（px）</label>
               <input
                 className="input"
                 type="number"
@@ -174,7 +176,8 @@ export default function AppearanceTab({
                 }
               />
               <span className="field-hint">
-                距底部距離，預設 20；調高可避開頁面的 go-to-top 按鈕。
+                距下緣（右下／左下）或上緣（右上／左上）的距離，預設 20；調高可避開頁面的
+                go-to-top 按鈕。
               </span>
             </div>
 

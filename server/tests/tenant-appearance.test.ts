@@ -19,3 +19,15 @@ describe('appearanceSchema', () => {
     expect(() => appearanceSchema.parse({ assistantName: 'x'.repeat(31) })).toThrow();
   });
 });
+
+describe('appearanceSchema.position', () => {
+  it('接受四角位置 br / bl / tr / tl', () => {
+    for (const position of ['br', 'bl', 'tr', 'tl'] as const) {
+      expect(appearanceSchema.parse({ position }).position).toBe(position);
+    }
+  });
+
+  it('拒絕未定義的位置值', () => {
+    expect(() => appearanceSchema.parse({ position: 'center' })).toThrow();
+  });
+});
