@@ -39,6 +39,16 @@ server {
         try_files $uri =404;
     }
 
+    # widget.js 是第三方網站直接嵌入的入口檔，檔名固定、不帶 hash，改版後對方瀏覽器
+    # 多久拿到新版必須可控。先前這裡沒有任何 Cache-Control，瀏覽器會改用「啟發式快取」
+    # （依 Last-Modified 的久遠程度自行推算，通常取距今時間的 10%），檔案越久沒動就被
+    # 快取越久且不重新驗證——實際造成過宿主頁跑舊版 widget、後台改了外觀卻沒反應。
+    # no-cache 不是不快取：仍會存下來，但每次都帶 ETag 回來問，沒改回 304 不重下載。
+    location = /widget.js {
+        add_header Cache-Control "no-cache";
+        try_files $uri =404;
+    }
+
     # 後端 API
     location /api/ {
         # 目標帶變數時 nginx 不會自動接上原始路徑，必須自己補 $request_uri
