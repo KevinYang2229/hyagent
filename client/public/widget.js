@@ -5,7 +5,7 @@
  *   <script src="https://<你的網域>/widget.js"></script>
  *
  * 載入後在右下角注入一顆浮動按鈕，點擊彈出聊天視窗（iframe 載入 OA panel 的 ?embed=1 模式）。
- * 面板標題列另有放大鈕：放大後面板置中撐大並蓋上背景遮罩，點遮罩或 Esc 還原。
+ * 面板標題列另有放大鈕：放大後面板貼齊按鈕所在側、上下滿版並蓋上背景遮罩，點遮罩或 Esc 還原。
  * 純 vanilla JS、零依賴、樣式全用 inline + 唯一 id 命名，避免污染宿主頁面。
  */
 (function () {
@@ -320,17 +320,19 @@
   // 每個分支都要把另一組定位屬性歸零（left/top ↔ right/bottom、margin），否則切換後殘值會把面板推出畫面。
   function applyPanelGeometry() {
     if (expanded && window.innerWidth > 480) {
-      // 置中：四邊 inset 歸零 + margin:auto，寬高取「設計上限」與「視窗扣掉留白」的較小者
-      panel.style.margin = "auto";
+      // 側邊貼齊：靠按鈕所在的那一側到底、上下滿版；寬度取設計上限與視窗寬的較小者
+      var dockLeft = position === "bl" || position === "tl";
+      panel.style.margin = "";
       panel.style.top = "0";
-      panel.style.left = "0";
-      panel.style.right = "0";
       panel.style.bottom = "0";
-      panel.style.width = "min(1180px, calc(100vw - 48px))";
-      panel.style.height = "min(820px, calc(100vh - 48px))";
-      panel.style.maxWidth = "calc(100vw - 48px)";
-      panel.style.maxHeight = "calc(100vh - 48px)";
-      panel.style.borderRadius = "16px";
+      panel.style.left = dockLeft ? "0" : "auto";
+      panel.style.right = dockLeft ? "auto" : "0";
+      panel.style.width = "min(1180px, 100vw)";
+      panel.style.height = "100vh";
+      panel.style.maxWidth = "100vw";
+      panel.style.maxHeight = "100vh";
+      // 貼邊的那一側不留圓角，只圓內側兩角
+      panel.style.borderRadius = dockLeft ? "0 16px 16px 0" : "16px 0 0 16px";
       return;
     }
     panel.style.margin = "";
@@ -456,6 +458,11 @@
     btn.style.right = left ? "auto" : offsetX + "px";
     btn.style.top = top ? offsetY + "px" : "auto";
     btn.style.bottom = top ? "auto" : offsetY + "px";
+    // 放大中不套小視窗邊距（會把貼邊滿版的面板推回四角），改由 applyPanelGeometry 依新的 position 重貼一次
+    if (expanded && window.innerWidth > 480) {
+      applyPanelGeometry();
+      return;
+    }
     // 面板：桌機依邊距定位（縱向再讓開按鈕本身高度＋12px 間距）；手機為全螢幕，由 applyMobile 處理、不套邊距
     if (window.innerWidth > 480) {
       var gap = offsetY + size + 12;
