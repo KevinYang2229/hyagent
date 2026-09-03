@@ -309,6 +309,8 @@ export interface TenantAppearance {
   theme?: 'light' | 'dark';
   /** 啟動按鈕位置：右下 / 左下 / 右上 / 左上 */
   position?: 'br' | 'bl' | 'tr' | 'tl';
+  /** 啟動按鈕尺寸（px）；未設用 widget 內建預設 56 */
+  launcherSize?: 48 | 52 | 56;
   /** 啟動按鈕距側邊（左或右，依 position）距離（px）；未設用 widget 內建預設 20 */
   offsetX?: number;
   /** 啟動按鈕距上／下緣（依 position）距離（px）；未設用 widget 內建預設 20。可調高避開頁面既有的 go-to-top 等按鈕 */

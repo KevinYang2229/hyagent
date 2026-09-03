@@ -15,6 +15,12 @@ export const appearanceSchema = z.object({
   primaryColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   theme: z.enum(['light', 'dark']).optional(),
   position: z.enum(['br', 'bl', 'tr', 'tl']).optional(),
+  // 啟動按鈕尺寸：只開放三段固定值，避免宿主頁出現破版的任意大小
+  launcherSize: z.coerce
+    .number()
+    .int()
+    .pipe(z.union([z.literal(48), z.literal(52), z.literal(56)]))
+    .optional(),
   offsetX: z.coerce.number().int().min(0).max(200).optional(),
   offsetY: z.coerce.number().int().min(0).max(200).optional(),
   logoUrl: z.string().url().optional().or(z.literal('')),

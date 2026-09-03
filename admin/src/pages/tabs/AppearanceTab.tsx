@@ -9,6 +9,9 @@ const POSITIONS = [
   { v: "tl", label: "左上" },
 ] as const;
 
+// 啟動按鈕尺寸；與 widget.js 的 VALID_SIZES 對應，只開放三段固定值
+const LAUNCHER_SIZES = [48, 52, 56] as const;
+
 // 介面支援語系（對應 client i18n：zh-Hant / en）
 const LOCALES = [
   { v: "zh-Hant", label: "繁體中文" },
@@ -138,6 +141,29 @@ export default function AppearanceTab({
                   </option>
                 ))}
               </select>
+            </div>
+
+            <div className="field">
+              <label className="field-label">啟動按鈕尺寸</label>
+              <select
+                className="select"
+                value={form.launcherSize ?? 56}
+                onChange={(e) =>
+                  set(
+                    "launcherSize",
+                    Number(e.target.value) as TenantAppearance["launcherSize"],
+                  )
+                }
+              >
+                {LAUNCHER_SIZES.map((sz) => (
+                  <option key={sz} value={sz}>
+                    {sz}px
+                  </option>
+                ))}
+              </select>
+              <span className="field-hint">
+                浮動按鈕的直徑，預設 56px；icon 會等比例縮放。
+              </span>
             </div>
 
             <div className="field">

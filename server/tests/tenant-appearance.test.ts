@@ -31,3 +31,19 @@ describe('appearanceSchema.position', () => {
     expect(() => appearanceSchema.parse({ position: 'center' })).toThrow();
   });
 });
+
+describe('appearanceSchema.launcherSize', () => {
+  it('接受 48 / 52 / 56 三段尺寸', () => {
+    for (const launcherSize of [48, 52, 56] as const) {
+      expect(appearanceSchema.parse({ launcherSize }).launcherSize).toBe(launcherSize);
+    }
+  });
+
+  it('字串數值可被轉型（表單送出時可能是 string）', () => {
+    expect(appearanceSchema.parse({ launcherSize: '52' }).launcherSize).toBe(52);
+  });
+
+  it('拒絕三段以外的尺寸', () => {
+    expect(() => appearanceSchema.parse({ launcherSize: 64 })).toThrow();
+  });
+});

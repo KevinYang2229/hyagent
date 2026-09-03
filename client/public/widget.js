@@ -46,6 +46,7 @@
   //   data-theme       外觀 light / dark
   //   data-position    浮動按鈕位置 br 右下（預設）/ bl 左下 / tr 右上 / tl 左上
   //                    （相容舊值：right→br、left→bl）
+  //   data-size        啟動按鈕尺寸（px）48 / 52 / 56（預設）；其他值視為未設
   //   data-offset-x    距側邊（左或右，依 position）距離（px，預設 20）
   //   data-offset-y    距上／下緣（依 position）距離（px，預設 20；調高可避開頁面既有的 go-to-top 按鈕）
   //   data-user-token  SSO handoff：宿主簽發的終端使用者 token（免內部帳密登入）
@@ -70,6 +71,16 @@
   // 有帶 data-position（即使值不合法）就視為宿主已明確指定，後端 appearance 不再覆寫
   var explicitPosition = attr("data-position");
   var position = normalizePosition(explicitPosition) || "br";
+  // 啟動按鈕尺寸（px）：只收 48 / 52 / 56 三段；宿主 data-size 優先，否則稍後採後端 appearance。
+  // 固定三段而非任意數值，是為了讓 icon／標籤等比例維持設計比例，宿主頁不會出現破版大小。
+  var VALID_SIZES = { 48: 1, 52: 1, 56: 1 };
+  function normalizeSize(v) {
+    var n = parseInt(v, 10);
+    return VALID_SIZES[n] ? n : null;
+  }
+  var explicitSize = attr("data-size");
+  var size = normalizeSize(explicitSize) || 56;
+
   // 啟動按鈕距邊距（px）：宿主 data-offset-x/y 優先，否則稍後採後端 appearance；預設 20。
   // offsetY 是距「下緣」（br/bl）或「上緣」（tr/tl）的距離；調高可避開宿主頁既有的 go-to-top 等按鈕。
   function clampOffset(v) {
@@ -110,7 +121,8 @@
     style.textContent = [
       "#oa-agent-launcher{",
       "position:fixed;right:20px;bottom:20px;",
-      "width:56px;height:56px;border-radius:50%;border:none;outline:none;padding:0;margin:0;",
+      "width:var(--oa-launcher-size,56px);height:var(--oa-launcher-size,56px);",
+      "border-radius:50%;border:none;outline:none;padding:0;margin:0;",
       "display:flex;align-items:center;justify-content:center;overflow:visible;",
       "color:#fff;cursor:pointer;",
       // 主色以 CSS 變數驅動（預設藍）；有租戶 primaryColor 時 JS 覆寫變數，hover/標籤一併跟著變
@@ -124,7 +136,10 @@
       "box-shadow:0 10px 25px var(--oa-primary-shadow-strong,rgba(37,99,235,.45));",
       "}",
       "#oa-agent-launcher .oa-agent-icon{",
-      "width:34px;height:34px;display:block;will-change:transform;",
+      // icon 隨按鈕尺寸等比例縮放（34/56≈.61），三段尺寸下留白比例一致
+      "width:calc(var(--oa-launcher-size,56px) * .61);",
+      "height:calc(var(--oa-launcher-size,56px) * .61);",
+      "display:block;will-change:transform;",
       "animation:oa-agent-hop 5s infinite;",
       "}",
       "#oa-agent-launcher:hover .oa-agent-icon,#oa-agent-launcher:focus-visible .oa-agent-icon{",
@@ -260,11 +275,15 @@
         if (!explicitPosition && ap.position) {
           position = normalizePosition(ap.position) || position;
         }
+        if (explicitSize === null && ap.launcherSize != null) {
+          size = normalizeSize(ap.launcherSize) || size;
+        }
         if (explicitOffsetX === null && ap.offsetX != null)
           offsetX = clampOffset(ap.offsetX);
         if (explicitOffsetY === null && ap.offsetY != null)
           offsetY = clampOffset(ap.offsetY);
-        applyPosition();
+        // applySize 會連帶重跑 applyPosition（面板讓位距離依按鈕尺寸計算）
+        applySize();
       })
       .catch(function () {});
   }
@@ -356,15 +375,22 @@
     btn.style.right = left ? "auto" : offsetX + "px";
     btn.style.top = top ? offsetY + "px" : "auto";
     btn.style.bottom = top ? "auto" : offsetY + "px";
-    // 面板：桌機依邊距定位（縱向再讓開按鈕 68px）；手機為全螢幕，由 applyMobile 處理、不套邊距
+    // 面板：桌機依邊距定位（縱向再讓開按鈕本身高度＋12px 間距）；手機為全螢幕，由 applyMobile 處理、不套邊距
     if (window.innerWidth > 480) {
+      var gap = offsetY + size + 12;
       panel.style.left = left ? offsetX + "px" : "auto";
       panel.style.right = left ? "auto" : offsetX + "px";
-      panel.style.top = top ? offsetY + 68 + "px" : "auto";
-      panel.style.bottom = top ? "auto" : offsetY + 68 + "px";
+      panel.style.top = top ? gap + "px" : "auto";
+      panel.style.bottom = top ? "auto" : gap + "px";
     }
   }
-  applyPosition(position);
+  // 啟動按鈕尺寸：寫進 CSS 變數（按鈕與 icon 都吃它），面板讓位距離也跟著重算。
+  // 同樣抽成函式，供後端 appearance（launcherSize）非同步回來時動態重套。
+  function applySize() {
+    btn.style.setProperty("--oa-launcher-size", size + "px");
+    applyPosition();
+  }
+  applySize();
 
   // panel 內聊天頁透過 postMessage 與宿主溝通：oa-agent:close 收起、oa-agent:submitted 已送出…
   window.addEventListener("message", function (e) {
