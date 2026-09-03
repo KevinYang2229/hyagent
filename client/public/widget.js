@@ -147,7 +147,10 @@
       "opacity:1;visibility:visible;transform:translateY(-50%) translateX(0);",
       "}",
       // 標籤掛點依位置調整（data-oa-pos 由 applyPosition 寫入）：
-      // 左下貼著左邊緣，標籤要改掛按鈕右側才有空間；上排兩角則一律掛按鈕正下方（置中）。
+      // 左下貼著左邊緣，標籤要改掛按鈕右側才有空間；上排兩角則一律掛按鈕正下方。
+      // 上排不用置中（left:50% + translateX(-50%)）：按鈕離邊只有 offsetX（預設 20），
+      // 置中會讓標籤往畫面外長——後台 AI 名稱可到 30 字，實測 16 字就溢出邊界約 79px 被截掉。
+      // 改成把標籤「靠按鈕的內側邊」對齊，讓它一律往畫面中央延伸，多長都不會出界。
       '#oa-agent-launcher[data-oa-pos="bl"] .oa-agent-label{',
       "right:auto;left:calc(100% + 12px);",
       "transform:translateY(-50%) translateX(-10px);",
@@ -156,16 +159,21 @@
       '#oa-agent-launcher[data-oa-pos="bl"]:focus-visible .oa-agent-label{',
       "transform:translateY(-50%) translateX(0);",
       "}",
-      '#oa-agent-launcher[data-oa-pos="tl"] .oa-agent-label,',
+      // 左上：標籤左緣對齊按鈕左緣，往右（畫面中央）長
+      '#oa-agent-launcher[data-oa-pos="tl"] .oa-agent-label{',
+      "right:auto;left:0;top:calc(100% + 12px);",
+      "transform:translateY(-10px);",
+      "}",
+      // 右上：標籤右緣對齊按鈕右緣，往左（畫面中央）長
       '#oa-agent-launcher[data-oa-pos="tr"] .oa-agent-label{',
-      "right:auto;left:50%;top:calc(100% + 12px);",
-      "transform:translateX(-50%) translateY(-10px);",
+      "left:auto;right:0;top:calc(100% + 12px);",
+      "transform:translateY(-10px);",
       "}",
       '#oa-agent-launcher[data-oa-pos="tl"]:hover .oa-agent-label,',
       '#oa-agent-launcher[data-oa-pos="tl"]:focus-visible .oa-agent-label,',
       '#oa-agent-launcher[data-oa-pos="tr"]:hover .oa-agent-label,',
       '#oa-agent-launcher[data-oa-pos="tr"]:focus-visible .oa-agent-label{',
-      "transform:translateX(-50%) translateY(0);",
+      "transform:translateY(0);",
       "}",
       "@keyframes oa-agent-hop{",
       "0%,80%,100%{transform:translateY(0) rotate(0);}",
