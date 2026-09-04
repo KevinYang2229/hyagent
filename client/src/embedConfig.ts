@@ -64,6 +64,10 @@ export interface WidgetConfig {
 }
 
 export async function fetchAppearance(): Promise<WidgetConfig> {
+  // 純外觀預覽（後台 AppearanceTab 的 iframe）不打後端：外觀一律由父視窗 postMessage 推入。
+  // 這裡若照常讀租戶設定，回應會晚於父視窗載入時那一次推送而把它蓋掉，
+  // 預覽就變成「重整後還原成已存的外觀」，跟後台畫面上的設定對不起來。
+  if (embedConfig.preview) return { appearance: {}, knowledgeEnabled: true };
   if (!embedConfig.apiKey) return { appearance: {}, knowledgeEnabled: true };
   try {
     const url = `${API_ORIGIN}/api/widget/config?key=${encodeURIComponent(embedConfig.apiKey)}`;
