@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { TenantAppearance } from "@hyagent/shared";
 import { api, type Tenant } from "../../api";
-import { resolvePrimaryColor } from "./appearance.util";
+import { resolveOriginEnv, resolvePrimaryColor } from "./appearance.util";
 
 const POSITIONS = [
   { v: "br", label: "右下" },
@@ -21,14 +21,18 @@ const LOCALES = [
 
 // 預覽 widget client 來源；postMessage targetOrigin 與 iframe 來源一致。
 // production 由 VITE_WIDGET_ORIGIN 指定部署網址（避免公開後台 iframe 連到 localhost 被瀏覽器封鎖）；dev 走本機 5173。
-const PREVIEW_ORIGIN = (
-  import.meta.env.VITE_WIDGET_ORIGIN ?? "http://localhost:5173"
-).replace(/\/+$/, "");
+// 用 resolveOriginEnv 而非 `??`：變數「有定義但為空」時 Vite bake 出的是空字串，
+// `??` 攔不到，PREVIEW_ORIGIN 會變成 '' 而讓下面的 postMessage 直接丟 SyntaxError。
+const PREVIEW_ORIGIN = resolveOriginEnv(
+  import.meta.env.VITE_WIDGET_ORIGIN,
+  "http://localhost:5173",
+);
 
 // 「開啟示範網站」按鈕的外部網址；可由 VITE_DEMO_SITE_URL 覆寫，預設指向 presale demo 部署。
-const DEMO_SITE_URL =
-  import.meta.env.VITE_DEMO_SITE_URL ??
-  "https://hyagent-presale-tenant.zeabur.app/";
+const DEMO_SITE_URL = resolveOriginEnv(
+  import.meta.env.VITE_DEMO_SITE_URL,
+  "https://hyagent-presale-tenant.zeabur.app",
+);
 
 export default function AppearanceTab({
   tenant,
