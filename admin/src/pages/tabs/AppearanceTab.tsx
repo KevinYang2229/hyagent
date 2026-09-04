@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { TenantAppearance } from "@hyagent/shared";
 import { api, type Tenant } from "../../api";
+import { resolvePrimaryColor } from "./appearance.util";
 
 const POSITIONS = [
   { v: "br", label: "右下" },
@@ -82,7 +83,9 @@ export default function AppearanceTab({
     return () => window.removeEventListener("message", onReady);
   }, [pushPreview]);
 
-  const primary = form.primaryColor ?? "#4f46e5";
+  // 色票與右側即時預覽必須同一個來源：未設定主色時 widget 用的是設計系統預設
+  // （依主題 light/dark 不同），後台不能自己另外寫死一個值，否則一重整就對不起來。
+  const primary = resolvePrimaryColor(form);
 
   return (
     <div className="appearance-grid">
