@@ -173,7 +173,7 @@ a.nav-item:not(.active):active .material-symbols-outlined {
 }
 
 .sub-menu .sub-item {
-  @apply cursor-pointer whitespace-nowrap rounded-xl px-3 py-[0.75em] pl-[52px] mb-1 text-[0.938rem] text-[var(--text-secondary)] transition-all duration-200 ease-in-out;
+  @apply cursor-pointer whitespace-nowrap rounded-lg px-3 py-[0.75em] pl-[52px] mb-1 text-[0.938rem] text-[var(--text-secondary)] transition-all duration-200 ease-in-out;
 }
 
 .sub-menu .sub-item:hover {
