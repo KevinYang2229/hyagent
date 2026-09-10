@@ -10,8 +10,8 @@ const POSITIONS = [
   { v: "tl", label: "左上" },
 ] as const;
 
-// 啟動按鈕尺寸；與 widget.js 的 VALID_SIZES 對應，只開放三段固定值
-const LAUNCHER_SIZES = [48, 52, 56] as const;
+// 啟動按鈕尺寸；與 widget.js 的 VALID_SIZES 對應，只開放五段固定值
+const LAUNCHER_SIZES = [40, 44, 48, 52, 56] as const;
 
 // 介面支援語系（對應 client i18n：zh-Hant / en）
 const LOCALES = [

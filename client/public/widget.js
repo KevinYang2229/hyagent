@@ -72,9 +72,9 @@
   // 有帶 data-position（即使值不合法）就視為宿主已明確指定，後端 appearance 不再覆寫
   var explicitPosition = attr("data-position");
   var position = normalizePosition(explicitPosition) || "br";
-  // 啟動按鈕尺寸（px）：只收 48 / 52 / 56 三段；宿主 data-size 優先，否則稍後採後端 appearance。
-  // 固定三段而非任意數值，是為了讓 icon／標籤等比例維持設計比例，宿主頁不會出現破版大小。
-  var VALID_SIZES = { 48: 1, 52: 1, 56: 1 };
+  // 啟動按鈕尺寸（px）：只收 40 / 44 / 48 / 52 / 56 五段；宿主 data-size 優先，否則稍後採後端 appearance。
+  // 固定五段而非任意數值，是為了讓 icon／標籤等比例維持設計比例，宿主頁不會出現破版大小。
+  var VALID_SIZES = { 40: 1, 44: 1, 48: 1, 52: 1, 56: 1 };
   function normalizeSize(v) {
     var n = parseInt(v, 10);
     return VALID_SIZES[n] ? n : null;
