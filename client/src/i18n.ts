@@ -10,6 +10,38 @@ import { initReactI18next } from "react-i18next";
 const LANG_KEY = "oa-lang";
 
 const zhHant = {
+  notifications: {
+    "title": "通知中心",
+    "description": "追蹤待辦與處理結果，顯示最近 100 則可用通知。",
+    "all": "全部",
+    "unread": "未讀",
+    "unreadCount": "{{count}} 則未讀通知",
+    "readAll": "全部標為已讀",
+    "markRead": "標為已讀",
+    "open": "查看任務",
+    "loading": "正在載入通知…",
+    "error": "通知更新失敗，請重新整理後再試。",
+    "openError": "無法開啟通知，任務可能已失效或權限已變更。",
+    "empty": "目前沒有通知",
+    "allCaughtUp": "所有通知都已讀取",
+    "emptyHint": "待確認表單、超過一天的草稿及處理結果會顯示在這裡。",
+    "kinds": {
+      "draft": "待辦提醒",
+      "confirming": "表單待確認",
+      "submission_failed": "送出未完成",
+      "submitted": "表單已送出",
+      "report_done": "報告已完成",
+      "report_failed": "報告未完成"
+    },
+    "hints": {
+      "draft": "這份表單尚未完成，可繼續填寫。",
+      "confirming": "資料已整理完成，請確認後送出。",
+      "submission_failed": "請先確認外部系統是否已收到申請，避免重複送出。",
+      "submitted": "可查看送出紀錄；簽核結果請以 OA 為準。",
+      "report_done": "報告已產生，可前往查看與下載。",
+      "report_failed": "可查看處理狀態，再決定是否重新產生。"
+    }
+  },
   tasks: {
     "title": "我的任務",
     "chat": "對話",
@@ -210,6 +242,38 @@ const zhHant = {
 };
 
 const en = {
+  notifications: {
+    "title": "Notifications",
+    "description": "Track tasks and results. Showing up to 100 available notifications.",
+    "all": "All",
+    "unread": "Unread",
+    "unreadCount": "{{count}} unread notifications",
+    "readAll": "Mark all as read",
+    "markRead": "Mark as read",
+    "open": "View task",
+    "loading": "Loading notifications…",
+    "error": "Could not update notifications. Refresh and try again.",
+    "openError": "Unable to open this notification. The task may have expired or access changed.",
+    "empty": "No notifications yet",
+    "allCaughtUp": "All caught up",
+    "emptyHint": "Forms awaiting confirmation, drafts older than a day, and results appear here.",
+    "kinds": {
+      "draft": "Task reminder",
+      "confirming": "Confirmation needed",
+      "submission_failed": "Submission incomplete",
+      "submitted": "Form submitted",
+      "report_done": "Report ready",
+      "report_failed": "Report incomplete"
+    },
+    "hints": {
+      "draft": "Continue filling out this unfinished form.",
+      "confirming": "Review the prepared information before submitting.",
+      "submission_failed": "Check the external system before retrying to avoid duplicate submissions.",
+      "submitted": "View the submission record. Check OA for approval results.",
+      "report_done": "Your report is available to view and download.",
+      "report_failed": "Check the processing status before generating another report."
+    }
+  },
   tasks: {
     "title": "My tasks",
     "chat": "Chat",

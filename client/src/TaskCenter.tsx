@@ -10,14 +10,15 @@ type Category = keyof TaskCenterData;
 const categories: Category[] = ['drafts', 'submissions', 'reports'];
 const PAGE_SIZE = 20;
 
-export default function TaskCenter({ onOpen, onNew, onCancelled }: {
+export default function TaskCenter({ onOpen, onNew, onCancelled, initialTarget }: {
+  initialTarget?: { category: Category; id: string };
   onOpen: (id: string) => Promise<void>;
   onNew: () => void;
   onCancelled: (id: string) => void;
 }) {
   const { t, i18n } = useTranslation();
   const [data, setData] = useState<TaskCenterData | null>(null);
-  const [category, setCategory] = useState<Category>('drafts');
+  const [category, setCategory] = useState<Category>(initialTarget?.category ?? 'drafts');
   const [query, setQuery] = useState('');
   const [limit, setLimit] = useState(PAGE_SIZE);
   const [revision, setRevision] = useState(0);
@@ -37,6 +38,13 @@ export default function TaskCenter({ onOpen, onNew, onCancelled }: {
     }).finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
   }, [revision, t]);
+
+  useEffect(() => {
+    if (loading || !data || !initialTarget || category !== initialTarget.category) return;
+    const element = document.getElementById(`task-${initialTarget.category}-${initialTarget.id}`);
+    element?.scrollIntoView?.({ block: 'center' });
+    element?.focus();
+  }, [data, initialTarget, loading, category]);
 
   async function open(id: string) {
     setActing(id);
@@ -61,9 +69,10 @@ export default function TaskCenter({ onOpen, onNew, onCancelled }: {
 
   const term = query.trim().toLocaleLowerCase();
   const matching = (title: string, reference = '') => `${title} ${reference}`.toLocaleLowerCase().includes(term);
-  const drafts = data?.drafts.filter((d) => matching(d.title)) ?? [];
-  const submissions = data?.submissions.filter((s) => matching(s.title, s.oaRequestId)) ?? [];
-  const reports = data?.reports.filter((r) => matching(r.title)) ?? [];
+  const prioritize = <T,>(items: T[], idOf: (item: T) => string) => initialTarget ? [...items].sort((a, b) => Number(idOf(b) === initialTarget.id) - Number(idOf(a) === initialTarget.id)) : items;
+  const drafts = prioritize(data?.drafts.filter((d) => matching(d.title)) ?? [], (d) => d.id);
+  const submissions = prioritize(data?.submissions.filter((s) => matching(s.title, s.oaRequestId)) ?? [], (s) => s.oaRequestId);
+  const reports = prioritize(data?.reports.filter((r) => matching(r.title)) ?? [], (r) => r.id);
   const count = { drafts: drafts.length, submissions: submissions.length, reports: reports.length }[category];
   const formatDate = (iso: string) => new Date(iso).toLocaleString(i18n.language, {
     year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
@@ -115,7 +124,7 @@ export default function TaskCenter({ onOpen, onNew, onCancelled }: {
             {count === 0 && <div className="task-empty"><h2>{t(query ? 'tasks.noResults' : `tasks.empty.${category}`)}</h2>
               <p>{t(query ? 'tasks.searchHint' : 'tasks.emptyHint')}</p></div>}
             {category === 'drafts' && drafts.slice(0, limit).map((draft) => (
-              <article className="task-card" key={draft.id}>
+              <article id={`task-drafts-${draft.id}`} tabIndex={-1} className="task-card" key={draft.id}>
                 <div className="task-card-body"><h2>{draft.title}</h2>
                   <p><time dateTime={draft.updatedAt}>{formatDate(draft.updatedAt)}</time> · {t(`app.status.${draft.status}`)}</p>
                   {!draft.canResume && <p>{t(draft.status === 'submitting' ? 'tasks.submittingHint' : draft.status === 'failed' ? 'tasks.failedHint' : 'tasks.unavailable')}</p>}
@@ -133,7 +142,7 @@ export default function TaskCenter({ onOpen, onNew, onCancelled }: {
               </article>
             ))}
             {category === 'submissions' && submissions.slice(0, limit).map((submission) => (
-              <article className="task-card" key={submission.oaRequestId}>
+              <article id={`task-submissions-${submission.oaRequestId}`} tabIndex={-1} className="task-card" key={submission.oaRequestId}>
                 <div className="task-card-body"><h2>{submission.title}</h2>
                   <p>{t('tasks.reference')}: {submission.oaRequestId}</p>
                   <p><time dateTime={submission.submittedAt}>{formatDate(submission.submittedAt)}</time></p>
@@ -143,7 +152,7 @@ export default function TaskCenter({ onOpen, onNew, onCancelled }: {
               </article>
             ))}
             {category === 'reports' && reports.slice(0, limit).map((report) => (
-              <article className="task-card" key={report.id}>
+              <article id={`task-reports-${report.id}`} tabIndex={-1} className="task-card" key={report.id}>
                 <div className="task-card-body"><h2>{report.title}</h2><p><time dateTime={report.createdAt}>{formatDate(report.createdAt)}</time></p></div>
                 <ReportStatus reportId={report.id} showLabel />
               </article>

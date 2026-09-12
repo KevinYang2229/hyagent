@@ -78,3 +78,11 @@ it('disables resume/cancel for submitting tasks and shows a search empty state',
   fireEvent.change(screen.getByRole('searchbox'), { target: { value: '不存在' } });
   expect(screen.getByText('找不到符合的任務')).toBeInTheDocument();
 });
+
+it('opens the category from a notification and reveals a target beyond the first page', async () => {
+  vi.mocked(api.listTasks).mockResolvedValue({ ...fixture, reports: Array.from({ length: 25 }, (_, index) => ({ id: `report-${index}`, title: `Report ${index}`, createdAt: '2026-09-13T00:00:00Z' })) });
+  render(<TaskCenter initialTarget={{ category: 'reports', id: 'report-24' }} onOpen={onOpen} onNew={vi.fn()} onCancelled={onCancelled} />);
+  expect(await screen.findByRole('button', { name: 'Report report-24' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /我的報告/ })).toHaveAttribute('aria-pressed', 'true');
+  await waitFor(() => expect(document.activeElement).toHaveAttribute('id', 'task-reports-report-24'));
+});

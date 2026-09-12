@@ -1,3 +1,6 @@
+import type { TaskNotification, TaskCenterData } from '@hyagent/shared';
+import NotificationCenter from './NotificationCenter';
+import { useNotifications } from './useNotifications';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import ReactMarkdown from 'react-markdown';
@@ -138,7 +141,9 @@ export default function App() {
   // 有值時顯示整頁錯誤畫面，取代「靜默掉回帳密登入頁」。
   const [authError, setAuthError] = useState<string | null>(null);
   const userId = authUser?.id ?? '';
-  const [view, setView] = useState<'chat' | 'tasks'>('chat');
+  const [view, setView] = useState<'chat' | 'tasks' | 'notifications'>('chat');
+  const notifications = useNotifications(PREVIEW ? '' : userId);
+  const [taskTarget, setTaskTarget] = useState<{ category: keyof TaskCenterData; id: string } | undefined>();
   const [convId, setConvId] = useState<string | null>(null);
   const [status, setStatus] = useState<SessionStatus | null>(null);
   const [values, setValues] = useState<Record<string, unknown>>({});
@@ -896,9 +901,16 @@ export default function App() {
 
       {!PREVIEW && <nav className="workspace-nav" aria-label={t('tasks.categories')}>
         <button type="button" aria-pressed={view === 'chat'} disabled={busy} onClick={() => setView('chat')}>{t('tasks.chat')}</button>
-        <button type="button" aria-pressed={view === 'tasks'} disabled={busy || showForm} onClick={() => setView('tasks')}>{t('tasks.title')}</button>
+        <button type="button" aria-pressed={view === 'tasks'} disabled={busy || showForm} onClick={() => { setTaskTarget(undefined); setView('tasks'); }}>{t('tasks.title')}</button>
+        <button type="button" aria-pressed={view === 'notifications'} disabled={busy || showForm} onClick={() => { setView('notifications'); void notifications.refresh(); }}>
+          {t('notifications.title')}{notifications.feed.unreadCount > 0 && <span className="notification-badge" aria-label={t('notifications.unreadCount', { count: notifications.feed.unreadCount })}>{notifications.feed.unreadCount}</span>}
+        </button>
       </nav>}
-      {view === 'tasks' ? <TaskCenter
+      {view === 'notifications' ? <NotificationCenter notifications={notifications} onOpen={async (item: TaskNotification) => {
+        if (item.target.conversationId) await openTask(item.target.conversationId);
+        else { setTaskTarget(item.target); setView('tasks'); }
+      }} /> : view === 'tasks' ? <TaskCenter
+        initialTarget={taskTarget}
         onOpen={openTask}
         onNew={reset}
         onCancelled={(id) => {

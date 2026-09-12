@@ -353,3 +353,13 @@ export interface TaskCenterData {
   submissions: TaskSubmission[];
   reports: TaskReport[];
 }
+
+export interface TaskNotification {
+  id: string;
+  kind: 'draft' | 'confirming' | 'submission_failed' | 'submitted' | 'report_done' | 'report_failed';
+  title: string;
+  createdAt: string;
+  read: boolean;
+  target: { category: keyof TaskCenterData; id: string; conversationId?: string };
+}
+export interface NotificationFeed { items: TaskNotification[]; unreadCount: number }
