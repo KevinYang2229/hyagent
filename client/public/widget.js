@@ -51,6 +51,8 @@
   //   data-offset-x    距側邊（左或右，依 position）距離（px，預設 20）
   //   data-offset-y    距上／下緣（依 position）距離（px，預設 20；調高可避開頁面既有的 go-to-top 按鈕）
   //   data-user-token  SSO handoff：宿主簽發的終端使用者 token（免內部帳密登入）
+  //   data-token-url   SSO handoff（長駐頁面建議用這個）：宿主自家的短效 token 端點，
+  //                    首次點開面板時才同源帶 cookie 取回。兩者都有時 data-user-token 優先。
   function attr(name) {
     var v = script.getAttribute(name);
     return v && v.trim() ? v.trim() : null;
@@ -94,6 +96,11 @@
   var offsetY = explicitOffsetY !== null ? clampOffset(explicitOffsetY) : 20;
   // data-launcher="none"：不顯示預設浮動按鈕，由宿主自己的按鈕呼叫 OAAgent.open() 開啟
   var showLauncher = attr("data-launcher") !== "none";
+  // data-token-url：宿主自家的短效 SSO token 端點（同源路徑或絕對網址）。
+  // 與 data-user-token 的差別在「什麼時候拿票」：SSO token 僅 5 分鐘有效，寫死在 script 標籤上的
+  // 靜態值，頁面停留久一點就過期，使用者真的要用時反而換不到票；改成點開面板當下才向宿主要，
+  // 才拿得到還在有效期內的票。宿主端點用自己的登入 cookie 決定發給誰，簽章密鑰留在宿主後端。
+  var tokenUrl = attr("data-token-url");
 
   // 把設定組成 panel iframe 的 query；只附帶有值的參數
   var panelParams = ["embed=1"];
@@ -107,7 +114,12 @@
   for (var ck in cfg) {
     if (cfg[ck]) panelParams.push(ck + "=" + encodeURIComponent(cfg[ck]));
   }
-  var panelUrl = origin + "/?" + panelParams.join("&");
+  // token 是點開當下才拿得到的，panel URL 因此改成組出來而非常數。
+  function buildPanelUrl(token) {
+    var params = panelParams.slice();
+    if (token) params.push("userToken=" + encodeURIComponent(token));
+    return origin + "/?" + params.join("&");
+  }
 
   var Z = 2147483000; // 盡量蓋在宿主頁面之上
   var open = false;
@@ -364,19 +376,65 @@
     }
   });
 
+  // 向宿主自家端點換一把短效 SSO token（同源帶 cookie，宿主用自己的登入狀態決定發給誰）。
+  // 任何失敗都回 null 而不是讓點開失敗：面板照常開，使用者改在面板內自行登入。
+  function fetchUserToken() {
+    if (typeof fetch !== "function") return Promise.resolve(null);
+    return fetch(tokenUrl, {
+      method: "POST",
+      credentials: "include",
+      headers: { accept: "application/json" },
+    })
+      .then(function (res) {
+        return res.ok ? res.json() : null;
+      })
+      .then(function (json) {
+        // 相容三種回應形狀：{token} / {userToken} / {data:{token}}
+        var body = (json && json.data) || json || {};
+        var t = body.token || body.userToken;
+        return typeof t === "string" && t ? t : null;
+      })
+      .catch(function () {
+        return null;
+      });
+  }
+
+  function createIframe(token) {
+    iframe = document.createElement("iframe");
+    iframe.src = buildPanelUrl(token);
+    iframe.title = title;
+    iframe.style.cssText = "width:100%;height:100%;border:none;display:block;";
+    // 面板載好才收得到 message：載入完成回報一次，SPA 才知道要不要顯示放大鈕
+    iframe.addEventListener("load", notifyExpanded);
+    panel.appendChild(iframe);
+  }
+
+  var tokenPending = false; // 換票中：連點兩下不會送出兩次請求、也不會建出兩個 iframe
+  function ensureIframe() {
+    if (iframe || tokenPending) return;
+    // 沒設 data-token-url，或宿主已直接給了靜態 token → 維持原本的同步建立，時序不變
+    if (!tokenUrl || cfg.userToken) {
+      createIframe(null);
+      return;
+    }
+    tokenPending = true;
+    fetchUserToken().then(function (token) {
+      tokenPending = false;
+      if (iframe) return;
+      if (!token) {
+        console.warn(
+          "[oa-agent] 無法從 data-token-url 取得使用者 token，面板改為自行登入：",
+          tokenUrl,
+        );
+      }
+      createIframe(token);
+    });
+  }
+
   function setOpen(next) {
     open = next;
     if (open) {
-      if (!iframe) {
-        iframe = document.createElement("iframe");
-        iframe.src = panelUrl;
-        iframe.title = title;
-        iframe.style.cssText =
-          "width:100%;height:100%;border:none;display:block;";
-        // 面板載好才收得到 message：載入完成回報一次，SPA 才知道要不要顯示放大鈕
-        iframe.addEventListener("load", notifyExpanded);
-        panel.appendChild(iframe);
-      }
+      ensureIframe();
       panel.style.display = "block";
       // 下一幀再做過場動畫
       requestAnimationFrame(function () {

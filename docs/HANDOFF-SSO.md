@@ -55,6 +55,29 @@ x-api-key: pk_<租戶公開金鑰>
 {"userToken":"<整合方後端簽發的短效 JWT>"}
 ```
 
+## 把 token 交給 widget
+
+userToken 最長只有 5 分鐘，所以「什麼時候簽」比「怎麼簽」更容易踩雷。widget 支援兩種交付方式：
+
+| 方式 | 屬性 | 適用 |
+| --- | --- | --- |
+| 靜態 | `data-user-token="<jwt>"` | 宿主頁載入當下就會用到 widget，或每次載入都重新簽 |
+| 端點 | `data-token-url="/your/token-endpoint"` | 長駐頁面（SPA）——使用者可能停留數小時後才點開 |
+
+`data-token-url` 由 widget 在**首次點開面板時**才請求，拿到的票必定在有效期內：
+
+```
+POST <data-token-url>
+credentials: include        ← 同源 cookie，由宿主自己的登入狀態決定發給誰
+accept: application/json
+```
+
+回應接受 `{"token":"<jwt>"}`、`{"userToken":"<jwt>"}` 或 `{"data":{"token":"<jwt>"}}`。
+
+端點**必須在宿主自己的後端**（Next.js route handler、Vercel Function、既有 API 皆可）：簽章要用 `ssoSecret`，放到瀏覽器等於把密鑰公開。純靜態站台（無任何後端）沒辦法安全地做 SSO handoff，只能讓使用者在面板內自行登入。
+
+換票失敗（端點 4xx/5xx、沒有 token 欄位、網路錯誤）不會擋住面板：widget 會在 console 留下警告並照常開啟，使用者改為自行登入。兩個屬性都設時 `data-user-token` 優先。
+
 ## 租戶與權限
 
 交換後的 Token 綁定該租戶。一般業務 API 的 API Key 必須屬於同一租戶，不能拿另一租戶的公開金鑰切換身份。內部帳密登入僅綁定 default。
