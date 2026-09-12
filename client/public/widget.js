@@ -5,7 +5,7 @@
  *   <script src="https://<你的網域>/widget.js"></script>
  *
  * 載入後在右下角注入一顆浮動按鈕，點擊彈出聊天視窗（iframe 載入 OA panel 的 ?embed=1 模式）。
- * 面板標題列另有放大鈕：放大後面板貼齊按鈕所在側、上下滿版並蓋上背景遮罩，點遮罩或 Esc 還原。
+ * 面板標題列另有放大鈕：放大後面板水平、垂直置中並蓋上背景遮罩，點遮罩或 Esc 還原。
  * 純 vanilla JS、零依賴、樣式全用 inline + 唯一 id 命名，避免污染宿主頁面。
  */
 (function () {
@@ -320,19 +320,17 @@
   // 每個分支都要把另一組定位屬性歸零（left/top ↔ right/bottom、margin），否則切換後殘值會把面板推出畫面。
   function applyPanelGeometry() {
     if (expanded && window.innerWidth > 480) {
-      // 側邊貼齊：靠按鈕所在的那一側到底、上下滿版；寬度取設計上限與視窗寬的較小者
-      var dockLeft = position === "bl" || position === "tl";
-      panel.style.margin = "";
+      // 四邊定位搭配 auto margin 置中，保留 transform 給開關動畫使用。
+      panel.style.margin = "auto";
       panel.style.top = "0";
       panel.style.bottom = "0";
-      panel.style.left = dockLeft ? "0" : "auto";
-      panel.style.right = dockLeft ? "auto" : "0";
-      panel.style.width = "min(1180px, 100vw)";
-      panel.style.height = "100vh";
-      panel.style.maxWidth = "100vw";
-      panel.style.maxHeight = "100vh";
-      // 貼邊的那一側不留圓角，只圓內側兩角
-      panel.style.borderRadius = dockLeft ? "0 16px 16px 0" : "16px 0 0 16px";
+      panel.style.left = "0";
+      panel.style.right = "0";
+      panel.style.width = "min(1180px, calc(100vw - 48px))";
+      panel.style.height = "calc(100vh - 48px)";
+      panel.style.maxWidth = "calc(100vw - 48px)";
+      panel.style.maxHeight = "900px";
+      panel.style.borderRadius = "16px";
       return;
     }
     panel.style.margin = "";
@@ -458,7 +456,7 @@
     btn.style.right = left ? "auto" : offsetX + "px";
     btn.style.top = top ? offsetY + "px" : "auto";
     btn.style.bottom = top ? "auto" : offsetY + "px";
-    // 放大中不套小視窗邊距（會把貼邊滿版的面板推回四角），改由 applyPanelGeometry 依新的 position 重貼一次
+    // 放大中維持置中，不套用四角小視窗的邊距。
     if (expanded && window.innerWidth > 480) {
       applyPanelGeometry();
       return;

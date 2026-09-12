@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TaskCenterData } from '@hyagent/shared';
+import { Button } from '@hyagent/ui';
 import { api } from './api';
 import { ReportStatus } from './ReportStatus';
 import './taskCenter.css';
@@ -88,7 +89,23 @@ export default function TaskCenter({ onOpen, onNew, onCancelled }: {
         <div className="task-toolbar">
           <input type="search" value={query} aria-label={t('tasks.search')} placeholder={t('tasks.search')}
             onChange={(e) => { setQuery(e.target.value); setLimit(PAGE_SIZE); }} />
-          <button className="quick-chip" disabled={disabled} onClick={() => setRevision((v) => v + 1)}>{t('tasks.refresh')}</button>
+          <Button
+            type="button"
+            variant="reset"
+            size="md"
+            className="shrink-0 self-center"
+            disabled={disabled}
+            onClick={() => setRevision((v) => v + 1)}
+            icon={
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <polyline points="23 4 23 10 17 10" />
+                <polyline points="1 20 1 14 7 14" />
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+              </svg>
+            }
+          >
+            {t('tasks.refresh')}
+          </Button>
         </div>
         {error && <div className="task-error" role="alert">{error}</div>}
         {loading && <p role="status" className="task-empty">{t('tasks.loading')}</p>}
