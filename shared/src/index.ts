@@ -322,3 +322,34 @@ export interface TenantAppearance {
   /** 預設介面語言（如 zh-Hant） */
   defaultLocale?: string;
 }
+
+/** 使用者任務中心：清單只傳 metadata，不帶表單值或 LLM 工具逐字稿。 */
+export interface TaskConversation {
+  id: string;
+  formId: string;
+  title: string;
+  status: SessionStatus;
+  updatedAt: string;
+  canResume: boolean;
+  canCancel: boolean;
+}
+
+export interface TaskSubmission {
+  oaRequestId: string;
+  formId: string;
+  title: string;
+  submittedAt: string;
+  conversationId?: string;
+}
+
+export interface TaskReport {
+  id: string;
+  title: string;
+  createdAt: string;
+}
+
+export interface TaskCenterData {
+  drafts: TaskConversation[];
+  submissions: TaskSubmission[];
+  reports: TaskReport[];
+}

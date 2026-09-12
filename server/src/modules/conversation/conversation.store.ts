@@ -151,6 +151,12 @@ export async function initConversationStore(): Promise<void> {
 }
 
 export const conversationStore = {
+  listByUser(tenantId: string, userId: string): Session[] {
+    return [...sessions.values()]
+      .filter((s) => (s.tenantId ?? 'default') === tenantId && s.userId === userId)
+      .sort((a, b) => (b.updatedAt ?? b.createdAt).localeCompare(a.updatedAt ?? a.createdAt));
+  },
+
   create(tenantId: string, userId: string, formId: string): Session {
     const session: Session = {
       id: randomUUID(),
@@ -182,6 +188,7 @@ export const conversationStore = {
    * 呼叫端拿到的是 map 內同一個物件參照、會就地 mutate，故在每輪/每次變更後呼叫此方法。
    */
   save(session?: Session): void {
+    if (session) session.updatedAt = new Date().toISOString();
     persist(session);
   },
 

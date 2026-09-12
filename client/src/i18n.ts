@@ -10,6 +10,45 @@ import { initReactI18next } from "react-i18next";
 const LANG_KEY = "oa-lang";
 
 const zhHant = {
+  tasks: {
+    "title": "我的任務",
+    "chat": "對話",
+    "description": "接續未完成的表單，查看已送申請與報告。",
+    "newTask": "開始新對話",
+    "categories": "任務分類",
+    "drafts": "未完成表單",
+    "submissions": "已送申請",
+    "reports": "我的報告",
+    "search": "搜尋名稱或申請單號",
+    "refresh": "重新整理",
+    "loading": "正在載入任務…",
+    "loadError": "任務載入失敗，請重新整理。",
+    "cancelError": "取消失敗，請再試一次。",
+    "resume": "繼續填寫",
+    "cancel": "取消表單",
+    "confirmCancel": "確認取消",
+    "cancelConfirm": "取消後將無法續填，確定取消？",
+    "keep": "保留表單",
+    "reference": "申請單號",
+    "details": "查看明細",
+    "recordOnly": "僅保留送出紀錄",
+    "approvalNote": "簽核進度目前為示範資料，實際結果請以外部系統為準。",
+    "submittingHint": "正在送出，請稍後重新整理；請勿重複申請。",
+    "failedHint": "送出未完成，請先確認外部系統是否已收到申請，再決定是否取消重填。",
+    "unavailable": "此表單目前無法使用，請聯繫管理員。",
+    "more": "顯示更多",
+    "working": "正在處理…",
+    "noResults": "找不到符合的任務",
+    "searchHint": "試試其他名稱或單號。",
+    "emptyHint": "開始對話辦理表單或產生報告後，會顯示在這裡。",
+    "empty": {
+      "drafts": "目前沒有未完成表單",
+      "submissions": "目前沒有已送申請",
+      "reports": "目前沒有報告"
+    },
+    "restored": "已還原「{{title}}」的已保存資料。你可以繼續補充或修改欄位；表單明細可查看目前內容。",
+    "restoredSubmission": "已開啟「{{title}}」的送出紀錄。簽核進度目前為示範資料，實際結果請以外部系統為準。"
+  },
   common: { confirm: "確認", cancel: "取消" },
   datePicker: {
     selectDate: "選擇日期",
@@ -171,6 +210,45 @@ const zhHant = {
 };
 
 const en = {
+  tasks: {
+    "title": "My tasks",
+    "chat": "Chat",
+    "description": "Continue your forms and find submitted requests and reports.",
+    "newTask": "New conversation",
+    "categories": "Task categories",
+    "drafts": "Unfinished forms",
+    "submissions": "Submitted requests",
+    "reports": "My reports",
+    "search": "Search by name or request number",
+    "refresh": "Refresh",
+    "loading": "Loading tasks…",
+    "loadError": "Could not load tasks. Please refresh.",
+    "cancelError": "Could not cancel. Please try again.",
+    "resume": "Continue",
+    "cancel": "Cancel form",
+    "confirmCancel": "Confirm cancellation",
+    "cancelConfirm": "You cannot resume after cancellation. Cancel this form?",
+    "keep": "Keep form",
+    "reference": "Request number",
+    "details": "View details",
+    "recordOnly": "Submission record only",
+    "approvalNote": "Approval progress is currently demonstration data. Check the external system for actual results.",
+    "submittingHint": "Submitting. Refresh shortly and avoid duplicate requests.",
+    "failedHint": "Submission did not complete. Check whether the external system received it before cancelling and starting again.",
+    "unavailable": "This form is currently unavailable. Contact your administrator.",
+    "more": "Show more",
+    "working": "Working…",
+    "noResults": "No matching tasks",
+    "searchHint": "Try another name or request number.",
+    "emptyHint": "Forms and reports will appear here after you start them in chat.",
+    "empty": {
+      "drafts": "No unfinished forms",
+      "submissions": "No submitted requests",
+      "reports": "No reports yet"
+    },
+    "restored": "Saved fields for “{{title}}” have been restored. Continue adding or editing information; the form details panel shows your saved values.",
+    "restoredSubmission": "Opened the submission for “{{title}}”. Approval progress is demonstration data; check the external system for actual results."
+  },
   common: { confirm: "Confirm", cancel: "Cancel" },
   // 內建表單的推薦 chip（標題／tooltip 描述／範例）英文；中文模式由 App 以 server 值作 defaultValue 回退。
   // key 為 formId；租戶自訂表單無此鍵時自動回退 server 標題。

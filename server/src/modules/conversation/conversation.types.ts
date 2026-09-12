@@ -22,6 +22,7 @@ export interface Session {
   /** Agent 待使用者確認的寄信草稿；確認後由確認閘以 email.send 送出，非確認的 agent 輪一律清空。 */
   pendingEmail?: { to: string; subject: string; html: string };
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface TurnResult {

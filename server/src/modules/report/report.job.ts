@@ -35,6 +35,15 @@ export interface StartReportParams {
   llm: LLMProvider;
 }
 
+export function listReportJobsByUser(tenantId: string, userId: string): ReportJob[] {
+  const cutoff = Date.now() - env.REPORT_TTL_HOURS * 3_600_000;
+  return [...jobs.values()].filter((job) => {
+    if (job.tenantId !== tenantId || job.userId !== userId) return false;
+    const terminal = ['done', 'empty', 'failed'].includes(job.status);
+    return !terminal || Date.parse(job.finishedAt ?? job.startedAt) > cutoff;
+  });
+}
+
 export function getReportJob(id: string): ReportJob | undefined {
   return jobs.get(id);
 }

@@ -1,5 +1,6 @@
 // 對應後端 auth / conversation / form / leave API。型別共用 @hyagent/shared（單一來源）。
 import type {
+  TaskCenterData,
   Applicant,
   Attachment,
   Definition,
@@ -230,6 +231,15 @@ export const auth = {
 };
 
 export const api = {
+  listTasks(): Promise<TaskCenterData> {
+    return request<TaskCenterData>(`${API_ORIGIN}/api/tasks`);
+  },
+  getTask(id: string): Promise<ConversationState> {
+    return request<ConversationState>(`${API_ORIGIN}/api/tasks/${encodeURIComponent(id)}`);
+  },
+  cancelTask(id: string): Promise<{ id: string; status: SessionStatus }> {
+    return request(`${API_ORIGIN}/api/tasks/${encodeURIComponent(id)}/cancel`, { method: 'POST' });
+  },
   /**
    * 健康檢查：探測後端 /api/healthz 是否可達。
    * server 能回應即代表 LLM provider 的 API key 已通過啟動驗證（AI 可正常呼叫）。

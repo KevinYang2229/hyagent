@@ -184,3 +184,13 @@ describe('reportStore（db 後端）', () => {
     ]);
   });
 });
+
+
+it('user task listing filters the DB query by both tenant and owner without selecting bytes', async () => {
+  const { reportStore } = loadStoreInDbMode();
+  await reportStore.listByTenant('tenant-a', { userId: 'owner-a' });
+  expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+    where: { tenantId: 'tenant-a', userId: 'owner-a', expiresAt: { gt: expect.any(Date) } },
+  }));
+  expect(findMany.mock.calls[0][0].select.content).toBeUndefined();
+});

@@ -69,7 +69,7 @@ function WorkingDots(): JSX.Element {
   );
 }
 
-export function ReportStatus({ reportId }: { reportId: string }): JSX.Element {
+export function ReportStatus({ reportId, showLabel = false }: { reportId: string; showLabel?: boolean }): JSX.Element {
   const { t } = useTranslation();
   const [data, setData] = useState<ReportData | null>(null);
   // 輪詢已放棄（連續失敗過多，或收到 404 代表報告已不存在）：停止輪詢並提示使用者，
@@ -188,6 +188,7 @@ export function ReportStatus({ reportId }: { reportId: string }): JSX.Element {
         }}
       >
         {isWorking ? <WorkingIcon /> : <DocumentIcon />}
+        {showLabel && <span>{label}</span>}
       </button>
 
       <Dialog

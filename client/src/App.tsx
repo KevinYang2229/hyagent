@@ -22,6 +22,7 @@ import { embedConfig, fetchAppearance } from './embedConfig';
 import { pickKnowledgePrompts, type SuggestedPrompts } from './knowledgePrompt';
 import { pickInitialFormId, shouldShowFormPicker } from './formPicker';
 import FormView from './FormView';
+import TaskCenter from './TaskCenter';
 import LoginView from './LoginView';
 import AuthErrorView from './AuthErrorView';
 import SettingsMenu, { FONT_MAX, FONT_MIN } from './SettingsMenu';
@@ -137,6 +138,7 @@ export default function App() {
   // 有值時顯示整頁錯誤畫面，取代「靜默掉回帳密登入頁」。
   const [authError, setAuthError] = useState<string | null>(null);
   const userId = authUser?.id ?? '';
+  const [view, setView] = useState<'chat' | 'tasks'>('chat');
   const [convId, setConvId] = useState<string | null>(null);
   const [status, setStatus] = useState<SessionStatus | null>(null);
   const [values, setValues] = useState<Record<string, unknown>>({});
@@ -440,6 +442,7 @@ export default function App() {
   }
 
   function handleLogout() {
+    setView('chat');
     auth.logout();
     setAuthUser(null);
     setBalances([]);
@@ -482,6 +485,30 @@ export default function App() {
         );
       }
     }
+  }
+
+  async function openTask(id: string) {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const restored = await api.getTask(id);
+      const def = await api.getForm(restored.formId);
+      // 兩個讀取都成功才替換目前對話，失敗時保留使用者原本的工作。
+      setConvId(restored.id);
+      setStatus(restored.status);
+      setValues(restored.values);
+      setSubmission(restored.submission ?? null);
+      setSelectedFormId(restored.formId);
+      setFormDef(def);
+      setInput('');
+      setPaneOpen(true);
+      setMessages([{ id: nextId(), role: 'agent', at: Date.now(), text: t(
+        restored.status === 'submitted' ? 'tasks.restoredSubmission' : 'tasks.restored',
+        { title: def.data.title ?? restored.formId },
+      ) }]);
+      setShowForm(restored.status === 'confirming' || restored.status === 'submitted');
+      setView('chat');
+    } finally { setBusy(false); }
   }
 
   async function loadAndShowForm(sessionId: string | null) {
@@ -630,6 +657,9 @@ export default function App() {
   const replySuggestions = lastMsg?.role === 'agent' ? (lastMsg.suggestions ?? []) : [];
 
   function reset() {
+    if (busy) return;
+    setView('chat');
+    setInput('');
     // 復用 resetSessionState 清全部 session 狀態（含 formDef）——先前此處是它的複製版但漏了
     // setFormDef(null)，導致「重新開始」後殘留前一張表單、下一張表單確認畫面顯示錯表單。
     resetSessionState();
@@ -864,7 +894,21 @@ export default function App() {
         </header>
       )}
 
-      <div className="app-body">
+      {!PREVIEW && <nav className="workspace-nav" aria-label={t('tasks.categories')}>
+        <button type="button" aria-pressed={view === 'chat'} disabled={busy} onClick={() => setView('chat')}>{t('tasks.chat')}</button>
+        <button type="button" aria-pressed={view === 'tasks'} disabled={busy || showForm} onClick={() => setView('tasks')}>{t('tasks.title')}</button>
+      </nav>}
+      {view === 'tasks' ? <TaskCenter
+        onOpen={openTask}
+        onNew={reset}
+        onCancelled={(id) => {
+          if (convId === id) {
+            resetSessionState();
+            setInput('');
+            setMessages([{ id: nextId(), role: 'sys', at: Date.now(), text: t('app.cancelledMsg') }]);
+          }
+        }}
+      /> : <div className="app-body">
         <div className="chat-pane">
           <div className="msg-list" ref={listRef}>
             {messages.map((m) =>
@@ -1113,7 +1157,7 @@ export default function App() {
           {valueEntries.length ? (
             valueEntries.map(([k, v]) => (
               <div className="kv-row" key={k}>
-                <span className="kv-key">{k}</span>
+                <span className="kv-key">{formDef?.field[k]?.label ?? k}</span>
                 <span className="kv-val">{formatPaneValue(v)}</span>
               </div>
             ))
@@ -1148,7 +1192,7 @@ export default function App() {
           </div>
         </aside>
         )}
-      </div>
+      </div>}
 
       {showForm && formDef && (
         <FormView

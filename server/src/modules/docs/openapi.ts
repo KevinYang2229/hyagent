@@ -11,7 +11,7 @@ export const openapiSpec = {
   openapi: "3.0.3",
   info: {
     title: "HyAgent API",
-    version: "1.1.0",
+    version: "1.2.0",
     description:
       "對話式表單填寫 Agent 的整合 API（多租戶）。嵌入 widget、SDK、webhook 共用此 API。",
   },
@@ -111,6 +111,42 @@ export const openapiSpec = {
           "200": { description: "OK" },
           "401": { description: "token 無效" },
           "403": { description: "租戶未啟用 SSO" },
+        },
+      },
+    },
+    "/api/tasks": {
+      get: {
+        tags: ["tasks"],
+        summary: "我的任務：未完成表單、已送申請與未過期報告",
+        description: "依驗證過的使用者與租戶篩選，僅回清單 metadata；不觸發 LLM，月配額耗盡仍可查閱。",
+        responses: {
+          "200": { description: "data: { drafts, submissions, reports }；各分類依時間由新到舊排列" },
+          "401": { description: "未認證或 SSO token 租戶不符" },
+        },
+      },
+    },
+    "/api/tasks/{id}": {
+      get: {
+        tags: ["tasks"], summary: "還原本人的表單任務（回傳同對話狀態，無 LLM 逐字稿）",
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        responses: {
+          "200": { description: "data: { id, formId, status, values, submission? }" },
+          "401": { description: "未認證或租戶不符" },
+          "403": { description: "表單已無使用權限" },
+          "404": { description: "不存在或非本人" },
+        },
+      },
+    },
+    "/api/tasks/{id}/cancel": {
+      post: {
+        tags: ["tasks"], summary: "取消本人的未完成表單",
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        responses: {
+          "200": { description: "已取消，暫存附件已清除" },
+          "401": { description: "未認證或租戶不符" },
+          "403": { description: "表單已無使用權限" },
+          "404": { description: "不存在或非本人" },
+          "409": { description: "已送出、送出中或已取消，無法取消" },
         },
       },
     },

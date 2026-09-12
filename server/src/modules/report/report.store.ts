@@ -34,6 +34,8 @@ export interface ReportListItem {
 }
 
 export interface ReportListFilter {
+  /** 使用者端清單必須限定建立者。 */
+  userId?: string;
   /** 建立時間下界（ISO，含端點） */
   from?: string;
   /** 建立時間上界（ISO，含端點） */
@@ -166,7 +168,7 @@ export const reportStore = {
     };
 
     const rows: Row[] = [...docs.values()]
-      .filter((d) => d.tenantId === tenantId)
+      .filter((d) => d.tenantId === tenantId && (!filter.userId || d.userId === filter.userId))
       .map((d) => ({
         reportId: d.reportId,
         userId: d.userId,
@@ -180,7 +182,7 @@ export const reportStore = {
       const db = getDb();
       if (db) {
         const dbRows = await db.reportDocRow.findMany({
-          where: { tenantId, expiresAt: { gt: now } },
+          where: { tenantId, ...(filter.userId ? { userId: filter.userId } : {}), expiresAt: { gt: now } },
           select: {
             reportId: true,
             userId: true,
