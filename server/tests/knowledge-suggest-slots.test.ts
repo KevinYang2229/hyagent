@@ -1,3 +1,7 @@
+jest.mock('@/modules/knowledge/knowledge.visibility', () => ({
+  ...jest.requireActual('@/modules/knowledge/knowledge.visibility'),
+  guestVisibilityScopesOf: () => ['kb:public'], // explicitly grant fixture content
+}));
 /**
  * 兩格生成：各來源各一句、manual 格跳過 LLM、來源清空只清該格。
  */
@@ -11,8 +15,8 @@ import { knowledgeStore } from '@/modules/knowledge/knowledge.store';
 import { refreshSuggestedPrompts } from '@/modules/knowledge/knowledge.suggest';
 import type { KnowledgeIndexFile } from '@/modules/knowledge/knowledge-index.types';
 
-const webChunk = { id: 'w1', url: 'https://x.com/a', title: '方案介紹', text: '智慧閱讀提供三種方案', vector: [1] };
-const fileChunk = { id: 'f1', url: 'file://a.pdf', title: 'a.pdf', text: '育兒補助需檢附戶口名簿', vector: [1], fileId: 'file-1' };
+const webChunk = { id: 'w1', url: 'https://x.com/a', title: '方案介紹', text: '智慧閱讀提供三種方案', visibilityScopes: ['kb:public'], vector: [1] };
+const fileChunk = { id: 'f1', url: 'file://a.pdf', title: 'a.pdf', text: '育兒補助需檢附戶口名簿', visibilityScopes: ['kb:public'], vector: [1], fileId: 'file-1' };
 
 const idxOf = (chunks: KnowledgeIndexFile['chunks']): KnowledgeIndexFile => ({
   generatedAt: 't',

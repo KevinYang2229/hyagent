@@ -10,7 +10,6 @@ import { logger } from '@/lib/logger';
 import { normalizeLocale } from '@/lib/locale';
 import { rerankChunks } from '@/modules/knowledge/rerank';
 import { pickRetriever } from '@/modules/knowledge/retriever.pick';
-import { aclModeOf } from '@/modules/knowledge/knowledge.visibility';
 import type { KnowledgeChunk, RetrievalPrincipal } from '@/modules/knowledge/retriever.types';
 import { usageStore } from '@/modules/usage/usage.store';
 import { getEmbeddingProvider } from '@/lib/embedding';
@@ -705,39 +704,9 @@ export function pickChartColumns(table: StoredTable): { li: number; vi: number }
   return { li, vi };
 }
 
-/**
- * 圖表產製這一族函式（autoChart/autoChartFrom/buildComparisonChart/buildExactChart）
- * 對外仍以 tenantId 呼叫——它們也被多個測試直接呼叫，改動對外簽名的影響面遠超本次任務。
- * userId 為可選的第二個身分要素：composeSection 手上有真正的操作者，會一路往下傳；
- * off/shadow（預設，也是既有約 35 處測試呼叫所在）不受影響，因為過濾條件本來就只在
- * acl==='on' 時才會被組進 SQL。
- *
- * 沒傳 userId 又剛好 acl==='on' 時才有事：退回以 tenantId 頂替 userId 丟進
- * visibilityScopesOf → resolveScopes({tenantId, userId: tenantId})。tenantId 不是真實
- * 使用者，getApplicant(tenantId) 找不到目錄項，回退到 UNKNOWN_DEPARTMENT（見
- * user.directory.ts）——這正是設計 §3 掛公開 widget／訪客授權的鉤點：一旦該租戶把
- * `kb:public` 之類的 scope 指派給 UNKNOWN_DEPARTMENT（訪客部門），resolveScopes 解析出
- * 的就不是空陣列，而是「訪客能看的公開範圍」。失效長相因此是**用租戶 id 頂替出的假身分
- * 拿到公開範圍的表**，不是「零張表」；只有在該租戶從未把任何 scope 授予訪客部門時才會
- * 剛好等同零張表。方向仍是最小權限、不洩漏非公開資料（fail-closed 沒被打破），但範圍
- * 判斷錯了就可能讓圖表看到不該被這個呼叫路徑看到的公開表，且沒有任何錯誤或警告。
- *
- * 為什麼不乾脆把 userId 改成必填：那需要把它從 report.job.ts 的 params.userId
- * 一路貫穿到 autoChart/buildExactChart，並同步改掉前述約 35 處測試呼叫，超出目前
- * 範圍。保留可選參數但在這裡留下痕跡（warn），讓日後任何省略 userId 的新呼叫端
- * 在 acl=on 的租戶上至少能從 log 回溯，而不是被當成「查無資料」悄悄放過。
- */
+/** Missing user identity uses explicit guest scopes, never an account named after the tenant. */
 function principalOf(tenantId: string, userId?: string): RetrievalPrincipal {
-  if (userId === undefined && aclModeOf(tenantId) === 'on') {
-    logger.warn(
-      { tenantId },
-      'report table access missing userId under acl=on; falls back to tenantId as the '
-        + 'principal, which resolves to the guest/UNKNOWN_DEPARTMENT scope grants (often '
-        + 'kb:public), not zero scopes — table lookups may see the tenant\'s public tables '
-        + 'rather than silently returning nothing',
-    );
-  }
-  return { tenantId, userId: userId ?? tenantId };
+  return { tenantId, userId: userId ?? '' };
 }
 
 async function autoChartFrom(

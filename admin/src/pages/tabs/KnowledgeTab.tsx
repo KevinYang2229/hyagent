@@ -14,24 +14,14 @@ import {
 } from "../../api";
 import NumberField from "../../components/NumberField";
 import {
-  type AclMode,
-  buildAclOnConfirmMessage,
   countFilesWithLabel,
   fileLabelState,
   isValidLabelId,
   kbScopeId,
   labelNameFor,
-  needsAclOnConfirm,
   sourceNeedsAclWarning,
   stripKbPrefix,
 } from "./knowledgeAcl.util";
-
-/** off → shadow → on 是遷移路徑，不是三個平等選項；UI 上要讀起來像階段推進 */
-const ACL_MODE_STEPS: { mode: AclMode; label: string }[] = [
-  { mode: "off", label: "① 關閉" },
-  { mode: "shadow", label: "② 觀察" },
-  { mode: "on", label: "③ 啟用" },
-];
 
 const EMBEDDING_MODELS = ["text-embedding-3-large", "text-embedding-3-small"];
 type SourceKind = "website" | "file";
@@ -78,7 +68,6 @@ export default function KnowledgeTab({
   const [savingVisibility, setSavingVisibility] = useState(false);
   // ACL 盤點面板
   const [aclReport, setAclReport] = useState<KnowledgeAclReport | null>(null);
-  const [changingAclMode, setChangingAclMode] = useState(false);
   const [regenerating, setRegenerating] = useState<PromptSource | null>(null); // 手動重新生成開場推薦詞中的來源
   const [dragOver, setDragOver] = useState(false); // 拖放上傳區的 drag-over 高亮
   // 手動編輯中的來源與草稿（null = 沒有在編輯）
@@ -257,41 +246,6 @@ export default function KnowledgeTab({
       await Promise.all([load(), loadAcl()]);
     } catch (e) {
       onError(e);
-    }
-  };
-
-  // ---- ACL 模式切換 ----
-
-  /**
-   * 切換三態旗標。切到 on 之前用目前已載入的 aclReport 算出代價並在
-   * window.confirm 裡攤開來——off/shadow 不會讓任何東西消失，不需要確認。
-   * 成功後重新載入盤點資料，讓 badge 與清單反映新狀態。
-   */
-  const changeAclMode = async (mode: AclMode) => {
-    if (!aclReport || mode === aclReport.mode || changingAclMode) return;
-    if (needsAclOnConfirm(mode)) {
-      const msg = buildAclOnConfirmMessage({
-        unlabeledCount: aclReport.unlabeled.length,
-        explicitlyEmptyCount: aclReport.explicitlyEmpty.length,
-        source: aclReport.source,
-      });
-      if (!confirm(msg)) return;
-    }
-    setChangingAclMode(true);
-    try {
-      await api.updateTenant(tenantId, { knowledgeAcl: mode });
-      await loadAcl();
-      toast.success(
-        mode === "off"
-          ? "已切回關閉，權限過濾停用"
-          : mode === "shadow"
-            ? "已切換為觀察模式，尚未實際擋人"
-            : "已啟用權限過濾",
-      );
-    } catch (e) {
-      onError(e);
-    } finally {
-      setChangingAclMode(false);
     }
   };
 
@@ -865,17 +819,7 @@ export default function KnowledgeTab({
               <div className="card-title">索引狀態</div>
               <div className="card-desc">解析進度與目前索引摘要。</div>
             </div>
-            <span
-              className={`badge ${meta.status === "ready" ? "badge-on" : "badge-off"}`}
-            >
-              {running
-                ? "解析中"
-                : meta.status === "ready"
-                  ? "已就緒"
-                  : meta.status === "failed"
-                    ? "失敗"
-                    : "尚未建立"}
-            </span>
+            <span className="badge badge-on">權限過濾已強制啟用</span>
           </div>
           <div className="card-body">
             {running ? (
@@ -1052,7 +996,7 @@ export default function KnowledgeTab({
             <div>
               <div className="card-title">ACL 盤點</div>
               <div className="card-desc">
-                目前生效模式與可見性標記完整度；shadow 模式下另附被擋統計，用於補標漏網文件。
+                文件必須有可見性標籤，且使用者獲得對應授權，才會出現在查詢與報告中。
               </div>
             </div>
             <span
@@ -1072,36 +1016,10 @@ export default function KnowledgeTab({
             </span>
           </div>
           <div className="card-body">
-            {/* off → shadow → on 是遷移路徑，不是三顆平等按鈕：用 .tabs 分段控制表達
-                「階段推進」的順序感，跳過 shadow 直接切 on 是最容易出事的走法 */}
-            <div
-              className="tabs"
-              role="tablist"
-              aria-label="權限過濾模式（遷移路徑：關閉→觀察→啟用）"
-            >
-              {ACL_MODE_STEPS.map((s) => (
-                <button
-                  key={s.mode}
-                  type="button"
-                  className={`tab ${aclReport.mode === s.mode ? "active" : ""}`}
-                  disabled={changingAclMode || aclReport.mode === s.mode}
-                  onClick={() => changeAclMode(s.mode)}
-                >
-                  {s.label}
-                </button>
-              ))}
-            </div>
-
-            {aclReport.mode === "off" && (
-              <div className="row-sub" style={{ marginBottom: 12, color: "var(--status-warning)" }}>
-                目前為「① 關閉」：權限過濾尚未生效，所有人都能查到未標記／已清空的內容——
-                下方與檔案清單裡的「無人可見」標示描述的是切到「③ 啟用」後才會發生的事，不是現況。
-              </div>
-            )}
             {sourceNeedsAclWarning(aclReport.source) && (
               <div className="row-sub" style={{ marginBottom: 12, color: "var(--status-danger)" }}>
                 警示：網站來源尚未標記可見性（來源標籤是整個來源一組，不在下方檔案清單內，
-                不算進「未標記文件」的數字）。切換為「③ 啟用」後，整個網站爬取語料將對所有人不可見。
+                不算進「未標記文件」的數字）。目前整個網站語料都不可被查詢，請先設定標籤。
               </div>
             )}
 

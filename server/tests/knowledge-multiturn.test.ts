@@ -1,3 +1,4 @@
+import { scopePolicy } from '@/modules/authz/scope-policy';
 /**
  * 知識問答的多輪脈絡。
  *
@@ -26,6 +27,7 @@ let tenantId: string;
 
 beforeAll(() => {
   tenantId = tenantStore.createTenant('kb-multiturn').id;
+  scopePolicy.setPolicy(tenantId, { groups: { '—': ['kb:public'] }, accounts: {} });
   _setIndexForTest(tenantId, {
     generatedAt: '',
     model: 'test-embed',
@@ -36,7 +38,7 @@ beforeAll(() => {
         url: 'file://案件表',
         title: '案件表',
         text: '管制代號：430-01\n主辦單位：教育文化處\n完成日期：2013/02/04',
-        vector: [1, 0, 0],
+        visibilityScopes: ['kb:public'], vector: [1, 0, 0],
       },
     ],
   });

@@ -17,8 +17,8 @@ import type { Session, TurnResult } from './conversation.types';
 import { pickFormId } from './intent-router';
 
 /** 申請人欄位值格式：姓名(工號)，與真實 OA 畫面一致 */
-function formatApplicant(userId: string): string {
-  const profile = getApplicant(userId);
+function formatApplicant(userId: string, tenantId: string): string {
+  const profile = getApplicant(userId, tenantId);
   return `${profile.name}(${profile.id})`;
 }
 
@@ -50,7 +50,7 @@ export const conversationService = {
     usageStore.increment(tenantId, 'conversations');
     // 申請人／外出人＝目前登入者，建立 session 時即帶入（代人申請時使用者可再覆寫）
     if (def && 'applicant' in def.data.properties) {
-      session.values.applicant = formatApplicant(userId);
+      session.values.applicant = formatApplicant(userId, tenantId);
     }
     conversationStore.save(session);
     if (message && message.trim()) {

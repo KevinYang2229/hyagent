@@ -44,14 +44,8 @@ export const patchTenantSchema = z
     appearance: appearanceSchema.optional(),
     // 月度 LLM token 配額；0 = 不限
     quotaMonthlyLlmTokens: z.number().int().min(0).optional(),
-    /**
-     * 知識庫可見性過濾的三態遷移旗標；未設＝off（行為與導入前相同）。
-     * 此前寫入端只有 tenantStore.updateTenant 這個內部呼叫（測試/種子資料用），
-     * PATCH tenant 沒有這個欄位，上線程序「切 shadow、切 on」與「回滾＝改一個字」
-     * 都做不到，實際要人工改持久化 JSON／DB 列再重啟。白名單（tenant.store.ts 的
-     * updateTenant）已經支援這個欄位，缺的只是 schema 這一道門。
-     */
-    knowledgeAcl: z.enum(['off', 'shadow', 'on']).optional(),
+    /** ACL cannot be disabled through the admin API. */
+    knowledgeAcl: z.literal('on').optional(),
   })
   .refine((v) => Object.keys(v).length > 0, { message: '至少需提供一個欄位' });
 

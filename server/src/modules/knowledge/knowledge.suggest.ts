@@ -1,3 +1,4 @@
+import { promptAclFingerprint } from './prompt-visibility';
 /**
  * 依索引內容生成 widget 開場推薦問句，依來源（網站／檔案）分兩格獨立生成。
  *
@@ -12,7 +13,7 @@ import { getLLMProvider } from '@/lib/llm';
 import { logger } from '@/lib/logger';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 import { usageStore } from '@/modules/usage/usage.store';
-import { aclModeOf, guestVisibilityScopesOf } from './knowledge.visibility';
+import { aclModeOf, guestVisibilityScopesOf, currentChunkScopes } from './knowledge.visibility';
 // KnowledgeIndexText（不含向量）而非 KnowledgeIndexFile：本模組只讀 text/title/fileId，
 // 收窄型別讓呼叫端可以省下整份向量的傳輸；完整索引仍可直接指派進來
 import type { ChunkText, KnowledgeIndexText } from './knowledge-index.types';
@@ -215,8 +216,8 @@ export async function refreshSuggestedPrompts(
   idx: KnowledgeIndexText,
 ): Promise<SuggestedPromptSlots | undefined> {
   const gen = beginGeneration(tenantId);
-
   try {
+    const fingerprint = promptAclFingerprint(tenantId);
     const bySource = splitChunksBySource(idx.chunks);
     const current = knowledgeStore.getMeta(tenantId).suggestedPrompts ?? {};
     // 推薦問句經免登入的 GET /api/widget/config 送給任何拿到 pk_ 的訪客；acl=off 沿用
@@ -229,11 +230,13 @@ export async function refreshSuggestedPrompts(
     // 這裡只決定 generated，manual 留給 await 之後重讀 meta 時才決定，見下方函式註解。
     const entries = await Promise.all(
       SOURCE_KEYS.map(async (key: SourceKey) => {
-        const slot = current[key] ?? {};
+        const original = current[key] ?? {};
+        const slot = knowledgeStore.getMeta(tenantId).generatedPromptAcl?.[key] === fingerprint
+          ? original : { manual: original.manual };
         // 手動鎖定：整格跳過，不呼叫 LLM（生成了也用不到）——沿用舊的 generated 即可
         if (slot.manual) return [key, slot.generated] as const;
         const rawChunks = bySource[key];
-        const chunks = mode === 'off' ? rawChunks : filterGuestVisibleChunks(rawChunks, guestScopes);
+        const chunks = mode === 'off' ? rawChunks : filterGuestVisibleChunks(rawChunks.map((c) => ({ ...c, visibilityScopes: currentChunkScopes(tenantId, c) })), guestScopes);
         // 該來源已無「訪客看得到」的內容：清掉 generated，不留指向已隱藏內容的句子
         // ——包含「有內容但全部未標記／非公開」與「本來就沒內容」兩種情況。
         if (chunks.length === 0) return [key, undefined] as const;
@@ -247,7 +250,7 @@ export async function refreshSuggestedPrompts(
     );
 
     // 世代防護：await 期間若有更晚發動的呼叫（含清空）已完成，這批結果已過期
-    if (!isLatestGeneration(tenantId, gen)) {
+    if (!isLatestGeneration(tenantId, gen) || fingerprint !== promptAclFingerprint(tenantId)) {
       logger.warn({ tenantId }, 'suggested prompt 生成期間已有更新的呼叫，放棄過期寫入');
       return undefined;
     }
@@ -269,6 +272,7 @@ export async function refreshSuggestedPrompts(
     knowledgeStore.setMeta(tenantId, {
       ...latestMeta,
       suggestedPrompts: hasAny ? next : undefined,
+      generatedPromptAcl: Object.fromEntries(entries.filter(([, generated]) => generated).map(([key]) => [key, fingerprint])),
     });
     return hasAny ? next : undefined;
   } catch (err) {
@@ -315,10 +319,11 @@ export async function regenerateSlot(
 ): Promise<RegenerateOutcome> {
   const gen = beginGeneration(tenantId);
   try {
+    const fingerprint = promptAclFingerprint(tenantId);
     const rawChunks = splitChunksBySource(idx.chunks)[source];
     const mode = aclModeOf(tenantId);
     const guestScopes = mode === 'off' ? [] : guestVisibilityScopesOf(tenantId);
-    const chunks = mode === 'off' ? rawChunks : filterGuestVisibleChunks(rawChunks, guestScopes);
+    const chunks = mode === 'off' ? rawChunks : filterGuestVisibleChunks(rawChunks.map((c) => ({ ...c, visibilityScopes: currentChunkScopes(tenantId, c) })), guestScopes);
     // 呼叫端已先擋掉「該來源根本沒有 chunk」，走到這裡為空只可能是 ACL 濾掉了全部
     if (chunks.length === 0) return { ok: false, reason: 'no-visible-chunks' };
     const material = sampleIndexForSuggestion({ ...idx, chunks });
@@ -326,7 +331,7 @@ export async function regenerateSlot(
 
     const generated = await generateOne(tenantId, material);
     if (!generated) return { ok: false, reason: 'generation-failed' };
-    if (!isLatestGeneration(tenantId, gen)) {
+    if (!isLatestGeneration(tenantId, gen) || fingerprint !== promptAclFingerprint(tenantId)) {
       logger.warn({ tenantId }, 'suggested prompt 單格重生期間已有更新的呼叫，放棄過期寫入');
       return { ok: false, reason: 'superseded' };
     }
@@ -334,7 +339,7 @@ export async function regenerateSlot(
     const meta = knowledgeStore.getMeta(tenantId);
     const slots = { ...(meta.suggestedPrompts ?? {}) };
     slots[source] = { ...(slots[source] ?? {}), generated };
-    knowledgeStore.setMeta(tenantId, { ...meta, suggestedPrompts: slots });
+    knowledgeStore.setMeta(tenantId, { ...meta, suggestedPrompts: slots, generatedPromptAcl: { ...meta.generatedPromptAcl, [source]: fingerprint } });
     return { ok: true, prompts: generated };
   } catch (err) {
     logger.warn({ err, tenantId, source }, 'suggested prompt 單格重生失敗');

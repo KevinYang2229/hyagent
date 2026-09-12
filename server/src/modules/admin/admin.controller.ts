@@ -44,8 +44,8 @@ function ensureTenant(id: string) {
 }
 
 function publicTenant(tenant: NonNullable<ReturnType<typeof tenantStore.getTenant>>) {
-  const { ssoSecret, ssoVersion: _ssoVersion, llmConfig: _llmConfig, ...safe } = tenant;
-  return { ...safe, ssoConfigured: Boolean(ssoSecret) };
+  const { ssoSecret, ssoVersion: _ssoVersion, userDirectory: _userDirectory, llmConfig: _llmConfig, ...safe } = tenant;
+  return { ...safe, knowledgeAcl: 'on' as const, ssoConfigured: Boolean(ssoSecret) };
 }
 
 export const adminController = {
@@ -225,8 +225,8 @@ export const adminController = {
         bundles: (policy.bundles ?? []).map((b) => ({ ...b, scopes: prune(b.scopes) })),
         groupBundles: policy.groupBundles ?? {},
         accountBundles: policy.accountBundles ?? {},
-        departments: listDepartments(),
-        users: listUserIds().map((id) => ({ id, label: getApplicant(id).name })),
+        departments: listDepartments(tenant.id),
+        users: listUserIds(tenant.id).map((id) => ({ id, label: getApplicant(id, tenant.id).name })),
       },
     });
   },
@@ -274,8 +274,8 @@ export const adminController = {
         bundles: policy.bundles ?? [],
         groupBundles: policy.groupBundles ?? {},
         accountBundles: policy.accountBundles ?? {},
-        departments: listDepartments(),
-        users: listUserIds().map((id) => ({ id, label: getApplicant(id).name })),
+        departments: listDepartments(tenant.id),
+        users: listUserIds(tenant.id).map((id) => ({ id, label: getApplicant(id, tenant.id).name })),
       },
     });
   },

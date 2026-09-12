@@ -1,3 +1,4 @@
+import { scopePolicy } from '@/modules/authz/scope-policy';
 /**
  * 知識庫 RAG：cosine 相似度、靜態索引檢索器（含 MIN_SCORE 過濾與排序）、
  * KnowledgeAgentService 以 top-k 片段綜合作答，且旁路不觸碰 form 狀態。
@@ -44,9 +45,9 @@ const fixtureIndex: KnowledgeIndexFile = {
   model: 'test',
   source: 'https://example.com',
   chunks: [
-    { id: 'A', url: 'https://example.com/a', title: 'HyCMS 網站管理平台', text: 'HyCMS 內容管理', vector: [1, 0, 0] },
-    { id: 'B', url: 'https://example.com/b', title: '無關頁', text: '無關內容', vector: [0, 1, 0] },
-    { id: 'C', url: 'https://example.com/c', title: 'HyLib 圖書自動化', text: '圖書系統', vector: [0.3, 0.95, 0] },
+    { id: 'A', url: 'https://example.com/a', title: 'HyCMS 網站管理平台', text: 'HyCMS 內容管理', visibilityScopes: ['kb:public'], vector: [1, 0, 0] },
+    { id: 'B', url: 'https://example.com/b', title: '無關頁', text: '無關內容', visibilityScopes: ['kb:public'], vector: [0, 1, 0] },
+    { id: 'C', url: 'https://example.com/c', title: 'HyLib 圖書自動化', text: '圖書系統', visibilityScopes: ['kb:public'], vector: [0.3, 0.95, 0] },
   ],
 };
 
@@ -120,3 +121,5 @@ describe('knowledgeAgentService（RAG 綜合作答）', () => {
     expect(mockCreate).not.toHaveBeenCalled();
   });
 });
+
+beforeEach(() => scopePolicy.setPolicy('rag-test', { groups: { '—': ['kb:public'] }, accounts: {} }));

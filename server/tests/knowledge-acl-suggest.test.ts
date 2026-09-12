@@ -173,21 +173,14 @@ describe('refreshSuggestedPrompts 依 acl 階段過濾語料', () => {
     expect(knowledgeStore.getMeta(tenantId).suggestedPrompts).toBeUndefined();
   });
 
-  it('acl=off：沿用導入前行為，不過濾，未標記 chunk 一樣能生成推薦問句', async () => {
+  it('legacy off does not expose unlabeled content in generated prompts', async () => {
     mockLLM(GOOD);
     const tenantId = makeTenant('sug-acl-off', 'off');
-    const idx: KnowledgeIndexFile = {
-      generatedAt: 't', model: 'm', source: 's',
-      chunks: [{ id: 'a', url: 'u', title: '一般內容', text: '申請補助需檢附身分證明', vector: [1] }],
-    };
+    const idx: KnowledgeIndexFile = { generatedAt: 't', model: 'm', source: 's', chunks: [{ id: 'a', url: 'u', title: 'secret', text: 'secret', vector: [1] }] };
     knowledgeStore.setMeta(tenantId, { status: 'ready', chunkCount: 1 });
-
     await refreshSuggestedPrompts(tenantId, idx);
-
-    expect(mockCreate).toHaveBeenCalledTimes(1);
-    expect(knowledgeStore.getMeta(tenantId).suggestedPrompts).toEqual({
-      website: { generated: { 'zh-Hant': '補助要附什麼文件？', en: 'What documents are needed?' } },
-    });
+    expect(mockCreate).not.toHaveBeenCalled();
+    expect(knowledgeStore.getMeta(tenantId).suggestedPrompts).toBeUndefined();
   });
 });
 
@@ -260,23 +253,11 @@ describe('regenerateSlot（後台「重新生成推薦問句」按鈕）依 acl 
     expect(mockCreate).not.toHaveBeenCalled();
   });
 
-  it('acl=off：沿用導入前行為，不過濾，未標記 chunk 一樣能生成推薦問句', async () => {
+  it('legacy off cannot regenerate from unlabeled content', async () => {
     mockLLM(GOOD);
     const tenantId = makeTenant('regen-acl-off', 'off');
-    const idx: KnowledgeIndexFile = {
-      generatedAt: 't', model: 'm', source: 's',
-      chunks: [{ id: 'a', url: 'u', title: '一般內容', text: '申請補助需檢附身分證明', vector: [1] }],
-    };
-    knowledgeStore.setMeta(tenantId, { status: 'ready', chunkCount: 1 });
-
-    const result = await regenerateSlot(tenantId, 'website', idx);
-
-    expect(result).toEqual({
-      ok: true,
-      prompts: { 'zh-Hant': '補助要附什麼文件？', en: 'What documents are needed?' },
-    });
-    expect(mockCreate).toHaveBeenCalledTimes(1);
-    const material = (mockCreate.mock.calls[0][0].messages[0].content[0] as { text: string }).text;
-    expect(material).toContain('申請補助需檢附身分證明');
+    const idx: KnowledgeIndexFile = { generatedAt: 't', model: 'm', source: 's', chunks: [{ id: 'a', url: 'u', title: 'secret', text: 'secret', vector: [1] }] };
+    expect(await regenerateSlot(tenantId, 'website', idx)).toEqual({ ok: false, reason: 'no-visible-chunks' });
+    expect(mockCreate).not.toHaveBeenCalled();
   });
 });

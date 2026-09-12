@@ -80,6 +80,8 @@ export interface KnowledgeIndexMeta {
    * 有效句 = manual ?? generated；無內容時不存在，widget 即不顯示該顆 chip。
    */
   suggestedPrompts?: SuggestedPromptSlots;
+  /** Authorization fingerprint for each generated (public) prompt. */
+  generatedPromptAcl?: Partial<Record<'website' | 'file', string>>;
   /**
    * 各來源的 chunk 數。widget config 是免登入端點，不該為了算數量去讀整份索引檔，
    * 故在索引寫入時一併記下。舊 meta 無此欄，讀取端需自備退路。

@@ -32,7 +32,7 @@ jest.mock('@/config/env', () => ({
   },
 }));
 
-import { setFileVisibility } from '@/modules/knowledge/knowledge.visibility';
+import { setFileVisibility, setSourceVisibility } from '@/modules/knowledge/knowledge.visibility';
 
 function sqlTextOf(call: unknown[]): string {
   const parts = call[0] as unknown as { raw?: readonly string[] };
@@ -43,6 +43,19 @@ import { listTableCatalog, loadTable, searchTableCatalog } from '@/modules/knowl
 import { tenantStore } from '@/modules/tenant/tenant.store';
 
 describe('標籤更新的原子性', () => {
+  it('website scope changes update both projections without touching file rows', async () => {
+    executeRaw.mockClear();
+    await setSourceVisibility('t1', []);
+    const calls = executeRaw.mock.calls;
+    expect(calls).toHaveLength(2);
+    expect(calls.map(sqlTextOf).join(' ')).toContain('update knowledge_chunks');
+    expect(calls.map(sqlTextOf).join(' ')).toContain('update knowledge_tables');
+    for (const call of calls) {
+      expect(sqlTextOf(call)).toContain('file_id is null');
+      expect(call.slice(1)).toEqual([[], 't1']);
+    }
+  });
+
   it('setFileVisibility 同時更新 chunks 與 tables', async () => {
     executeRaw.mockClear();
     await setFileVisibility('t1', 'f1', ['kb:hr']);
@@ -95,13 +108,13 @@ describe('表格檢索沒有側門', () => {
     expect(lastQueryRawSql()).toContain('visibility_scopes &&');
   });
 
-  it('acl=off 時 loadTable 不帶可見性條件（遷移期行為零改變）', async () => {
+  it('舊 acl=off 的 loadTable 仍強制權限條件', async () => {
     const t = tenantStore.createTenant('acl-tables-loadtable-off-test');
     tenantStore.updateTenant(t.id, { knowledgeAcl: 'off' });
     queryRaw.mockClear();
     await loadTable({ tenantId: t.id, userId: 'nobody' }, 'table-1');
 
-    expect(lastQueryRawSql()).not.toContain('visibility_scopes &&');
+    expect(lastQueryRawSql()).toContain('visibility_scopes &&');
   });
 
   /**
@@ -121,12 +134,12 @@ describe('表格檢索沒有側門', () => {
     expect(lastQueryRawSql()).toContain('visibility_scopes &&');
   });
 
-  it('acl=off 時 listTableCatalog 不帶可見性條件（遷移期行為零改變）', async () => {
+  it('舊 acl=off 的目錄仍強制權限條件', async () => {
     const t = tenantStore.createTenant('acl-tables-listcatalog-off-test');
     tenantStore.updateTenant(t.id, { knowledgeAcl: 'off' });
     queryRaw.mockClear();
     await listTableCatalog({ tenantId: t.id, userId: 'nobody' });
 
-    expect(lastQueryRawSql()).not.toContain('visibility_scopes &&');
+    expect(lastQueryRawSql()).toContain('visibility_scopes &&');
   });
 });

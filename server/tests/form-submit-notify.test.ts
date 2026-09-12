@@ -26,6 +26,7 @@ describe('送出後通知信（best-effort）', () => {
 
   it('租戶授予 email:write → 送出成功且寄出通知', async () => {
     const t = tenantStore.createTenant('notify-yes');
+    tenantStore.updateTenant(t.id, { userDirectory: [{ id: 'kevin', name: 'Kevin', department: '行銷部', email: 'kevin@example.com' }] });
     tenantStore.updateTenant(t.id, { grantedScopes: ['service:form', 'form:outing-registration'] });
     tenantStore.updateTenant(t.id, { grantedScopes: ['email:write', 'service:form', 'form:outing-registration'] });
     const submit = resolveSubmit('outing-registration');
@@ -37,6 +38,7 @@ describe('送出後通知信（best-effort）', () => {
 
   it('未授予 email:write → 送出仍成功、不寄信', async () => {
     const t = tenantStore.createTenant('notify-no');
+    tenantStore.updateTenant(t.id, { userDirectory: [{ id: 'kevin', name: 'Kevin', department: '行銷部', email: 'kevin@example.com' }] });
     tenantStore.updateTenant(t.id, { grantedScopes: ['service:form', 'form:outing-registration'] });
     const submit = resolveSubmit('outing-registration');
     const result = await submit(t.id, 'kevin', validOutingValues());

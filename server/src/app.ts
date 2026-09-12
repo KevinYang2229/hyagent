@@ -28,6 +28,7 @@ import { tenantSelfRouter } from '@/modules/tenant/tenant.routes';
  */
 export function createApp(): Express {
   const app = express();
+  if (env.TRUST_PROXY.trim()) app.set('trust proxy', env.TRUST_PROXY.split(',').map((p) => p.trim()).filter(Boolean));
 
   app.disable('x-powered-by');
   app.use(helmet());

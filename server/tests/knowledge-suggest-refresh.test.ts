@@ -1,3 +1,7 @@
+jest.mock('@/modules/knowledge/knowledge.visibility', () => ({
+  ...jest.requireActual('@/modules/knowledge/knowledge.visibility'),
+  guestVisibilityScopesOf: () => ['kb:public'], // explicitly grant fixture content
+}));
 /**
  * 推薦問句生成協調：寫入 meta、失敗回落、索引清空時清除、計費歸戶。
  */
@@ -16,7 +20,7 @@ const idx: KnowledgeIndexFile = {
   generatedAt: 't',
   model: 'm',
   source: 's',
-  chunks: [{ id: 'a', url: 'u', title: '補助辦法', text: '申請補助需檢附身分證明', vector: [1] }],
+  chunks: [{ id: 'a', url: 'u', title: '補助辦法', text: '申請補助需檢附身分證明', visibilityScopes: ['kb:public'], vector: [1] }],
 };
 
 const emptyIdx: KnowledgeIndexFile = { ...idx, chunks: [] };

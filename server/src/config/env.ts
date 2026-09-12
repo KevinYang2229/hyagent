@@ -58,6 +58,14 @@ export const envSchema = z.object({
 
   REDIS_URL: z.string().default('redis://localhost:6379'),
 
+  // Empty = do not trust proxy headers; configure only actual reverse proxy IPs/CIDRs.
+  TRUST_PROXY: z.string().default(''),
+  AUTH_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(900_000),
+  AUTH_LOGIN_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(20),
+  AUTH_ADMIN_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(10),
+  AUTH_SSO_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(60),
+  AUTH_REFRESH_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(120),
+
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
 
@@ -131,7 +139,6 @@ export const envSchema = z.object({
     const insecureDefaults: Array<[string, boolean]> = [
       ['JWT_ACCESS_SECRET', val.JWT_ACCESS_SECRET === DEV_JWT_ACCESS_SECRET],
       ['JWT_REFRESH_SECRET', val.JWT_REFRESH_SECRET === DEV_JWT_REFRESH_SECRET],
-      ['AUTH_DEV_PASSWORD', val.AUTH_DEV_PASSWORD === DEV_AUTH_PASSWORD],
     ];
     for (const [key, isDefault] of insecureDefaults) {
       if (isDefault) {

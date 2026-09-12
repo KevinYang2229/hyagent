@@ -219,7 +219,7 @@ async function dispatchFormTool(
 
   if (name === 'find_deputy_candidates') {
     const department = typeof input.department === 'string' ? input.department : undefined;
-    const candidates = listDeputyCandidates({ requesterId: session.userId, department });
+    const candidates = listDeputyCandidates({ tenantId: session.tenantId, requesterId: session.userId, department });
     return JSON.stringify({ ok: true, candidates });
   }
 

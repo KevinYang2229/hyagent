@@ -15,8 +15,9 @@ export interface ScopePrincipal {
 
 export function resolveScopes(principal: ScopePrincipal): string[] {
   const { tenantId, userId } = principal;
+  if (!userId) return resolveGuestScopes(tenantId);
   const tenantScopes = tenantStore.getTenant(tenantId)?.grantedScopes ?? [];
-  const department = getApplicant(userId).department;
+  const department = getApplicant(userId, tenantId).department;
   const groupScopes = scopePolicy.groupScopes(tenantId, department);
   const accountScopes = scopePolicy.accountScopes(tenantId, userId);
   // 套餐（bundle）展開：部門/帳號被指派的具名 scope 集合，與零散 scope 聯集
@@ -32,4 +33,14 @@ export function resolveScopes(principal: ScopePrincipal): string[] {
       ...accountBundleScopes,
     ]),
   ];
+}
+
+/** Guest lookup never fabricates a user ID that could collide with an account. */
+export function resolveGuestScopes(tenantId: string): string[] {
+  return [...new Set([
+    ...BASE_SCOPE_IDS,
+    ...(tenantStore.getTenant(tenantId)?.grantedScopes ?? []),
+    ...scopePolicy.groupScopes(tenantId, '—'),
+    ...scopePolicy.groupBundleScopes(tenantId, '—'),
+  ])];
 }

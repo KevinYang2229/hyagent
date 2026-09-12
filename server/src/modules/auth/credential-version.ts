@@ -31,7 +31,7 @@ export async function validateIdentity(payload: JwtPayload): Promise<void> {
     if (!tenant.ssoSecret || payload.credentialVersion !== credentialVersion(tenant)) {
       throw AppError.unauthorized('SSO credentials revoked');
     }
-  } else if (payload.via !== 'password' || payload.tenantId !== 'default') {
+  } else if (payload.via !== 'password' || payload.tenantId !== 'default' || env.NODE_ENV === 'production') {
     throw AppError.unauthorized('Invalid login source');
   }
 }

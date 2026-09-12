@@ -15,7 +15,9 @@ afterEach(() => scopePolicy.clear());
 
 // kevin 在 mock 名錄屬「行銷部」；建獨立租戶避免污染 default
 function makeTenant() {
-  return tenantStore.createTenant(`bundle-test-${Date.now()}-${Math.random()}`);
+  const t = tenantStore.createTenant(`bundle-test-${Date.now()}-${Math.random()}`);
+  tenantStore.updateTenant(t.id, { userDirectory: [{ id: "kevin", name: "Kevin", department: "行銷部" }] });
+  return t;
 }
 
 describe('resolveScopes 套餐展開', () => {

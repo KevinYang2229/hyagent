@@ -48,6 +48,7 @@ function issueTokens(payload: JwtPayload): AuthTokens {
 export const authService = {
   /** 帳密驗證 → 簽發 access/refresh token 與使用者資料 */
   login(userId: string, password: string): LoginResult {
+    if (env.NODE_ENV === 'production') throw AppError.forbidden('正式環境請使用 SSO 登入');
     // MVP：已知帳號 + 固定 dev 密碼。錯誤訊息不分帳號/密碼以免帳號列舉。
     if (!isKnownUser(userId) || password !== env.AUTH_DEV_PASSWORD) {
       throw AppError.unauthorized('帳號或密碼錯誤');
@@ -120,7 +121,7 @@ export const authService = {
   },
 
   /** 取目前登入者資料（requireAuth 後使用） */
-  me(userId: string): Applicant {
-    return getApplicant(userId);
+  me(userId: string, tenantId = 'default'): Applicant {
+    return getApplicant(userId, tenantId);
   },
 };

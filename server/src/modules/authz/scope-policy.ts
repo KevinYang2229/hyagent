@@ -85,26 +85,30 @@ function expandBundles(p: TenantPolicy | undefined, bundleIds: string[]): string
   return bundleIds.flatMap((id) => byId.get(id) ?? []);
 }
 
+function grants(map: Record<string, string[]> | undefined, key: string): string[] {
+  return map && Object.prototype.hasOwnProperty.call(map, key) && Array.isArray(map[key]) ? map[key] : [];
+}
+
 const EMPTY: TenantPolicy = { groups: {}, accounts: {} };
 
 export const scopePolicy = {
   groupScopes(tenantId: string, department?: string): string[] {
     if (!department) return [];
-    return policies.get(tenantId)?.groups[department] ?? [];
+    return grants(policies.get(tenantId)?.groups, department);
   },
   accountScopes(tenantId: string, userId: string): string[] {
-    return policies.get(tenantId)?.accounts[userId] ?? [];
+    return grants(policies.get(tenantId)?.accounts, userId);
   },
   /** 部門被指派套餐的展開 scopes */
   groupBundleScopes(tenantId: string, department?: string): string[] {
     if (!department) return [];
     const p = policies.get(tenantId);
-    return expandBundles(p, p?.groupBundles?.[department] ?? []);
+    return expandBundles(p, grants(p?.groupBundles, department));
   },
   /** 帳號被指派套餐的展開 scopes */
   accountBundleScopes(tenantId: string, userId: string): string[] {
     const p = policies.get(tenantId);
-    return expandBundles(p, p?.accountBundles?.[userId] ?? []);
+    return expandBundles(p, grants(p?.accountBundles, userId));
   },
   /** 取某租戶政策複本（admin 讀取用）。 */
   getPolicy(tenantId: string): TenantPolicy {

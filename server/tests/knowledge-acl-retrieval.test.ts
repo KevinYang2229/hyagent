@@ -93,14 +93,14 @@ describe('pgvector 可見性過濾', () => {
     invalidatePgvectorModelCache(tid);
   });
 
-  it('acl=off：完全不加可見性條件（遷移期行為零改變）', async () => {
+  it('舊 acl=off 仍强制 SQL 可見性條件', async () => {
     const tid = makeTenant('acl-retr-2', 'off');
     invalidatePgvectorModelCache(tid);
     mockQueries([]);
     await pgvectorRetriever.search({ tenantId: tid, userId: 'guest-2' }, 'HyCMS 是什麼');
     // visibility_scopes 欄位本身仍在 select 清單中（shadow 統計需要），
     // 這裡守的是「不加過濾條件」——off 與 shadow 皆不應出現 `visibility_scopes &&` 這道 pre-filter。
-    expect(lastSqlText()).not.toContain('visibility_scopes &&');
+    expect(lastSqlText()).toContain('visibility_scopes &&');
     invalidatePgvectorModelCache(tid);
   });
 
@@ -138,62 +138,12 @@ describe('pgvector 可見性過濾', () => {
     invalidatePgvectorModelCache(tid);
   });
 
-  /**
-   * shadow：SQL 未過濾（回傳仍是未過濾結果），差集計算改在 Node 端模擬、旁路記錄。
-   * 這段是最容易埋隱藏 bug 的地方——.some() 邏輯寫反、allowed 跟 visibility_scopes 弄反、
-   * file_id 為 null 的網站 chunk 沒排除掉，任何一個都會讓統計悄悄失真。
-   */
-  describe('acl=shadow', () => {
-    // 混合有權（kb:public）、無權（kb:hr）、無權且同檔重複、無權但無 file_id（網站來源）、
-    // 以及從未標記（visibility_scopes 為 null，fail-closed 下視同無權）五種候選，
-    // 讓斷言能分辨「哪些該進 blockedFileIds、哪些不該」，而不只是「有沒有被呼叫」。
-    const rows = [
-      { id: 'C1', url: 'u1', title: '公開一', text: '公開內容一', cosine: 0.9, file_id: 'f1', visibility_scopes: ['kb:public'] },
-      { id: 'C2', url: 'u2', title: '人資一', text: '人資內容一', cosine: 0.88, file_id: 'f2', visibility_scopes: ['kb:hr'] },
-      { id: 'C3', url: 'u3', title: '人資二（同檔）', text: '人資內容二', cosine: 0.86, file_id: 'f2', visibility_scopes: ['kb:hr'] },
-      { id: 'C4', url: 'u4', title: '網站來源片段', text: '網站內容', cosine: 0.84, file_id: null, visibility_scopes: ['kb:hr'] },
-      { id: 'C5', url: 'u5', title: '未標記檔', text: '未標記內容', cosine: 0.82, file_id: 'f3', visibility_scopes: null },
-    ];
-
-    function setup(): string {
-      const tid = makeTenant('acl-retr-shadow', 'shadow');
-      invalidatePgvectorModelCache(tid);
-      const policy = scopePolicy.getPolicy(tid);
-      policy.groups[UNKNOWN_DEPARTMENT] = ['kb:public'];
-      scopePolicy.setPolicy(tid, policy);
-      mockQueries(rows);
-      return tid;
-    }
-
-    it('回傳給使用者的候選未被過濾：數量與內容跟 off 相同，無權 chunk 仍在回傳裡', async () => {
-      const tid = setup();
-      const out = await pgvectorRetriever.search({ tenantId: tid, userId: 'guest-shadow' }, '公開與人資內容');
-      // 五筆候選 cosine 皆 >= MIN_SCORE，keepChunk 全數保留；shadow 不過濾，全數回傳。
-      expect(out.map((c) => c.id).sort()).toEqual(['C1', 'C2', 'C3', 'C4', 'C5']);
-      invalidatePgvectorModelCache(tid);
-    });
-
-    it('recordShadowBlocks 收到的 blockedFileIds 恰好是無權那些檔，不多不少；file_id 為 null 的候選不會混進去', async () => {
-      const tid = setup();
-      await pgvectorRetriever.search({ tenantId: tid, userId: 'guest-shadow' }, '公開與人資內容');
-
-      expect(recordShadowBlocks).toHaveBeenCalledTimes(1);
-      const [calledTenantId, calledUserId, blockedFileIds] = recordShadowBlocks.mock.calls[0] as [string, string, string[]];
-      expect(calledTenantId).toBe(tid);
-      expect(calledUserId).toBe('guest-shadow');
-      // f1（有權，kb:public）不該出現；f2（無權，來自 C2+C3 兩筆重複）只計一次；
-      // C4 無 file_id 不該混進來；f3（未標記＝fail-closed 視同無權）該出現。
-      expect([...blockedFileIds].sort()).toEqual(['f2', 'f3']);
-      invalidatePgvectorModelCache(tid);
-    });
-
-    it('acl=off 時 recordShadowBlocks 不該被呼叫（負面案例：避免無條件記錄矇混過關）', async () => {
-      const tid = makeTenant('acl-retr-shadow-off', 'off');
-      invalidatePgvectorModelCache(tid);
-      mockQueries(rows);
-      await pgvectorRetriever.search({ tenantId: tid, userId: 'guest-off' }, '公開與人資內容');
-      expect(recordShadowBlocks).not.toHaveBeenCalled();
-      invalidatePgvectorModelCache(tid);
-    });
+  it('legacy shadow uses the same SQL pre-filter and never returns unfiltered shadow results', async () => {
+    const tid = makeTenant('legacy-shadow', 'shadow');
+    invalidatePgvectorModelCache(tid);
+    mockQueries([]);
+    await pgvectorRetriever.search({ tenantId: tid, userId: 'guest' }, '查詢');
+    expect(lastSqlText()).toContain('visibility_scopes &&');
+    expect(recordShadowBlocks).not.toHaveBeenCalled();
   });
 });

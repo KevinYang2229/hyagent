@@ -34,7 +34,7 @@ export async function submitLeaveApplication(
   }
 
   // 依申請人所屬地區的工時政策換算請假時數（排除午休等）
-  const region = getApplicant(userId).region;
+  const region = getApplicant(userId, tenantId).region;
   const hours = def.policy
     ? computeLeaveHours(values, def.policy, region).hours
     : undefined;
@@ -83,7 +83,7 @@ export const leaveService = {
   ): { hours: number; region?: string } | null {
     const def = getDefinition(tenantId, FORM_ID);
     if (!def.policy) return null;
-    const region = getApplicant(userId).region;
+    const region = getApplicant(userId, tenantId).region;
     const { hours } = computeLeaveHours(values, def.policy, region);
     return { hours, region };
   },

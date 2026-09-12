@@ -111,7 +111,7 @@ async function notifyOnSubmit(
   submission: FormSubmission,
 ): Promise<void> {
   try {
-    const to = getApplicant(userId).email;
+    const to = getApplicant(userId, tenantId).email;
     if (!to) return; // 無 email → 略過
     const title = getDefinition(tenantId, formId).data.title ?? formId;
     await toolRegistry.invoke(

@@ -29,6 +29,7 @@ describe('admin 權限 API', () => {
 
   it('getPolicy 的 capabilities 含靜態服務與該租戶表單', async () => {
     const t = tenantStore.createTenant('admin-policy-capabilities');
+    tenantStore.updateTenant(t.id, { userDirectory: [{ id: 'kevin', name: 'Kevin', department: '行銷部', email: 'kevin@example.com' }] });
     const getRes = mockRes();
     await adminController.getPolicy({ params: { id: t.id } } as never, getRes as never);
     const body = (getRes.body as { data: { capabilities: { id: string }[] } }).data;
@@ -39,6 +40,7 @@ describe('admin 權限 API', () => {
 
   it('setPolicy 寫入後 resolveScopes 生效；GET 讀回（含 capabilities）', async () => {
     const t = tenantStore.createTenant('admin-policy-test');
+    tenantStore.updateTenant(t.id, { userDirectory: [{ id: 'kevin', name: 'Kevin', department: '行銷部', email: 'kevin@example.com' }] });
     const req = { params: { id: t.id }, body: { grantedScopes: ['erp:read'], groups: { 行銷部: ['email:write'] }, accounts: {} } };
     await adminController.setPolicy(req as never, mockRes() as never);
 
@@ -61,6 +63,7 @@ describe('admin 權限 API', () => {
 
   it('setPolicy 授予 form:<id> 生效：resolveScopes 含之，回應也含 capabilities', async () => {
     const t = tenantStore.createTenant('admin-policy-form-grant');
+    tenantStore.updateTenant(t.id, { userDirectory: [{ id: 'kevin', name: 'Kevin', department: '行銷部', email: 'kevin@example.com' }] });
     const req = {
       params: { id: t.id },
       body: { grantedScopes: ['service:form', 'form:leave-request'], groups: {}, accounts: {} },
@@ -78,6 +81,7 @@ describe('admin 權限 API', () => {
 
   it('setPolicy tenant-aware：授予他租戶才有的表單被擋 400', async () => {
     const t = tenantStore.createTenant('admin-policy-form-reject');
+    tenantStore.updateTenant(t.id, { userDirectory: [{ id: 'kevin', name: 'Kevin', department: '行銷部', email: 'kevin@example.com' }] });
     const req = {
       params: { id: t.id },
       body: { grantedScopes: ['form:no-such-form-for-this-tenant'], groups: {}, accounts: {} },
@@ -89,6 +93,7 @@ describe('admin 權限 API', () => {
 
   it('getPolicy 濾掉孤兒 scope（已刪表單的 form:<id>），使 GET→PUT 冪等不再 400', async () => {
     const t = tenantStore.createTenant('admin-policy-orphan');
+    tenantStore.updateTenant(t.id, { userDirectory: [{ id: 'kevin', name: 'Kevin', department: '行銷部', email: 'kevin@example.com' }] });
     // 模擬孤兒：租戶授予中殘留一個不存在表單的 form scope（如表單被刪後未撤銷）
     tenantStore.updateTenant(t.id, {
       grantedScopes: ['service:form', 'form:leave-request', 'form:ghost-deleted-form'],
@@ -112,6 +117,7 @@ describe('admin 權限 API', () => {
 
   it('getPolicy 對 grantedScopes 額外濾掉 kb: 前綴（防禦深度：即使繞過寫入端誤植入也不回傳）', async () => {
     const t = tenantStore.createTenant('admin-policy-kb-smuggled');
+    tenantStore.updateTenant(t.id, { userDirectory: [{ id: 'kevin', name: 'Kevin', department: '行銷部', email: 'kevin@example.com' }] });
     tenantStore.updateTenant(t.id, {
       knowledgeLabels: [{ id: 'hr', label: '人資文件' }],
       // 直接寫 store，模擬繞過 assertTenantGrantable 的寫入路徑（手改資料檔 / 未來程式碼疏漏）。
@@ -129,18 +135,21 @@ describe('admin 權限 API', () => {
 
   it('授予非 grantable（BASE/未知）被擋 400', async () => {
     const t = tenantStore.createTenant('admin-policy-bad');
+    tenantStore.updateTenant(t.id, { userDirectory: [{ id: 'kevin', name: 'Kevin', department: '行銷部', email: 'kevin@example.com' }] });
     const req = { params: { id: t.id }, body: { grantedScopes: ['oa:write'], groups: {}, accounts: {} } };
     await expect(adminController.setPolicy(req as never, mockRes() as never)).rejects.toMatchObject({ statusCode: 400 });
   });
 
   it('部門授權含非 grantable 被擋 400', async () => {
     const t = tenantStore.createTenant('admin-policy-bad-group');
+    tenantStore.updateTenant(t.id, { userDirectory: [{ id: 'kevin', name: 'Kevin', department: '行銷部', email: 'kevin@example.com' }] });
     const req = { params: { id: t.id }, body: { grantedScopes: [], groups: { 行銷部: ['oa:write'] }, accounts: {} } };
     await expect(adminController.setPolicy(req as never, mockRes() as never)).rejects.toMatchObject({ statusCode: 400 });
   });
 
   it('帳號授權含非 grantable 被擋 400', async () => {
     const t = tenantStore.createTenant('admin-policy-bad-acct');
+    tenantStore.updateTenant(t.id, { userDirectory: [{ id: 'kevin', name: 'Kevin', department: '行銷部', email: 'kevin@example.com' }] });
     const req = { params: { id: t.id }, body: { grantedScopes: [], groups: {}, accounts: { kevin: ['nope:read'] } } };
     await expect(adminController.setPolicy(req as never, mockRes() as never)).rejects.toMatchObject({ statusCode: 400 });
   });
@@ -150,6 +159,7 @@ describe('admin 權限 API', () => {
   // 與路由脫鉤時測不出來（脫鉤後果是知識庫標籤對公開 widget 全員含訪客開放）。
   it('PUT policy：租戶層 grantedScopes 含 kb: 一律 400；同一標籤在 groups/accounts 合法可 200', async () => {
     const t = tenantStore.createTenant('admin-policy-kb-http');
+    tenantStore.updateTenant(t.id, { userDirectory: [{ id: 'kevin', name: 'Kevin', department: '行銷部', email: 'kevin@example.com' }] });
     tenantStore.updateTenant(t.id, { knowledgeLabels: [{ id: 'hr', label: '人資文件' }] });
 
     // 租戶層：會併給該租戶所有人含訪客，kb: 一律擋（無白名單例外）

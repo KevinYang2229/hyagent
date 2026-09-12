@@ -1,3 +1,4 @@
+import { scopePolicy } from '@/modules/authz/scope-policy';
 /**
  * 後台推薦詞端點：POST 單格重新生成（/admin/tenants/:id/knowledge/suggestion）
  * 與 PUT 手動覆寫／恢復自動（同一路徑）。
@@ -68,7 +69,8 @@ beforeEach(() => {
 describe('POST /admin/tenants/:id/knowledge/suggestion', () => {
   it('生成成功回傳新問句並寫入 meta', async () => {
     const tenantId = 'sug-admin-ok';
-    writeIndex(tenantId, [chunk]);
+    scopePolicy.setPolicy(tenantId, { groups: { '—': ['kb:public'] }, accounts: {} });
+    writeIndex(tenantId, [{ ...chunk, visibilityScopes: ['kb:public'] }]);
     knowledgeStore.setMeta(tenantId, { status: 'ready', chunkCount: 1 });
     mockLLM('{"zh-Hant":"育兒補助要附什麼？","en":"What to submit for the subsidy?"}');
 
@@ -98,8 +100,9 @@ describe('POST /admin/tenants/:id/knowledge/suggestion', () => {
 
   it('生成失敗回 422，且不拿 meta 裡的舊句充數', async () => {
     const tenantId = 'sug-admin-fail';
+    scopePolicy.setPolicy(tenantId, { groups: { '—': ['kb:public'] }, accounts: {} });
     const stale = { 'zh-Hant': '上一次的舊問句？', en: 'Previous prompt?' };
-    writeIndex(tenantId, [chunk]);
+    writeIndex(tenantId, [{ ...chunk, visibilityScopes: ['kb:public'] }]);
     knowledgeStore.setMeta(tenantId, {
       status: 'ready',
       chunkCount: 1,
@@ -126,7 +129,7 @@ describe('POST /admin/tenants/:id/knowledge/suggestion', () => {
 
   it('指定 file 來源但索引只有網站 chunks → 422', async () => {
     const tenantId = 'sug-admin-wrong-source';
-    writeIndex(tenantId, [chunk]);
+    writeIndex(tenantId, [{ ...chunk, visibilityScopes: ['kb:public'] }]);
     knowledgeStore.setMeta(tenantId, { status: 'ready', chunkCount: 1 });
     mockLLM('{"zh-Hant":"不該被呼叫","en":"should not be called"}');
 
@@ -159,9 +162,10 @@ describe('POST /admin/tenants/:id/knowledge/suggestion', () => {
     expect(res.body.error.message).not.toContain('請稍後再試');
   });
 
-  it('acl=off 時 LLM 失敗仍維持「請稍後再試」（可重試的那條路不能被新訊息蓋掉）', async () => {
+  it('已授權公開語料的 LLM 失敗仍維持「請稍後再試」（可重試的那條路不能被新訊息蓋掉）', async () => {
     const tenantId = 'sug-admin-fail-msg';
-    writeIndex(tenantId, [chunk]);
+    scopePolicy.setPolicy(tenantId, { groups: { '—': ['kb:public'] }, accounts: {} });
+    writeIndex(tenantId, [{ ...chunk, visibilityScopes: ['kb:public'] }]);
     knowledgeStore.setMeta(tenantId, { status: 'ready', chunkCount: 1 });
     mockLLM('這不是 JSON');
 
@@ -176,7 +180,7 @@ describe('POST /admin/tenants/:id/knowledge/suggestion', () => {
 
   it('解析任務進行中時回 409', async () => {
     const tenantId = 'sug-admin-running-job';
-    writeIndex(tenantId, [chunk]);
+    writeIndex(tenantId, [{ ...chunk, visibilityScopes: ['kb:public'] }]);
     knowledgeStore.setMeta(tenantId, { status: 'ready', chunkCount: 1 });
     mockLLM('{"zh-Hant":"不該被呼叫","en":"should not be called"}');
     // 注入永不完成的 run，製造「進行中」job（getRunningJobForTenant 命中），比照 knowledge-file-admin.test.ts
@@ -197,7 +201,7 @@ describe('POST /admin/tenants/:id/knowledge/suggestion', () => {
 describe('PUT /admin/tenants/:id/knowledge/suggestion', () => {
   it('PUT 設定手動值後 slot.manual 生效', async () => {
     const tenantId = 'sug-admin-manual';
-    writeIndex(tenantId, [chunk]);
+    writeIndex(tenantId, [{ ...chunk, visibilityScopes: ['kb:public'] }]);
     knowledgeStore.setMeta(tenantId, { status: 'ready', chunkCount: 1 });
 
     const res = await request(app)
@@ -216,7 +220,7 @@ describe('PUT /admin/tenants/:id/knowledge/suggestion', () => {
   it('PUT manual: null 清除手動值，generated 保留', async () => {
     const tenantId = 'sug-admin-manual-clear';
     const generated = { 'zh-Hant': '自動句？', en: 'Auto?' };
-    writeIndex(tenantId, [chunk]);
+    writeIndex(tenantId, [{ ...chunk, visibilityScopes: ['kb:public'] }]);
     knowledgeStore.setMeta(tenantId, {
       status: 'ready',
       chunkCount: 1,
@@ -235,7 +239,7 @@ describe('PUT /admin/tenants/:id/knowledge/suggestion', () => {
 
   it('PUT 的 zh-Hant 為空字串 → 400', async () => {
     const tenantId = 'sug-admin-manual-empty';
-    writeIndex(tenantId, [chunk]);
+    writeIndex(tenantId, [{ ...chunk, visibilityScopes: ['kb:public'] }]);
     knowledgeStore.setMeta(tenantId, { status: 'ready', chunkCount: 1 });
 
     await request(app)

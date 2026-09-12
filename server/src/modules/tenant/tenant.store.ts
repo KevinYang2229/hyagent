@@ -221,6 +221,7 @@ function seedDefaults(): void {
   tenants.set(DEFAULT_TENANT_ID, {
     id: DEFAULT_TENANT_ID,
     name: '預設租戶（向後相容）',
+    knowledgeAcl: 'on',
     allowedOrigins: allowedOrigins.length ? allowedOrigins : ['*'],
     createdAt: now,
   });
@@ -309,6 +310,7 @@ export const tenantStore = {
     const tenant: Tenant = {
       id: randomBytes(8).toString('hex'),
       name,
+      knowledgeAcl: 'on',
       allowedOrigins,
       ssoSecret,
       ssoVersion: randomBytes(16).toString('hex'),
@@ -345,6 +347,7 @@ export const tenantStore = {
     patch: Partial<
       Pick<
         Tenant,
+        | 'userDirectory'
         | 'name'
         | 'allowedOrigins'
         | 'ssoSecret'
@@ -364,6 +367,7 @@ export const tenantStore = {
     if (!tenant) return undefined;
     const next: Tenant = {
       ...tenant,
+      ...(patch.userDirectory !== undefined ? { userDirectory: structuredClone(patch.userDirectory) } : {}),
       ...(patch.name !== undefined ? { name: patch.name } : {}),
       ...(patch.allowedOrigins !== undefined ? { allowedOrigins: patch.allowedOrigins } : {}),
       ...(patch.ssoSecret !== undefined ? { ssoSecret: patch.ssoSecret, ssoVersion: randomBytes(16).toString('hex') } : {}),

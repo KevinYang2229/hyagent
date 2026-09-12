@@ -13,8 +13,10 @@ describe('resolveScopes', () => {
   });
 
   it('部門授權只作用於該租戶', () => {
-    scopePolicy.setPolicy('tenant-A', { groups: { 行銷部: ['email:write'] }, accounts: {} });
-    expect(resolveScopes({ tenantId: 'tenant-A', userId: 'kevin' })).toContain('email:write'); // kevin=行銷部
+    const t = tenantStore.createTenant('directory-scopes');
+    tenantStore.updateTenant(t.id, { userDirectory: [{ id: 'kevin', name: 'Kevin', department: '行銷部' }] });
+    scopePolicy.setPolicy(t.id, { groups: { 行銷部: ['email:write'] }, accounts: {} });
+    expect(resolveScopes({ tenantId: t.id, userId: 'kevin' })).toContain('email:write'); // kevin=行銷部
     expect(resolveScopes({ tenantId: 'tenant-B', userId: 'kevin' })).not.toContain('email:write'); // 他租戶不受影響
   });
 

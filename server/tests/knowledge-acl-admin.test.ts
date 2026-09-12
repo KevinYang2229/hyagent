@@ -209,35 +209,14 @@ describe('PUT /knowledge/source 的 visibilityScopes 驗證已知標籤', () => 
  * 實際要人工改持久化 JSON／DB 列再重啟——而白名單（tenant.store.ts 的 updateTenant）
  * 其實已經支援這個欄位，缺的只是 schema 這一道門。這裡驗證 PATCH 端點打通了。
  */
-describe('PATCH /api/admin/tenants/:id 的 knowledgeAcl 控制面', () => {
-  it('接受 knowledgeAcl 並回存（切 shadow）', async () => {
-    const t = tenantStore.createTenant('acl-flag-shadow');
-    const res = await request(app)
-      .patch(`/api/admin/tenants/${t.id}`)
-      .set(auth)
-      .send({ knowledgeAcl: 'shadow' });
-
-    expect(res.status).toBe(200);
-    expect(res.body.data.knowledgeAcl).toBe('shadow');
-    expect(tenantStore.getTenant(t.id)?.knowledgeAcl).toBe('shadow');
-  });
-
-  it('接受 knowledgeAcl:"on"（切上線）與 "off"（回滾）', async () => {
-    const t = tenantStore.createTenant('acl-flag-on-off');
-    await request(app).patch(`/api/admin/tenants/${t.id}`).set(auth).send({ knowledgeAcl: 'on' }).expect(200);
+describe('ACL cannot be disabled by the administration API', () => {
+  it.each(['off', 'shadow', 'maybe'])('rejects knowledgeAcl=%s', async (mode) => {
+    const t = tenantStore.createTenant('acl-enforced');
+    await request(app).patch(`/api/admin/tenants/${t.id}`).set(auth).send({ knowledgeAcl: mode }).expect(422);
     expect(tenantStore.getTenant(t.id)?.knowledgeAcl).toBe('on');
-
-    // 回滾：改一個字就能退回 off，不需要任何其他操作
-    await request(app).patch(`/api/admin/tenants/${t.id}`).set(auth).send({ knowledgeAcl: 'off' }).expect(200);
-    expect(tenantStore.getTenant(t.id)?.knowledgeAcl).toBe('off');
   });
-
-  it('不合法的值回 422（zod 驗證失敗；三態之外一律拒絕）', async () => {
-    const t = tenantStore.createTenant('acl-flag-invalid');
-    await request(app)
-      .patch(`/api/admin/tenants/${t.id}`)
-      .set(auth)
-      .send({ knowledgeAcl: 'maybe' })
-      .expect(422);
+  it('accepts explicit on', async () => {
+    const t = tenantStore.createTenant('acl-on');
+    await request(app).patch(`/api/admin/tenants/${t.id}`).set(auth).send({ knowledgeAcl: 'on' }).expect(200);
   });
 });

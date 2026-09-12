@@ -30,6 +30,6 @@ export const authController = {
   // 受保護：回目前登入者資料（前端重整時還原登入狀態）
   async me(req: Request, res: Response): Promise<void> {
     const userId = req.user?.sub ?? '';
-    res.status(200).json({ data: authService.me(userId) });
+    res.status(200).json({ data: authService.me(userId, req.user!.tenantId!) });
   },
 };

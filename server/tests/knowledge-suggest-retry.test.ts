@@ -1,3 +1,7 @@
+jest.mock('@/modules/knowledge/knowledge.visibility', () => ({
+  ...jest.requireActual('@/modules/knowledge/knowledge.visibility'),
+  guestVisibilityScopesOf: () => ['kb:public'], // explicitly grant fixture content
+}));
 /**
  * 驗證未過時重試一次：改為兩格後，單次失敗的曝險加倍，值得用一次 Haiku 換。
  */
@@ -15,7 +19,7 @@ const idx: KnowledgeIndexFile = {
   generatedAt: 't',
   model: 'm',
   source: 's',
-  chunks: [{ id: 'w1', url: 'https://x.com/a', title: '方案', text: '智慧閱讀提供三種方案', vector: [1] }],
+  chunks: [{ id: 'w1', url: 'https://x.com/a', title: '方案', text: '智慧閱讀提供三種方案', visibilityScopes: ['kb:public'], vector: [1] }],
 };
 
 let mockCreate: jest.Mock;

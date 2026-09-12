@@ -21,7 +21,6 @@ jest.mock('@/modules/knowledge/knowledge.tables.repo', () => ({
   loadTable: (...a: unknown[]) => mockLoadTable(...a),
 }));
 
-import { logger } from '@/lib/logger';
 import { buildExactChart } from '@/modules/report/report.compose';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 
@@ -42,40 +41,15 @@ beforeEach(() => mockLoadTable.mockReset().mockResolvedValue(TABLE));
 // 不讓失敗的一筆殘留 spy／call 歷史外溢污染後續測試（曾經因為漏了這個而連環誤判）。
 afterEach(() => jest.restoreAllMocks());
 
-describe('省略 userId 時的 principal 退化', () => {
-  it('acl=on 且未傳 userId：warn 被呼叫，訊息點出退回訪客範圍、不是零張表', async () => {
-    const t = tenantStore.createTenant('report-principal-fallback-on');
-    tenantStore.updateTenant(t.id, { knowledgeAcl: 'on' });
-    const warnSpy = jest.spyOn(logger, 'warn').mockImplementation(() => logger);
-
+describe('missing userId uses a non-account guest principal', () => {
+  it('does not fabricate a user with the same ID as the tenant', async () => {
+    const t = tenantStore.createTenant('report-guest');
     await buildExactChart(t.id, { table: 'tbl-1', label: '國家', value: '人數' });
-
-    expect(warnSpy).toHaveBeenCalled();
-    const [meta, msg] = warnSpy.mock.calls[warnSpy.mock.calls.length - 1] as [
-      Record<string, unknown>,
-      string,
-    ];
-    expect(meta).toMatchObject({ tenantId: t.id });
-    expect(msg).toMatch(/UNKNOWN_DEPARTMENT|guest/i);
-    expect(msg).toMatch(/not zero scopes|public/i);
+    expect(mockLoadTable).toHaveBeenCalledWith({ tenantId: t.id, userId: '' }, 'tbl-1');
   });
-
-  it('acl=off（預設）且未傳 userId：不 warn——既有呼叫端不該被噪音淹沒', async () => {
-    const t = tenantStore.createTenant('report-principal-fallback-off');
-    const warnSpy = jest.spyOn(logger, 'warn').mockImplementation(() => logger);
-
-    await buildExactChart(t.id, { table: 'tbl-1', label: '國家', value: '人數' });
-
-    expect(warnSpy).not.toHaveBeenCalled();
-  });
-
-  it('acl=on 但有傳 userId：不 warn——這是正常的生產路徑', async () => {
-    const t = tenantStore.createTenant('report-principal-fallback-with-user');
-    tenantStore.updateTenant(t.id, { knowledgeAcl: 'on' });
-    const warnSpy = jest.spyOn(logger, 'warn').mockImplementation(() => logger);
-
+  it('preserves an explicit real identity', async () => {
+    const t = tenantStore.createTenant('report-user');
     await buildExactChart(t.id, { table: 'tbl-1', label: '國家', value: '人數' }, 'real-user');
-
-    expect(warnSpy).not.toHaveBeenCalled();
+    expect(mockLoadTable).toHaveBeenCalledWith({ tenantId: t.id, userId: 'real-user' }, 'tbl-1');
   });
 });

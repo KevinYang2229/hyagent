@@ -5,7 +5,7 @@
  * 為向後相容，系統內建一個 id='default' 的預設租戶：未帶 API Key 的舊 widget 一律落到此租戶，
  * 行為與改造前相同（見 resolve-tenant middleware 與 tenant.store 的種子資料）。
  */
-import type { TenantAppearance } from '@hyagent/shared';
+import type { Applicant, TenantAppearance } from '@hyagent/shared';
 import type { TenantLLMConfig } from '@/lib/llm/types';
 
 /** 公開金鑰（pk_）可放瀏覽器；秘密金鑰（sk_）只在伺服器端用。 */
@@ -35,6 +35,8 @@ export interface KnowledgeLabel {
 export interface Tenant {
   id: string;
   name: string;
+  /** Administrator-maintained directory, scoped to this tenant. */
+  userDirectory?: Array<Applicant & { deputyIds?: string[] }>;
   /**
    * widget/SDK 允許嵌入的來源網域清單；['*'] 代表全部放行（預設租戶用，維持改造前的 CORS '*' 行為）。
    * 動態 CORS 與 embed 來源驗證都讀這份清單。
@@ -61,12 +63,7 @@ export interface Tenant {
   grantedScopes?: string[];
   /** 知識庫可見性標籤目錄（租戶自訂分類）。id 進 scope 體系時前綴 kb:。 */
   knowledgeLabels?: KnowledgeLabel[];
-  /**
-   * 知識庫 ACL 階段旗標：
-   * off（預設）＝不過濾，行為與導入前完全相同；
-   * shadow＝不過濾但記錄「若啟用會擋掉什麼」；on＝強制過濾。
-   * 全租戶切至 on 後應移除三態邏輯，只留無條件過濾（見設計文件 §4）。
-   */
+  /** Legacy flags remain readable; runtime ACL is always enforced. */
   knowledgeAcl?: 'off' | 'shadow' | 'on';
   /** 是否已完成服務/表單 → scope 的一次性遷移；true 後遷移不再覆寫其授予。 */
   scopesMigrated?: boolean;

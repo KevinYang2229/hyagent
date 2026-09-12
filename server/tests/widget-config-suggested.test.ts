@@ -14,6 +14,7 @@
  *     supertest 版本會真正驗證 brief 介面契約寫的「GET /api/widget/config 回應」整條路徑。
  */
 import request from 'supertest';
+import { promptAclFingerprint } from '@/modules/knowledge/prompt-visibility';
 import { createApp } from '@/app';
 import { knowledgeStore } from '@/modules/knowledge/knowledge.store';
 import { tenantStore } from '@/modules/tenant/tenant.store';
@@ -35,6 +36,8 @@ describe('widget config 推薦問句', () => {
       },
     });
 
+    const fingerprint = promptAclFingerprint(tenant.id);
+    knowledgeStore.setMeta(tenant.id, { ...knowledgeStore.getMeta(tenant.id), generatedPromptAcl: { website: fingerprint, file: fingerprint } });
     const res = await request(app).get('/api/widget/config').query({ key: apiKey.key }).expect(200);
 
     expect(res.body.data.suggestedPrompts).toEqual([
@@ -59,6 +62,8 @@ describe('widget config 推薦問句', () => {
       },
     });
 
+    const fingerprint = promptAclFingerprint(tenant.id);
+    knowledgeStore.setMeta(tenant.id, { ...knowledgeStore.getMeta(tenant.id), generatedPromptAcl: { website: fingerprint, file: fingerprint } });
     const res = await request(app).get('/api/widget/config').query({ key: apiKey.key }).expect(200);
 
     expect(res.body.data.suggestedPrompts).toEqual([{ 'zh-Hant': '手動句？', en: 'Manual?' }]);
@@ -78,6 +83,8 @@ describe('widget config 推薦問句', () => {
       },
     });
 
+    const fingerprint = promptAclFingerprint(tenant.id);
+    knowledgeStore.setMeta(tenant.id, { ...knowledgeStore.getMeta(tenant.id), generatedPromptAcl: { website: fingerprint, file: fingerprint } });
     const res = await request(app).get('/api/widget/config').query({ key: apiKey.key }).expect(200);
 
     expect(res.body.data.suggestedPrompts).toEqual([{ 'zh-Hant': '網站句？', en: 'Website?' }]);
@@ -93,6 +100,8 @@ describe('widget config 推薦問句', () => {
       chunkCountBySource: { website: 3, file: 0 },
     });
 
+    const fingerprint = promptAclFingerprint(tenant.id);
+    knowledgeStore.setMeta(tenant.id, { ...knowledgeStore.getMeta(tenant.id), generatedPromptAcl: { website: fingerprint, file: fingerprint } });
     const res = await request(app).get('/api/widget/config').query({ key: apiKey.key }).expect(200);
 
     expect(res.body.data.suggestedPrompts).toEqual([]);
@@ -111,6 +120,8 @@ describe('widget config 推薦問句', () => {
       suggestedPrompts: { website: { generated: { 'zh-Hant': '補助怎麼申請？', en: 'How to apply?' } } },
     });
 
+    const fingerprint = promptAclFingerprint(tenant.id);
+    knowledgeStore.setMeta(tenant.id, { ...knowledgeStore.getMeta(tenant.id), generatedPromptAcl: { website: fingerprint, file: fingerprint } });
     const res = await request(app).get('/api/widget/config').query({ key: apiKey.key }).expect(200);
 
     expect(res.body.data.suggestedPrompts).toEqual([]);
@@ -128,6 +139,8 @@ describe('widget config 推薦問句', () => {
       suggestedPrompts: { website: { generated: { 'zh-Hant': '補助怎麼申請？', en: 'How to apply?' } } },
     });
 
+    const fingerprint = promptAclFingerprint(tenant.id);
+    knowledgeStore.setMeta(tenant.id, { ...knowledgeStore.getMeta(tenant.id), generatedPromptAcl: { website: fingerprint, file: fingerprint } });
     const res = await request(app).get('/api/widget/config').query({ key: apiKey.key }).expect(200);
 
     expect(res.body.data.suggestedPrompts).toEqual([]);
@@ -144,6 +157,8 @@ describe('widget config 推薦問句', () => {
       suggestedPrompts: { website: { generated: { 'zh-Hant': '補助怎麼申請？', en: 'How to apply?' } } },
     });
 
+    const fingerprint = promptAclFingerprint(tenant.id);
+    knowledgeStore.setMeta(tenant.id, { ...knowledgeStore.getMeta(tenant.id), generatedPromptAcl: { website: fingerprint, file: fingerprint } });
     const res = await request(app).get('/api/widget/config').query({ key: apiKey.key }).expect(200);
 
     expect(res.body.data.suggestedPrompts).toEqual([]);
@@ -162,6 +177,8 @@ describe('widget config 推薦問句', () => {
       suggestedPrompts: { website: { generated: { 'zh-Hant': '補助怎麼申請？', en: 'How to apply?' } } },
     });
 
+    const fingerprint = promptAclFingerprint(tenant.id);
+    knowledgeStore.setMeta(tenant.id, { ...knowledgeStore.getMeta(tenant.id), generatedPromptAcl: { website: fingerprint, file: fingerprint } });
     const res = await request(app).get('/api/widget/config').query({ key: apiKey.key }).expect(200);
 
     expect(res.body.data.knowledgeEnabled).toBe(false);
@@ -179,6 +196,8 @@ describe('widget config 推薦問句', () => {
       suggestedPrompts: { website: { generated: { 'zh-Hant': '補助怎麼申請？', en: 'How to apply?' } } },
     });
 
+    const fingerprint = promptAclFingerprint(tenant.id);
+    knowledgeStore.setMeta(tenant.id, { ...knowledgeStore.getMeta(tenant.id), generatedPromptAcl: { website: fingerprint, file: fingerprint } });
     const res = await request(app).get('/api/widget/config').query({ key: apiKey.key }).expect(200);
 
     expect(res.body.data.knowledgeEnabled).toBe(true);
@@ -196,6 +215,8 @@ describe('widget config 推薦問句', () => {
       suggestedPrompts: { website: { generated: { 'zh-Hant': '補助怎麼申請？', en: 'How to apply?' } } },
     });
 
+    const fingerprint = promptAclFingerprint(tenant.id);
+    knowledgeStore.setMeta(tenant.id, { ...knowledgeStore.getMeta(tenant.id), generatedPromptAcl: { website: fingerprint, file: fingerprint } });
     const res = await request(app).get('/api/widget/config').query({ key: apiKey.key }).expect(200);
 
     expect(res.body.data.suggestedPrompts).toEqual([]);

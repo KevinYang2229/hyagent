@@ -1,3 +1,4 @@
+import { publicPromptSlots } from '@/modules/knowledge/prompt-visibility';
 /**
  * 公開 widget 設定：依 resolveTenant 解出的租戶回外觀。
  * widget iframe 載入時讀取（帶 ?key=pk_…）；未設外觀則回內建預設。
@@ -14,6 +15,7 @@ const DEFAULT_APPEARANCE: Required<Pick<TenantAppearance, 'theme' | 'position'>>
 
 export const widgetController = {
   async getConfig(req: Request, res: Response): Promise<void> {
+    res.setHeader('Cache-Control', 'no-store');
     const appearance: TenantAppearance = { ...DEFAULT_APPEARANCE, ...(req.tenant?.appearance ?? {}) };
     // 此路由只掛 resolveTenant、無 requireAuth，widget 載入時尚無終端使用者身分可查 scope，
     // 故只判斷「全租戶層級」的授予；群組／帳號層的授予看不到（僅影響提示文案是否顯示，非實際
@@ -44,7 +46,7 @@ export const widgetController = {
     };
     const suggestedPrompts =
       knowledgeEnabled && meta?.status === 'ready' && meta.chunkCount > 0
-        ? effectivePrompts(meta.suggestedPrompts, counts)
+        ? effectivePrompts(publicPromptSlots(req.tenant!.id), counts)
         : [];
     res.status(200).json({ data: { appearance, knowledgeEnabled, suggestedPrompts } });
   },

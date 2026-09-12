@@ -1,3 +1,5 @@
+import { userAdminRouter } from '@/modules/user/user.admin';
+import { adminLoginRateLimit } from '@/middlewares/auth-rate-limit';
 import { Router } from 'express';
 import { z } from 'zod';
 import type { NextFunction, Request, Response } from 'express';
@@ -69,10 +71,11 @@ function uploadKnowledgeFile(req: Request, res: Response, next: NextFunction): v
 }
 
 // 公開：後台登入（在 requireAdmin 之前註冊，故不受其保護）
-router.post('/auth/login', validate({ body: adminLoginSchema }), asyncHandler(adminAuthController.login));
+router.post('/auth/login', adminLoginRateLimit, validate({ body: adminLoginSchema }), asyncHandler(adminAuthController.login));
 
 // 以下全部管理端點都需 x-admin-key 或 admin JWT
 router.use(requireAdmin);
+router.use('/tenants/:id/users', userAdminRouter);
 
 // Skill Library（唯讀）：平台所有 skill 的正式描述 + 各租戶啟用狀態
 router.get('/skills', asyncHandler(adminController.listSkills));

@@ -15,7 +15,7 @@ import { knowledgeStore, type KnowledgeFileMeta, type KnowledgeSource } from './
 import { regenerateSlot, type RegenerateFailure } from './knowledge.suggest';
 import { splitChunksBySource, type SourceKey } from './prompt-slots';
 import { pickRetriever } from './retriever.pick';
-import { aclModeOf, setFileVisibility } from './knowledge.visibility';
+import { aclModeOf, setFileVisibility, setSourceVisibility } from './knowledge.visibility';
 import { listShadowStats } from './knowledge.acl-shadow.repo';
 
 /**
@@ -120,7 +120,8 @@ export const knowledgeAdminController = {
     const tenantId = String(req.params.id);
     const body = req.body as Omit<KnowledgeSource, 'updatedAt'>;
     if (body.visibilityScopes) assertKnownScopes(tenantId, body.visibilityScopes);
-    const saved = knowledgeStore.saveSource(tenantId, body);
+    await setSourceVisibility(tenantId, body.visibilityScopes ?? []);
+    const saved = knowledgeStore.saveSource(tenantId, { ...body, visibilityScopes: body.visibilityScopes ?? [] });
     res.json({ data: saved });
   },
 
@@ -130,6 +131,7 @@ export const knowledgeAdminController = {
     // 有帶覆寫參數時先存起來，再依最終設定啟動 job
     if (body.startUrl) {
       if (body.visibilityScopes) assertKnownScopes(tenantId, body.visibilityScopes);
+      if (body.visibilityScopes) await setSourceVisibility(tenantId, body.visibilityScopes);
       knowledgeStore.saveSource(tenantId, {
         ...knowledgeStore.getSource(tenantId),
         ...body,
@@ -320,6 +322,12 @@ export const knowledgeAdminController = {
       // 反過來則會出現「管理者以為已收緊權限，但檢索端投影還是舊值」的視窗。
       await setFileVisibility(tenantId, f.fileId, next);
       replaceFileMeta(tenantId, { ...f, visibilityScopes: next });
+    }
+    const source = knowledgeStore.getSource(tenantId);
+    if (source.visibilityScopes?.includes(scope)) {
+      const visibilityScopes = source.visibilityScopes.filter((s) => s !== scope);
+      await setSourceVisibility(tenantId, visibilityScopes);
+      knowledgeStore.saveSource(tenantId, { ...source, visibilityScopes });
     }
     const revokedGrants = scopePolicy.revokeScope(tenantId, scope);
     const cur = tenantStore.getTenant(tenantId)?.knowledgeLabels ?? [];

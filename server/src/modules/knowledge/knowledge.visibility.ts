@@ -4,16 +4,16 @@
  * 檢索器不接受外部傳入的 scopes——權限計算只有一份且不接受外部輸入，
  * 才是 fail-closed 守得住的形狀。呼叫端只交出身分（RetrievalPrincipal）。
  */
-import { resolveScopes } from '@/modules/authz/resolve-scopes';
+import { resolveScopes, resolveGuestScopes } from '@/modules/authz/resolve-scopes';
 import { isKbScope } from '@/modules/authz/scope-catalog';
+import { knowledgeStore } from './knowledge.store';
 import { env } from '@/config/env';
 import { connectDb } from '@/lib/db';
-import { tenantStore } from '@/modules/tenant/tenant.store';
 import type { RetrievalPrincipal } from './retriever.types';
 
-/** 該租戶目前的 ACL 階段；未設＝off（遷移預設，行為與導入前相同） */
-export function aclModeOf(tenantId: string): 'off' | 'shadow' | 'on' {
-  return tenantStore.getTenant(tenantId)?.knowledgeAcl ?? 'off';
+/** Enforced for every tenant, including legacy off/shadow configurations. */
+export function aclModeOf(_tenantId: string): 'off' | 'shadow' | 'on' {
+  return 'on'; // Legacy off/shadow flags no longer bypass authorization.
 }
 
 /**
@@ -25,17 +25,9 @@ export function visibilityScopesOf(principal: RetrievalPrincipal): string[] {
   return resolveScopes(principal).filter(isKbScope);
 }
 
-/**
- * 訪客（未登入、無真實身分）能看到的 kb: scope 集合。
- *
- * 以 tenantId 頂替 userId 丟進 resolveScopes：getApplicant(tenantId) 查無目錄項，
- * 回退到 UNKNOWN_DEPARTMENT（見 user.directory.ts）——這正是設計 §3 掛公開 widget
- * 授權的鉤點，該租戶把 kb:public 之類的 scope 指派給訪客部門就是從這裡生效。
- * 與 report.compose.ts 的 principalOf 用的是同一套退化邏輯，這裡收斂成單一函式，
- * 好讓「誰是訪客」的定義只有一份——widget（推薦問句）與報告降級路徑都呼叫它。
- */
+/** Guest scopes never inherit a real account with the same ID as the tenant. */
 export function guestVisibilityScopesOf(tenantId: string): string[] {
-  return visibilityScopesOf({ tenantId, userId: tenantId });
+  return resolveGuestScopes(tenantId).filter(isKbScope);
 }
 
 /**
@@ -61,5 +53,31 @@ export async function setFileVisibility(
     await tx.$executeRaw`
       update knowledge_tables set visibility_scopes = ${scopes}::text[]
       where tenant_id = ${tenantId} and file_id = ${fileId}`;
+  });
+}
+
+/** Read current metadata so cached indexes cannot retain revoked access. */
+export function currentChunkScopes(tenantId: string, chunk: { fileId?: string; visibilityScopes?: string[] }): string[] {
+  if (chunk.fileId) {
+    const file = knowledgeStore.getMeta(tenantId).files?.find((f) => f.fileId === chunk.fileId);
+    if (file) return file.visibilityScopes ?? [];
+  } else {
+    const source = knowledgeStore.getSource(tenantId);
+    if (source.visibilityScopes !== undefined) return source.visibilityScopes;
+  }
+  return chunk.visibilityScopes ?? [];
+}
+
+/** Website projections must change immediately, without waiting for re-ingestion. */
+export async function setSourceVisibility(tenantId: string, scopes: string[]): Promise<void> {
+  if (env.DATA_BACKEND !== 'db') return;
+  const db = await connectDb();
+  await db.$transaction(async (tx) => {
+    await tx.$executeRaw`
+      update knowledge_chunks set visibility_scopes = ${scopes}::text[]
+      where tenant_id = ${tenantId} and file_id is null`;
+    await tx.$executeRaw`
+      update knowledge_tables set visibility_scopes = ${scopes}::text[]
+      where tenant_id = ${tenantId} and file_id is null`;
   });
 }

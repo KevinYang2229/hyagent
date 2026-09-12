@@ -11,7 +11,7 @@ import { logger } from '@/lib/logger';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 import { usageStore } from '@/modules/usage/usage.store';
 import { indexPathFor } from './index-path';
-import { aclModeOf, visibilityScopesOf } from './knowledge.visibility';
+import { aclModeOf, visibilityScopesOf, currentChunkScopes } from './knowledge.visibility';
 import type { KnowledgeIndexFile } from './knowledge-index.types';
 import {
   asciiTerms,
@@ -78,7 +78,7 @@ export const staticIndexRetriever: KnowledgeRetriever = {
     // file 後端須與 db 行為一致，否則權限邏輯永遠沒被日常開發驗證
     const visible = aclModeOf(tenantId) === 'on' ? new Set(visibilityScopesOf(principal)) : null;
     const candidates = idx.chunks.filter(
-      (c) => !visible || (c.visibilityScopes ?? []).some((s) => visible.has(s)),
+      (c) => !visible || currentChunkScopes(tenantId, c).some((s) => visible.has(s)),
     );
     return candidates
       .map((c) => {
