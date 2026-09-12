@@ -2,21 +2,23 @@ jest.mock('@/lib/llm/verify-key', () => ({
   verifyLLMKey: jest.fn(async () => true),
 }));
 
+import { tenantStore } from '@/modules/tenant/tenant.store';
 import request from 'supertest';
 import { createApp } from '@/app';
 
 const app = createApp();
+const secretKey = tenantStore.createApiKey('default', 'secret').key;
 
 describe('/api/tenant/llm-config（sk_ 自助）', () => {
   it('sk_ 金鑰可 PUT + GET（GET 回遮罩）', async () => {
     const put = await request(app)
       .put('/api/tenant/llm-config')
-      .set('x-api-key', 'sk_default')
+      .set('x-api-key', secretKey)
       .send({ provider: 'anthropic', anthropicApiKey: 'sk-ant-tenant-key-00000000' });
     expect(put.status).toBe(200);
     expect(put.body.data.anthropicApiKey).toContain('…');
 
-    const get = await request(app).get('/api/tenant/llm-config').set('x-api-key', 'sk_default');
+    const get = await request(app).get('/api/tenant/llm-config').set('x-api-key', secretKey);
     expect(get.status).toBe(200);
     expect(get.body.data.provider).toBe('anthropic');
     expect(JSON.stringify(get.body)).not.toContain('sk-ant-tenant-key-00000000');
@@ -39,7 +41,7 @@ describe('/api/tenant/llm-config（sk_ 自助）', () => {
     verifyLLMKey.mockResolvedValueOnce(false);
     const res = await request(app)
       .put('/api/tenant/llm-config')
-      .set('x-api-key', 'sk_default')
+      .set('x-api-key', secretKey)
       .send({ openaiApiKey: 'sk-proj-bad-key-000000000000' });
     expect(res.status).toBe(400);
   });

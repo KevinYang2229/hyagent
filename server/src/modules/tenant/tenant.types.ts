@@ -46,6 +46,8 @@ export interface Tenant {
    * 未設定代表此租戶不啟用 SSO handoff。
    */
   ssoSecret?: string;
+  /** Changes on every SSO credential update, including restoring a previous secret. */
+  ssoVersion?: string;
   /** widget 外觀設定（admin 後台維護）；未設則 widget 用內建預設 */
   appearance?: TenantAppearance;
   /** 停用的 agent 服務 id（如 ['knowledge']）；空/未設 = 全部啟用（opt-out） */

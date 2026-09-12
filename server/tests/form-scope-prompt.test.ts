@@ -3,6 +3,7 @@
  * 呼叫 assistant 守門），system prompt 本身也要有一行離題婉拒指示，堵住「填表中直接問
  * 離題問題、且未命中 KNOWLEDGE_HINT_RE」的漏洞。
  */
+import { scopePolicy } from '@/modules/authz/scope-policy';
 import type { Session } from '@/modules/conversation/conversation.types';
 import { formAgentService } from '@/modules/conversation/form.agent-service';
 
@@ -27,6 +28,7 @@ describe('formAgentService system prompt 範圍守門', () => {
       .fn()
       .mockResolvedValue({ text: '好的', toolCalls: [], stopReason: 'end_turn' });
     const session = makeSession();
+    scopePolicy.setPolicy(session.tenantId, { groups: {}, accounts: { HYW103: ['service:form', 'form:leave-request'] } });
 
     await formAgentService.handleTurn(session, '圓周率是多少？', {
       name: 'mock',

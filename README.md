@@ -131,6 +131,9 @@ npm run lint         # 或 npm run lint:fix
 
 > 對話 API 需 JWT：先 `POST /api/auth/login`（dev 環境為 mock 帳號 `kevin`/`hyweb` + `AUTH_DEV_PASSWORD`）取得 accessToken，之後帶 `Authorization: Bearer <token>`。widget/SDK 另可走租戶 `ssoSecret` 的 SSO handoff（`/api/auth/sso/exchange`）。`/api/reports/*` 同樣需要 JWT——`<a href>` 一般導覽不會帶 Authorization header，前端需改用 fetch 取 blob 後觸發下載。
 
+> 安全修正升級：既有登入需重登、SSO 簽章契約已收緊，DB 模式需先套用 `0012_security_claims.sql`；詳見 [升級說明](docs/SECURITY-FIXES.md)。
+
+
 > **互動式 API 文件**：server 起來後開 <http://localhost:3000/api/docs>（Swagger UI），原始規格在 `GET /api/openapi.json`。規格由 [`server/src/modules/docs/openapi.ts`](server/src/modules/docs/openapi.ts) 維護，涵蓋對外整合面的主要端點與三種認證維度（`x-api-key` 租戶金鑰 / `Authorization: Bearer` 使用者 JWT / `x-admin-key` 管理 API）——上面這張表只列對話與報告，整合面端點以該規格與 [`INTEGRATION.md`](INTEGRATION.md) 為準。
 
 > **舊路徑相容**：`/api/v1/*` 仍可用，server 於路由前把 `req.url` 改寫成 `/api/*`（同一次請求完成，保留 method / body / headers，不走 HTTP 轉址）。確認外部串接皆改用無 `v1` 的路徑後即可移除。

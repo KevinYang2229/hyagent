@@ -6,7 +6,7 @@
  *   每次變更把整份快照序列化寫進 DB（單 instance 前提，與 file 語意相同）。
  *   開機須先 await initTenantStore() 載回資料（index.ts 於 listen 前呼叫）。
  *
- * 啟動時一定會種一個 id='default' 的預設租戶與其 pk_/sk_ 金鑰，作為「未帶 key 的舊 widget」落點，
+ * 啟動時一定會種一個 id='default' 的預設租戶與其公開金鑰，作為「未帶 key 的舊 widget」落點，
  * 確保向後相容。允許網域預設 '*'（沿用改造前 CORS 全放行）。
  */
 import { randomBytes } from 'node:crypto';
@@ -22,7 +22,7 @@ import type { ApiKey, ApiKeyType, Tenant } from './tenant.types';
 const STORE_FILE = dataFile('oa-agent-tenants.json');
 
 export const DEFAULT_TENANT_ID = 'default';
-// 預設租戶的固定金鑰：方便 dev / 既有部署沿用；正式租戶請用 createApiKey 另發。
+// 公開 key 維持舊 widget 相容；固定秘密 key 僅用於撤銷舊資料，絕不再簽發。
 const DEFAULT_PUBLISHABLE_KEY = 'pk_default';
 const DEFAULT_SECRET_KEY = 'sk_default';
 
@@ -206,6 +206,11 @@ function persist(): void {
 
 // 種預設租戶（若持久層無此資料）：向後相容的關鍵
 function seedDefaults(): void {
+  const legacy = apiKeys.get(hashApiKey(DEFAULT_SECRET_KEY));
+  if (legacy && !legacy.revokedAt) {
+    legacy.revokedAt = new Date().toISOString();
+    persist();
+  }
   if (tenants.has(DEFAULT_TENANT_ID)) return;
   const now = new Date().toISOString();
   // DEFAULT_TENANT_ORIGINS='*' 時放行全部，維持改造前行為；可設逗號分隔網域收緊
@@ -224,13 +229,6 @@ function seedDefaults(): void {
     key: pkHash,
     tenantId: DEFAULT_TENANT_ID,
     type: 'publishable',
-    createdAt: now,
-  });
-  const skHash = hashApiKey(DEFAULT_SECRET_KEY);
-  apiKeys.set(skHash, {
-    key: skHash,
-    tenantId: DEFAULT_TENANT_ID,
-    type: 'secret',
     createdAt: now,
   });
   persist();
@@ -289,6 +287,16 @@ function generateKey(type: ApiKeyType): string {
 }
 
 export const tenantStore = {
+  /** Admin credential changes must be durable before reporting success. */
+  async persistCritical(): Promise<void> {
+    if (env.DATA_BACKEND === 'db') {
+      await writeQueue.flush();
+      await writeSnapshotToDb(await connectDb(), snapshot());
+    } else {
+      const data = snapshot();
+      fs.writeFileSync(STORE_FILE, JSON.stringify({ tenants: data.tenants.map(sealTenant), apiKeys: data.apiKeys }));
+    }
+  },
   getTenant(id: string): Tenant | undefined {
     return tenants.get(id);
   },
@@ -303,6 +311,7 @@ export const tenantStore = {
       name,
       allowedOrigins,
       ssoSecret,
+      ssoVersion: randomBytes(16).toString('hex'),
       createdAt: new Date().toISOString(),
     };
     tenants.set(tenant.id, tenant);
@@ -312,6 +321,7 @@ export const tenantStore = {
 
   /** 依「原始」金鑰字串查 API Key（內部以雜湊比對；含撤銷狀態，由呼叫端判定有效性） */
   getApiKey(rawKey: string): ApiKey | undefined {
+    if (rawKey === DEFAULT_SECRET_KEY) return undefined;
     return apiKeys.get(hashApiKey(rawKey));
   },
 
@@ -356,7 +366,7 @@ export const tenantStore = {
       ...tenant,
       ...(patch.name !== undefined ? { name: patch.name } : {}),
       ...(patch.allowedOrigins !== undefined ? { allowedOrigins: patch.allowedOrigins } : {}),
-      ...(patch.ssoSecret !== undefined ? { ssoSecret: patch.ssoSecret } : {}),
+      ...(patch.ssoSecret !== undefined ? { ssoSecret: patch.ssoSecret, ssoVersion: randomBytes(16).toString('hex') } : {}),
       ...(patch.appearance !== undefined
         ? { appearance: { ...tenant.appearance, ...patch.appearance } }
         : {}),

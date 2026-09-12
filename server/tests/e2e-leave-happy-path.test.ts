@@ -7,11 +7,13 @@
  * 三個非 LLM 路徑走完流程，因此完全決定性、不需 mock 模型。slot-filling 的 LLM 對話
  * 由 agent-service.test 等單元測試覆蓋，此處專注於 HTTP 端到端的接線是否正確。
  */
+import { tenantStore } from '@/modules/tenant/tenant.store';
 import request from 'supertest';
 import { createApp } from '@/app';
 import { env } from '@/config/env';
 
 const app = createApp();
+beforeEach(() => tenantStore.updateTenant('default', { grantedScopes: ['service:form', 'form:leave-request'] }));
 
 async function loginToken(): Promise<string> {
   const res = await request(app)

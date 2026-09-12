@@ -64,11 +64,11 @@ export const leaveService = {
   submit: submitLeaveApplication,
 
   /** 取得各假別剩餘時數（供畫面顯示「今年度剩餘 N 小時」） */
-  async getBalances(userId: string): Promise<LeaveBalance[]> {
+  async getBalances(userId: string, tenantId = 'default'): Promise<LeaveBalance[]> {
     return (await toolRegistry.invoke(
       'oa.getLeaveBalance',
       { userId },
-      makeToolContext({ tenantId: 'default', userId }),
+      makeToolContext({ tenantId, userId }),
     )) as LeaveBalance[];
   },
 

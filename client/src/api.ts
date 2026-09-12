@@ -161,7 +161,29 @@ async function unwrap<T>(res: Response): Promise<T> {
 }
 
 /** 用 refresh token 換新 token；成功回 true 並更新 token */
-async function tryRefresh(): Promise<boolean> {
+let refreshInFlight: Promise<boolean> | null = null;
+function tryRefresh(): Promise<boolean> {
+  if (!refreshInFlight) {
+    const rotate = async () => {
+      // Another tab may already have rotated the shared localStorage credentials.
+      const storedAccess = localStorage.getItem(ACCESS_KEY);
+      const storedRefresh = localStorage.getItem(REFRESH_KEY);
+      if (!storedAccess || !storedRefresh) return false;
+      if (storedRefresh !== refreshToken) {
+        setTokens(storedAccess, storedRefresh);
+        return true;
+      }
+      return performRefresh();
+    };
+    const rotation = navigator.locks
+      ? navigator.locks.request('hyagent-refresh-token', rotate)
+      : rotate();
+    refreshInFlight = Promise.resolve(rotation).finally(() => { refreshInFlight = null; });
+  }
+  return refreshInFlight;
+}
+
+async function performRefresh(): Promise<boolean> {
   if (!refreshToken) return false;
   const res = await fetch(`${AUTH}/refresh`, {
     method: 'POST',
@@ -178,9 +200,10 @@ async function tryRefresh(): Promise<boolean> {
 
 /** 受保護請求：自動帶 access token；遇 401 先嘗試 refresh 重試一次，仍失敗則登出 */
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const sentToken = accessToken;
   let res = await fetch(path, withAuth(init));
   if (res.status === 401 && refreshToken) {
-    if (await tryRefresh()) res = await fetch(path, withAuth(init));
+    if (accessToken !== sentToken || await tryRefresh()) res = await fetch(path, withAuth(init));
   }
   if (res.status === 401) {
     clearTokens();

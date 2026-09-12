@@ -1,3 +1,4 @@
+import { scopePolicy } from '@/modules/authz/scope-policy';
 import { stubSubmissions } from '@/lib/oa/stub.connector';
 import { isSubmitConfirmation } from '@/modules/conversation/conversation.agent';
 import { resolveSubmit } from '@/modules/conversation/form-submit.registry';
@@ -5,6 +6,8 @@ import { getDefinition } from '@/modules/form/form.registry';
 import { buildTools } from '@/modules/form/form.tools';
 
 const TENANT = 'tool-submit-tenant';
+beforeEach(() => scopePolicy.setPolicy(TENANT, { groups: {}, accounts: { HYW103: ["service:form", "form:leave-request"] } }));
+
 
 describe('請假申請 AI tool → server-side submit handler', () => {
   beforeEach(() => {

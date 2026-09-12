@@ -151,6 +151,19 @@ export async function initConversationStore(): Promise<void> {
 }
 
 export const conversationStore = {
+  async saveCritical(session: Session): Promise<void> {
+    session.updatedAt = new Date().toISOString();
+    if (env.DATA_BACKEND === 'db') {
+      await writeQueue.flush();
+      const db = await connectDb();
+      const row = sessionToRow(session);
+      const data = row.data as Prisma.InputJsonValue;
+      await db.sessionRow.upsert({ where: { id: row.id }, create: { ...row, data }, update: { data } });
+    } else {
+      fs.writeFileSync(STORE_FILE, JSON.stringify([...sessions.values()]));
+    }
+  },
+
   listByUser(tenantId: string, userId: string): Session[] {
     return [...sessions.values()]
       .filter((s) => (s.tenantId ?? 'default') === tenantId && s.userId === userId)

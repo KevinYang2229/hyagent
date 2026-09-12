@@ -17,6 +17,13 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model SecurityClaim {
+  key String @id
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("security_claims")
+}
+
 model TenantRow {
   id        String      @id
   name      String

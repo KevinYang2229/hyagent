@@ -75,9 +75,23 @@ describe('API key 雜湊儲存', () => {
     expect(stored!.key).not.toBe(issued.key);
   });
 
-  it('種子金鑰 pk_default / sk_default 仍可驗證（雜湊比對）', () => {
+  it('開機撤銷舊預設秘密金鑰，並將撤銷狀態持久保存', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'oa-agent-keysec-'));
+    const file = join(dir, 'oa-agent-tenants.json');
+    writeFileSync(file, JSON.stringify({
+      tenants: [{ id: 'default', name: 'legacy', allowedOrigins: [], createdAt: new Date().toISOString() }],
+      apiKeys: [{ key: 'sk_default', tenantId: 'default', type: 'secret', createdAt: new Date().toISOString() }],
+    }));
+    const { store } = bootStoreIsolated({ OA_AGENT_DATA_DIR: dir });
+    expect(store.getApiKey('sk_default')).toBeUndefined();
+    const persisted = JSON.parse(readFileSync(file, 'utf8'));
+    expect(persisted.apiKeys[0].revokedAt).toEqual(expect.any(String));
+    expect(bootStoreIsolated({ OA_AGENT_DATA_DIR: dir }).store.getApiKey('sk_default')).toBeUndefined();
+  });
+
+  it('公開種子金鑰仍有效，固定秘密金鑰一律拒絕', () => {
     expect(tenantStore.getApiKey('pk_default')?.type).toBe('publishable');
-    expect(tenantStore.getApiKey('sk_default')?.type).toBe('secret');
+    expect(tenantStore.getApiKey('sk_default')).toBeUndefined();
   });
 
   it('舊資料明文金鑰於載入時一次性轉為雜湊，仍可驗證', () => {

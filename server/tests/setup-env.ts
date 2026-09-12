@@ -33,6 +33,8 @@ process.env.DATA_ENCRYPTION_KEY ??= '';
 process.env.REPORT_PDF_BROWSER ??= join(tmpdir(), 'oa-agent-no-such-browser');
 
 process.env.ANTHROPIC_API_KEY ??= 'test-anthropic-key';
+// Prevent dotenv from importing the developer's real embedding API key.
+process.env.OPENAI_API_KEY ??= 'test-openai-key';
 // 啟用管理 API（Form Designer 端點測試用）
 process.env.ADMIN_API_KEY ??= 'test-admin-key';
 // 知識庫索引/設定寫檔隔離到暫存目錄，避免污染 repo 的 server/data

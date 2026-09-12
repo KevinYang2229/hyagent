@@ -49,3 +49,8 @@ describe('OA 工具（走 stub 連接器）', () => {
     expect(spoofedResult).toEqual(ownResult);
   });
 });
+
+it('tenant-scoped agent tools cannot read the default tenant leave balance', async () => {
+  const ctx = makeToolContext({ tenantId: 'another-tenant', userId: 'kevin' });
+  await expect(toolRegistry.invoke('oa.getLeaveBalance', {}, ctx)).rejects.toMatchObject({ statusCode: 403 });
+});

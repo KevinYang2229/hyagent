@@ -5,6 +5,9 @@
  * （DB、SSO、LDAP…）只要換掉這段，token 簽發與 refresh 流程不動。
  */
 import jwt from 'jsonwebtoken';
+import { randomUUID } from 'node:crypto';
+import { securityClaims } from '@/lib/security-claims';
+import { credentialVersion, validateIdentity } from './credential-version';
 import type { Applicant } from '@hyagent/shared';
 import { env } from '@/config/env';
 import { getApplicant, isKnownUser } from '@/modules/user/user.directory';
@@ -19,9 +22,10 @@ import {
 
 /** 宿主後端簽發的終端使用者 token 內容（以租戶 ssoSecret 簽章） */
 interface SsoClaims {
+  exp?: number;
+  iat?: number;
   sub?: string | number;
   name?: string;
-  role?: string;
 }
 
 export interface AuthTokens {
@@ -34,6 +38,7 @@ export interface LoginResult extends AuthTokens {
 }
 
 function issueTokens(payload: JwtPayload): AuthTokens {
+  payload = { ...payload, family: payload.family ?? randomUUID() };
   return {
     accessToken: signAccessToken(payload),
     refreshToken: signRefreshToken(payload),
@@ -47,7 +52,7 @@ export const authService = {
     if (!isKnownUser(userId) || password !== env.AUTH_DEV_PASSWORD) {
       throw AppError.unauthorized('帳號或密碼錯誤');
     }
-    const payload: JwtPayload = { sub: userId, role: 'employee', via: 'password' };
+    const payload: JwtPayload = { sub: userId, role: 'employee', via: 'password', tenantId: 'default' };
     return { ...issueTokens(payload), user: getApplicant(userId) };
   },
 
@@ -59,15 +64,21 @@ export const authService = {
     if (!tenant.ssoSecret) throw AppError.forbidden('此租戶未啟用 SSO');
     let claims: SsoClaims;
     try {
-      claims = jwt.verify(userToken, tenant.ssoSecret) as SsoClaims;
+      claims = jwt.verify(userToken, tenant.ssoSecret, { algorithms: ['HS256'], issuer: 'hyagent:handoff', audience: 'hyagent:sso', maxAge: '5m' }) as SsoClaims;
     } catch {
       throw AppError.unauthorized('SSO user token 無效或已過期');
     }
-    const sub = String(claims.sub ?? '').trim();
+    if (typeof claims.exp !== 'number' || typeof claims.iat !== 'number' || claims.exp - claims.iat > 300 || claims.iat > Math.floor(Date.now() / 1000)) {
+      throw AppError.unauthorized('SSO token 必須有不超過 5 分鐘的有效期限');
+    }
+    if (typeof claims.sub !== 'string' && typeof claims.sub !== 'number') throw AppError.unauthorized('SSO token 缺少 sub');
+    if (claims.name !== undefined && typeof claims.name !== 'string') throw AppError.unauthorized('SSO name 無效');
+    const sub = String(claims.sub).trim();
     if (!sub) throw AppError.unauthorized('SSO token 缺少 sub');
     return issueTokens({
       sub,
-      role: claims.role ?? 'employee',
+      role: 'employee',
+      credentialVersion: credentialVersion(tenant),
       via: 'sso',
       tenantId: tenant.id,
       name: claims.name,
@@ -75,18 +86,29 @@ export const authService = {
   },
 
   /** 用 refresh token 換新的 access/refresh（輪替） */
-  refresh(refreshToken: string): AuthTokens {
+  async refresh(refreshToken: string): Promise<AuthTokens> {
     let payload: JwtPayload;
     try {
       payload = verifyRefreshToken(refreshToken);
     } catch {
       throw AppError.unauthorized('Invalid or expired refresh token');
     }
-    // SSO 終端使用者不在內部名錄，不查 directory，直接輪替（保留原 claims）
+    await validateIdentity(payload);
+    if (!payload.jti || !payload.family || await securityClaims.has(`refresh-revoked:${payload.family}`)) {
+      throw AppError.unauthorized('Refresh session revoked');
+    }
+    if (!await securityClaims.claim(`refresh-used:${payload.jti}`)) {
+      await securityClaims.claim(`refresh-revoked:${payload.family}`);
+      throw AppError.unauthorized('Refresh token reuse detected');
+    }
+    // Preserve the family so replay revokes all descendants.
+
     if (payload.via === 'sso') {
       return issueTokens({
         sub: payload.sub,
-        role: payload.role,
+        role: 'employee',
+        family: payload.family,
+        credentialVersion: payload.credentialVersion,
         via: 'sso',
         tenantId: payload.tenantId,
         name: payload.name,
@@ -94,7 +116,7 @@ export const authService = {
     }
     // 內部帳號：重新簽發前確認帳號仍有效
     if (!isKnownUser(payload.sub)) throw AppError.unauthorized('Unknown user');
-    return issueTokens({ sub: payload.sub, role: payload.role, via: 'password' });
+    return issueTokens({ sub: payload.sub, role: 'employee', via: 'password', tenantId: 'default', family: payload.family });
   },
 
   /** 取目前登入者資料（requireAuth 後使用） */

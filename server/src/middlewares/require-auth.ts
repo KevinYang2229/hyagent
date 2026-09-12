@@ -1,21 +1,21 @@
-/**
- * requireAuth：驗證 Authorization: Bearer <accessToken>，通過後把 payload 掛到 req.user。
- * 未帶或無效（含過期）一律 401，由前端以 refresh token 續期或導回登入。
- */
+/** Central user-token validation, credential revocation and tenant binding. */
 import type { NextFunction, Request, Response } from 'express';
+import { validateIdentity } from '@/modules/auth/credential-version';
 import { verifyAccessToken } from '@/utils/jwt';
 import { AppError } from '@/utils/app-error';
 
-export function requireAuth(req: Request, _res: Response, next: NextFunction): void {
-  const header = req.header('authorization') ?? '';
-  const [scheme, token] = header.split(' ');
-  if (scheme !== 'Bearer' || !token) {
-    throw AppError.unauthorized('Missing or malformed Authorization header');
-  }
+export async function requireAuth(req: Request, _res: Response, next: NextFunction): Promise<void> {
   try {
+    const [scheme, token] = (req.header('authorization') ?? '').split(' ');
+    if (scheme !== 'Bearer' || !token) throw AppError.unauthorized('Missing Authorization header');
     req.user = verifyAccessToken(token);
-    next();
+    await validateIdentity(req.user);
+    if (req.tenant && req.user.tenantId !== req.tenant.id) {
+      throw AppError.unauthorized('Token tenant mismatch');
+    }
   } catch {
-    throw AppError.unauthorized('Invalid or expired access token');
+    next(AppError.unauthorized('Invalid or expired access token'));
+    return;
   }
+  next();
 }

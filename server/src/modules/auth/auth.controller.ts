@@ -14,7 +14,7 @@ export const authController = {
   // 公開：以 refresh token 換發新 token（輪替）
   async refresh(req: Request, res: Response): Promise<void> {
     const { refreshToken } = req.body as RefreshInput;
-    const tokens = authService.refresh(refreshToken);
+    const tokens = await authService.refresh(refreshToken);
     res.status(200).json({ data: tokens });
   },
 

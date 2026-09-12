@@ -39,7 +39,7 @@ const CLASSIFY_THRESHOLD = 0.6;
  */
 export function pickFormId(tenantId: string, userId: string, message?: string): string {
   const forms = listEnabledForms(tenantId, userId);
-  if (forms.length === 0) return DEFAULT_FORM_ID; // 全停用：退回預設（form 服務退化但不崩）
+  if (forms.length === 0) return ''; // 無授權表單：僅建立一般對話，不退回請假單
   const text = message?.trim();
   let best = forms.some((f) => f.formId === DEFAULT_FORM_ID) ? DEFAULT_FORM_ID : forms[0].formId;
   let bestScore = 0;

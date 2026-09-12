@@ -2,6 +2,7 @@
  * OA 連接器的工具化：把 OAConnector 的方法包成 Tool Registry 可派發的工具。
  * handler 內部才 getConnector('oa')，工具是連接器的消費者。
  */
+import { AppError } from '@/utils/app-error';
 import { getConnector } from '@/lib/connectors';
 import type { LeaveBalance, OASubmitInput, OASubmitResult } from '@/lib/oa/types';
 import { computeApprovals, stepDefs } from '@/modules/form/approvals';
@@ -40,6 +41,7 @@ registerTool({
   agentExposed: true,
   // 身分一律取自 ctx.userId，不採信 LLM/呼叫端傳入的 input.userId，避免跨使用者查詢他人額度。
   handler: (_input, ctx): Promise<LeaveBalance[]> => {
+    if (ctx.tenantId !== 'default') throw AppError.forbidden('尚未設定此租戶的 OA 額度連接器');
     const oa = getConnector('oa');
     return oa.getLeaveBalance ? oa.getLeaveBalance(ctx.userId) : Promise.resolve([]);
   },

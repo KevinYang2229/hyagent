@@ -43,6 +43,11 @@ function ensureTenant(id: string) {
   return tenant;
 }
 
+function publicTenant(tenant: NonNullable<ReturnType<typeof tenantStore.getTenant>>) {
+  const { ssoSecret, ssoVersion: _ssoVersion, llmConfig: _llmConfig, ...safe } = tenant;
+  return { ...safe, ssoConfigured: Boolean(ssoSecret) };
+}
+
 export const adminController = {
   async createTenant(req: Request, res: Response): Promise<void> {
     const { name, allowedOrigins, ssoSecret } = req.body as CreateTenantInput;
@@ -54,18 +59,20 @@ export const adminController = {
     });
     // 一併發一把公開金鑰，方便立即接入
     const publishable = tenantStore.createApiKey(tenant.id, 'publishable');
-    res.status(201).json({ data: { tenant: withScopes ?? tenant, publishableKey: publishable.key } });
+    await tenantStore.persistCritical();
+    res.status(201).json({ data: { tenant: publicTenant(withScopes ?? tenant), publishableKey: publishable.key } });
   },
 
   async listTenants(_req: Request, res: Response): Promise<void> {
-    res.status(200).json({ data: tenantStore.listTenants() });
+    res.status(200).json({ data: tenantStore.listTenants().map(publicTenant) });
   },
 
   async updateTenant(req: Request, res: Response): Promise<void> {
     ensureTenant(String(req.params.id));
     const patch = req.body as PatchTenantInput;
     const updated = tenantStore.updateTenant(String(req.params.id), patch);
-    res.status(200).json({ data: updated });
+    await tenantStore.persistCritical();
+    res.status(200).json({ data: updated ? publicTenant(updated) : undefined });
   },
 
   async deleteTenant(req: Request, res: Response): Promise<void> {
@@ -73,6 +80,7 @@ export const adminController = {
     ensureTenant(id);
     // 不存在已由 ensureTenant 擋下；deleteTenant 回 false 僅剩「預設租戶」情形
     if (!tenantStore.deleteTenant(id)) throw AppError.unprocessable('預設租戶不可刪除');
+    await tenantStore.persistCritical();
     // 級聯清理該租戶散落各 store 的資料（這些表無 FK 到 tenants，需顯式清）——
     // 否則刪租戶會留下孤兒 session/單據/用量/稽核/表單/政策/webhook。
     conversationStore.purgeTenant(id);

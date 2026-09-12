@@ -1,144 +1,83 @@
-/**
- * SSO handoff 單元測試：宿主以租戶 ssoSecret 簽的 userToken → 換發本系統 token。
- *
- * 這是 authService.ssoExchange 現行契約的可執行版本（先前完全沒有測試）。
- * docs/HANDOFF-SSO.md §4 列出的四項補強（鎖 algorithms / 驗 iss+aud / 強制 exp /
- * refresh 撤銷）每做一項，都應在本檔補對應的 case。
- */
 import jwt from 'jsonwebtoken';
+import { env } from '@/config/env';
 import { authService } from '@/modules/auth/auth.service';
-import type { Tenant } from '@/modules/tenant/tenant.types';
+import { tenantStore } from '@/modules/tenant/tenant.store';
 import { verifyAccessToken, verifyRefreshToken } from '@/utils/jwt';
+import { validateIdentity } from '@/modules/auth/credential-version';
 
-const SSO_SECRET = 'test-tenant-sso-secret-1234567890';
-
-function makeTenant(over: Partial<Tenant> = {}): Tenant {
-  return {
-    id: 'tenant-sso-test',
-    name: 'SSO 測試租戶',
-    allowedOrigins: ['http://localhost:4000'],
-    ssoSecret: SSO_SECRET,
-    createdAt: new Date().toISOString(),
-    ...over,
-  };
+function fixture() {
+  const tenant = tenantStore.createTenant('SSO test', [], 'test-sso-secret-at-least-32-characters');
+  const sign = (claims: Record<string, unknown> = {}, options: jwt.SignOptions = {}) => jwt.sign(
+    { sub: 'external-user', ...claims }, tenant.ssoSecret!,
+    { algorithm: 'HS256', issuer: 'hyagent:handoff', audience: 'hyagent:sso', expiresIn: '5m', ...options },
+  );
+  return { tenant, sign };
 }
 
-/** 模擬宿主後端簽發的終端使用者 token */
-function signUserToken(
-  claims: Record<string, unknown>,
-  opts: { secret?: string; expiresIn?: string | null } = {},
-): string {
-  const { secret = SSO_SECRET, expiresIn = '5m' } = opts;
-  return expiresIn === null
-    ? jwt.sign(claims, secret)
-    : jwt.sign(claims, secret, { expiresIn: expiresIn as jwt.SignOptions['expiresIn'] });
-}
-
-describe('authService.ssoExchange —— 拒絕路徑', () => {
-  it('租戶未設 ssoSecret → 403「此租戶未啟用 SSO」', () => {
-    const tenant = makeTenant({ ssoSecret: undefined });
-    expect(() => authService.ssoExchange(tenant, signUserToken({ sub: 'HYW018' }))).toThrow(
-      /未啟用 SSO/,
-    );
-  });
-
-  it('用錯的密鑰簽的 token → 401', () => {
-    expect(() =>
-      authService.ssoExchange(makeTenant(), signUserToken({ sub: 'HYW018' }, { secret: '另一把密鑰' })),
-    ).toThrow(/無效或已過期/);
-  });
-
-  it('已過期的 token → 401', () => {
-    const expired = jwt.sign({ sub: 'HYW018' }, SSO_SECRET, { expiresIn: -60 });
-    expect(() => authService.ssoExchange(makeTenant(), expired)).toThrow(/無效或已過期/);
-  });
-
-  it('不是 JWT 的字串 → 401', () => {
-    expect(() => authService.ssoExchange(makeTenant(), 'not-a-jwt')).toThrow(/無效或已過期/);
-  });
-
-  it('缺 sub → 401「SSO token 缺少 sub」', () => {
-    expect(() => authService.ssoExchange(makeTenant(), signUserToken({ name: '林佩蓉' }))).toThrow(
-      /缺少 sub/,
-    );
-  });
-
-  it('sub 為空白字串 → 401（trim 後視為未提供）', () => {
-    expect(() => authService.ssoExchange(makeTenant(), signUserToken({ sub: '   ' }))).toThrow(
-      /缺少 sub/,
-    );
-  });
-});
-
-describe('authService.ssoExchange —— 成功換發', () => {
-  it('回傳 access/refresh，payload 帶 via=sso 與 tenantId', () => {
-    const tenant = makeTenant();
-    const tokens = authService.ssoExchange(
-      tenant,
-      signUserToken({ sub: 'HYW018', name: '林佩蓉' }),
-    );
-
-    expect(typeof tokens.accessToken).toBe('string');
-    expect(typeof tokens.refreshToken).toBe('string');
-
+it('valid SSO preserves external identity but ignores all external roles', () => {
+  const { tenant, sign } = fixture();
+  for (const role of ['admin', 'manager', 'employee']) {
+    const tokens = authService.ssoExchange(tenant, sign({ role, name: '外部使用者', isAdmin: true }));
     const payload = verifyAccessToken(tokens.accessToken);
-    expect(payload).toMatchObject({
-      sub: 'HYW018',
-      via: 'sso',
-      tenantId: tenant.id,
-      name: '林佩蓉',
-      role: 'employee', // 宿主未指定 role 時的預設
-    });
-  });
-
-  it('宿主指定的 role 會被沿用', () => {
-    const tokens = authService.ssoExchange(makeTenant(), signUserToken({ sub: 'HYW042', role: 'manager' }));
-    expect(verifyAccessToken(tokens.accessToken).role).toBe('manager');
-  });
-
-  it('數字型 sub 轉成字串', () => {
-    const tokens = authService.ssoExchange(makeTenant(), signUserToken({ sub: 12345 }));
-    expect(verifyAccessToken(tokens.accessToken).sub).toBe('12345');
-  });
-
-  it('sub 以外的自訂 claims 一律忽略（只讀 sub / name / role）', () => {
-    const tokens = authService.ssoExchange(
-      makeTenant(),
-      signUserToken({ sub: 'HYW018', department: '行銷部', isAdmin: true }),
-    );
-    const payload = verifyAccessToken(tokens.accessToken) as unknown as Record<string, unknown>;
-    expect(payload.department).toBeUndefined();
-    expect(payload.isAdmin).toBeUndefined();
-  });
-
-  it('SSO 使用者不必存在於內部 mock 名錄（宿主的訪客也能換發）', () => {
-    const tokens = authService.ssoExchange(makeTenant(), signUserToken({ sub: '完全沒見過的人' }));
-    expect(verifyAccessToken(tokens.accessToken).sub).toBe('完全沒見過的人');
-  });
-
-  it('宿主未設 exp 時仍會換發 —— 現行行為，見 HANDOFF-SSO §4.2', () => {
-    const noExp = signUserToken({ sub: 'HYW018' }, { expiresIn: null });
-    expect(() => authService.ssoExchange(makeTenant(), noExp)).not.toThrow();
-  });
+    expect(payload).toMatchObject({ sub: 'external-user', role: 'employee', via: 'sso', tenantId: tenant.id, name: '外部使用者' });
+    expect(payload).not.toHaveProperty('isAdmin');
+  }
 });
 
-describe('authService.refresh —— SSO 使用者', () => {
-  it('輪替後保留 via=sso / tenantId / name', () => {
-    const tenant = makeTenant();
-    const first = authService.ssoExchange(tenant, signUserToken({ sub: 'HYW018', name: '林佩蓉' }));
-    const next = authService.refresh(first.refreshToken);
+it('requires enabled SSO, a valid subject, signature, purpose, algorithm and short expiry', () => {
+  const { tenant, sign } = fixture();
+  const bad = [
+    'invalid', sign({}, { expiresIn: -1 }), sign({}, { algorithm: 'HS384' }),
+    sign({}, { issuer: 'other' }), sign({}, { audience: 'other' }),
+    sign({}, { expiresIn: '1h' }), sign({ sub: ' ' }), sign({ sub: '' }),
+    jwt.sign({ sub: 'user', iss: 'hyagent:handoff', aud: 'hyagent:sso' }, tenant.ssoSecret!),
+    jwt.sign({ sub: 'user' }, 'wrong-secret', { expiresIn: '5m' }),
+  ];
+  for (const token of bad) expect(() => authService.ssoExchange(tenant, token)).toThrow();
+  expect(() => authService.ssoExchange({ ...tenant, ssoSecret: undefined }, sign())).toThrow(/未啟用/);
+});
 
-    expect(verifyAccessToken(next.accessToken)).toMatchObject({
-      sub: 'HYW018',
-      via: 'sso',
-      tenantId: tenant.id,
-      name: '林佩蓉',
-    });
-    expect(verifyRefreshToken(next.refreshToken).via).toBe('sso');
-  });
+it('rotates refresh tokens once and revokes descendants when an old token is replayed', async () => {
+  const { tenant, sign } = fixture();
+  const first = authService.ssoExchange(tenant, sign());
+  const second = await authService.refresh(first.refreshToken);
+  expect(second.refreshToken).not.toBe(first.refreshToken);
+  expect(verifyRefreshToken(second.refreshToken).family).toBe(verifyRefreshToken(first.refreshToken).family);
+  expect(verifyAccessToken(second.accessToken).sub).toBe('external-user');
+  await expect(authService.refresh(first.refreshToken)).rejects.toThrow(/reuse/);
+  await expect(authService.refresh(second.refreshToken)).rejects.toThrow(/revoked/);
+});
 
-  it('SSO 使用者的輪替不查內部名錄 —— 現行行為，見 HANDOFF-SSO §4.4', () => {
-    const first = authService.ssoExchange(makeTenant(), signUserToken({ sub: '不在名錄的人' }));
-    expect(() => authService.refresh(first.refreshToken)).not.toThrow();
-  });
+it('concurrent refresh permits at most one rotation', async () => {
+  const { tenant, sign } = fixture();
+  const tokens = authService.ssoExchange(tenant, sign());
+  const results = await Promise.allSettled([authService.refresh(tokens.refreshToken), authService.refresh(tokens.refreshToken)]);
+  expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+  const success = results.find((r) => r.status === 'fulfilled') as PromiseFulfilledResult<typeof tokens>;
+  await expect(authService.refresh(success.value.refreshToken)).rejects.toThrow(/revoked/);
+});
+
+it.each(['rotate', 'disable', 'delete'])('revokes access and refresh after tenant credential change: %s', async (change) => {
+  const { tenant, sign } = fixture();
+  const tokens = authService.ssoExchange(tenant, sign());
+  if (change === 'delete') tenantStore.deleteTenant(tenant.id);
+  else tenantStore.updateTenant(tenant.id, { ssoSecret: change === 'disable' ? '' : 'new-secret-at-least-32-characters' });
+  await expect(validateIdentity(verifyAccessToken(tokens.accessToken))).rejects.toThrow();
+  await expect(authService.refresh(tokens.refreshToken)).rejects.toThrow();
+});
+
+it('restoring an old SSO secret does not resurrect old credentials', async () => {
+  const { tenant, sign } = fixture();
+  const tokens = authService.ssoExchange(tenant, sign());
+  tenantStore.updateTenant(tenant.id, { ssoSecret: 'another-secret-value' });
+  tenantStore.updateTenant(tenant.id, { ssoSecret: tenant.ssoSecret });
+  await expect(authService.refresh(tokens.refreshToken)).rejects.toThrow(/revoked/);
+});
+
+it('password login remains tenant-bound and uses the same rotation/revocation rules', async () => {
+  const first = authService.login('kevin', env.AUTH_DEV_PASSWORD);
+  const next = await authService.refresh(first.refreshToken);
+  expect(verifyAccessToken(next.accessToken)).toMatchObject({ sub: 'kevin', via: 'password', tenantId: 'default' });
+  await expect(authService.refresh(first.refreshToken)).rejects.toThrow(/reuse/);
+  await expect(validateIdentity(verifyAccessToken(next.accessToken))).rejects.toThrow(/revoked/);
 });

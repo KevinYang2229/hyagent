@@ -1,6 +1,6 @@
 import type { Attachment } from '@hyagent/shared';
 import { refreshApprovals } from '@/modules/form/approvals';
-import { computeStatus, setField, validateAll } from '@/modules/form/form.engine';
+import { computeStatus, setField } from '@/modules/form/form.engine';
 import { getDefinition } from '@/modules/form/form.registry';
 import type { FieldIssue } from '@/modules/form/form.types';
 import { getApplicant } from '@/modules/user/user.directory';
@@ -10,10 +10,10 @@ import { webhookDispatcher } from '@/modules/webhook/webhook.dispatcher';
 import { AppError } from '@/utils/app-error';
 import { attachmentStore } from './attachment.store';
 import { runTurn } from './conversation.agent';
-import { resolveSubmit } from './form-submit.registry';
+import { assertFormAccess } from './form-access';
+import { assertMutable, submitSession } from './submit-session';
 import { conversationStore } from './conversation.store';
 import type { Session, TurnResult } from './conversation.types';
-import { listEnabledForms } from './form.agent-service';
 import { pickFormId } from './intent-router';
 
 /** 申請人欄位值格式：姓名(工號)，與真實 OA 畫面一致 */
@@ -35,14 +35,11 @@ export const conversationService = {
     formId?: string,
     lang?: string,
   ): Promise<{ session: Session; turn?: TurnResult }> {
-    // 表單選擇：明確指定優先，否則依首句意圖路由（皆驗證表單存在）。
-    // 明確指定 formId 時另需驗證使用者持有該表單 scope（form:<id>）——
-    // 無指定則走 pickFormId，其已僅回傳 listEnabledForms 授予的表單，無需重複檢查。
-    if (formId && !listEnabledForms(tenantId, userId).some((d) => d.formId === formId)) {
-      throw AppError.forbidden('無權使用此表單');
-    }
-    const def = getDefinition(tenantId, formId ?? pickFormId(tenantId, userId, message));
-    const session = conversationStore.create(tenantId, userId, def.formId);
+    const selectedForm = formId ?? pickFormId(tenantId, userId, message);
+    if (selectedForm) assertFormAccess(tenantId, userId, selectedForm);
+    // A tenant with no form grants can still use knowledge/report conversations.
+    const def = selectedForm ? getDefinition(tenantId, selectedForm) : undefined;
+    const session = conversationStore.create(tenantId, userId, selectedForm);
     // 這裡刻意不設 session.activeServiceId：formId 只是「這個對話若要填表，填哪張」的預選，
     // 不等於 form 已經是流程擁有者。session 一建立 status 就是 'collecting'，若同時把
     // activeServiceId 設成 'form'，intent-router 從第一輪起就判定為填表點黏中，第二輪起
@@ -52,7 +49,7 @@ export const conversationService = {
     session.locale = normalizeLocale(lang);
     usageStore.increment(tenantId, 'conversations');
     // 申請人／外出人＝目前登入者，建立 session 時即帶入（代人申請時使用者可再覆寫）
-    if ('applicant' in def.data.properties) {
+    if (def && 'applicant' in def.data.properties) {
       session.values.applicant = formatApplicant(userId);
     }
     conversationStore.save(session);
@@ -72,8 +69,8 @@ export const conversationService = {
     lang?: string,
   ): Promise<TurnResult> {
     const session = conversationStore.get(id, tenantId, userId);
-    if (session.status === 'submitted') throw AppError.conflict('Conversation already submitted');
-    if (session.status === 'cancelled') throw AppError.conflict('Conversation cancelled');
+    if (session.formId) assertFormAccess(tenantId, userId, session.formId);
+    assertMutable(session);
     // 允許對話中途切換語言：每則訊息帶來的語系覆寫 session
     if (lang) session.locale = normalizeLocale(lang);
     usageStore.increment(tenantId, 'messages');
@@ -86,40 +83,14 @@ export const conversationService = {
    */
   async submit(tenantId: string, userId: string, id: string): Promise<TurnResult> {
     const session = conversationStore.get(id, tenantId, userId);
-    if (session.status === 'submitted') throw AppError.conflict('Conversation already submitted');
-    if (session.status === 'cancelled') throw AppError.conflict('Conversation cancelled');
-
-    const def = getDefinition(tenantId, session.formId);
-    const issues = validateAll(def, session.values);
-    if (issues.length > 0) {
-      throw AppError.unprocessable('表單尚有欄位未完成，無法送出', issues);
-    }
-
-    session.status = 'submitting';
-    try {
-      // 依表單類型查表選送出 service（外出登記 / 出差報銷 / 請假…），與 agent 工具一致
-      const submitForm = resolveSubmit(session.formId);
-      const result = await submitForm(tenantId, userId, session.values);
-      session.status = 'submitted';
-      session.submission = {
-        oaRequestId: result.oaRequestId,
-        status: result.status,
-        submittedAt: result.submittedAt,
-        approvals: result.approvals,
-      };
-      // 已送出：附件 metadata 已隨 payload 交付，清掉本地暫存的檔案內容
-      attachmentStore.clearSession(session.id);
-    } catch (err) {
-      session.status = 'failed';
-      conversationStore.save(session);
-      throw err;
-    }
+    await submitSession(session);
+    const submission = session.submission!;
 
     // 在逐字稿留下確認/送出紀錄，維持對話一致
     session.messages.push({ role: 'user', content: [{ type: 'text', text: '確認' }] });
     session.messages.push({
       role: 'assistant',
-      content: [{ type: 'text', text: `已送出，OA 單號：${session.submission.oaRequestId}。` }],
+      content: [{ type: 'text', text: `已送出，OA 單號：${submission.oaRequestId}。` }],
     });
     conversationStore.save(session);
     usageStore.increment(tenantId, 'submissions');
@@ -133,7 +104,7 @@ export const conversationService = {
         formId: session.formId,
         userId,
         values: session.values,
-        submission: session.submission,
+        submission,
       },
     });
 
@@ -157,8 +128,8 @@ export const conversationService = {
     fields: Record<string, unknown>,
   ): UpdateFieldsResult {
     const session = conversationStore.get(id, tenantId, userId);
-    if (session.status === 'submitted') throw AppError.conflict('Conversation already submitted');
-    if (session.status === 'cancelled') throw AppError.conflict('Conversation cancelled');
+    assertFormAccess(tenantId, userId, session.formId);
+    assertMutable(session);
 
     const def = getDefinition(tenantId, session.formId);
     const applied: string[] = [];
@@ -224,20 +195,23 @@ export const conversationService = {
     file: { name: string; mime: string; buffer: Buffer },
   ): Attachment {
     const session = conversationStore.get(id, tenantId, userId);
-    if (session.status === 'submitted') throw AppError.conflict('Conversation already submitted');
-    if (session.status === 'cancelled') throw AppError.conflict('Conversation cancelled');
+    assertFormAccess(tenantId, userId, session.formId);
+    assertMutable(session);
     return attachmentStore.save(session.id, file);
   },
 
   /** 刪除一個附件（檔案內容）；對話歸屬驗證後才動作 */
   removeAttachment(tenantId: string, userId: string, id: string, attachmentId: string): void {
     const session = conversationStore.get(id, tenantId, userId);
+    assertFormAccess(tenantId, userId, session.formId);
+    assertMutable(session);
     const ok = attachmentStore.remove(session.id, attachmentId);
     if (!ok) throw AppError.notFound('Attachment not found');
   },
 
   get(tenantId: string, userId: string, id: string): Session {
     const session = conversationStore.get(id, tenantId, userId);
+    if (session.formId) assertFormAccess(tenantId, userId, session.formId);
     // 查詢時即時反映目前簽核進度（依送出時間重算關卡狀態）
     if (session.submission?.approvals?.length) {
       session.submission = {
@@ -253,6 +227,8 @@ export const conversationService = {
 
   cancel(tenantId: string, userId: string, id: string): Session {
     const session = conversationStore.get(id, tenantId, userId);
+    if (session.formId) assertFormAccess(tenantId, userId, session.formId);
+    assertMutable(session);
     if (session.status !== 'submitted') {
       session.status = 'cancelled';
       // 已取消的對話不會送出，清掉暫存附件內容避免記憶體累積

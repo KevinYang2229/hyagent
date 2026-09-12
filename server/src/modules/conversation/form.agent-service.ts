@@ -18,10 +18,10 @@ import type { Definition, FieldIssue } from '@/modules/form/form.types';
 import { leaveService } from '@/modules/leave/leave.service';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 import { listDeputyCandidates } from '@/modules/user/user.directory';
-import { attachmentStore } from './attachment.store';
+import { assertFormAccess } from './form-access';
+import { assertMutable, submitSession } from './submit-session';
 import type { AgentService, AgentTurnResult, IntentDescriptor } from './agent-service.types';
 import type { Session } from './conversation.types';
-import { resolveSubmit } from './form-submit.registry';
 import { runToolLoop } from './tool-loop';
 
 const SUBMIT_CONFIRMATION_RE = /(確認|確定|送出|提交|送件|可以送|幫我送|同意送出)/;
@@ -37,6 +37,7 @@ export function isSubmitConfirmation(text: string): boolean {
 /** 該租戶表單中，principal 具 form:<formId> scope 者（opt-in：未授予則不可見）。 */
 export function listEnabledForms(tenantId: string, userId: string): Definition[] {
   const scopes = new Set(resolveScopes({ tenantId, userId }));
+  if (!scopes.has('service:form')) return [];
   return listDefinitions(tenantId).filter((d) => scopes.has(formScopeId(d.formId)));
 }
 
@@ -155,6 +156,8 @@ async function dispatchFormTool(
   input: Record<string, unknown>,
 ): Promise<string> {
   const { def, session } = ctx;
+  assertFormAccess(session.tenantId, session.userId, session.formId);
+  assertMutable(session);
 
   if (name === 'fill_fields') {
     const fields = (input.fields ?? {}) as Record<string, unknown>;
@@ -196,30 +199,18 @@ async function dispatchFormTool(
         error: '請先向使用者出示摘要並取得「確認／送出」等明確送出指令，於下一輪再呼叫 submit',
       });
     }
-    session.status = 'submitting';
     try {
-      // 依表單類型查表選送出 service（外出登記 / 出差報銷 / 請假…）
-      const submit = resolveSubmit(session.formId);
-      const result = await submit(session.tenantId, session.userId, session.values);
-      session.status = 'submitted';
-      session.submission = {
-        oaRequestId: result.oaRequestId,
-        status: result.status,
-        submittedAt: result.submittedAt,
-        approvals: result.approvals,
-      };
-      // 已送出：附件 metadata 已隨 payload 交付，清掉本地暫存的檔案內容
-      attachmentStore.clearSession(session.id);
+      await submitSession(session);
+      const result = session.submission!;
       return JSON.stringify({ ok: true, oaRequestId: result.oaRequestId, status: result.status });
     } catch (err) {
-      session.status = 'failed';
       return JSON.stringify({ ok: false, error: (err as Error).message });
     }
   }
 
   if (name === 'get_leave_balances') {
     try {
-      const balances = await leaveService.getBalances(session.userId);
+      const balances = await leaveService.getBalances(session.userId, session.tenantId);
       return JSON.stringify({ ok: true, balances });
     } catch (err) {
       return JSON.stringify({ ok: false, error: (err as Error).message });
@@ -259,6 +250,8 @@ export const formAgentService: AgentService = {
   },
 
   async handleTurn(session: Session, userText: string, llm: LLMProvider): Promise<AgentTurnResult> {
+    assertFormAccess(session.tenantId, session.userId, session.formId);
+    assertMutable(session);
     const def = getDefinition(session.tenantId, session.formId);
     // 守門快照：只有「使用者本輪訊息抵達時已是 confirming」才允許 submit
     const canSubmit = session.status === 'confirming' && isSubmitConfirmation(userText);

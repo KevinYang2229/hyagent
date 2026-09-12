@@ -135,7 +135,7 @@ export default function SettingsTab({
               type="password"
               value={ssoSecret}
               onChange={(e) => setSsoSecret(e.target.value)}
-              placeholder={tenant.ssoSecret ? '已設定，輸入以覆蓋' : '未設定'}
+              placeholder={tenant.ssoConfigured ? '已設定，輸入以覆蓋' : '未設定'}
             />
           </div>
 

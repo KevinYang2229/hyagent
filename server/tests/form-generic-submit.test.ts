@@ -1,3 +1,4 @@
+import { scopePolicy } from '@/modules/authz/scope-policy';
 /**
  * Phase 5 端到端（service 層）：Designer 自建表單 → 通用送出可完成。
  * 驗證 resolveSubmit 對「無專屬 service 的表單」走 schema 驅動通用送出：
@@ -11,6 +12,8 @@ import { formStore } from '@/modules/form/form.store';
 import type { Definition } from '@/modules/form/form.types';
 
 const TENANT = 'phase5-tenant';
+beforeEach(() => scopePolicy.setPolicy(TENANT, { groups: {}, accounts: { HYW103: ["service:form", "form:designed-oa", "form:designed-local"] } }));
+
 
 function designedForm(formId: string, withOA: boolean): Definition {
   return {

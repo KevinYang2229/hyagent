@@ -16,6 +16,11 @@ jest.mock('@/modules/knowledge/rerank', () => ({
     chunks.slice(0, k),
 }));
 
+// Semantic embedding is not under test; never contact an external API here.
+jest.mock('@/lib/embedding', () => ({
+  getEmbeddingProvider: () => ({ model: 'test', keySource: 'platform', embed: async () => ({ vectors: [[]], tokens: 0 }) }),
+}));
+
 const recordLLMUsage = jest.fn();
 jest.mock('@/modules/usage/usage.store', () => ({
   __esModule: true,

@@ -67,3 +67,5 @@ const userToken = signUserToken({
 
 - `key`（pk_…）→ 每個請求附 `x-api-key`，後端解析租戶並做資料隔離；省略則落到預設租戶。
 - `userToken` → 以租戶 SSO 密鑰驗章後換發本系統 token；遇 401 自動 refresh 一次。
+
+SSO 簽章要求 HS256、`iss=hyagent:handoff`、`aud=hyagent:sso`、`iat/exp` 且最多 5 分鐘；更新後的 `signUserToken` 會設定用途欄位。外部 `role` 不作為授權依據。詳見 [SSO 契約](../docs/HANDOFF-SSO.md)。

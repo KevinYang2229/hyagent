@@ -15,7 +15,7 @@ export interface UserTokenClaims {
   sub: string;
   /** 顯示名稱（選填） */
   name?: string;
-  /** 角色（選填；省略時 OA 端預設為 employee） */
+  /** 角色（舊版相容欄位；HyAgent 不採用此值授權，一律換發 employee） */
   role?: string;
 }
 
@@ -37,7 +37,7 @@ export function signUserToken(opts: SignUserTokenOptions): string {
   const claims: UserTokenClaims = { sub };
   if (name !== undefined) claims.name = name;
   if (role !== undefined) claims.role = role;
-  return jwt.sign(claims, secret, { expiresIn });
+  return jwt.sign(claims, secret, { expiresIn, algorithm: 'HS256', issuer: 'hyagent:handoff', audience: 'hyagent:sso' });
 }
 
 /**
@@ -45,7 +45,7 @@ export function signUserToken(opts: SignUserTokenOptions): string {
  * 失敗會丟出 jsonwebtoken 的錯誤。
  */
 export function verifyUserToken(token: string, secret: string): UserTokenClaims {
-  return jwt.verify(token, secret) as UserTokenClaims;
+  return jwt.verify(token, secret, { algorithms: ['HS256'], issuer: 'hyagent:handoff', audience: 'hyagent:sso', maxAge: '5m' }) as UserTokenClaims;
 }
 
 // ───────────────────────── Webhook 接收端工具 ─────────────────────────

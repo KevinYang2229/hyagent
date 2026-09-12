@@ -8,6 +8,7 @@
  * 各 service 的 submit 簽名一致：(tenantId, userId, values) => Promise<FormSubmission>，
  * 不認識 express，可在 worker 執行。
  */
+import { assertFormAccess } from './form-access';
 import { randomUUID } from 'node:crypto';
 import type { ApprovalStep } from '@hyagent/shared';
 import { logger } from '@/lib/logger';
@@ -134,6 +135,7 @@ async function notifyOnSubmit(
 export function resolveSubmit(formId: string): FormSubmitFn {
   const base = submitRegistry[formId] ?? makeGenericSubmit(formId);
   return async (tenantId, userId, values) => {
+    assertFormAccess(tenantId, userId, formId);
     const result = await base(tenantId, userId, values);
     recordSubmission(tenantId, userId, formId, result);
     await notifyOnSubmit(tenantId, userId, formId, result);

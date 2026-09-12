@@ -10,7 +10,7 @@ import { signAccessToken } from '@/utils/jwt';
 import type { SessionStatus } from '@hyagent/shared';
 
 const app = createApp();
-const token = signAccessToken({ sub: 'kevin', role: 'employee' });
+const token = signAccessToken({ sub: 'kevin', role: 'employee', via: 'password' });
 const auth = { authorization: `Bearer ${token}` };
 
 function draft(userId = 'kevin', tenantId = 'default', status: SessionStatus = 'collecting') {

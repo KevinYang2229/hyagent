@@ -112,7 +112,7 @@ export function createApp(): Express {
   // 報告的成本已由同租戶單一任務與節數上限守住
   app.use('/api/tasks', resolveTenant, requireAuth, tenantRateLimit, tasksRouter);
   app.use('/api/reports', resolveTenant, requireAuth, tenantRateLimit, reportRouter);
-  app.use('/api/leave', requireAuth, leaveRouter);
+  app.use('/api/leave', resolveTenant, requireAuth, leaveRouter);
 
   // 公開 widget 設定：resolveTenant 以 ?key=pk_ 解租戶，無 requireAuth（widget 載入即可讀外觀）
   app.use('/api/widget', resolveTenant, widgetRouter);

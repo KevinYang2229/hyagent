@@ -8,7 +8,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import { env } from '@/config/env';
 import { AppError } from '@/utils/app-error';
-import { verifyAccessToken } from '@/utils/jwt';
+import { verifyAdminToken } from '@/utils/jwt';
 
 export function requireAdmin(req: Request, _res: Response, next: NextFunction): void {
   if (!env.ADMIN_API_KEY && !env.ADMIN_PASSWORD) {
@@ -27,8 +27,8 @@ export function requireAdmin(req: Request, _res: Response, next: NextFunction): 
   const [scheme, token] = auth.split(' ');
   if (scheme === 'Bearer' && token) {
     try {
-      const payload = verifyAccessToken(token);
-      if (payload.role === 'admin') {
+      const payload = verifyAdminToken(token);
+      if (payload.role === 'admin' && payload.via === 'password' && !payload.tenantId) {
         next();
         return;
       }

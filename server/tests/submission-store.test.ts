@@ -56,6 +56,7 @@ describe('送出漏斗記錄', () => {
 
   it('通用送出成功後留下紀錄（含 formTitle）', async () => {
     const t = tenantStore.createTenant('sub-record');
+    tenantStore.updateTenant(t.id, { grantedScopes: ['service:form', 'form:outing-registration'] });
     const submit = resolveSubmit('outing-registration');
     const values = validOutingValues();
     const result = await submit(t.id, 'kevin', values);
@@ -67,6 +68,7 @@ describe('送出漏斗記錄', () => {
 
   it('store 記錄拋錯不影響送出（best-effort）', async () => {
     const t = tenantStore.createTenant('sub-record-fail');
+    tenantStore.updateTenant(t.id, { grantedScopes: ['service:form', 'form:outing-registration'] });
     const spy = jest.spyOn(submissionStore, 'record').mockImplementation(() => { throw new Error('磁碟爆了'); });
     try {
       const submit = resolveSubmit('outing-registration');

@@ -146,7 +146,13 @@ export function createOAAgent(options: OAAgentOptions = {}): OAAgentClient {
     tokens = await unwrap<Tokens>(res);
   }
 
-  async function tryRefresh(): Promise<boolean> {
+  let refreshInFlight: Promise<boolean> | null = null;
+  function tryRefresh(): Promise<boolean> {
+    if (!refreshInFlight) refreshInFlight = performRefresh().finally(() => { refreshInFlight = null; });
+    return refreshInFlight;
+  }
+
+  async function performRefresh(): Promise<boolean> {
     if (!tokens?.refreshToken) return false;
     const res = await fetch(`${AUTH}/refresh`, {
       method: 'POST',
@@ -164,8 +170,9 @@ export function createOAAgent(options: OAAgentOptions = {}): OAAgentClient {
   async function request<T>(url: string, init: RequestInit = {}): Promise<T> {
     if (!tokens && options.userToken) await ssoExchange();
     const send = () => fetch(url, { ...init, headers: { ...baseHeaders(!(init.body instanceof FormData)), ...(init.headers as Record<string, string>) } });
+    const sentToken = tokens?.accessToken;
     let res = await send();
-    if (res.status === 401 && (await tryRefresh())) res = await send();
+    if (res.status === 401 && (tokens?.accessToken !== sentToken || await tryRefresh())) res = await send();
     return unwrap<T>(res);
   }
 
