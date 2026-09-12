@@ -55,9 +55,15 @@ export function getApplicant(userId: string, tenantId = 'default'): Applicant {
   return { ...applicant };
 }
 
-/** Only the built-in development accounts support the development password. */
+/**
+ * 可用帳密登入的帳號＝default 租戶「當下生效」的目錄。
+ *
+ * 後台設定過人員目錄就以設定值為準（production 也算數）；沒設定才落到內建的開發名錄，
+ * 而那份名錄本來就只在非 production 提供。換句話說，正式環境要開帳密登入（AUTH_PASSWORD_LOGIN=on）
+ * 必須先把自己的人員目錄建起來，不會因為開了開關就讓寫在 repo 裡的 mock 帳號能登入。
+ */
 export function isKnownUser(userId: string): boolean {
-  return env.NODE_ENV !== 'production' && Object.prototype.hasOwnProperty.call(DIRECTORY, userId);
+  return directory('default').some((p) => p.id === userId);
 }
 
 export function listUserIds(tenantId = 'default'): string[] {

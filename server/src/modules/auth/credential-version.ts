@@ -1,5 +1,5 @@
 import { createHmac } from 'node:crypto';
-import { env } from '@/config/env';
+import { env, isPasswordLoginEnabled } from '@/config/env';
 import { tenantStore, tenantFromRow, unsealTenant } from '@/modules/tenant/tenant.store';
 import { connectDb } from '@/lib/db';
 import { securityClaims } from '@/lib/security-claims';
@@ -31,7 +31,12 @@ export async function validateIdentity(payload: JwtPayload): Promise<void> {
     if (!tenant.ssoSecret || payload.credentialVersion !== credentialVersion(tenant)) {
       throw AppError.unauthorized('SSO credentials revoked');
     }
-  } else if (payload.via !== 'password' || payload.tenantId !== 'default' || env.NODE_ENV === 'production') {
+  } else if (
+    // 帳密登入關閉時，連同它先前簽發的 token 一起失效——否則關掉開關後舊 token 還能繼續用
+    payload.via !== 'password' ||
+    payload.tenantId !== 'default' ||
+    !isPasswordLoginEnabled()
+  ) {
     throw AppError.unauthorized('Invalid login source');
   }
 }

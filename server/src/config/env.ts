@@ -37,6 +37,10 @@ export const envSchema = z.object({
 
   // MVP 登入：固定 dev 密碼（所有 mock 帳號共用）。之後接真實認證時換掉驗證邏輯即可。
   AUTH_DEV_PASSWORD: z.string().default(DEV_AUTH_PASSWORD),
+  // 帳密登入開關。auto＝非 production 開、production 關（安全預設，正式使用者走 SSO）；
+  // on＝明確開啟（production 也開，但必須自訂 AUTH_DEV_PASSWORD，見下方 fail-fast）；off＝一律關。
+  // 需要這個開關是因為 SSO 得由宿主後端簽票，宿主端還沒接好時整套面板會完全無法登入。
+  AUTH_PASSWORD_LOGIN: z.enum(['auto', 'on', 'off']).default('auto'),
 
   // 結尾斜線容錯：瀏覽器送的 Origin 不帶結尾斜線，env 多打一個 `/` 會比對不到而擋掉
   CORS_ORIGIN: z
@@ -149,6 +153,16 @@ export const envSchema = z.object({
         });
       }
     }
+    // production 明確開啟帳密登入時，密碼不得沿用公開在 repo 裡的 dev 預設值——
+    // 那等於對全世界公開一組可登入的帳密。只在 on 時擋，auto/off 本來就沒開這條路。
+    if (val.AUTH_PASSWORD_LOGIN === 'on' && val.AUTH_DEV_PASSWORD === DEV_AUTH_PASSWORD) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['AUTH_DEV_PASSWORD'],
+        message:
+          'AUTH_DEV_PASSWORD must be overridden when AUTH_PASSWORD_LOGIN=on in production (still using insecure dev default)',
+      });
+    }
   }
 
   // DATA_BACKEND=db 時必須提供 DATABASE_URL，boot 時 fail-fast
@@ -216,3 +230,15 @@ if (!parsed.success) {
 }
 
 export const env = parsed.data;
+
+/**
+ * 這個環境是否開放帳密登入。
+ *
+ * 寫成函式而非常數：測試會在執行期改 `env.NODE_ENV` 驗證 production 行為，
+ * 模組載入當下算好的布林值反映不出來。
+ */
+export function isPasswordLoginEnabled(): boolean {
+  if (env.AUTH_PASSWORD_LOGIN === 'on') return true;
+  if (env.AUTH_PASSWORD_LOGIN === 'off') return false;
+  return env.NODE_ENV !== 'production';
+}
