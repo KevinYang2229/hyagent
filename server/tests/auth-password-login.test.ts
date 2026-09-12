@@ -5,6 +5,8 @@
  * 宿主端還沒接好時整套面板會完全無法登入。改成顯式開關後，這裡守住兩個方向：
  * 開啟時 production 也能登入、關閉時連先前簽發的 token 都不再被接受。
  */
+import request from 'supertest';
+import { createApp } from '@/app';
 import { env, isPasswordLoginEnabled } from '@/config/env';
 import { authService } from '@/modules/auth/auth.service';
 import { validateIdentity } from '@/modules/auth/credential-version';
@@ -61,6 +63,47 @@ describe('AUTH_PASSWORD_LOGIN', () => {
     await withEnv({ AUTH_PASSWORD_LOGIN: 'on', NODE_ENV: 'production' }, async () => {
       expect(() => authService.login('kevin', env.AUTH_DEV_PASSWORD)).toThrow(/帳號或密碼/);
     });
+  });
+
+  it('帶租戶金鑰登入時 token 綁該租戶，受保護端點不會被判成租戶不符', async () => {
+    const tenant = tenantStore.createTenant('password-login-tenant');
+    const apiKey = tenantStore.createApiKey(tenant.id, 'publishable');
+    tenantStore.updateTenant(tenant.id, {
+      userDirectory: [{ id: 'staff-009', name: '陳大文', department: '資訊部' }],
+    });
+    const app = createApp();
+
+    const login = await request(app)
+      .post('/api/auth/login')
+      .set('x-api-key', apiKey.key)
+      .send({ username: 'staff-009', password: env.AUTH_DEV_PASSWORD })
+      .expect(200);
+    expect(login.body.data.user).toMatchObject({ id: 'staff-009', name: '陳大文' });
+
+    // 同一把金鑰打受保護端點：token 綁 default 的話這裡會是 401 Token tenant mismatch
+    await request(app)
+      .get('/api/auth/me')
+      .set('x-api-key', apiKey.key)
+      .set('authorization', `Bearer ${login.body.data.accessToken}`)
+      .expect(200);
+  });
+
+  it('租戶沒設人員目錄就沒有任何帳號可登入', async () => {
+    const tenant = tenantStore.createTenant('password-login-no-directory');
+    const apiKey = tenantStore.createApiKey(tenant.id, 'publishable');
+    const app = createApp();
+
+    await request(app)
+      .post('/api/auth/login')
+      .set('x-api-key', apiKey.key)
+      .send({ username: 'staff-001', password: env.AUTH_DEV_PASSWORD })
+      .expect(401);
+  });
+
+  it('帳號被移出租戶目錄後，先前簽發的 token 立即失效', async () => {
+    const tokens = authService.login('staff-001', env.AUTH_DEV_PASSWORD);
+    tenantStore.updateTenant('default', { userDirectory: [] });
+    await expect(validateIdentity(verifyAccessToken(tokens.accessToken))).rejects.toThrow();
   });
 
   it('off：即使非 production 也擋下登入，並讓先前簽發的 token 失效', async () => {

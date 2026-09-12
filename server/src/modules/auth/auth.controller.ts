@@ -7,7 +7,8 @@ export const authController = {
   // 公開：帳密登入 → access/refresh + 使用者資料
   async login(req: Request, res: Response): Promise<void> {
     const { username, password } = req.body as LoginInput;
-    const result = authService.login(username, password);
+    // 未帶 API Key 時 resolveTenant 會落到預設租戶；租戶決定認得哪些帳號，也決定 token 綁在誰身上
+    const result = authService.login(username, password, req.tenant?.id ?? 'default');
     res.status(200).json({ data: result });
   },
 

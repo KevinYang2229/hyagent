@@ -46,15 +46,21 @@ function issueTokens(payload: JwtPayload): AuthTokens {
 }
 
 export const authService = {
-  /** 帳密驗證 → 簽發 access/refresh token 與使用者資料 */
-  login(userId: string, password: string): LoginResult {
+  /**
+   * 帳密驗證 → 簽發 access/refresh token 與使用者資料。
+   *
+   * tenantId 來自呼叫端帶的 API Key（未帶則 default）。token 必須綁在同一個租戶上：
+   * requireAuth 會擋掉「token 租戶 ≠ API Key 租戶」，簽成 default 的話嵌入式 widget
+   * 登入會成功、之後每一支 API 卻都 401。
+   */
+  login(userId: string, password: string, tenantId = 'default'): LoginResult {
     if (!isPasswordLoginEnabled()) throw AppError.forbidden('此環境未開放帳密登入，請使用 SSO 登入');
-    // MVP：已知帳號 + 固定 dev 密碼。錯誤訊息不分帳號/密碼以免帳號列舉。
-    if (!isKnownUser(userId) || password !== env.AUTH_DEV_PASSWORD) {
+    // MVP：租戶目錄內的帳號 + 共用密碼。錯誤訊息不分帳號/密碼以免帳號列舉。
+    if (!isKnownUser(userId, tenantId) || password !== env.AUTH_DEV_PASSWORD) {
       throw AppError.unauthorized('帳號或密碼錯誤');
     }
-    const payload: JwtPayload = { sub: userId, role: 'employee', via: 'password', tenantId: 'default' };
-    return { ...issueTokens(payload), user: getApplicant(userId) };
+    const payload: JwtPayload = { sub: userId, role: 'employee', via: 'password', tenantId };
+    return { ...issueTokens(payload), user: getApplicant(userId, tenantId) };
   },
 
   /**

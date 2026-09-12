@@ -3,6 +3,7 @@ import { env, isPasswordLoginEnabled } from '@/config/env';
 import { tenantStore, tenantFromRow, unsealTenant } from '@/modules/tenant/tenant.store';
 import { connectDb } from '@/lib/db';
 import { securityClaims } from '@/lib/security-claims';
+import { isKnownUser } from '@/modules/user/user.directory';
 import type { Tenant } from '@/modules/tenant/tenant.types';
 import type { JwtPayload } from '@/utils/jwt';
 import { AppError } from '@/utils/app-error';
@@ -32,10 +33,11 @@ export async function validateIdentity(payload: JwtPayload): Promise<void> {
       throw AppError.unauthorized('SSO credentials revoked');
     }
   } else if (
-    // 帳密登入關閉時，連同它先前簽發的 token 一起失效——否則關掉開關後舊 token 還能繼續用
+    // 帳密登入關閉時，連同它先前簽發的 token 一起失效——否則關掉開關後舊 token 還能繼續用。
+    // 另外每次都重查租戶目錄：帳號被移出目錄後現有 token 立即失效，不必等它自然過期。
     payload.via !== 'password' ||
-    payload.tenantId !== 'default' ||
-    !isPasswordLoginEnabled()
+    !isPasswordLoginEnabled() ||
+    !isKnownUser(payload.sub, payload.tenantId)
   ) {
     throw AppError.unauthorized('Invalid login source');
   }

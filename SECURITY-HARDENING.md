@@ -34,7 +34,11 @@ id 不可重複，代理人必須存在於同一份目錄。另支援 title、re
 
 帳密登入由 `AUTH_PASSWORD_LOGIN` 控制：`auto`（預設）在 `NODE_ENV=production` 關閉、其他環境開啟；`off` 一律關閉；`on` 明確開啟。關閉狀態同時拒絕先前以帳密簽發的 access／refresh token。正式使用者走 SSO，平台管理員登入獨立保留。
 
-`production` + `on` 另有兩道門檻：`AUTH_DEV_PASSWORD` 不得沿用 repo 內的預設值（boot fail-fast），且可登入帳號以後台設定的 default 租戶人員目錄為準——內建的開發名錄在 production 不參與，開了開關也不會讓 repo 裡的 mock 帳號能登入。此模式下同一組密碼由目錄內所有帳號共用，屬過渡用途，宿主端 SSO 接上後應改回 `auto`。
+`production` + `on` 另有兩道門檻：`AUTH_DEV_PASSWORD` 不得沿用 repo 內的預設值（boot fail-fast），且可登入帳號以該租戶後台設定的人員目錄為準——內建的開發名錄只有非 production 的 default 租戶提供，開了開關也不會讓 repo 裡的 mock 帳號能登入，沒建目錄的租戶則沒有任何帳號可登入。
+
+帳密登入的 token 綁定「呼叫端 API Key 解析到的租戶」（未帶金鑰＝預設租戶），與 `requireAuth` 的租戶比對一致，嵌入式 widget 才不會登入成功後每支 API 都被判成租戶不符。每次請求重查目錄，帳號被移出後既有 token 立即失效。
+
+此模式下 `AUTH_DEV_PASSWORD` 是全站唯一一組密碼、由所有租戶目錄內的帳號共用，屬過渡用途；宿主端 SSO 接上後應改回 `auto`。
 
 登入、後台登入、SSO exchange、refresh 各自按來源 IP 限流；變更 username、user header 或租戶 key 不會重置額度。預設每 15 分鐘分別為 20、10、60、120 次，超過回 429 與 Retry-After。設定見 `server/.env.example` 的 `AUTH_*RATE_LIMIT*`。
 

@@ -10,7 +10,8 @@ import { loginSchema, refreshSchema, ssoExchangeSchema } from './auth.schema';
 const router = Router();
 
 // 公開端點
-router.post('/login', loginRateLimit, validate({ body: loginSchema }), asyncHandler(authController.login));
+// 帳密登入：resolveTenant 解析 API Key（未帶則預設租戶），token 綁該租戶
+router.post('/login', loginRateLimit, resolveTenant, validate({ body: loginSchema }), asyncHandler(authController.login));
 router.post('/refresh', refreshRateLimit, validate({ body: refreshSchema }), asyncHandler(authController.refresh));
 
 // SSO handoff：需帶 API Key（resolveTenant 解析租戶）→ 驗宿主 user token → 換發本系統 token
