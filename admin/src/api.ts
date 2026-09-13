@@ -43,6 +43,13 @@ export const tokenStore = {
   clear: () => sessionStorage.removeItem(TOKEN_KEY),
 };
 
+export interface DirectoryUser {
+  id: string;
+  name: string;
+  department: string;
+  email?: string;
+}
+
 export interface Tenant {
   id: string;
   name: string;
@@ -297,6 +304,8 @@ export interface SkillLibraryView {
 }
 
 export const api = {
+  listDirectoryUsers: (id: string) => req<{ users: DirectoryUser[] }>('GET', `/admin/tenants/${encodeURIComponent(id)}/users`),
+  addDirectoryUser: (id: string, user: DirectoryUser) => req<{ users: DirectoryUser[] }>('POST', `/admin/tenants/${encodeURIComponent(id)}/users`, user),
   login: (password: string) => req<{ token: string }>('POST', '/admin/auth/login', { password }),
 
   listTenants: () => req<Tenant[]>('GET', '/admin/tenants'),

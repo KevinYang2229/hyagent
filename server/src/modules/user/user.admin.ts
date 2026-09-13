@@ -30,3 +30,15 @@ userAdminRouter.put('/', validate({ body }), asyncHandler(async (req, res) => {
   await tenantStore.persistCritical();
   res.json({ data: { users } });
 }));
+
+// Append a single profile using current server state, never a client's stale full directory.
+userAdminRouter.post('/', validate({ body: profile }), asyncHandler(async (req, res) => {
+  const tenantId = String(req.params.id);
+  const user = req.body as z.infer<typeof profile>;
+  const existing = tenantStore.getTenant(tenantId)!.userDirectory ?? [];
+  if (existing.some((entry) => entry.id === user.id)) throw AppError.conflict('此帳號已存在');
+  const parsed = body.parse({ users: [...existing, user] });
+  tenantStore.updateTenant(tenantId, { userDirectory: parsed.users });
+  await tenantStore.persistCritical();
+  res.status(201).json({ data: { users: parsed.users } });
+}));

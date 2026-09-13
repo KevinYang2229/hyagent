@@ -51,3 +51,17 @@ it('anonymous knowledge access cannot inherit an account named after the tenant 
   scopePolicy.setPolicy(t.id, { groups: { '—': ['kb:public'] }, accounts: { [t.id]: ['kb:secret'] } });
   expect(guestVisibilityScopesOf(t.id)).toEqual(['kb:public']);
 });
+
+it('admin can append a login account without replacing existing profiles or accepting duplicates', async () => {
+  const tenant = tenantStore.createTenant('append-directory');
+  tenantStore.updateTenant(tenant.id, { userDirectory: [{ id: 'existing', name: 'Existing', department: 'HR', title: 'Manager', deputyIds: [] }] });
+  const path = `/api/admin/tenants/${tenant.id}/users`;
+  await request(app).post(path).send({ id: 'hyweb', name: 'Hyweb' }).expect(401);
+  await request(app).post(path).set(admin).send({ id: 'hyweb', name: 'Hyweb' }).expect(201);
+  const users = tenantStore.getTenant(tenant.id)!.userDirectory!;
+  expect(users).toHaveLength(2);
+  expect(users[0]).toMatchObject({ id: 'existing', title: 'Manager', deputyIds: [] });
+  expect(users[1]).toMatchObject({ id: 'hyweb', department: '—' });
+  await request(app).post(path).set(admin).send({ id: 'hyweb', name: 'Overwrite' }).expect(409);
+  expect(tenantStore.getTenant(tenant.id)!.userDirectory![1].name).toBe('Hyweb');
+});
