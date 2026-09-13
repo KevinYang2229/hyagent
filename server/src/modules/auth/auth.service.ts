@@ -122,8 +122,8 @@ export const authService = {
       });
     }
     // 內部帳號：重新簽發前確認帳號仍有效
-    if (!isKnownUser(payload.sub)) throw AppError.unauthorized('Unknown user');
-    return issueTokens({ sub: payload.sub, role: 'employee', via: 'password', tenantId: 'default', family: payload.family });
+    if (!isKnownUser(payload.sub, payload.tenantId)) throw AppError.unauthorized('Unknown user');
+    return issueTokens({ sub: payload.sub, role: 'employee', via: 'password', tenantId: payload.tenantId, family: payload.family });
   },
 
   /** 取目前登入者資料（requireAuth 後使用） */

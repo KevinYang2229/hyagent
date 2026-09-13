@@ -221,7 +221,7 @@ export const auth = {
   async login(username: string, password: string): Promise<Applicant> {
     const res = await fetch(`${AUTH}/login`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', ...apiKeyHeader() },
       body: JSON.stringify({ username, password }),
     });
     const data = await unwrap<LoginData>(res);

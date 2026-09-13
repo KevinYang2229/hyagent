@@ -79,6 +79,18 @@ describe('AUTH_PASSWORD_LOGIN', () => {
       .send({ username: 'staff-009', password: env.AUTH_DEV_PASSWORD })
       .expect(200);
     expect(login.body.data.user).toMatchObject({ id: 'staff-009', name: '陳大文' });
+    expect(verifyAccessToken(login.body.data.accessToken).tenantId).toBe(tenant.id);
+    await request(app).get('/api/forms').set('x-api-key', apiKey.key)
+      .set('authorization', `Bearer ${login.body.data.accessToken}`).expect(200);
+    const refreshed = await request(app).post('/api/auth/refresh')
+      .send({ refreshToken: login.body.data.refreshToken }).expect(200);
+    expect(verifyAccessToken(refreshed.body.data.accessToken).tenantId).toBe(tenant.id);
+    await request(app).get('/api/forms').set('x-api-key', apiKey.key)
+      .set('authorization', `Bearer ${refreshed.body.data.accessToken}`).expect(200);
+    // A valid token still cannot be used with another tenant's routing context.
+    await request(app).get('/api/forms')
+      .set('authorization', `Bearer ${refreshed.body.data.accessToken}`).expect(401);
+
 
     // 同一把金鑰打受保護端點：token 綁 default 的話這裡會是 401 Token tenant mismatch
     await request(app)
