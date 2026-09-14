@@ -86,8 +86,8 @@ export default function PermissionsTab({
   };
 
   /**
-   * 套餐授予對照：scope → 「套餐名（被指派對象…）」。
-   * 聯集模型下權限區的模式推導只看零散資料，看不到套餐授予——不補提示會出現
+   * 角色授予對照：scope → 「角色名（被指派對象…）」。
+   * 聯集模型下權限區的模式推導只看零散資料，看不到角色授予——不補提示會出現
    * 「顯示未開通、實際卻有權限」與「取消勾選卻關不掉」的認知落差。
    */
   const bundleGrants = (id: string): string[] =>
@@ -105,7 +105,7 @@ export default function PermissionsTab({
       })
       .filter(Boolean);
 
-  // 「填表申請」是否有任何來源授予（零散或已被指派的套餐）；form:* 缺它時為死授權，給軟警告
+  // 「填表申請」是否有任何來源授予（零散或已被指派的角色）；form:* 缺它時為死授權，給軟警告
   const formServiceGranted =
     policy.grantedScopes.includes('service:form') ||
     Object.values(policy.groups).some((v) => v.includes('service:form')) ||
@@ -230,7 +230,7 @@ export default function PermissionsTab({
 
                   {bundleGrants(s.id).length > 0 && (
                     <div className="row-sub" style={{ marginTop: 4 }}>
-                      另由套餐授予：{bundleGrants(s.id).join('；')}
+                      另由角色授予：{bundleGrants(s.id).join('；')}
                     </div>
                   )}
                   {s.id.startsWith('form:') &&

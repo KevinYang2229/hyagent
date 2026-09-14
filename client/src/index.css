@@ -693,3 +693,9 @@
     @apply hidden;
   }
 }
+
+.my-skills { padding: 10px 16px; border-bottom: 1px solid var(--border-color); max-height: 35vh; overflow: auto; flex-shrink: 0; font-size: 13px; }
+.my-skills summary { cursor: pointer; font-weight: 600; }
+.my-skills p { margin: 6px 0; }
+.my-skills ul { padding-left: 20px; }
+.my-skills li { margin: 10px 0; }

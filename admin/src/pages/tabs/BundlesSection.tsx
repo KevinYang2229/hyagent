@@ -15,11 +15,11 @@ const tdStyle: CSSProperties = {
   borderBottom: '1px solid var(--border-color)',
   verticalAlign: 'middle',
 };
-/** 收縮欄（對象/套餐勾選）：固定為內容寬，欄距穩定；剩餘寬度全給「已指派」欄，
+/** 收縮欄（對象/角色勾選）：固定為內容寬，欄距穩定；剩餘寬度全給「已指派」欄，
  *  摘要文字變長變短都只影響自己，不再牽動其他欄跳動 */
 const shrinkCol: CSSProperties = { width: '1%', whiteSpace: 'nowrap' };
 
-/** 指派矩陣的一列：對象名稱 + 各套餐勾選 + 已指派摘要 */
+/** 指派矩陣的一列：對象名稱 + 各角色勾選 + 已指派摘要 */
 function AssignRow({
   label,
   sub,
@@ -53,7 +53,7 @@ function AssignRow({
 }
 
 /**
- * 能力套餐區（權限分頁上半部）：定義套餐（名稱＋勾選能力）並指派給部門/帳號。
+ * 角色能力區（權限分頁上半部）：定義角色（名稱＋勾選能力）並指派給部門/帳號。
  * 狀態由 PermissionsTab 持有（與零散 scope 同一顆「儲存」鈕送出），此元件只負責編輯。
  */
 export default function BundlesSection({
@@ -63,7 +63,7 @@ export default function BundlesSection({
   policy: TenantPolicyView;
   onChange: (updater: (p: TenantPolicyView) => TenantPolicyView) => void;
 }) {
-  // 編輯中的套餐（null = 沒在編輯；id 為空字串 = 新增）
+  // 編輯中的角色（null = 沒在編輯；id 為空字串 = 新增）
   const [draft, setDraft] = useState<SkillBundle | null>(null);
 
   const scopeGroups: { label: string; items: ScopeDef[] }[] = [
@@ -99,7 +99,7 @@ export default function BundlesSection({
     onChange((p) => ({
       ...p,
       bundles: p.bundles.filter((b) => b.id !== id),
-      // 一併移除所有指派，避免引用不存在的套餐被後端擋下
+      // 一併移除所有指派，避免引用不存在的角色被後端擋下
       groupBundles: Object.fromEntries(
         Object.entries(p.groupBundles).map(([k, v]) => [k, v.filter((x) => x !== id)]),
       ),
@@ -121,20 +121,29 @@ export default function BundlesSection({
     <div className="card">
       <div className="card-head">
         <div>
-          <div className="card-title">能力套餐</div>
+          <div className="card-title">角色能力</div>
           <div className="card-desc">
-            把多個能力打包成具名套餐，指派給部門或帳號；改套餐內容一次，所有被指派對象即時生效。與下方零散授權為聯集。
+            以具名角色組合可用 Skill，指派給部門或帳號。儲存權限後生效；與其他授權取聯集，移除角色不會撤銷其他來源的權限。
           </div>
         </div>
         <div className="toolbar">
           <button className="btn btn-ghost btn-sm" onClick={startNew} disabled={draft !== null}>
-            ＋ 新增套餐
+            ＋ 新增角色
           </button>
         </div>
       </div>
 
+      {!draft && <div className="card-body" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {[
+          { name: '一般員工', description: '協助申請與查詢規定；請另選允許的表單與知識標籤。', scopes: ['service:form', 'service:knowledge'] },
+          { name: '報告分析員', description: '查詢知識並產生報告；文件可見範圍仍依既有 ACL。', scopes: ['service:knowledge', 'service:report'] },
+        ].map((template) => <button key={template.name} className="btn btn-ghost btn-sm" type="button"
+          onClick={() => setDraft({ ...template, id: `b-${crypto.randomUUID()}`, scopes: template.scopes.filter((id) => policy.capabilities.some((c) => c.id === id)) })}>
+          使用「{template.name}」範本
+        </button>)}
+      </div>}
       {policy.bundles.length === 0 && !draft && (
-        <div className="empty">尚未定義套餐。</div>
+        <div className="empty">尚未定義角色，可使用範本開始設定。</div>
       )}
 
       {policy.bundles.length > 0 && (
@@ -146,7 +155,7 @@ export default function BundlesSection({
                   {b.name} <code style={{ fontSize: 12, opacity: 0.6 }}>{b.id}</code>
                 </div>
                 <div className="row-sub">
-                  {b.scopes.length === 0 ? '（空套餐）' : b.scopes.map(scopeLabel).join('、')}
+                  {b.scopes.length === 0 ? '（尚未設定能力）' : b.scopes.map(scopeLabel).join('、')}
                 </div>
               </div>
               <div className="toolbar" style={{ display: 'flex', gap: 8 }}>
@@ -165,12 +174,12 @@ export default function BundlesSection({
       {draft && (
         <div className="card-body" style={{ borderTop: '1px solid var(--border-color)', display: 'grid', gap: 10 }}>
           <div className="field">
-            <label className="field-label">套餐名稱</label>
+            <label className="field-label">角色名稱</label>
             <input
               className="input"
               value={draft.name}
               onChange={(e) => setDraft((d) => (d ? { ...d, name: e.target.value } : d))}
-              placeholder="例：業務基本套餐"
+              placeholder="例：一般員工、報告分析員"
             />
           </div>
           <div className="field">
@@ -245,7 +254,7 @@ export default function BundlesSection({
         <div className="card-body" style={{ borderTop: '1px solid var(--border-color)', display: 'grid', gap: 8 }}>
           <div>
             <div style={{ fontWeight: 500 }}>指派</div>
-            <div className="row-sub">列＝對象、欄＝套餐；勾選即指派，與下方零散授權為聯集。</div>
+            <div className="row-sub">列＝對象、欄＝角色；勾選後須按本頁「儲存」。角色名稱不會額外開放團隊資料或簽核權限。</div>
           </div>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 13.5 }}>

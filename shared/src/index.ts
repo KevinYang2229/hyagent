@@ -363,3 +363,9 @@ export interface TaskNotification {
   target: { category: keyof TaskCenterData; id: string; conversationId?: string };
 }
 export interface NotificationFeed { items: TaskNotification[]; unreadCount: number }
+
+/** Effective capabilities for the authenticated user; never grants authority. */
+export interface MySkillsView {
+  roles: { id: string; name: string; description?: string }[];
+  skills: { id: string; label: string; description: string }[];
+}

@@ -1,6 +1,7 @@
 // 對應後端 auth / conversation / form / leave API。型別共用 @hyagent/shared（單一來源）。
 import type {
   TaskCenterData,
+  MySkillsView,
   NotificationFeed,
   Applicant,
   Attachment,
@@ -255,6 +256,7 @@ export const auth = {
 };
 
 export const api = {
+  mySkills: () => request<MySkillsView>(`${API_ORIGIN}/api/skills`),
   listNotifications(): Promise<NotificationFeed> {
     return request<NotificationFeed>(`${API_ORIGIN}/api/notifications`);
   },

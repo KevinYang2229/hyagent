@@ -114,6 +114,17 @@ export const openapiSpec = {
         },
       },
     },
+    "/api/skills": {
+      get: {
+        tags: ["Skills"],
+        summary: "查詢登入者的角色角色與有效 Agent Skill",
+        description: "依 JWT 與租戶解析身分，忽略使用者篩選參數；沿用既有 Scope Policy。回應禁止快取，不授予新權限。",
+        responses: {
+          "200": { description: "data.roles 為本人獲指派的角色摘要；data.skills 為可用能力的 id、label、description。" },
+          "401": { description: "未登入或租戶身分不符" },
+        },
+      },
+    },
     "/api/tasks": {
       get: {
         tags: ["tasks"],

@@ -16,6 +16,7 @@ import { authRouter } from '@/modules/auth/auth.routes';
 import { conversationRouter } from '@/modules/conversation/conversation.routes';
 import { formRouter } from '@/modules/form/form.routes';
 import { notificationsRouter } from '@/modules/notifications/notifications.routes';
+import { skillsRouter } from '@/modules/skills/skills.routes';
 import { tasksRouter } from '@/modules/tasks/tasks.routes';
 import { reportRouter } from '@/modules/report/report.routes';
 import { leaveRouter } from '@/modules/leave/leave.routes';
@@ -113,6 +114,7 @@ export function createApp(): Express {
   // 報告：狀態查詢與下載。不掛 tenantMonthlyQuota——那是對話輪次額度，
   // 報告的成本已由同租戶單一任務與節數上限守住
   app.use('/api/notifications', resolveTenant, requireAuth, tenantRateLimit, notificationsRouter);
+  app.use('/api/skills', resolveTenant, requireAuth, tenantRateLimit, skillsRouter);
   app.use('/api/tasks', resolveTenant, requireAuth, tenantRateLimit, tasksRouter);
   app.use('/api/reports', resolveTenant, requireAuth, tenantRateLimit, reportRouter);
   app.use('/api/leave', resolveTenant, requireAuth, leaveRouter);

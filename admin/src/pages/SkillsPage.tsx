@@ -45,7 +45,7 @@ export default function SkillsPage() {
               <div>
                 <div className="card-title">內建 Skill（{view.skills.length}）</div>
                 <div className="card-desc">
-                  平台能力以 Skill 為單位掛載；租戶可於「權限」與服務開關決定啟用範圍。此頁為唯讀。
+                  平台能力以 Skill 為單位掛載；請至租戶「權限 → 角色能力」組合能力並指派部門或帳號。此頁為唯讀目錄，資料存取仍受既有權限限制。
                 </div>
               </div>
             </div>

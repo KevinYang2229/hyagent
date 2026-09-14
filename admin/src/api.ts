@@ -275,7 +275,7 @@ export interface TenantPolicyView {
   grantedScopes: string[];
   groups: Record<string, string[]>;
   accounts: Record<string, string[]>;
-  /** 能力套餐：定義 + 部門/帳號指派 */
+  /** 角色能力：定義 + 部門/帳號指派 */
   bundles: SkillBundle[];
   groupBundles: Record<string, string[]>;
   accountBundles: Record<string, string[]>;
