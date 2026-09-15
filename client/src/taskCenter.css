@@ -28,7 +28,14 @@
 
 .task-heading > button { flex-shrink: 0; white-space: nowrap; }
 .notification-badge { display: inline-block; margin-inline-start: .35rem; padding: 0 .35rem; min-width: 1.1rem; border-radius: 1rem; background: var(--primary-color); color: white; font-size: .7rem; line-height: 1.1rem; text-align: center; }
-.notification-toolbar { flex-wrap: wrap; }
+.notification-toolbar { flex-wrap: wrap; align-items: center; gap: .5rem; }
+/* 篩選（全部／未讀）靠左，動作（全部已讀／重新整理）推到右側 */
+.notification-toolbar-end { margin-inline-start: auto; }
+/* 帶 icon 的 chip：quick-chip 的 line-clamp 會把 display 設成 -webkit-box，icon 與文字無法對齊 */
+.task-center .quick-chip-icon { display: inline-flex; align-items: center; gap: .375rem; }
+/* quick-chip 本身沒有停用樣式，停用時要看得出不能按，也不要 hover 上浮 */
+.task-center .quick-chip:disabled { opacity: .5; cursor: not-allowed; transform: none; box-shadow: none; }
+.task-center .quick-chip:not(.active):disabled:hover { border-color: var(--border-color); background: var(--card-bg); color: var(--text-primary); }
 .notification-card.is-unread { border-inline-start: 3px solid var(--primary-color); }
 .notification-kind { display: flex; align-items: center; gap: .4rem; }
 .notification-dot { width: .45rem; height: .45rem; border-radius: 50%; background: var(--primary-color); flex-shrink: 0; }

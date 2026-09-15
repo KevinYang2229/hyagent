@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Button } from '@hyagent/ui';
 import type { TaskNotification } from '@hyagent/shared';
 import type { useNotifications } from './useNotifications';
 import './taskCenter.css';
@@ -30,8 +29,15 @@ export default function NotificationCenter({ notifications, onOpen }: {
     <div className="task-toolbar notification-toolbar">
       <button className={`quick-chip${!unreadOnly ? ' active' : ''}`} aria-pressed={!unreadOnly} onClick={() => setUnreadOnly(false)}>{t('notifications.all')}</button>
       <button className={`quick-chip${unreadOnly ? ' active' : ''}`} aria-pressed={unreadOnly} onClick={() => setUnreadOnly(true)}>{t('notifications.unread')} ({feed.unreadCount})</button>
-      <button className="quick-chip" disabled={busy || loading || !feed.unreadCount} onClick={() => { void markRead(feed.items.filter((item) => !item.read).map((item) => item.id)).catch(() => {}); }}>{t('notifications.readAll')}</button>
-      <Button variant="reset" size="md" disabled={busy || loading} onClick={() => void refresh()}>{t('tasks.refresh')}</Button>
+      <button className="quick-chip notification-toolbar-end" disabled={busy || loading || !feed.unreadCount} onClick={() => { void markRead(feed.items.filter((item) => !item.read).map((item) => item.id)).catch(() => {}); }}>{t('notifications.readAll')}</button>
+      <button className="quick-chip quick-chip-icon" disabled={busy || loading} onClick={() => void refresh()}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <polyline points="23 4 23 10 17 10" />
+          <polyline points="1 20 1 14 7 14" />
+          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+        </svg>
+        {t('tasks.refresh')}
+      </button>
     </div>
     {(error || openError) && <p className="task-error" role="alert">{t(openError ? 'notifications.openError' : 'notifications.error')}</p>}
     {loading && <p role="status">{t('notifications.loading')}</p>}
