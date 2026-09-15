@@ -81,18 +81,16 @@ function ingestParamsFor(tenantId: string): IngestParams {
 
 /**
  * 單格重生失敗 → HTTP 錯誤。四條失敗路徑的「該怎麼辦」完全不同，不可共用一句訊息：
- * no-visible-chunks 重試永遠不會成功（要去標可見性或切回 off），superseded 則是
+ * no-visible-chunks 重試永遠不會成功（要去標可見性與授權訪客），superseded 則是
  * 純粹的時序競爭、原地重按即可。先前一律回「請稍後再試」，把前者誤導成後者。
  */
-function regenerateError(reason: RegenerateFailure, mode: 'off' | 'shadow' | 'on'): AppError {
+function regenerateError(reason: RegenerateFailure): AppError {
   switch (reason) {
     case 'no-visible-chunks': {
-      const label = mode === 'on' ? '啟用' : '觀察（shadow）';
       return AppError.unprocessable(
-        `該來源有索引內容，但在「${label}」模式下沒有任何訪客看得到的內容可當語料`
-          + '——推薦問句會經免登入的 widget 送給任何訪客，故未標記與非公開的內容一律排除。'
-          + '請先標記檔案可見性、並確認訪客部門已獲對應的 kb: 授權，或切回「關閉」模式。'
-          + '（重試不會改變結果）',
+        '該來源有索引內容，但沒有訪客可見的語料，無法生成公開推薦詞。'
+          + '請在知識庫設定網站來源或檔案的可見性標籤，再到「權限」將相同標籤授權給「訪客／未建檔帳號」部門。'
+          + '儲存後即可重新生成，不必重新解析。僅限登入者可見的內容不會用於公開推薦詞。',
       );
     }
     case 'blank-material':
@@ -199,7 +197,7 @@ export const knowledgeAdminController = {
 
     const outcome = await regenerateSlot(tenantId, source, idx);
     // 失敗時 meta 會留著舊句，不能改讀 meta 充數；一律據實回報並說明原因
-    if (!outcome.ok) throw regenerateError(outcome.reason, aclModeOf(tenantId));
+    if (!outcome.ok) throw regenerateError(outcome.reason);
     res.json({ data: { source, slot: knowledgeStore.getMeta(tenantId).suggestedPrompts?.[source] } });
   },
 

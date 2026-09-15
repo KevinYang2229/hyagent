@@ -66,6 +66,7 @@ export default function KnowledgeTab({
   const [editingFileId, setEditingFileId] = useState<string | null>(null);
   const [editScopes, setEditScopes] = useState<string[]>([]); // labelId（未加 kb: 前綴）
   const [savingVisibility, setSavingVisibility] = useState(false);
+  const [savingSource, setSavingSource] = useState(false);
   // ACL 盤點面板
   const [aclReport, setAclReport] = useState<KnowledgeAclReport | null>(null);
   const [regenerating, setRegenerating] = useState<PromptSource | null>(null); // 手動重新生成開場推薦詞中的來源
@@ -119,6 +120,21 @@ export default function KnowledgeTab({
 
   const update = (patch: Partial<KnowledgeSource>) =>
     setSrc((s) => (s ? { ...s, ...patch } : s));
+
+  const saveSourceSettings = async () => {
+    if (!src) return;
+    setSavingSource(true);
+    try {
+      const saved = await api.saveKnowledgeSource(tenantId, src);
+      setSrc(saved);
+      await loadAcl();
+      toast.success("已儲存網站設定，可直接重新生成推薦詞");
+    } catch (e) {
+      onError(e);
+    } finally {
+      setSavingSource(false);
+    }
+  };
 
   const startPoll = (jobId: string) => {
     if (poll.current) clearInterval(poll.current);
@@ -407,6 +423,32 @@ export default function KnowledgeTab({
                   />
                 </div>
                 <div className="field">
+                  <span className="field-label">網站可見性標籤</span>
+                  {labels.length === 0 && (
+                    <span className="field-hint">請先在下方「可見性標籤」新增標籤。</span>
+                  )}
+                  {labels.map((label) => {
+                    const scope = kbScopeId(label.id);
+                    return (
+                      <label key={label.id} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <Checkbox
+                          checked={(src.visibilityScopes ?? []).includes(scope)}
+                          disabled={parsing || savingSource}
+                          onChange={(e) => update({
+                            visibilityScopes: e.target.checked
+                              ? [...(src.visibilityScopes ?? []), scope]
+                              : (src.visibilityScopes ?? []).filter((s) => s !== scope),
+                          })}
+                        />
+                        {label.label}
+                      </label>
+                    );
+                  })}
+                  <span className="field-hint">
+                    未選標籤時無人可見。公開推薦詞還需要在「權限」將相同標籤授權給「訪客／未建檔帳號」部門。
+                  </span>
+                </div>
+                <div className="field">
                   <label className="field-label">最大頁數</label>
                   <NumberField
                     value={src.maxPages}
@@ -570,10 +612,20 @@ export default function KnowledgeTab({
             </div>
 
             <div className="form-actions">
+              {sourceKind === "website" && (
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={saveSourceSettings}
+                  disabled={parsing || savingSource || !src.startUrl.trim()}
+                >
+                  {savingSource ? "儲存中…" : "儲存網站設定（不重新解析）"}
+                </button>
+              )}
               <button
                 className="btn btn-primary"
                 onClick={parseSource}
-                disabled={!canParse}
+                disabled={!canParse || savingSource}
               >
                 {parsing ? "解析中…" : "開始解析"}
               </button>

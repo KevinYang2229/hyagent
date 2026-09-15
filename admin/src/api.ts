@@ -171,6 +171,8 @@ async function reqUpload<T>(method: string, path: string, formData: FormData): P
 }
 
 export interface KnowledgeSource {
+  /** 整個網站來源的可見性標籤 */
+  visibilityScopes?: string[];
   startUrl: string;
   maxPages: number;
   pathPrefix?: string;

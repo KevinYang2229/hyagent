@@ -86,6 +86,34 @@ describe('POST /admin/tenants/:id/knowledge/suggestion', () => {
     expect(knowledgeStore.getMeta(tenantId).suggestedPrompts?.website?.generated).toEqual(expected);
   });
 
+  it('網站標記並授權訪客後，不必重建索引即可重新生成', async () => {
+    const t = tenantStore.createTenant('sug-admin-label-recovery');
+    tenantStore.updateTenant(t.id, { knowledgeLabels: [{ id: 'public', label: '公開' }] });
+    writeIndex(t.id, [chunk]);
+    knowledgeStore.setMeta(t.id, { status: 'ready', chunkCount: 1 });
+    mockLLM('{"zh-Hant":"育兒補助要附什麼？","en":"What to submit for the subsidy?"}');
+    const regenerate = () => request(app)
+      .post(`/api/admin/tenants/${t.id}/knowledge/suggestion`)
+      .set(auth).send({ source: 'website' });
+
+    const blocked = await regenerate().expect(422);
+    expect(blocked.body.error.message).toContain('網站來源或檔案');
+    expect(blocked.body.error.message).toContain('訪客／未建檔帳號');
+    expect(blocked.body.error.message).not.toContain('關閉');
+
+    await request(app).put(`/api/admin/tenants/${t.id}/knowledge/source`)
+      .set(auth).send({
+        ...knowledgeStore.getSource(t.id),
+        startUrl: 'https://x.com', visibilityScopes: ['kb:public'],
+      }).expect(200);
+    await regenerate().expect(422);
+    expect(getLLMProvider).not.toHaveBeenCalled();
+
+    scopePolicy.setPolicy(t.id, { groups: { '—': ['kb:public'] }, accounts: {} });
+    const recovered = await regenerate().expect(200);
+    expect(recovered.body.data.slot.generated['zh-Hant']).toBe('育兒補助要附什麼？');
+  });
+
   it('尚未建立索引時回 422', async () => {
     const tenantId = 'sug-admin-noindex';
     knowledgeStore.setMeta(tenantId, { status: 'none', chunkCount: 0 });
