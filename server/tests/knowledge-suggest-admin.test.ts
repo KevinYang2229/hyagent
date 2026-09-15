@@ -109,7 +109,16 @@ describe('POST /admin/tenants/:id/knowledge/suggestion', () => {
     await regenerate().expect(422);
     expect(getLLMProvider).not.toHaveBeenCalled();
 
-    scopePolicy.setPolicy(t.id, { groups: { '—': ['kb:public'] }, accounts: {} });
+    // 走管理者實際操作的 API：部門清單必須有訪客，才能在 UI 勾選授權。
+    const policy = await request(app).get(`/api/admin/tenants/${t.id}/policy`)
+      .set(auth).expect(200);
+    expect(policy.body.data.departments).toContain('—');
+    const saved = await request(app).put(`/api/admin/tenants/${t.id}/policy`)
+      .set(auth).send({
+        grantedScopes: policy.body.data.grantedScopes,
+        groups: { '—': ['kb:public'] }, accounts: {},
+      }).expect(200);
+    expect(saved.body.data.departments).toContain('—');
     const recovered = await regenerate().expect(200);
     expect(recovered.body.data.slot.generated['zh-Hant']).toBe('育兒補助要附什麼？');
   });

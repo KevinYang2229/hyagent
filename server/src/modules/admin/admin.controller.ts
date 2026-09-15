@@ -24,7 +24,7 @@ import {
 } from '@/modules/authz/scope-catalog';
 import { defaultGrantedScopes } from '@/modules/authz/scope-migration';
 import { scopePolicy } from '@/modules/authz/scope-policy';
-import { getApplicant, listDepartments, listUserIds } from '@/modules/user/user.directory';
+import { getApplicant, listDepartments, listUserIds, UNKNOWN_DEPARTMENT } from '@/modules/user/user.directory';
 import { llmConfigService } from '@/modules/tenant/llm-config.service';
 import type { PutLLMConfigInput } from '@/modules/tenant/llm-config.schema';
 import { computeUsageCost } from '@/modules/usage/usage.cost';
@@ -225,7 +225,8 @@ export const adminController = {
         bundles: (policy.bundles ?? []).map((b) => ({ ...b, scopes: prune(b.scopes) })),
         groupBundles: policy.groupBundles ?? {},
         accountBundles: policy.accountBundles ?? {},
-        departments: listDepartments(tenant.id),
+        // 訪客沒有目錄帳號，仍必須可在權限頁與角色指派中選取。
+        departments: [...new Set([UNKNOWN_DEPARTMENT, ...listDepartments(tenant.id)])],
         users: listUserIds(tenant.id).map((id) => ({ id, label: getApplicant(id, tenant.id).name })),
       },
     });
@@ -274,7 +275,8 @@ export const adminController = {
         bundles: policy.bundles ?? [],
         groupBundles: policy.groupBundles ?? {},
         accountBundles: policy.accountBundles ?? {},
-        departments: listDepartments(tenant.id),
+        // 訪客沒有目錄帳號，仍必須可在權限頁與角色指派中選取。
+        departments: [...new Set([UNKNOWN_DEPARTMENT, ...listDepartments(tenant.id)])],
         users: listUserIds(tenant.id).map((id) => ({ id, label: getApplicant(id, tenant.id).name })),
       },
     });
