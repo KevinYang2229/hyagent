@@ -7,6 +7,22 @@
     -apple-system, "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
 }
 
+/* 前台次要文字加深：共用 token 的 --text-secondary 對比不足（淺色白底 4.29、頁面底色 3.63），
+   只在 client 覆寫，不影響 admin。選擇器與 @hyagent/ui 同權重、排在其後，
+   四種主題狀態（預設／系統深色／手動淺色／手動深色）都要蓋到。 */
+:root,
+:root[data-theme="light"] {
+  --text-secondary: #4a6780;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --text-secondary: #bcc5cf;
+  }
+}
+:root[data-theme="dark"] {
+  --text-secondary: #bcc5cf;
+}
+
 @layer base {
   html,
   body,
