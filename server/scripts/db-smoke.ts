@@ -56,6 +56,9 @@ async function write(): Promise<void> {
   tenantStore.updateTenant(tenant.id, {
     llmConfig: { provider: 'anthropic', anthropicApiKey: 'sk-ant-smoke-byo-key' },
     quotaMonthlyLlmTokens: 12345,
+    // 目錄以租戶隔離（內建 mock 名錄只給 default 租戶），部門要由本租戶自己的目錄提供，
+    // 否則 kevin 落在 UNKNOWN_DEPARTMENT，下方以部門為 key 的套餐就展不開。
+    userDirectory: [{ id: 'kevin', name: 'Kevin Yang', department: '行銷部' }],
   });
 
   const session = conversationStore.create(tenant.id, 'smoke-user', 'leave-request');
