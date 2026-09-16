@@ -10,7 +10,7 @@
 import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { toVectorLiteral } from './knowledge.index.repo';
-import { aclModeOf, visibilityScopesOf } from './knowledge.visibility';
+import { visibilityScopesOf } from './knowledge.visibility';
 import { env } from '@/config/env';
 import { connectDb } from '@/lib/db';
 import type { ParsedTable } from './doc-parse';
@@ -122,10 +122,7 @@ export async function searchTableCatalog(
 ): Promise<TableCatalogEntry[]> {
   if (env.DATA_BACKEND !== 'db') return [];
   const { tenantId } = principal;
-  const visible =
-    aclModeOf(tenantId) === 'on'
-      ? Prisma.sql`and visibility_scopes && ${visibilityScopesOf(principal)}::text[]`
-      : Prisma.empty;
+  const visible = Prisma.sql`and visibility_scopes && ${visibilityScopesOf(principal)}::text[]`;
   const db = await connectDb();
   const rows = await db.$queryRaw<TableRow[]>`
     select id, source, sheet, caption, headers, row_count
@@ -151,10 +148,7 @@ export async function listTableCatalog(
 ): Promise<TableCatalogEntry[]> {
   if (env.DATA_BACKEND !== 'db') return [];
   const { tenantId } = principal;
-  const visible =
-    aclModeOf(tenantId) === 'on'
-      ? Prisma.sql`and visibility_scopes && ${visibilityScopesOf(principal)}::text[]`
-      : Prisma.empty;
+  const visible = Prisma.sql`and visibility_scopes && ${visibilityScopesOf(principal)}::text[]`;
   const db = await connectDb();
   const rows = await db.$queryRaw<TableRow[]>`
     select id, source, sheet, caption, headers, row_count
@@ -177,10 +171,7 @@ export async function loadTable(
 ): Promise<StoredTable | null> {
   if (env.DATA_BACKEND !== 'db') return null;
   const { tenantId } = principal;
-  const visible =
-    aclModeOf(tenantId) === 'on'
-      ? Prisma.sql`and visibility_scopes && ${visibilityScopesOf(principal)}::text[]`
-      : Prisma.empty;
+  const visible = Prisma.sql`and visibility_scopes && ${visibilityScopesOf(principal)}::text[]`;
   const db = await connectDb();
   const rows = await db.$queryRaw<TableRow[]>`
     select id, source, sheet, caption, headers, rows, row_count

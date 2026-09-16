@@ -1,0 +1,12 @@
+-- knowledge_acl_shadow 退場：0011 建表時即註明「全租戶切至 on 後，本表與三態旗標一起退場」。
+--
+-- 三態旗標（Tenant.knowledgeAcl）已移除，ACL 過濾無條件生效，shadow 階段不存在，
+-- 應用程式已無任何讀寫這張表的程式碼（knowledge.acl-shadow.repo.ts 一併刪除）。
+--
+-- 表內是 shadow 觀察期的統計（哪些檔案會被擋、樣本使用者），不是業務資料，
+-- 且該觀察管道本身已知失真——差集以 file_id 為 key，網站來源的 chunk（file_id 為 NULL）
+-- 從不進入統計。留著只會讓人以為還有觀察資料可看。
+--
+-- 先備份再套用（本步驟不可逆）：
+--   pg_dump "$DATABASE_URL" -t knowledge_acl_shadow > knowledge_acl_shadow.sql
+drop table if exists knowledge_acl_shadow;

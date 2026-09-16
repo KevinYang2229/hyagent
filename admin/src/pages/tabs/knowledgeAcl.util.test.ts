@@ -1,13 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import {
-  buildAclOnConfirmMessage,
   countFilesWithLabel,
   guestCorpusState,
   fileLabelState,
   isValidLabelId,
   kbScopeId,
   labelNameFor,
-  needsAclOnConfirm,
   sourceNeedsAclWarning,
   stripKbPrefix,
 } from './knowledgeAcl.util';
@@ -71,13 +69,6 @@ describe('fileLabelState', () => {
   });
 });
 
-describe('needsAclOnConfirm', () => {
-  it('只有切到 on 需要二次確認', () => {
-    expect(needsAclOnConfirm('on')).toBe(true);
-    expect(needsAclOnConfirm('off')).toBe(false);
-    expect(needsAclOnConfirm('shadow')).toBe(false);
-  });
-});
 
 describe('sourceNeedsAclWarning', () => {
   it('未設定來源時不警示，即使 unlabeled 是 true', () => {
@@ -91,35 +82,6 @@ describe('sourceNeedsAclWarning', () => {
   });
 });
 
-describe('buildAclOnConfirmMessage', () => {
-  it('列出未標記／明確清空的數字', () => {
-    const msg = buildAclOnConfirmMessage({
-      unlabeledCount: 3,
-      explicitlyEmptyCount: 1,
-      source: { configured: true, unlabeled: false },
-    });
-    expect(msg).toContain('未標記文件：3 份');
-    expect(msg).toContain('明確清空文件：1 份');
-    expect(msg).not.toContain('網站來源尚未標記');
-  });
-  it('來源未標記時附加網站來源警示，失效情境是「檔案 0 未標記」也要看到這句', () => {
-    const msg = buildAclOnConfirmMessage({
-      unlabeledCount: 0,
-      explicitlyEmptyCount: 0,
-      source: { configured: true, unlabeled: true },
-    });
-    expect(msg).toContain('未標記文件：0 份');
-    expect(msg).toContain('網站來源尚未標記');
-  });
-  it('沒有設定來源時不附加來源警示', () => {
-    const msg = buildAclOnConfirmMessage({
-      unlabeledCount: 0,
-      explicitlyEmptyCount: 0,
-      source: { configured: false, unlabeled: true },
-    });
-    expect(msg).not.toContain('網站來源尚未標記');
-  });
-});
 
 describe('guestCorpusState：公開推薦詞卡在哪一關', () => {
   it('訪客沒有任何標籤 → no-grant，即使來源與檔案都已標好', () => {

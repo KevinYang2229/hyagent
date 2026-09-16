@@ -45,7 +45,7 @@ function ensureTenant(id: string) {
 
 function publicTenant(tenant: NonNullable<ReturnType<typeof tenantStore.getTenant>>) {
   const { ssoSecret, ssoVersion: _ssoVersion, userDirectory: _userDirectory, llmConfig: _llmConfig, ...safe } = tenant;
-  return { ...safe, knowledgeAcl: 'on' as const, ssoConfigured: Boolean(ssoSecret) };
+  return { ...safe, ssoConfigured: Boolean(ssoSecret) };
 }
 
 export const adminController = {

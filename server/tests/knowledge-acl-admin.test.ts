@@ -204,19 +204,24 @@ describe('PUT /knowledge/source 的 visibilityScopes 驗證已知標籤', () => 
 });
 
 /**
- * 三態旗標的控制面：patchTenantSchema 此前沒有 knowledgeAcl 欄位，PATCH tenant
- * 沒有端點可切換，上線程序「切 shadow、切 on」與「回滾＝改一個字，三十秒」都做不到，
- * 實際要人工改持久化 JSON／DB 列再重啟——而白名單（tenant.store.ts 的 updateTenant）
- * 其實已經支援這個欄位，缺的只是 schema 這一道門。這裡驗證 PATCH 端點打通了。
+ * ACL 已無每租戶開關：三態旗標（Tenant.knowledgeAcl）連同 off/shadow 一起退場，
+ * 過濾在 knowledge.visibility.ts 無條件生效。
+ *
+ * 這組測試守的是「舊旗標不能靜默復活」——patchTenantSchema 不再列 knowledgeAcl，
+ * 而 zod 物件預設剝除未列出的 key，剝完是空物件、由 schema 尾端的 refine 判 422。
+ * 若哪天有人把欄位加回 schema（或把 refine 拿掉），legacy 客戶端送
+ * { knowledgeAcl: 'off' } 就會安靜地回 200，讓人以為關得掉——這裡先擋下來。
  */
-describe('ACL cannot be disabled by the administration API', () => {
-  it.each(['off', 'shadow', 'maybe'])('rejects knowledgeAcl=%s', async (mode) => {
+describe('ACL 沒有每租戶開關，舊旗標不可復活', () => {
+  it.each(['off', 'shadow', 'on', 'maybe'])('PATCH knowledgeAcl=%s 一律 422', async (mode) => {
     const t = tenantStore.createTenant('acl-enforced');
     await request(app).patch(`/api/admin/tenants/${t.id}`).set(auth).send({ knowledgeAcl: mode }).expect(422);
-    expect(tenantStore.getTenant(t.id)?.knowledgeAcl).toBe('on');
   });
-  it('accepts explicit on', async () => {
-    const t = tenantStore.createTenant('acl-on');
-    await request(app).patch(`/api/admin/tenants/${t.id}`).set(auth).send({ knowledgeAcl: 'on' }).expect(200);
+
+  // 對照組：確認上面的 422 來自「這個欄位不存在」，不是 PATCH 端點本身壞掉
+  it('同一個端點改真實欄位仍正常', async () => {
+    const t = tenantStore.createTenant('acl-patch-control');
+    await request(app).patch(`/api/admin/tenants/${t.id}`).set(auth).send({ name: '改名' }).expect(200);
+    expect(tenantStore.getTenant(t.id)?.name).toBe('改名');
   });
 });

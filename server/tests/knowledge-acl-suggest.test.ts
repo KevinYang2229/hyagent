@@ -6,6 +6,9 @@
  * 未標記（NULL）待辦、[]（明確標成誰都不能看）、標了非公開標籤的 chunk，
  * 都不該貢獻語料，否則主題／檔名式樣的句子本身就是存在性外洩
  * （例如「想了解 2026 年組織調整的適用範圍嗎？」）。
+ *
+ * 過濾無條件生效：曾有 off/shadow/on 三態旗標，off 代表完全不過濾；旗標已退場
+ * （見 knowledge.visibility.ts），沒有任何租戶設定能繞過下列情境。
  */
 jest.mock('@/lib/llm', () => ({
   __esModule: true,
@@ -49,10 +52,8 @@ function grantGuestScope(tenantId: string, scope: string): void {
   scopePolicy.setPolicy(tenantId, policy);
 }
 
-function makeTenant(name: string, acl: 'off' | 'shadow' | 'on'): string {
-  const t = tenantStore.createTenant(name);
-  tenantStore.updateTenant(t.id, { knowledgeAcl: acl });
-  return t.id;
+function makeTenant(name: string): string {
+  return tenantStore.createTenant(name).id;
 }
 
 afterEach(() => {
@@ -86,10 +87,10 @@ describe('filterGuestVisibleChunks', () => {
   });
 });
 
-describe('refreshSuggestedPrompts 依 acl 階段過濾語料', () => {
-  it('acl=on：訪客沒有任何 kb 授權時，即使 chunk 存在也不生成（不呼叫 LLM）', async () => {
+describe('refreshSuggestedPrompts 過濾語料', () => {
+  it('訪客沒有任何 kb 授權時，即使 chunk 存在也不生成（不呼叫 LLM）', async () => {
     mockLLM(GOOD);
-    const tenantId = makeTenant('sug-acl-on-no-grant', 'on');
+    const tenantId = makeTenant('sug-acl-on-no-grant');
     const idx: KnowledgeIndexFile = {
       generatedAt: 't', model: 'm', source: 's',
       chunks: [{
@@ -105,9 +106,9 @@ describe('refreshSuggestedPrompts 依 acl 階段過濾語料', () => {
     expect(knowledgeStore.getMeta(tenantId).suggestedPrompts).toBeUndefined();
   });
 
-  it('acl=on：未標記／explicitlyEmpty 的 chunk 不進語料，即使訪客有其他授權', async () => {
+  it('未標記／explicitlyEmpty 的 chunk 不進語料，即使訪客有其他授權', async () => {
     mockLLM(GOOD);
-    const tenantId = makeTenant('sug-acl-on-unlabeled', 'on');
+    const tenantId = makeTenant('sug-acl-on-unlabeled');
     grantGuestScope(tenantId, kbScopeId('public'));
     const idx: KnowledgeIndexFile = {
       generatedAt: 't', model: 'm', source: 's',
@@ -124,9 +125,9 @@ describe('refreshSuggestedPrompts 依 acl 階段過濾語料', () => {
     expect(knowledgeStore.getMeta(tenantId).suggestedPrompts).toBeUndefined();
   });
 
-  it('acl=on：標了公開標籤且訪客有授權的 chunk 正常生成，語料不含未標記的私有 chunk', async () => {
+  it('標了公開標籤且訪客有授權的 chunk 正常生成，語料不含未標記的私有 chunk', async () => {
     mockLLM(GOOD);
-    const tenantId = makeTenant('sug-acl-on-mixed', 'on');
+    const tenantId = makeTenant('sug-acl-on-mixed');
     grantGuestScope(tenantId, kbScopeId('public'));
     const idx: KnowledgeIndexFile = {
       generatedAt: 't', model: 'm', source: 's',
@@ -154,40 +155,12 @@ describe('refreshSuggestedPrompts 依 acl 階段過濾語料', () => {
       website: { generated: { 'zh-Hant': '補助要附什麼文件？', en: 'What documents are needed?' } },
     });
   });
-
-  it('acl=shadow：與 on 一樣過濾——這裡外洩的是推薦問句這個獨立管道，不是 shadow 原則保護的主要問答路徑', async () => {
-    mockLLM(GOOD);
-    const tenantId = makeTenant('sug-acl-shadow', 'shadow');
-    const idx: KnowledgeIndexFile = {
-      generatedAt: 't', model: 'm', source: 's',
-      chunks: [{
-        id: 'a', url: 'u', title: '2026組織調整方案', text: '人資部機密內容',
-        vector: [1], visibilityScopes: [kbScopeId('hr')],
-      }],
-    };
-    knowledgeStore.setMeta(tenantId, { status: 'ready', chunkCount: 1 });
-
-    await refreshSuggestedPrompts(tenantId, idx);
-
-    expect(mockCreate).not.toHaveBeenCalled();
-    expect(knowledgeStore.getMeta(tenantId).suggestedPrompts).toBeUndefined();
-  });
-
-  it('legacy off does not expose unlabeled content in generated prompts', async () => {
-    mockLLM(GOOD);
-    const tenantId = makeTenant('sug-acl-off', 'off');
-    const idx: KnowledgeIndexFile = { generatedAt: 't', model: 'm', source: 's', chunks: [{ id: 'a', url: 'u', title: 'secret', text: 'secret', vector: [1] }] };
-    knowledgeStore.setMeta(tenantId, { status: 'ready', chunkCount: 1 });
-    await refreshSuggestedPrompts(tenantId, idx);
-    expect(mockCreate).not.toHaveBeenCalled();
-    expect(knowledgeStore.getMeta(tenantId).suggestedPrompts).toBeUndefined();
-  });
 });
 
-describe('regenerateSlot（後台「重新生成推薦問句」按鈕）依 acl 階段過濾語料', () => {
-  it('acl=on：訪客沒有任何 kb 授權時，即使該來源有 chunk 也不生成（不呼叫 LLM）', async () => {
+describe('regenerateSlot（後台「重新生成推薦問句」按鈕）過濾語料', () => {
+  it('訪客沒有任何 kb 授權時，即使該來源有 chunk 也不生成（不呼叫 LLM）', async () => {
     mockLLM(GOOD);
-    const tenantId = makeTenant('regen-acl-on-no-grant', 'on');
+    const tenantId = makeTenant('regen-acl-on-no-grant');
     const idx: KnowledgeIndexFile = {
       generatedAt: 't', model: 'm', source: 's',
       chunks: [{
@@ -203,9 +176,9 @@ describe('regenerateSlot（後台「重新生成推薦問句」按鈕）依 acl 
     expect(mockCreate).not.toHaveBeenCalled();
   });
 
-  it('acl=on：標了公開標籤且訪客有授權的 chunk 正常生成，語料不含未標記／非公開的 chunk', async () => {
+  it('標了公開標籤且訪客有授權的 chunk 正常生成，語料不含未標記／非公開的 chunk', async () => {
     mockLLM(GOOD);
-    const tenantId = makeTenant('regen-acl-on-mixed', 'on');
+    const tenantId = makeTenant('regen-acl-on-mixed');
     grantGuestScope(tenantId, kbScopeId('public'));
     const idx: KnowledgeIndexFile = {
       generatedAt: 't', model: 'm', source: 's',
@@ -233,31 +206,5 @@ describe('regenerateSlot（後台「重新生成推薦問句」按鈕）依 acl 
     expect(material).toContain('本公司提供智慧閱讀服務');
     expect(material).not.toContain('2026組織調整方案');
     expect(material).not.toContain('人資部機密內容');
-  });
-
-  it('acl=shadow：與 on 一樣過濾', async () => {
-    mockLLM(GOOD);
-    const tenantId = makeTenant('regen-acl-shadow', 'shadow');
-    const idx: KnowledgeIndexFile = {
-      generatedAt: 't', model: 'm', source: 's',
-      chunks: [{
-        id: 'a', url: 'u', title: '2026組織調整方案', text: '人資部機密內容',
-        vector: [1], visibilityScopes: [kbScopeId('hr')],
-      }],
-    };
-    knowledgeStore.setMeta(tenantId, { status: 'ready', chunkCount: 1 });
-
-    const result = await regenerateSlot(tenantId, 'website', idx);
-
-    expect(result).toEqual({ ok: false, reason: 'no-visible-chunks' });
-    expect(mockCreate).not.toHaveBeenCalled();
-  });
-
-  it('legacy off cannot regenerate from unlabeled content', async () => {
-    mockLLM(GOOD);
-    const tenantId = makeTenant('regen-acl-off', 'off');
-    const idx: KnowledgeIndexFile = { generatedAt: 't', model: 'm', source: 's', chunks: [{ id: 'a', url: 'u', title: 'secret', text: 'secret', vector: [1] }] };
-    expect(await regenerateSlot(tenantId, 'website', idx)).toEqual({ ok: false, reason: 'no-visible-chunks' });
-    expect(mockCreate).not.toHaveBeenCalled();
   });
 });

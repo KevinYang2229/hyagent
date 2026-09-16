@@ -16,8 +16,7 @@ import { knowledgeStore, type KnowledgeFileMeta, type KnowledgeSource } from './
 import { regenerateSlot, type RegenerateFailure } from './knowledge.suggest';
 import { splitChunksBySource, type SourceKey } from './prompt-slots';
 import { pickRetriever } from './retriever.pick';
-import { aclModeOf, guestVisibilityScopesOf, setFileVisibility, setSourceVisibility } from './knowledge.visibility';
-import { listShadowStats } from './knowledge.acl-shadow.repo';
+import { guestVisibilityScopesOf, setFileVisibility, setSourceVisibility } from './knowledge.visibility';
 
 /**
  * 確認租戶存在，否則 404；本檔的區域慣例，比照 admin.controller.ts:40-44、
@@ -395,7 +394,6 @@ export const knowledgeAdminController = {
       (scopes ?? []).some((s) => guestAllowed.has(s));
     res.json({
       data: {
-        mode: aclModeOf(tenantId),
         unlabeled: files.filter((f) => f.visibilityScopes === undefined),
         explicitlyEmpty: files.filter((f) => f.visibilityScopes?.length === 0),
         source: {
@@ -410,14 +408,6 @@ export const knowledgeAdminController = {
           source: sourceConfigured && visibleToGuest(source.visibilityScopes),
           files: files.filter((f) => visibleToGuest(f.visibilityScopes)).length,
         },
-        shadowStats: await listShadowStats(tenantId),
-        shadowCaveat:
-          'shadow 以候選池內的結果估算，會低估影響，有兩個獨立來源：'
-          + '(1) 候選池被無權文件佔滿而未進入 top-k 的有權文件不會被計入；'
-          + '(2) shadow 差集計算以 file_id 為 key（見 retriever.pgvector.ts），'
-          + 'file_id 為 NULL 的網站來源 chunk 一律被濾掉、完全不進入統計——'
-          + '若主力語料是爬來的網站內容，shadow 對整個網站語料回報的影響恆為零，'
-          + '不代表切到 on 後真的零影響。回報零影響不等於切換 on 後零影響。',
       },
     });
   },

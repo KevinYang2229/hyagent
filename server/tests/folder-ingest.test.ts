@@ -157,11 +157,11 @@ beforeEach(() => {
   mockRefreshSuggestions.mockReset().mockResolvedValue(undefined);
   mockLoadIndexText.mockReset().mockResolvedValue({ generatedAt: '', model: 'm', source: 's', chunks: [] });
   mockGetMeta.mockReset().mockReturnValue({ files: [] });
-  // 預設每個資料夾名都對得上真租戶，且該租戶已登記 'general' 標籤（見 item() 的固定 labelId）；
-  // knowledgeAcl:'on' 才會讓標籤閘門與 visibilityScopes 投影生效——off/shadow 的行為
-  // 另見 knowledge-acl-batch.test.ts。查無租戶／標籤是各測試自行覆寫的例外情況
+  // 預設每個資料夾名都對得上真租戶，且該租戶已登記 'general' 標籤（見 item() 的固定 labelId）。
+  // 標籤閘門與 visibilityScopes 投影無條件生效，沒有租戶層開關可繞過。
+  // 查無租戶／標籤是各測試自行覆寫的例外情況
   mockGetTenant.mockReset().mockReturnValue({
-    id: 'default', name: '預設租戶', knowledgeAcl: 'on',
+    id: 'default', name: '預設租戶',
     knowledgeLabels: [{ id: 'general', label: '一般' }],
   });
   // 預設取得鎖；「被別人握著」是各測試自行覆寫的例外情況

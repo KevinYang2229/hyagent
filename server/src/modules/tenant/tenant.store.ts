@@ -221,7 +221,6 @@ function seedDefaults(): void {
   tenants.set(DEFAULT_TENANT_ID, {
     id: DEFAULT_TENANT_ID,
     name: '預設租戶（向後相容）',
-    knowledgeAcl: 'on',
     allowedOrigins: allowedOrigins.length ? allowedOrigins : ['*'],
     createdAt: now,
   });
@@ -310,8 +309,7 @@ export const tenantStore = {
     const tenant: Tenant = {
       id: randomBytes(8).toString('hex'),
       name,
-      knowledgeAcl: 'on',
-      allowedOrigins,
+        allowedOrigins,
       ssoSecret,
       ssoVersion: randomBytes(16).toString('hex'),
       createdAt: new Date().toISOString(),
@@ -356,7 +354,6 @@ export const tenantStore = {
         | 'disabledForms'
         | 'grantedScopes'
         | 'knowledgeLabels'
-        | 'knowledgeAcl'
         | 'scopesMigrated'
         | 'llmConfig'
         | 'quotaMonthlyLlmTokens'
@@ -378,7 +375,6 @@ export const tenantStore = {
       ...(patch.disabledForms !== undefined ? { disabledForms: patch.disabledForms } : {}),
       ...(patch.grantedScopes !== undefined ? { grantedScopes: patch.grantedScopes } : {}),
       ...(patch.knowledgeLabels !== undefined ? { knowledgeLabels: patch.knowledgeLabels } : {}),
-      ...(patch.knowledgeAcl !== undefined ? { knowledgeAcl: patch.knowledgeAcl } : {}),
       ...(patch.scopesMigrated !== undefined ? { scopesMigrated: patch.scopesMigrated } : {}),
       // 用 'in' 而非 '!== undefined'：llmConfig 需支援三態（不動/覆寫/清空），
       // undefined 也是合法值（代表整包清除），要能被 patch 帶入。

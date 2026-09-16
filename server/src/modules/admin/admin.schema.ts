@@ -44,9 +44,12 @@ export const patchTenantSchema = z
     appearance: appearanceSchema.optional(),
     // 月度 LLM token 配額；0 = 不限
     quotaMonthlyLlmTokens: z.number().int().min(0).optional(),
-    /** ACL cannot be disabled through the admin API. */
-    knowledgeAcl: z.literal('on').optional(),
   })
+  /*
+   * 也是舊旗標的擋板：ACL 已無每租戶開關（見 knowledge.visibility.ts），
+   * knowledgeAcl 這個欄位不再列在上面，legacy 客戶端送 { knowledgeAcl: 'off' }
+   * 會被 zod 剝成空物件、由這條 refine 判為 422，不會靜默回 200 讓人以為關掉了。
+   */
   .refine((v) => Object.keys(v).length > 0, { message: '至少需提供一個欄位' });
 
 export const createKeySchema = z.object({

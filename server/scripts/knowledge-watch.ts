@@ -5,10 +5,10 @@
  *                                            [--dry-run] [--max-mb=50] [--tenant=<id>]
  *
  * 資料夾結構：<root>/<tenantId>/<labelId>/*.pdf|docx|...（<labelId> 是租戶已知的可見性
- * 標籤 id，例如 hr、public）。標籤層只在該租戶 knowledgeAcl=on 時才會被檢查——
- * off/shadow 沿用未分層的舊結構 <root>/<tenantId>/*.pdf|docx|... 亦可，匯入結果一律
- * 未標記（NULL），不會因資料夾名對不上標籤而被判失敗（見 folder-ingest.service 的閘門）。
- * acl=on 時資料夾名對不上該租戶已知標籤會被判永久性失敗，搬進 _failed/。
+ * 標籤 id，例如 hr、public）。標籤層一律會被檢查，沒有租戶層開關可略過：資料夾名
+ * 對不上該租戶已知標籤（含完全未分層）會被判永久性失敗，搬進 _failed/
+ * ——見 folder-ingest.service 的閘門。未標記的檔案匯進來只會對所有人不可見，
+ * 擋在匯入前才看得見、也還沒花掉 embedding 的錢。
  * 消化成功搬 <root>/<tenantId>/_done/，永久性失敗搬 _failed/ 並附 .error.txt。
  *
  * 前提：DATA_BACKEND=db 且 DATABASE_URL 指向正式 Supabase，否則寫進本機 JSON、正式環境看不到。

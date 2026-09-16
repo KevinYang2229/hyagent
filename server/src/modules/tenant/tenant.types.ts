@@ -63,8 +63,6 @@ export interface Tenant {
   grantedScopes?: string[];
   /** 知識庫可見性標籤目錄（租戶自訂分類）。id 進 scope 體系時前綴 kb:。 */
   knowledgeLabels?: KnowledgeLabel[];
-  /** Legacy flags remain readable; runtime ACL is always enforced. */
-  knowledgeAcl?: 'off' | 'shadow' | 'on';
   /** 是否已完成服務/表單 → scope 的一次性遷移；true 後遷移不再覆寫其授予。 */
   scopesMigrated?: boolean;
   /**

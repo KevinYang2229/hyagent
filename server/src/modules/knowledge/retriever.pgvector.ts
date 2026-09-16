@@ -20,8 +20,7 @@ import { connectDb } from '@/lib/db';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 import { usageStore } from '@/modules/usage/usage.store';
 import { toVectorLiteral } from './knowledge.index.repo';
-import { aclModeOf, visibilityScopesOf } from './knowledge.visibility';
-import { recordShadowBlocks } from './knowledge.acl-shadow.repo';
+import { visibilityScopesOf } from './knowledge.visibility';
 import { asciiTerms, keepChunk, lexicalHits, POOL_SIZE, scoreOf } from './retriever.scoring';
 import type { KnowledgeChunk, KnowledgeRetriever, RetrievalPrincipal } from './retriever.types';
 
@@ -34,9 +33,6 @@ interface CandidateRow {
   title: string;
   text: string;
   cosine: number;
-  /** shadow 統計用：兩路 select 都須帶上，否則 lexical 那路來的候選會缺欄位、統計漏記 */
-  file_id: string | null;
-  visibility_scopes: string[] | null;
 }
 
 /**
@@ -105,12 +101,8 @@ export const pgvectorRetriever: KnowledgeRetriever = {
      * 可見性條件必須與 tenant_id 並排（pre-filter），不可撈回 Node 再濾。
      * POOL_SIZE=20，post-filter 會讓權限窄的使用者候選池被無權 chunk 佔滿而濾剩零筆
      * ——與 0006 移除 HNSW 索引時記載的 post-filter 問題是同一個。
-     * off / shadow 階段回 Prisma.empty，SQL 與導入前完全相同。
      */
-    const visible =
-      aclModeOf(tenantId) === 'on'
-        ? Prisma.sql`and visibility_scopes && ${visibilityScopesOf(principal)}::text[]`
-        : Prisma.empty;
+    const visible = Prisma.sql`and visibility_scopes && ${visibilityScopesOf(principal)}::text[]`;
 
     // lexical 沒有詞可比對時只跑 dense 那一路，省一次全租戶掃描。
     // order by 不可省：asciiTerms 會抽出任何 ≥2 字元的 ASCII token，像「HyEIP 的請假流程」
@@ -122,7 +114,7 @@ export const pgvectorRetriever: KnowledgeRetriever = {
     const lexicalBranch = terms.length
       ? Prisma.sql`
           union
-          (select id, url, title, text, file_id, visibility_scopes, 1 - (embedding <=> ${vec}::halfvec(3072)) as cosine
+          (select id, url, title, text, 1 - (embedding <=> ${vec}::halfvec(3072)) as cosine
            from knowledge_chunks
            where tenant_id = ${tenantId}
              ${visible}
@@ -133,7 +125,7 @@ export const pgvectorRetriever: KnowledgeRetriever = {
       : Prisma.empty;
 
     const rows = await db.$queryRaw<CandidateRow[]>`
-      (select id, url, title, text, file_id, visibility_scopes, 1 - (embedding <=> ${vec}::halfvec(3072)) as cosine
+      (select id, url, title, text, 1 - (embedding <=> ${vec}::halfvec(3072)) as cosine
        from knowledge_chunks
        where tenant_id = ${tenantId}
          ${visible}
@@ -141,25 +133,6 @@ export const pgvectorRetriever: KnowledgeRetriever = {
        limit ${POOL_SIZE})
       ${lexicalBranch}
     `;
-
-    /**
-     * shadow：SQL 未過濾（與 off 相同），在此模擬一次算差集，回傳仍是未過濾結果。
-     * 不跑第二次 pre-filter 查詢——那會多一次全租戶向量掃描，而 shadow 只需要
-     * 「哪些檔會被擋掉」。代價是它**低估影響**：看不到那些因候選池被佔滿而
-     * 根本沒進 top-k 的有權文件。此限制須顯示在後台盤點面板。
-     */
-    if (aclModeOf(tenantId) === 'shadow') {
-      const allowed = new Set(visibilityScopesOf(principal));
-      const blockedFileIds = [
-        ...new Set(
-          rows
-            .filter((r) => !(r.visibility_scopes ?? []).some((s) => allowed.has(s)))
-            .map((r) => r.file_id)
-            .filter((id): id is string => Boolean(id)),
-        ),
-      ];
-      void recordShadowBlocks(tenantId, principal.userId, blockedFileIds);
-    }
 
     const seen = new Set<string>();
     return rows

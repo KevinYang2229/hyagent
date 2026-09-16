@@ -79,12 +79,9 @@ function lastQueryRawSql(): string {
 }
 
 describe('表格檢索沒有側門', () => {
-  it('acl=on 時 searchTableCatalog 帶可見性條件', async () => {
+  it('searchTableCatalog 帶可見性條件', async () => {
     const t = tenantStore.createTenant('acl-tables-test');
-    tenantStore.updateTenant(t.id, {
-      knowledgeAcl: 'on',
-      knowledgeLabels: [{ id: 'hr', label: '人資' }],
-    });
+    tenantStore.updateTenant(t.id, { knowledgeLabels: [{ id: 'hr', label: '人資' }] });
     queryRaw.mockClear();
     await searchTableCatalog({ tenantId: t.id, userId: 'nobody' }, [1, 0, 0], 5);
 
@@ -96,21 +93,17 @@ describe('表格檢索沒有側門', () => {
    * 擋得住的可見性限制，若這裡不擋，繞過目錄直接指定 id 就能讀到不該看的表。
    * 過去只有 searchTableCatalog 有這個斷言，loadTable 這道側門本身沒有測試守著。
    */
-  it('acl=on 時 loadTable 帶可見性條件（繞過目錄直接指定 id 那道側門）', async () => {
+  it('loadTable 帶可見性條件（繞過目錄直接指定 id 那道側門）', async () => {
     const t = tenantStore.createTenant('acl-tables-loadtable-test');
-    tenantStore.updateTenant(t.id, {
-      knowledgeAcl: 'on',
-      knowledgeLabels: [{ id: 'hr', label: '人資' }],
-    });
+    tenantStore.updateTenant(t.id, { knowledgeLabels: [{ id: 'hr', label: '人資' }] });
     queryRaw.mockClear();
     await loadTable({ tenantId: t.id, userId: 'nobody' }, 'table-1');
 
     expect(lastQueryRawSql()).toContain('visibility_scopes &&');
   });
 
-  it('舊 acl=off 的 loadTable 仍強制權限條件', async () => {
-    const t = tenantStore.createTenant('acl-tables-loadtable-off-test');
-    tenantStore.updateTenant(t.id, { knowledgeAcl: 'off' });
+  it('未做過任何知識庫設定的租戶，loadTable 仍強制權限條件', async () => {
+    const t = tenantStore.createTenant('acl-tables-loadtable-bare-test');
     queryRaw.mockClear();
     await loadTable({ tenantId: t.id, userId: 'nobody' }, 'table-1');
 
@@ -122,21 +115,17 @@ describe('表格檢索沒有側門', () => {
    * report.outline 的 knowledgeOverview），不過濾就是檔名／欄位名外洩——
    * 修復前這支函式不吃 principal、也完全不過濾。
    */
-  it('acl=on 時 listTableCatalog 帶可見性條件', async () => {
+  it('listTableCatalog 帶可見性條件', async () => {
     const t = tenantStore.createTenant('acl-tables-listcatalog-test');
-    tenantStore.updateTenant(t.id, {
-      knowledgeAcl: 'on',
-      knowledgeLabels: [{ id: 'hr', label: '人資' }],
-    });
+    tenantStore.updateTenant(t.id, { knowledgeLabels: [{ id: 'hr', label: '人資' }] });
     queryRaw.mockClear();
     await listTableCatalog({ tenantId: t.id, userId: 'nobody' });
 
     expect(lastQueryRawSql()).toContain('visibility_scopes &&');
   });
 
-  it('舊 acl=off 的目錄仍強制權限條件', async () => {
-    const t = tenantStore.createTenant('acl-tables-listcatalog-off-test');
-    tenantStore.updateTenant(t.id, { knowledgeAcl: 'off' });
+  it('未做過任何知識庫設定的租戶，目錄仍強制權限條件', async () => {
+    const t = tenantStore.createTenant('acl-tables-listcatalog-bare-test');
     queryRaw.mockClear();
     await listTableCatalog({ tenantId: t.id, userId: 'nobody' });
 

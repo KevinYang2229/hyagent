@@ -12,7 +12,6 @@ import { ingestFile, removeFile } from './knowledge-file.service';
 import { loadIndexText } from './knowledge.index.repo';
 import { knowledgeStore, type KnowledgeFileMeta } from './knowledge.store';
 import { refreshSuggestedPrompts } from './knowledge.suggest';
-import { aclModeOf } from './knowledge.visibility';
 import { acquireIngestLock, releaseIngestLock, renewIngestLock } from './knowledge.ingest-lock';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 
@@ -250,35 +249,30 @@ async function ingestOne(
    * 但這些文件對所有人都不存在，而且不會有人來抱怨。錯誤區看得見、可處理，
    * 且尚未花掉 embedding 的錢，故在這裡擋下而不是放進來再關燈。
    *
-   * 只在 acl=on 時擋。這道閘是本功能新加的行為，off/shadow 必須與導入前完全相同
-   * （整個遷移安全論證的基礎）——既有部署多半是扁平的 <root>/<tenantId>/*.pdf，
-   * 沒有標籤層。若這裡不看 aclMode，off 時所有既有檔案的資料夾名（其實是檔名本身
-   * 那一層不存在 labelId）都會被判「未知標籤」，watcher 下一輪把 inbox 全部歸檔到
-   * _failed/。off/shadow 一律放行，匯入結果保持未標記（NULL）。
+   * 匯入來源的目錄結構必須是 <root>/<tenantId>/<labelId>/*，未分層或標籤不存在一律
+   * 歸檔到錯誤區。ACL 過濾無條件生效（見 knowledge.visibility.ts），未標記的檔案
+   * 匯進來只會對所有人不可見，擋在這裡才看得見、也還沒花掉 embedding 的錢。
    */
-  const aclMode = aclModeOf(item.tenantId);
-  if (aclMode === 'on') {
-    const labels = tenantStore.getTenant(item.tenantId)?.knowledgeLabels ?? [];
-    const known = item.labelId && labels.some((l) => l.id === item.labelId);
-    if (!known) {
-      const reason = `未知的可見性標籤資料夾：${item.labelId ?? '（未分層）'}`;
-      logger.warn(
-        { tenantId: item.tenantId, name: item.name, labelId: item.labelId },
-        '匯入項目的資料夾未對應到已知標籤，歸檔至錯誤區',
-      );
-      await source.settle(item, 'failed', reason);
-      return 'failed';
-    }
+  const labels = tenantStore.getTenant(item.tenantId)?.knowledgeLabels ?? [];
+  const known = item.labelId && labels.some((l) => l.id === item.labelId);
+  if (!known) {
+    const reason = `未知的可見性標籤資料夾：${item.labelId ?? '（未分層）'}`;
+    logger.warn(
+      { tenantId: item.tenantId, name: item.name, labelId: item.labelId },
+      '匯入項目的資料夾未對應到已知標籤，歸檔至錯誤區',
+    );
+    await source.settle(item, 'failed', reason);
+    return 'failed';
   }
 
   const attempt = async (): Promise<void> => {
     const buf = await source.read(item);
     const superseded = findSupersededFile(item.tenantId, item.name);
-    // deferSuggestions：推薦問句留到整輪結束統一重生；visibilityScopes：資料夾層標籤直接投影，
-    // 僅 acl=on 才投影——off/shadow 沿用舊行為，匯入為未標記（NULL），不論資料夾長什麼樣。
+    // deferSuggestions：推薦問句留到整輪結束統一重生；visibilityScopes：資料夾層標籤直接投影
+    // ——labelId 已由上方閘門確認存在於該租戶的標籤清單。
     const meta = await ingestFile(item.tenantId, item.name, buf, {
       deferSuggestions: true,
-      ...(aclMode === 'on' ? { visibilityScopes: [kbScopeId(item.labelId!)] } : {}),
+      visibilityScopes: [kbScopeId(item.labelId!)],
     });
     /*
      * 舊檔在新檔匯入成功「之後」才刪。反過來的話，匯入一失敗（P2028 交易逾時、embedding

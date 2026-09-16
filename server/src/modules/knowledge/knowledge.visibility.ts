@@ -3,6 +3,11 @@
  *
  * 檢索器不接受外部傳入的 scopes——權限計算只有一份且不接受外部輸入，
  * 才是 fail-closed 守得住的形狀。呼叫端只交出身分（RetrievalPrincipal）。
+ *
+ * 過濾無條件生效，沒有每租戶開關：曾有 off/shadow/on 三態旗標（Tenant.knowledgeAcl），
+ * 預設 off＝完全不過濾，等於安全開關的預設值指向不安全那一邊；shadow 的量測又以
+ * file_id 為 key，網站來源的 chunk（file_id 為 NULL）從不進統計，對主力語料是爬取
+ * 網站的租戶恆報「零影響」。三態在 4eb0aaf 併為恆 on，此處不再有模式判斷。
  */
 import { resolveScopes, resolveGuestScopes } from '@/modules/authz/resolve-scopes';
 import { isKbScope } from '@/modules/authz/scope-catalog';
@@ -10,11 +15,6 @@ import { knowledgeStore } from './knowledge.store';
 import { env } from '@/config/env';
 import { connectDb } from '@/lib/db';
 import type { RetrievalPrincipal } from './retriever.types';
-
-/** Enforced for every tenant, including legacy off/shadow configurations. */
-export function aclModeOf(_tenantId: string): 'off' | 'shadow' | 'on' {
-  return 'on'; // Legacy off/shadow flags no longer bypass authorization.
-}
 
 /**
  * 該 principal 可見的標籤 scope。無任何標籤時回空陣列——

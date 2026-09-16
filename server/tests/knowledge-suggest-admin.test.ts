@@ -182,9 +182,8 @@ describe('POST /admin/tenants/:id/knowledge/suggestion', () => {
    * ACL 過濾掉全部語料時重試永遠不會成功——訊息必須說出「要去標可見性」，
    * 否則管理者會一直重按按鈕（實際發生過）。
    */
-  it('acl=shadow 且內容未標記 → 422，訊息要指向標記可見性而非「請稍後再試」', async () => {
-    const t = tenantStore.createTenant('sug-admin-acl-shadow');
-    tenantStore.updateTenant(t.id, { knowledgeAcl: 'shadow' });
+  it('內容未標記 → 422，訊息要指向標記可見性而非「請稍後再試」', async () => {
+    const t = tenantStore.createTenant('sug-admin-unlabeled');
     writeIndex(t.id, [chunk]); // chunk 無 visibilityScopes ＝未標記
     knowledgeStore.setMeta(t.id, { status: 'ready', chunkCount: 1 });
     mockLLM('{"zh-Hant":"不該被呼叫","en":"should not be called"}');

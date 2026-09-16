@@ -105,7 +105,6 @@ beforeEach(() => {
   mockGetTenant.mockReset().mockReturnValue({
     id: 'acme',
     name: '客戶 A',
-    knowledgeAcl: 'on',
     knowledgeLabels: [{ id: 'hr', label: '人資' }],
   });
   mockAcquire.mockReset().mockImplementation(async (tenantId: string) => ({ tenantId, holder: 'me' }));
@@ -147,7 +146,7 @@ describe('批次匯入擋門：資料夾標籤', () => {
   });
 
   it('租戶未設定任何 knowledgeLabels：任何標籤一律擋下', async () => {
-    mockGetTenant.mockReturnValue({ id: 'acme', name: '客戶 A', knowledgeAcl: 'on' }); // 無 knowledgeLabels 欄位
+    mockGetTenant.mockReturnValue({ id: 'acme', name: '客戶 A' }); // 無 knowledgeLabels 欄位
     const source = new FakeSource([item('政策.pdf', 'hr')]);
     const result = await runTwice(source);
 
@@ -165,14 +164,14 @@ describe('批次匯入擋門：資料夾標籤', () => {
 });
 
 /**
- * off/shadow：閘門必須不生效，行為與 acl 功能導入前完全相同。
+ * 標籤閘門沒有繞道。
  *
- * 這道閘是本功能新加的行為，既有部署多半是扁平的 <root>/<tenantId>/*.pdf，沒有標籤層——
- * 若閘門不看 aclMode，off 時所有既有檔案都會被判「未知標籤」，watcher 下一輪把 inbox
- * 全部歸檔到 _failed/，違反「off＝行為零改變」這個遷移安全論證的基礎。
+ * 曾有 off/shadow/on 三態旗標，off 時這道閘不生效、未標記檔案照樣匯入（理由是「與
+ * 導入前行為相同」）；旗標退場後，未標記與未知標籤一律歸檔到錯誤區，不論租戶上還
+ * 留著什麼舊欄位。這裡連同「租戶物件帶著已廢棄的 knowledgeAcl 殘值」一起測。
  */
-describe('legacy ACL configurations do not bypass batch ingest checks', () => {
-  it.each(['off', 'shadow', undefined])('rejects unlabeled/unknown input under %s', async (mode) => {
+describe('沒有任何租戶欄位能繞過批次匯入的標籤閘門', () => {
+  it.each(['off', 'shadow', undefined])('殘留 knowledgeAcl=%s 仍擋下未標記／未知標籤', async (mode) => {
     mockGetTenant.mockReturnValue({ id: 'acme', name: '客戶 A', knowledgeAcl: mode, knowledgeLabels: [{ id: 'hr', label: '人資' }] });
     const source = new FakeSource([item('未標記.pdf', undefined), item('未知標籤.pdf', 'finance')]);
     const result = await runTwice(source);

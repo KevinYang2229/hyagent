@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Checkbox, useToast } from "@hyagent/ui";
 import {
   api,
@@ -1052,21 +1052,8 @@ export default function KnowledgeTab({
                 文件必須有可見性標籤，且使用者獲得對應授權，才會出現在查詢與報告中。
               </div>
             </div>
-            <span
-              className={`badge ${
-                aclReport.mode === "on"
-                  ? "badge-on"
-                  : aclReport.mode === "shadow"
-                    ? "badge-warn"
-                    : "badge-off"
-              }`}
-            >
-              {aclReport.mode === "off"
-                ? "關閉（未啟用權限過濾）"
-                : aclReport.mode === "shadow"
-                  ? "Shadow（觀察中，尚未實際擋人）"
-                  : "已啟用"}
-            </span>
+            {/* 權限過濾無條件生效，沒有每租戶開關——這是常數，不是狀態 */}
+            <span className="badge badge-on">已啟用</span>
           </div>
           <div className="card-body">
             {sourceNeedsAclWarning(aclReport.source) && (
@@ -1108,10 +1095,6 @@ export default function KnowledgeTab({
               )}
             </div>
 
-            <div className="row-sub" style={{ marginBottom: 16 }}>
-              {aclReport.shadowCaveat}
-            </div>
-
             {/* unlabeled（從未標記＝待辦）與 explicitlyEmpty（已清空＝已完成的決定）分開列，
                 兩者查詢效果相同但語意不同，混在一起會讓「還沒做」跟「做過了」分不清 */}
             <div style={{ fontWeight: 500, marginBottom: 8 }}>
@@ -1146,37 +1129,6 @@ export default function KnowledgeTab({
               )}
             </ul>
 
-            <div style={{ fontWeight: 500, marginBottom: 8 }}>
-              Shadow 被擋統計（{aclReport.shadowStats.length} 筆）
-            </div>
-            {aclReport.shadowStats.length === 0 ? (
-              <div className="empty">尚無統計資料。</div>
-            ) : (
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 13.5 }}>
-                  <thead>
-                    <tr>
-                      <th style={aclThStyle}>檔名</th>
-                      <th style={aclThStyle}>被擋次數</th>
-                      <th style={aclThStyle}>樣本使用者</th>
-                      <th style={aclThStyle}>最後時間</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {aclReport.shadowStats.map((s) => (
-                      <tr key={s.fileId}>
-                        <td style={aclTdStyle}>
-                          {(meta.files ?? []).find((f) => f.fileId === s.fileId)?.name ?? s.fileId}
-                        </td>
-                        <td style={aclTdStyle}>{s.blockedCount}</td>
-                        <td style={aclTdStyle}>{s.sampleUserIds.join("、") || "—"}</td>
-                        <td style={aclTdStyle}>{new Date(s.lastBlockedAt).toLocaleString()}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
           </div>
         </div>
       )}
@@ -1184,15 +1136,3 @@ export default function KnowledgeTab({
   );
 }
 
-const aclThStyle: CSSProperties = {
-  textAlign: "left",
-  padding: "8px 10px",
-  borderBottom: "1px solid var(--border-color)",
-  fontWeight: 500,
-  whiteSpace: "nowrap",
-};
-const aclTdStyle: CSSProperties = {
-  padding: "6px 10px",
-  borderBottom: "1px solid var(--border-color)",
-  verticalAlign: "middle",
-};

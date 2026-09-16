@@ -9,10 +9,6 @@ jest.mock('@/modules/knowledge/knowledge.suggest', () => ({
   __esModule: true,
   refreshSuggestedPrompts: jest.fn().mockResolvedValue(undefined),
 }));
-jest.mock('@/modules/knowledge/knowledge.acl-shadow.repo', () => ({
-  __esModule: true,
-  listShadowStats: jest.fn().mockResolvedValue({ blockedFiles: 0, sampledUsers: 0 }),
-}));
 
 import request from 'supertest';
 import { createApp } from '@/app';
