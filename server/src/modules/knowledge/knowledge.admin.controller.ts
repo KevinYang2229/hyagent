@@ -83,8 +83,14 @@ function ingestParamsFor(tenantId: string): IngestParams {
  * 單格重生失敗 → HTTP 錯誤。四條失敗路徑的「該怎麼辦」完全不同，不可共用一句訊息：
  * no-visible-chunks 重試永遠不會成功（要去標可見性與授權訪客），superseded 則是
  * 純粹的時序競爭、原地重按即可。先前一律回「請稍後再試」，把前者誤導成後者。
+ *
+ * generation-failed 內部同樣有分歧：字數超標代表素材撐不起一句 20 字的具體問句，
+ * 重按機率不高；連 JSON 都輸不出來則多半是模型或金鑰的問題。故再帶一層 detail。
+ *
+ * detail 是「附加」而非「取代」：「請稍後再試」標示的是這條路可重試（相對於
+ * no-visible-chunks 那條重試永遠不會成功），那個語意不能因為多了診斷資訊就消失。
  */
-function regenerateError(reason: RegenerateFailure): AppError {
+function regenerateError(reason: RegenerateFailure, detail?: string): AppError {
   switch (reason) {
     case 'no-visible-chunks': {
       return AppError.unprocessable(
@@ -98,7 +104,14 @@ function regenerateError(reason: RegenerateFailure): AppError {
     case 'superseded':
       return AppError.conflict('生成期間索引已被其他操作更新，請重新操作');
     case 'generation-failed':
-      return AppError.unprocessable('推薦詞生成失敗，請稍後再試');
+      /*
+       * detail 帶的是「哪一條驗證沒過、模型當時輸出什麼」。沒有它的話這句話等於什麼都
+       * 沒說——管理者只能重按，而重按對「素材撐不起 20 字的具體問句」這種情況永遠不會好。
+       * 有了它，看一眼就知道是字數超標（該調整素材或上限）還是模型連 JSON 都輸不好。
+       */
+      return AppError.unprocessable(
+        detail ? `推薦詞生成失敗，請稍後再試。${detail}` : '推薦詞生成失敗，請稍後再試',
+      );
   }
 }
 
@@ -197,7 +210,7 @@ export const knowledgeAdminController = {
 
     const outcome = await regenerateSlot(tenantId, source, idx);
     // 失敗時 meta 會留著舊句，不能改讀 meta 充數；一律據實回報並說明原因
-    if (!outcome.ok) throw regenerateError(outcome.reason);
+    if (!outcome.ok) throw regenerateError(outcome.reason, outcome.detail);
     res.json({ data: { source, slot: knowledgeStore.getMeta(tenantId).suggestedPrompts?.[source] } });
   },
 

@@ -39,6 +39,8 @@ const TEXT_CHARS = 150;
  * 十分之一有主題訊息，還被砍掉四成。提高上限並獨立成段，讓它不必和原文片段搶版面。
  */
 const SUMMARY_CHARS = 400;
+/** 回報給管理者的模型輸出擷取長度：夠看出哪裡不合格，又不至於把整段素材倒進錯誤訊息 */
+const OUTPUT_ECHO_CHARS = 120;
 const MAX_TITLES = 20;
 const MAX_TOTAL_CHARS = 2000;
 const MAX_ZH_CHARS = 20;
@@ -222,10 +224,22 @@ function isLatestGeneration(tenantId: string, gen: number): boolean {
 }
 
 /**
- * 呼叫 LLM 生成一句並驗證；驗證未過時把原因回饋給模型再試，最多 MAX_GENERATE_ATTEMPTS 次。
- * 全部不過回 undefined（該格不寫入）。
+ * 生成一句的結果。失敗帶最後一次的不合格原因與模型當時的輸出。
+ *
+ * 先前只回 undefined，呼叫端一路降級成「推薦詞生成失敗，請稍後再試」——而 server
+ * 其實逐次都知道確切原因（「繁體中文超過 20 個字元（實際 26 個）」之類），只寫進 log。
+ * 管理者在後台看不到，只能重按或來問開發者，而這正是 e248c43 當初要解決的那個問題，
+ * 當時只修到外層的四條失敗路徑，沒有往下修到「生成失敗」本身的原因。
  */
-async function generateOne(tenantId: string, material: string): Promise<SuggestedPrompts | undefined> {
+type GenerateOutcome =
+  | { ok: true; prompts: SuggestedPrompts }
+  | { ok: false; reason: string; output: string };
+
+/**
+ * 呼叫 LLM 生成一句並驗證；驗證未過時把原因回饋給模型再試，最多 MAX_GENERATE_ATTEMPTS 次。
+ * 全部不過時回報最後一次的原因與輸出。
+ */
+async function generateOne(tenantId: string, material: string): Promise<GenerateOutcome> {
   let text = material;
   for (let attempt = 1; attempt <= MAX_GENERATE_ATTEMPTS; attempt++) {
     const result = await getLLMProvider(tenantStore.getTenant(tenantId)?.llmConfig).createMessage({
@@ -240,16 +254,18 @@ async function generateOne(tenantId: string, material: string): Promise<Suggeste
     usageStore.recordLLMUsage(tenantId, result);
 
     const parsed = parseSuggestion(result.text);
-    if (parsed.ok) return parsed.prompts;
+    if (parsed.ok) return { ok: true, prompts: parsed.prompts };
 
+    const output = result.text.trim().slice(0, OUTPUT_ECHO_CHARS);
     logger.warn(
-      { tenantId, attempt, maxAttempts: MAX_GENERATE_ATTEMPTS, reason: parsed.reason, text: result.text.slice(0, 200) },
+      { tenantId, attempt, maxAttempts: MAX_GENERATE_ATTEMPTS, reason: parsed.reason, text: output },
       'suggested prompt 驗證未過',
     );
-    if (attempt === MAX_GENERATE_ATTEMPTS) return undefined;
+    if (attempt === MAX_GENERATE_ATTEMPTS) return { ok: false, reason: parsed.reason, output };
     text = `${material}\n\n上一次的輸出不合格：${parsed.reason}。請重新輸出。`;
   }
-  return undefined;
+  // 迴圈必定在 MAX_GENERATE_ATTEMPTS 回合內 return；此行只為滿足型別檢查
+  return { ok: false, reason: '未取得合格輸出', output: '' };
 }
 
 /**
@@ -301,9 +317,10 @@ export async function refreshSuggestedPrompts(
         const material = sampleIndexForSuggestion({ ...idx, chunks });
         // 抽樣素材為空（chunks 皆空白）：不視為錯誤，維持原樣
         if (!material) return [key, slot.generated] as const;
-        const generated = await generateOne(tenantId, material);
-        // 生成失敗（undefined）：沿用舊的，不因這次失敗而清空
-        return [key, generated ?? slot.generated] as const;
+        const outcome = await generateOne(tenantId, material);
+        // 生成失敗：沿用舊的，不因這次失敗而清空。此路徑由索引異動自動觸發、無人在等，
+        // 失敗原因留在 log 即可；需要據實回報的是管理者手動按的 regenerateSlot。
+        return [key, outcome.ok ? outcome.prompts : slot.generated] as const;
       }),
     );
 
@@ -347,7 +364,8 @@ export async function refreshSuggestedPrompts(
  */
 export type RegenerateOutcome =
   | { ok: true; prompts: SuggestedPrompts }
-  | { ok: false; reason: RegenerateFailure };
+  /** detail：generation-failed 專用的具體原因（哪一條驗證沒過、模型當時輸出什麼） */
+  | { ok: false; reason: RegenerateFailure; detail?: string };
 
 export type RegenerateFailure =
   /** ACL 過濾後語料為空：該來源有內容，但沒有一顆是訪客看得到的 */
@@ -385,8 +403,16 @@ export async function regenerateSlot(
     const material = sampleIndexForSuggestion({ ...idx, chunks });
     if (!material) return { ok: false, reason: 'blank-material' };
 
-    const generated = await generateOne(tenantId, material);
-    if (!generated) return { ok: false, reason: 'generation-failed' };
+    const outcome = await generateOne(tenantId, material);
+    if (!outcome.ok) {
+      return {
+        ok: false,
+        reason: 'generation-failed',
+        detail: `模型連續 ${MAX_GENERATE_ATTEMPTS} 次輸出不合格。最後一次：${outcome.reason}`
+          + (outcome.output ? `（模型輸出：${outcome.output}）` : ''),
+      };
+    }
+    const generated = outcome.prompts;
     if (!isLatestGeneration(tenantId, gen) || fingerprint !== promptAclFingerprint(tenantId)) {
       logger.warn({ tenantId }, 'suggested prompt 單格重生期間已有更新的呼叫，放棄過期寫入');
       return { ok: false, reason: 'superseded' };

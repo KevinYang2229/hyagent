@@ -214,6 +214,31 @@ describe('POST /admin/tenants/:id/knowledge/suggestion', () => {
     expect(res.body.error.message).toContain('請稍後再試');
   });
 
+  /*
+   * 「請稍後再試」標示可重試，但沒說為什麼失敗。server 逐次都知道確切原因，先前只寫進
+   * log——管理者在後台看不到，只能重按或來問開發者。字數超標（素材撐不起 20 字的具體
+   * 問句，重按機率不高）與連 JSON 都輸不好（多半是模型或金鑰問題）該怎麼辦完全不同。
+   */
+  it('回報失敗的確切原因與模型輸出，而不只是「請稍後再試」', async () => {
+    const tenantId = 'sug-admin-fail-detail';
+    scopePolicy.setPolicy(tenantId, { groups: { '—': ['kb:public'] }, accounts: {} });
+    writeIndex(tenantId, [{ ...chunk, visibilityScopes: ['kb:public'] }]);
+    knowledgeStore.setMeta(tenantId, { status: 'ready', chunkCount: 1 });
+    // 合法 JSON 但中文超過 20 字元上限：走的是「驗證未過」而非「輸出不是 JSON」
+    mockLLM('{"zh-Hant":"這一句刻意寫得很長長到超過二十個字元的硬性上限所以不會通過驗證","en":"Too long"}');
+
+    const res = await request(app)
+      .post(`/api/admin/tenants/${tenantId}/knowledge/suggestion`)
+      .set(auth)
+      .send({ source: 'website' })
+      .expect(422);
+
+    const msg = res.body.error.message as string;
+    expect(msg).toContain('請稍後再試'); // 可重試的語意不能因為多了診斷而消失
+    expect(msg).toContain('繁體中文超過 20 個字元'); // 哪一條驗證沒過
+    expect(msg).toContain('模型輸出：'); // 模型當時實際輸出什麼
+  });
+
   it('解析任務進行中時回 409', async () => {
     const tenantId = 'sug-admin-running-job';
     writeIndex(tenantId, [{ ...chunk, visibilityScopes: ['kb:public'] }]);
