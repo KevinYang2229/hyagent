@@ -43,3 +43,16 @@ export type ChunkText = Omit<IndexedChunk, 'vector'>;
 export interface KnowledgeIndexText extends KnowledgeIndexMetaOnly {
   chunks: ChunkText[];
 }
+
+/**
+ * 全文摘要 chunk 的 id 後綴（`<fileId>-summary`）。
+ *
+ * 由 knowledge-file.service 產生、由 knowledge.suggest 辨識。常數放在型別模組是因為
+ * knowledge-file.service 已經 import knowledge.suggest，反向 import 會成為循環相依。
+ */
+export const SUMMARY_CHUNK_ID_SUFFIX = '-summary';
+
+/** 判斷某 chunk 是否為入庫時產生的全文摘要（而非原文片段） */
+export function isSummaryChunk(chunk: { id: string }): boolean {
+  return chunk.id.endsWith(SUMMARY_CHUNK_ID_SUFFIX);
+}

@@ -16,7 +16,7 @@ import { usageStore } from '@/modules/usage/usage.store';
 import { guestVisibilityScopesOf, currentChunkScopes } from './knowledge.visibility';
 // KnowledgeIndexText（不含向量）而非 KnowledgeIndexFile：本模組只讀 text/title/fileId，
 // 收窄型別讓呼叫端可以省下整份向量的傳輸；完整索引仍可直接指派進來
-import type { ChunkText, KnowledgeIndexText } from './knowledge-index.types';
+import { isSummaryChunk, type ChunkText, type KnowledgeIndexText } from './knowledge-index.types';
 import { knowledgeStore } from './knowledge.store';
 import type { SuggestedPrompts } from './knowledge.store';
 import {
@@ -29,6 +29,16 @@ import {
 
 const MAX_TEXT_SAMPLES = 10;
 const TEXT_CHARS = 150;
+/**
+ * 全文摘要的字數配額。
+ *
+ * 摘要是入庫時請模型讀完整份檔案產生的 150~250 字鳥瞰（見 knowledge-file.service
+ * 的 summarizeText），對「這份文件在講什麼」的訊號密度遠高於任何一段原文片段。
+ * 原本它和其他摘錄一樣被 TEXT_CHARS 砍到 150 字、又混在等距抽樣的九段之中——
+ * 表格類檔案（如各年度參觀人次的 xlsx）那九段長得幾乎一樣，等於整份素材只有
+ * 十分之一有主題訊息，還被砍掉四成。提高上限並獨立成段，讓它不必和原文片段搶版面。
+ */
+const SUMMARY_CHARS = 400;
 const MAX_TITLES = 20;
 const MAX_TOTAL_CHARS = 2000;
 const MAX_ZH_CHARS = 20;
@@ -106,10 +116,24 @@ export function filterGuestVisibleChunks(chunks: ChunkText[], guestScopes: strin
   return chunks.filter((c) => (c.visibilityScopes ?? []).some((s) => allowed.has(s)));
 }
 
-/** 從索引抽出餵給 LLM 的素材：等距文字摘錄 ＋（多 title 時）主題清單 */
+/**
+ * 從索引抽出餵給 LLM 的素材：全文摘要 ＋ 等距文字摘錄 ＋（多 title 時）主題清單。
+ *
+ * 三者的訊號密度差很多，故分成三段各給各的配額，而不是混成一串等權重的條列。
+ */
 export function sampleIndexForSuggestion(idx: KnowledgeIndexText): string {
-  const chunks = idx.chunks;
-  if (chunks.length === 0) return '';
+  if (idx.chunks.length === 0) return '';
+
+  // 全文摘要獨立成段：它是整份檔案的鳥瞰，不該和原文片段一起參加等距抽樣。
+  // 等距抽樣的最後一筆恆為 index n-1，而摘要就排在最後，不排除就會重複出現一次
+  // ——第二次還被 TEXT_CHARS 砍成半句，佔掉十段摘錄裡的一格。
+  const summaries = idx.chunks
+    .filter(isSummaryChunk)
+    .map((c) => c.text.trim().slice(0, SUMMARY_CHARS))
+    .filter(Boolean);
+  // 摘要已另段呈現，原文摘錄只從非摘要 chunk 取；全空時退回全部，避免只有摘要的索引取不到素材
+  const bodyChunks = idx.chunks.filter((c) => !isSummaryChunk(c));
+  const chunks = bodyChunks.length > 0 ? bodyChunks : idx.chunks;
 
   // 首尾皆含的等距抽樣：FAQ、常見問題、聯絡方式這類最適合生成推薦問句的素材常落在文件尾端，
   // 若跨距只從 0 起跳（stride = n/MAX），最後一筆恆為 (MAX-1)*stride，永遠碰不到 index n-1。
@@ -126,6 +150,8 @@ export function sampleIndexForSuggestion(idx: KnowledgeIndexText): string {
   const topics = distinct.length > 1 ? stripCommonPrefix(distinct).slice(0, MAX_TITLES) : [];
 
   const parts: string[] = [];
+  // 摘要放最前面：MAX_TOTAL_CHARS 的裁切是從尾端砍，訊號最強的一段不能排在會被砍掉的位置
+  if (summaries.length > 0) parts.push(`文件摘要：\n${summaries.join('\n\n')}`);
   if (topics.length > 0) parts.push(`主題清單：\n${topics.map((t) => `- ${t}`).join('\n')}`);
   if (samples.length > 0) parts.push(`內容摘錄：\n${samples.map((s) => `- ${s}`).join('\n')}`);
   return parts.join('\n\n').slice(0, MAX_TOTAL_CHARS);

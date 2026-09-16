@@ -31,7 +31,7 @@ import {
 } from './ingest.service';
 import { parseDocument } from './doc-parse';
 import { deleteTablesByFile, saveTables, tableDescriptor } from './knowledge.tables.repo';
-import type { IndexedChunk } from './knowledge-index.types';
+import { SUMMARY_CHUNK_ID_SUFFIX, type IndexedChunk } from './knowledge-index.types';
 import { knowledgeStore, type KnowledgeFileMeta } from './knowledge.store';
 import { refreshSuggestedPrompts } from './knowledge.suggest';
 
@@ -157,7 +157,7 @@ export async function ingestFile(
         }
       : {
           // 標明「全文摘要」讓回答模型知道這是衍生內容，細節仍以原文 chunks 為準
-          id: `${fileId}-summary`,
+          id: `${fileId}${SUMMARY_CHUNK_ID_SUFFIX}`,
           url: `file://${name}`,
           title: `${name}（全文摘要）`,
           text: summary as string,

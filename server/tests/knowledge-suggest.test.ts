@@ -11,7 +11,7 @@ import {
 } from '@/modules/knowledge/knowledge.suggest';
 import type { KnowledgeIndexFile } from '@/modules/knowledge/knowledge-index.types';
 
-function makeIndex(chunks: { title: string; text: string }[]): KnowledgeIndexFile {
+function makeIndex(chunks: { title: string; text: string; id?: string }[]): KnowledgeIndexFile {
   return {
     generatedAt: 't',
     model: 'm',
@@ -170,5 +170,67 @@ describe('檔案來源的主題清單必須帶得出檔名', () => {
     expect(out).toContain('- 智慧閱讀');
     expect(out).toContain('- 數位典藏');
     expect(out).not.toContain('凌網科技 ›');
+  });
+});
+
+/**
+ * 全文摘要的待遇：它是入庫時請模型讀完整份檔案產生的 150~250 字鳥瞰，訊號密度遠高於
+ * 任何一段原文片段。原本它和其他摘錄一樣被砍到 150 字、又混在等距抽樣的十段之中——
+ * 表格類檔案那十段長得幾乎一樣，等於整份素材只有十分之一有主題訊息，還被砍掉四成。
+ * 實測結果就是檔案來源的推薦詞比網站來源難生成得多。
+ */
+describe('全文摘要在素材中的待遇', () => {
+  const NAME = 'CP 匯出.xlsx';
+  /** 250 字摘要（實際上限），用來驗證不再被 150 字上限截斷 */
+  const SUMMARY = '本檔為台北國際電腦展歷年參觀者統計，'.repeat(2)
+    + '涵蓋各年度來台參觀人次與國別拆分，並含年度成長率與專業買主佔比欄位。'.repeat(3);
+  const fileIndex = makeIndex([
+    ...Array.from({ length: 30 }, (_, i) => ({
+      id: `f-${i}`, title: NAME, text: `2019 台灣 ${i} 人次 日本 ${i * 2} 人次`,
+    })),
+    { id: 'f-summary', title: `${NAME}（全文摘要）`, text: SUMMARY },
+  ]);
+
+  it('獨立成段，且不被原文摘錄的 150 字上限截斷', () => {
+    const out = sampleIndexForSuggestion(fileIndex);
+
+    expect(out).toContain('文件摘要：');
+    expect(out).toContain(SUMMARY.slice(0, 300));
+  });
+
+  it('排在最前面——尾端裁切時訊號最強的一段不能先被砍掉', () => {
+    const out = sampleIndexForSuggestion(fileIndex);
+
+    expect(out.indexOf('文件摘要：')).toBe(0);
+  });
+
+  /*
+   * 等距抽樣的最後一筆恆為 index n-1，而摘要就排在最後。不排除它就會重複出現，
+   * 第二次還被砍成半句，白白佔掉十段摘錄裡的一格。
+   */
+  it('不重複出現在內容摘錄裡', () => {
+    const out = sampleIndexForSuggestion(fileIndex);
+
+    const excerpts = out.slice(out.indexOf('內容摘錄：'));
+    expect(excerpts).not.toContain(SUMMARY.slice(0, 50));
+  });
+
+  it('只有摘要 chunk 的索引仍取得素材，不會因排除而變空', () => {
+    const out = sampleIndexForSuggestion(makeIndex([{ id: 'f-summary', title: NAME, text: SUMMARY }]));
+
+    expect(out).toContain('文件摘要：');
+    expect(out).not.toBe('');
+  });
+
+  it('網站來源沒有摘要 chunk，不輸出文件摘要段', () => {
+    const out = sampleIndexForSuggestion(
+      makeIndex([
+        { id: 'abc123def456-0', title: '凌網科技 › 智慧閱讀', text: '智慧閱讀的說明' },
+        { id: 'abc123def456-1', title: '凌網科技 › 數位典藏', text: '數位典藏的說明' },
+      ]),
+    );
+
+    expect(out).not.toContain('文件摘要：');
+    expect(out).toContain('主題清單：');
   });
 });
