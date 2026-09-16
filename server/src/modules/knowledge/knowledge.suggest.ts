@@ -54,7 +54,20 @@ const MAX_GENERATE_ATTEMPTS = 4;
  */
 const SUGGESTION_TEMPERATURE = 0.4;
 
-/** 剝除 title 的共同前綴（網站來源的站名麵包屑）；剝完為空者丟棄 */
+/**
+ * 剝除 title 的共同前綴（網站來源的站名麵包屑）；剝完為空者丟棄。
+ *
+ * 前提是「共同前綴是麵包屑，剝掉後每個 title 仍留有自己的部分」。檔案來源不成立：
+ * 同一份檔案的 chunk title 全是檔名，只有全文摘要那筆是「<檔名>（全文摘要）」——
+ * 共同前綴會等於整個檔名，剝完第一個變空字串被丟棄，主題清單只剩「（全文摘要）」。
+ * 模型於是被告知這個知識庫的主題叫「（全文摘要）」，檔名這個唯一的高價值訊號反而消失，
+ * 只能靠內容摘錄裡那段全文摘要碰運氣——實測就是檔案來源的推薦詞時好時壞，
+ * 而標題豐富的網站來源穩定得多。
+ *
+ * 判準不是「有沒有 title 被剝空」——網站來源的首頁 title 就是站名本身，剝完也是空的，
+ * 但那批剝完仍剩多個有意義的主題，丟掉首頁那筆是對的。判準是「剝完還剩幾個」：
+ * 少於兩個就代表這串 title 的差異不足以構成主題清單，原樣返回比剝完更有訊息量。
+ */
 export function stripCommonPrefix(titles: string[]): string[] {
   // 單一 title 的共同前綴即其自身，剝除會全空；直接原樣返回
   if (titles.length < 2) return titles;
@@ -69,10 +82,12 @@ export function stripCommonPrefix(titles: string[]): string[] {
   }
   if (prefixLen === 0) return titles;
 
-  return titles
+  const stripped = titles
     // 共同前綴可能落在分隔符之前（如剝到「凌網資訊」而留下「 › 智慧閱讀」），一併清掉開頭分隔符
     .map((t) => t.slice(prefixLen).replace(/^[\s›>|/\\\-–—:：]+/, '').trim())
     .filter(Boolean);
+  // 剝完不足兩個：前綴吃掉的是標題本身而非麵包屑，原樣返回才保得住訊號（如檔名）
+  return stripped.length < 2 ? titles : stripped;
 }
 
 /**

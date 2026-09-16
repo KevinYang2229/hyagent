@@ -35,6 +35,18 @@ describe('stripCommonPrefix', () => {
   it('無共同前綴時原樣返回', () => {
     expect(stripCommonPrefix(['請假規定', '出差辦法'])).toEqual(['請假規定', '出差辦法']);
   });
+
+  /*
+   * 檔案來源的實際形狀：同一份檔案所有 chunk 的 title 都是檔名，只有全文摘要那筆
+   * 多了後綴。共同前綴等於整個檔名，硬剝下去只剩「（全文摘要）」——模型會被告知
+   * 這個知識庫的主題叫「（全文摘要）」，檔名這個唯一訊號反而消失。
+   */
+  it('前綴吃掉整個檔名、剝完不足兩個時原樣返回（檔案來源）', () => {
+    expect(stripCommonPrefix(['CP 匯出.xlsx', 'CP 匯出.xlsx（全文摘要）'])).toEqual([
+      'CP 匯出.xlsx',
+      'CP 匯出.xlsx（全文摘要）',
+    ]);
+  });
 });
 
 describe('sampleIndexForSuggestion', () => {
@@ -120,5 +132,43 @@ describe('parseSuggestion', () => {
   it('en 超過 12 個單字回 ok: false', () => {
     const long = Array.from({ length: 13 }, (_, i) => `w${i}`).join(' ');
     expect(parseSuggestion(`{"zh-Hant":"短句","en":"${long}"}`).ok).toBe(false);
+  });
+});
+
+/**
+ * 兩種來源餵給模型的素材品質必須對等。
+ *
+ * 檔案來源的推薦詞實測「時好時壞」而網站來源穩定，差別就在主題清單：網站有多個
+ * 頁面標題，檔案卻只有一行「（全文摘要）」，模型只能靠內容摘錄裡那段全文摘要碰運氣。
+ */
+describe('檔案來源的主題清單必須帶得出檔名', () => {
+  const NAME = 'CP 匯出.xlsx';
+  const fileChunks = [
+    ...Array.from({ length: 30 }, (_, i) => ({
+      title: NAME,
+      text: `2019 台灣 ${i} 人次 日本 ${i * 2} 人次`,
+    })),
+    { title: `${NAME}（全文摘要）`, text: '本檔為台北國際電腦展歷年參觀者統計。' },
+  ];
+
+  it('素材含檔名，且不會出現只剩後綴的假主題', () => {
+    const out = sampleIndexForSuggestion(makeIndex(fileChunks));
+
+    expect(out).toContain(NAME);
+    expect(out).not.toContain('- （全文摘要）');
+  });
+
+  it('網站來源不受影響，仍剝掉站名麵包屑只留頁名', () => {
+    const out = sampleIndexForSuggestion(
+      makeIndex([
+        { title: '凌網科技 › 智慧閱讀', text: '智慧閱讀的說明' },
+        { title: '凌網科技 › 數位典藏', text: '數位典藏的說明' },
+        { title: '凌網科技', text: '首頁' },
+      ]),
+    );
+
+    expect(out).toContain('- 智慧閱讀');
+    expect(out).toContain('- 數位典藏');
+    expect(out).not.toContain('凌網科技 ›');
   });
 });
