@@ -37,6 +37,14 @@ export interface LLMCreateParams {
   cache?: boolean;
   /** 覆寫模型（如意圖分類器改用便宜的 Haiku）；省略時用 env.LLM_MODEL */
   model?: string;
+  /**
+   * 取樣溫度。省略＝不帶此欄位給 provider，沿用各家預設（Anthropic 為 1.0）。
+   *
+   * 只有「輸出受嚴格格式約束、答案空間很窄」的呼叫才該指定，例如推薦問句要塞進
+   * 20 字元上限——預設 1.0 會讓同一份素材每次產出長度差很多的句子，驗證時好時壞。
+   * 對話類呼叫維持不帶，避免回答變得呆板。
+   */
+  temperature?: number;
 }
 
 export interface LLMUsage {

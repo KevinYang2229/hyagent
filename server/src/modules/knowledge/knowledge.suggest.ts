@@ -34,6 +34,26 @@ const MAX_TOTAL_CHARS = 2000;
 const MAX_ZH_CHARS = 20;
 const MAX_EN_WORDS = 12;
 
+/**
+ * 生成嘗試次數。
+ *
+ * 驗證門檻很窄（中文 20 字元以內，又要求具體指向這份知識庫——光是「台北國際電腦展」
+ * 這種專有名詞就佔掉 7 個字），模型的輸出長度本來就會在這條線附近擺盪。原本只試兩次，
+ * 實際表現是同一份索引「有時成功有時失敗」，而失敗回的是可重試的 generation-failed，
+ * 等於把重試的責任丟給管理者手動按按鈕。一次 Haiku 呼叫約兩百個 token，多試兩輪的
+ * 成本遠低於讓人重按。
+ */
+const MAX_GENERATE_ATTEMPTS = 4;
+
+/**
+ * 推薦問句的取樣溫度。
+ *
+ * 不帶此參數時走 provider 預設（Anthropic 為 1.0），對這種「答案空間很窄、又有硬性
+ * 長度上限」的任務只會製造無謂的失敗。壓低到 0.4 讓輸出集中在合格區間，但不設 0——
+ * 重試時需要模型真的換一句寫法，完全確定性的輸出會讓後續嘗試全部複製第一次的失敗。
+ */
+const SUGGESTION_TEMPERATURE = 0.4;
+
 /** 剝除 title 的共同前綴（網站來源的站名麵包屑）；剝完為空者丟棄 */
 export function stripCommonPrefix(titles: string[]): string[] {
   // 單一 title 的共同前綴即其自身，剝除會全空；直接原樣返回
@@ -161,12 +181,12 @@ function isLatestGeneration(tenantId: string, gen: number): boolean {
 }
 
 /**
- * 呼叫 LLM 生成一句並驗證；驗證未過時把原因回饋給模型再試一次。
- * 兩次都不過回 undefined（該格不寫入）。
+ * 呼叫 LLM 生成一句並驗證；驗證未過時把原因回饋給模型再試，最多 MAX_GENERATE_ATTEMPTS 次。
+ * 全部不過回 undefined（該格不寫入）。
  */
 async function generateOne(tenantId: string, material: string): Promise<SuggestedPrompts | undefined> {
   let text = material;
-  for (let attempt = 1; attempt <= 2; attempt++) {
+  for (let attempt = 1; attempt <= MAX_GENERATE_ATTEMPTS; attempt++) {
     const result = await getLLMProvider(tenantStore.getTenant(tenantId)?.llmConfig).createMessage({
       system: SUGGESTION_SYSTEM_PROMPT,
       messages: [{ role: 'user', content: [{ type: 'text', text }] }],
@@ -174,6 +194,7 @@ async function generateOne(tenantId: string, material: string): Promise<Suggeste
       // 租戶鎖定自有 provider 時，provider 內的 pickModel 會自動忽略此覆寫
       model: env.LLM_ROUTER_MODEL,
       maxTokens: 200,
+      temperature: SUGGESTION_TEMPERATURE,
     });
     usageStore.recordLLMUsage(tenantId, result);
 
@@ -181,10 +202,10 @@ async function generateOne(tenantId: string, material: string): Promise<Suggeste
     if (parsed.ok) return parsed.prompts;
 
     logger.warn(
-      { tenantId, attempt, reason: parsed.reason, text: result.text.slice(0, 200) },
+      { tenantId, attempt, maxAttempts: MAX_GENERATE_ATTEMPTS, reason: parsed.reason, text: result.text.slice(0, 200) },
       'suggested prompt 驗證未過',
     );
-    if (attempt === 2) return undefined;
+    if (attempt === MAX_GENERATE_ATTEMPTS) return undefined;
     text = `${material}\n\n上一次的輸出不合格：${parsed.reason}。請重新輸出。`;
   }
   return undefined;

@@ -86,6 +86,8 @@ export function createAnthropicProvider(settings: ResolvedLLMSettings): LLMProvi
           model,
           max_tokens: params.maxTokens ?? env.LLM_MAX_TOKENS,
           system,
+          // 未指定就整個欄位不帶，沿用 provider 預設（見 LLMCreateParams.temperature）
+          ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
           tools: tools.length > 0 ? tools : undefined,
           messages: toMessageParams(params.messages),
         });

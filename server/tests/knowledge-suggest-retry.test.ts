@@ -3,7 +3,11 @@ jest.mock('@/modules/knowledge/knowledge.visibility', () => ({
   guestVisibilityScopesOf: () => ['kb:public'], // explicitly grant fixture content
 }));
 /**
- * 驗證未過時重試一次：改為兩格後，單次失敗的曝險加倍，值得用一次 Haiku 換。
+ * 驗證未過時把原因回饋給模型重試，最多 MAX_GENERATE_ATTEMPTS（4）次。
+ *
+ * 門檻很窄（中文 20 字元以內又要具體指向本知識庫），模型輸出長度會在這條線附近擺盪，
+ * 只試兩次的實測結果是同一份索引「有時成功有時失敗」。一次 Haiku 呼叫約兩百個 token，
+ * 多試兩輪遠比讓管理者手動重按便宜。
  */
 jest.mock('@/lib/llm', () => ({
   __esModule: true,
@@ -70,13 +74,52 @@ it('重試時把失敗原因帶進 user message', async () => {
   expect(text).toContain('不是合法 JSON');
 });
 
-it('兩次都不合格時該格不寫入', async () => {
+it('用滿 4 次嘗試才放棄，該格不寫入', async () => {
   const tenantId = 'retry-fail';
   knowledgeStore.setMeta(tenantId, { status: 'ready', chunkCount: 1 });
-  mockLLM('不是 JSON', '還是不是 JSON');
+  mockLLM('不是 JSON', '還是不是 JSON', '仍然不是 JSON', '第四次也不是 JSON');
 
   await refreshSuggestedPrompts(tenantId, idx);
 
-  expect(mockCreate).toHaveBeenCalledTimes(2);
+  expect(mockCreate).toHaveBeenCalledTimes(4);
   expect(knowledgeStore.getMeta(tenantId).suggestedPrompts).toBeUndefined();
+});
+
+/*
+ * 第 3、4 次嘗試是這次調整多出來的預算，必須真的用得到——若哪天有人把
+ * MAX_GENERATE_ATTEMPTS 調回 2，這支會失敗而不是靜默退回「時好時壞」。
+ */
+it('第四次才合格時仍寫入，不會提早放棄', async () => {
+  const tenantId = 'retry-late-ok';
+  knowledgeStore.setMeta(tenantId, { status: 'ready', chunkCount: 1 });
+  mockLLM(
+    '{"zh-Hant":"請問貴公司的智慧閱讀方案總共有哪幾種可以選擇呢？","en":"What plans?"}',
+    '不是 JSON',
+    '{"zh-Hant":"這句一樣長到超過二十個字元的上限所以不會合格","en":"What plans?"}',
+    '{"zh-Hant":"有哪些方案？","en":"What plans?"}',
+  );
+
+  await refreshSuggestedPrompts(tenantId, idx);
+
+  expect(mockCreate).toHaveBeenCalledTimes(4);
+  expect(knowledgeStore.getMeta(tenantId).suggestedPrompts?.website?.generated).toEqual({
+    'zh-Hant': '有哪些方案？',
+    en: 'What plans?',
+  });
+});
+
+/*
+ * temperature 必須帶下去：不帶就是 provider 預設（Anthropic 為 1.0），正是
+ * 「同一份素材有時過有時不過」的來源。這支守的是那個參數不會在重構中被弄丟。
+ */
+it('每次呼叫都帶固定的低 temperature', async () => {
+  const tenantId = 'retry-temperature';
+  knowledgeStore.setMeta(tenantId, { status: 'ready', chunkCount: 1 });
+  mockLLM('不是 JSON', '{"zh-Hant":"有哪些方案？","en":"What plans?"}');
+
+  await refreshSuggestedPrompts(tenantId, idx);
+
+  for (const [params] of mockCreate.mock.calls) {
+    expect(params.temperature).toBe(0.4);
+  }
 });

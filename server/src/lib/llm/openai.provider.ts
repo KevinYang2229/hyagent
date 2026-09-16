@@ -111,6 +111,10 @@ export function createOpenAIProvider(settings: ResolvedLLMSettings): LLMProvider
         resp = await getClient(settings.apiKey, settings.baseURL).chat.completions.create({
           model,
           max_tokens: params.maxTokens ?? env.LLM_MAX_TOKENS,
+          // 未指定就整個欄位不帶，沿用 provider 預設（見 LLMCreateParams.temperature）。
+          // 本 provider 也服務 OpenAI 相容的本地模型與 reasoning 模型，後者會拒絕
+          // 非預設的 temperature——不帶欄位是唯一對所有後端都安全的預設。
+          ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
           messages: toOpenAIMessages(params.system, params.messages),
           tools: tools.length > 0 ? tools : undefined,
         });
