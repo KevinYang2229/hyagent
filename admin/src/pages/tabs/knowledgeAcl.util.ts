@@ -108,3 +108,26 @@ export function buildAclOnConfirmMessage(report: {
   lines.push('', '確定要切換為「啟用」嗎？');
   return lines.join('\n');
 }
+
+/**
+ * 公開推薦詞的語料狀態——直接對應 server 端 filterGuestVisibleChunks 的兩道關卡。
+ *
+ * - `no-grant`：訪客一個 kb: 標籤都沒有。標籤標得再完整也沒用，訪客 scope 是空集合，
+ *   語料一律被濾光。要到「權限」把標籤指派給訪客部門（租戶層授予會被 server 擋下，
+ *   kb: 只能走部門指派）。
+ * - `no-corpus`：訪客有標籤，但沒有任何來源或檔案掛著那些標籤——授權了一個沒人用的標籤。
+ * - `ok`：至少一邊有交集，推薦詞生得出來。
+ *
+ * 之所以要分這兩種：兩者在後台的下一步完全不同（一個去權限頁、一個回知識庫標標籤），
+ * 而 server 回的 422 訊息把兩條路合寫成一句，管理者無從判斷自己卡在哪一關。
+ */
+export type GuestCorpusState = 'no-grant' | 'no-corpus' | 'ok';
+export function guestCorpusState(guest: {
+  scopes: string[];
+  source: boolean;
+  files: number;
+}): GuestCorpusState {
+  if (guest.scopes.length === 0) return 'no-grant';
+  if (!guest.source && guest.files === 0) return 'no-corpus';
+  return 'ok';
+}

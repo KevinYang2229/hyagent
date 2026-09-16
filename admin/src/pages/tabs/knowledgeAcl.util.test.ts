@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   buildAclOnConfirmMessage,
   countFilesWithLabel,
+  guestCorpusState,
   fileLabelState,
   isValidLabelId,
   kbScopeId,
@@ -117,5 +118,21 @@ describe('buildAclOnConfirmMessage', () => {
       source: { configured: false, unlabeled: true },
     });
     expect(msg).not.toContain('網站來源尚未標記');
+  });
+});
+
+describe('guestCorpusState：公開推薦詞卡在哪一關', () => {
+  it('訪客沒有任何標籤 → no-grant，即使來源與檔案都已標好', () => {
+    // 這是實際踩過的狀態：標籤全標好、盤點面板全綠，推薦詞仍固定回 422
+    expect(guestCorpusState({ scopes: [], source: true, files: 3 })).toBe('no-grant');
+  });
+  it('訪客有標籤但沒有語料掛在上面 → no-corpus', () => {
+    expect(guestCorpusState({ scopes: ['kb:public'], source: false, files: 0 })).toBe('no-corpus');
+  });
+  it('網站來源對訪客可見 → ok（檔案一份都沒有也算）', () => {
+    expect(guestCorpusState({ scopes: ['kb:public'], source: true, files: 0 })).toBe('ok');
+  });
+  it('只有檔案對訪客可見 → ok（沒設定網站來源的純檔案 RAG 租戶）', () => {
+    expect(guestCorpusState({ scopes: ['kb:public'], source: false, files: 2 })).toBe('ok');
   });
 });

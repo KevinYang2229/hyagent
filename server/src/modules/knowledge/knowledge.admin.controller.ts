@@ -7,6 +7,7 @@ import { AppError } from '@/utils/app-error';
 import { assertValidLabelId, kbScopeId } from '@/modules/authz/scope-catalog';
 import { scopePolicy } from '@/modules/authz/scope-policy';
 import { tenantStore } from '@/modules/tenant/tenant.store';
+import { UNKNOWN_DEPARTMENT } from '@/modules/user/user.directory';
 import type { IngestParams } from './ingest.service';
 import { deleteIndex, loadIndexText } from './knowledge.index.repo';
 import { ingestFile, removeFile } from './knowledge-file.service';
@@ -15,7 +16,7 @@ import { knowledgeStore, type KnowledgeFileMeta, type KnowledgeSource } from './
 import { regenerateSlot, type RegenerateFailure } from './knowledge.suggest';
 import { splitChunksBySource, type SourceKey } from './prompt-slots';
 import { pickRetriever } from './retriever.pick';
-import { aclModeOf, setFileVisibility, setSourceVisibility } from './knowledge.visibility';
+import { aclModeOf, guestVisibilityScopesOf, setFileVisibility, setSourceVisibility } from './knowledge.visibility';
 import { listShadowStats } from './knowledge.acl-shadow.repo';
 
 /**
@@ -374,6 +375,24 @@ export const knowledgeAdminController = {
      */
     const source = knowledgeStore.getSource(tenantId);
     const sourceConfigured = !!source.startUrl;
+    /*
+     * 訪客（未建檔帳號）實際解析到的可見性標籤，以及「有沒有語料真的落在其中」。
+     *
+     * 標記與授權是兩件獨立的事，缺一語料就是零：來源／檔案標了 kb:public，但沒人
+     * 把 kb:public 指派給 UNKNOWN_DEPARTMENT 部門，訪客的 scope 集合仍是空的
+     * （filterGuestVisibleChunks 見 knowledge.suggest.ts，空集合直接回 []）。
+     * 原本這份盤點只報前半段（標了沒），後半段（訪客拿不拿得到）在整個後台沒有任何
+     * 地方看得到——管理者把標籤標好、面板全綠，公開推薦詞卻仍固定回 422
+     * 「沒有訪客可見的語料」，且畫面上找不到任何線索指向缺的是部門授權。
+     * 這裡把訪客的有效 scope 與兩種來源的交集結果一併列出，讓「卡在哪一步」可被觀察。
+     *
+     * 租戶層 grantedScopes 不可能補上這一段：assertTenantGrantable（scope-catalog.ts）
+     * 明文拒絕在租戶層授予 kb:，訪客的可見範圍只能經部門指派而來。
+     */
+    const guestScopes = guestVisibilityScopesOf(tenantId);
+    const guestAllowed = new Set(guestScopes);
+    const visibleToGuest = (scopes: string[] | undefined): boolean =>
+      (scopes ?? []).some((s) => guestAllowed.has(s));
     res.json({
       data: {
         mode: aclModeOf(tenantId),
@@ -383,6 +402,13 @@ export const knowledgeAdminController = {
           configured: sourceConfigured,
           unlabeled: sourceConfigured && source.visibilityScopes === undefined,
           explicitlyEmpty: sourceConfigured && source.visibilityScopes?.length === 0,
+        },
+        guest: {
+          department: UNKNOWN_DEPARTMENT,
+          scopes: guestScopes,
+          // 與推薦詞生成同一條判準：來源／檔案的標籤與訪客 scope 有交集才算有公開語料
+          source: sourceConfigured && visibleToGuest(source.visibilityScopes),
+          files: files.filter((f) => visibleToGuest(f.visibilityScopes)).length,
         },
         shadowStats: await listShadowStats(tenantId),
         shadowCaveat:

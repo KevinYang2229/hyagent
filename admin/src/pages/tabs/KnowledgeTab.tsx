@@ -16,6 +16,7 @@ import NumberField from "../../components/NumberField";
 import {
   countFilesWithLabel,
   fileLabelState,
+  guestCorpusState,
   isValidLabelId,
   kbScopeId,
   labelNameFor,
@@ -1074,6 +1075,38 @@ export default function KnowledgeTab({
                 不算進「未標記文件」的數字）。目前整個網站語料都不可被查詢，請先設定標籤。
               </div>
             )}
+
+            {/*
+              訪客可見範圍：標籤標好≠訪客看得到。兩者是獨立的兩步，但只有前者在
+              上方清單看得到——先前管理者把標籤全標好、面板全綠，公開推薦詞卻固定回
+              「沒有訪客可見的語料」，畫面上沒有任何地方指得出缺的是部門授權那一步。
+            */}
+            <div style={{ fontWeight: 500, marginBottom: 8 }}>
+              訪客可見範圍（未建檔帳號，公開 widget 與推薦詞用）
+            </div>
+            <div className="row-sub" style={{ marginBottom: 16 }}>
+              {guestCorpusState(aclReport.guest) === "no-grant" ? (
+                <span style={{ color: "var(--status-danger)" }}>
+                  「{aclReport.guest.department}」部門未獲得任何可見性標籤，訪客看不到任何內容，
+                  公開推薦詞無法生成。請到「權限」把標籤授權給該部門（知識庫標籤只能在部門層指派）。
+                </span>
+              ) : guestCorpusState(aclReport.guest) === "no-corpus" ? (
+                <span style={{ color: "var(--status-danger)" }}>
+                  訪客已獲得 {aclReport.guest.scopes
+                    .map((s) => labelNameFor(labels, s))
+                    .join("、")}，但沒有任何網站來源或檔案掛著這些標籤，
+                  公開推薦詞仍無語料可用。請回上方替來源或檔案標上同一個標籤。
+                </span>
+              ) : (
+                <>
+                  訪客已獲得 {aclReport.guest.scopes
+                    .map((s) => labelNameFor(labels, s))
+                    .join("、")}
+                  ；網站來源{aclReport.guest.source ? "可見" : "不可見"}、
+                  對訪客可見的檔案 {aclReport.guest.files} 份。
+                </>
+              )}
+            </div>
 
             <div className="row-sub" style={{ marginBottom: 16 }}>
               {aclReport.shadowCaveat}

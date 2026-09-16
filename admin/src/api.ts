@@ -213,12 +213,27 @@ export interface KnowledgeAclSourceStatus {
   unlabeled: boolean;
   explicitlyEmpty: boolean;
 }
-/** ACL 盤點：目前生效模式＋未標記／明確清空清單＋網站來源狀態＋shadow 統計 */
+/**
+ * 訪客（未建檔帳號）的有效可見性範圍。
+ *
+ * scopes 為訪客實際解析到的 kb: 標籤（只能由 department 指派而來，租戶層不可授予）；
+ * source／files 則是「真的有語料落在那些標籤裡」——標籤標好但沒授權訪客部門時，
+ * 上方 source.unlabeled/explicitlyEmpty 全是 false（看似全綠），這裡卻是空的，
+ * 那正是公開推薦詞回「沒有訪客可見的語料」的狀態。
+ */
+export interface KnowledgeAclGuestStatus {
+  department: string;
+  scopes: string[];
+  source: boolean;
+  files: number;
+}
+/** ACL 盤點：目前生效模式＋未標記／明確清空清單＋網站來源狀態＋訪客可見範圍＋shadow 統計 */
 export interface KnowledgeAclReport {
   mode: 'off' | 'shadow' | 'on';
   unlabeled: KnowledgeFileMeta[];
   explicitlyEmpty: KnowledgeFileMeta[];
   source: KnowledgeAclSourceStatus;
+  guest: KnowledgeAclGuestStatus;
   shadowStats: KnowledgeShadowStat[];
   shadowCaveat: string;
 }

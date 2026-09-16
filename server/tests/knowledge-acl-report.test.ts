@@ -18,6 +18,7 @@ import request from 'supertest';
 import { createApp } from '@/app';
 import { knowledgeStore } from '@/modules/knowledge/knowledge.store';
 import { tenantStore } from '@/modules/tenant/tenant.store';
+import { scopePolicy } from '@/modules/authz/scope-policy';
 
 const app = createApp();
 const auth = { 'x-admin-key': 'test-admin-key' };
@@ -119,5 +120,60 @@ describe('aclReport：網站來源是獨立項目，不是逐檔盤點的副產�
     const data = await report(tid);
 
     expect(data.source).toEqual({ configured: true, unlabeled: false, explicitlyEmpty: false });
+  });
+});
+
+/**
+ * 訪客所屬部門（對應 server 的 UNKNOWN_DEPARTMENT）。刻意寫死字面值而不 import 常數：
+ * 這個值同時是 resolve-scopes.ts 裡的硬編字面量，兩邊一旦分歧，訪客授權會靜默失效。
+ */
+const GUEST_DEPARTMENT = '—';
+
+describe('aclReport：訪客授權狀態——「標了」與「訪客拿得到」是兩件事', () => {
+  /** 已標記 kb:public 的網站來源＋一份同標籤的檔案；差別只在有沒有授權訪客部門 */
+  function seedLabeled(name: string): string {
+    const tid = tenantStore.createTenant(name).id;
+    tenantStore.updateTenant(tid, { knowledgeLabels: [{ id: 'public', label: '公開' }] });
+    knowledgeStore.saveSource(tid, {
+      startUrl: 'https://example.com', maxPages: 10, chunkChars: 800,
+      embeddingModel: 'm', rerank: true, visibilityScopes: ['kb:public'],
+    });
+    seedFile(tid, 'f1', ['kb:public']);
+    seedFile(tid, 'f2', ['kb:hr']);
+    return tid;
+  }
+
+  it('標籤都標好但未授權訪客部門：scopes 為空，來源與檔案一律不算公開語料', async () => {
+    const tid = seedLabeled('acl-report-guest-ungranted');
+
+    const data = await report(tid);
+
+    // 這正是公開推薦詞回 422 的狀態：來源 unlabeled/explicitlyEmpty 都是 false（看似全綠）
+    expect(data.source).toEqual({ configured: true, unlabeled: false, explicitlyEmpty: false });
+    expect(data.guest.scopes).toEqual([]);
+    expect(data.guest.source).toBe(false);
+    expect(data.guest.files).toBe(0);
+  });
+
+  it('授權訪客部門後：scopes 列出該標籤，來源與同標籤檔案才算公開語料', async () => {
+    const tid = seedLabeled('acl-report-guest-granted');
+    scopePolicy.setPolicy(tid, { groups: { [GUEST_DEPARTMENT]: ['kb:public'] }, accounts: {} });
+
+    const data = await report(tid);
+
+    expect(data.guest.department).toBe('—');
+    expect(data.guest.scopes).toEqual(['kb:public']);
+    expect(data.guest.source).toBe(true);
+    // f2 掛的是 kb:hr，沒授權給訪客，不計入
+    expect(data.guest.files).toBe(1);
+  });
+
+  it('未設定 startUrl 時 guest.source 恆為 false——沒有網站語料就談不上訪客看不看得到', async () => {
+    const tid = tenantStore.createTenant('acl-report-guest-no-source').id;
+    scopePolicy.setPolicy(tid, { groups: { [GUEST_DEPARTMENT]: ['kb:public'] }, accounts: {} });
+
+    const data = await report(tid);
+
+    expect(data.guest.source).toBe(false);
   });
 });
