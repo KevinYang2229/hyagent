@@ -5,6 +5,7 @@
  * 網站來源次數幾乎全為 1（排序等同隨機）。改為等距取文字 ＋ 剝除共同前綴後的 title 清單。
  */
 import {
+  MAX_ZH_CHARS,
   parseSuggestion,
   sampleIndexForSuggestion,
   stripCommonPrefix,
@@ -125,8 +126,10 @@ describe('parseSuggestion', () => {
     expect(parseSuggestion('{"zh-Hant":"","en":"How to apply?"}').ok).toBe(false);
   });
 
-  it('zh 超過 20 字元回 ok: false', () => {
-    expect(parseSuggestion(`{"zh-Hant":"${'字'.repeat(21)}","en":"ok"}`).ok).toBe(false);
+  // 用常數推導而非寫死字數：上限依 widget chip 容量調整過一次，寫死的假資料會靜默失效
+  it('zh 超過上限回 ok: false，剛好等於上限則通過', () => {
+    expect(parseSuggestion(`{"zh-Hant":"${'字'.repeat(MAX_ZH_CHARS + 1)}","en":"ok"}`).ok).toBe(false);
+    expect(parseSuggestion(`{"zh-Hant":"${'字'.repeat(MAX_ZH_CHARS)}","en":"ok"}`).ok).toBe(true);
   });
 
   it('en 超過 12 個單字回 ok: false', () => {

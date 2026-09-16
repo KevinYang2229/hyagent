@@ -18,6 +18,7 @@ import request from 'supertest';
 import { createApp } from '@/app';
 import { getLLMProvider } from '@/lib/llm';
 import { indexPathFor } from '@/modules/knowledge/index-path';
+import { MAX_ZH_CHARS } from '@/modules/knowledge/knowledge.suggest';
 import { startIngestJob } from '@/modules/knowledge/knowledge.job';
 import { knowledgeStore } from '@/modules/knowledge/knowledge.store';
 import { tenantStore } from '@/modules/tenant/tenant.store';
@@ -224,8 +225,8 @@ describe('POST /admin/tenants/:id/knowledge/suggestion', () => {
     scopePolicy.setPolicy(tenantId, { groups: { '—': ['kb:public'] }, accounts: {} });
     writeIndex(tenantId, [{ ...chunk, visibilityScopes: ['kb:public'] }]);
     knowledgeStore.setMeta(tenantId, { status: 'ready', chunkCount: 1 });
-    // 合法 JSON 但中文超過 20 字元上限：走的是「驗證未過」而非「輸出不是 JSON」
-    mockLLM('{"zh-Hant":"這一句刻意寫得很長長到超過二十個字元的硬性上限所以不會通過驗證","en":"Too long"}');
+    // 合法 JSON 但中文超過字數上限：走的是「驗證未過」而非「輸出不是 JSON」
+    mockLLM(`{"zh-Hant":"${'長'.repeat(MAX_ZH_CHARS + 1)}","en":"Too long"}`);
 
     const res = await request(app)
       .post(`/api/admin/tenants/${tenantId}/knowledge/suggestion`)
@@ -235,7 +236,7 @@ describe('POST /admin/tenants/:id/knowledge/suggestion', () => {
 
     const msg = res.body.error.message as string;
     expect(msg).toContain('請稍後再試'); // 可重試的語意不能因為多了診斷而消失
-    expect(msg).toContain('繁體中文超過 20 個字元'); // 哪一條驗證沒過
+    expect(msg).toContain(`繁體中文超過 ${MAX_ZH_CHARS} 個字元`); // 哪一條驗證沒過
     expect(msg).toContain('模型輸出：'); // 模型當時實際輸出什麼
   });
 

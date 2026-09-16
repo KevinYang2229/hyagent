@@ -1,5 +1,6 @@
 /** 知識庫 admin API 的請求驗證 schema（zod）。 */
 import { z } from 'zod';
+import { MAX_ZH_CHARS } from './knowledge.suggest';
 
 /** 知識來源設定（PUT /knowledge/source 的 body） */
 export const sourceSchema = z.object({
@@ -64,9 +65,9 @@ export const suggestionManualSchema = z.object({
   source: promptSourceSchema,
   manual: z
     .object({
-      // 上限與自動生成路徑的 MAX_ZH_CHARS 一致：手動值一樣要塞進 widget 的 chip，
-      // 版面寬度沒有例外可言。
-      'zh-Hant': z.string().trim().max(20),
+      // 直接引用自動生成路徑的常數，而不是再寫一次字面值：手動值一樣要塞進 widget 的
+      // chip，兩邊必須同步，而各持一份字面值遲早會在調整上限時漂移。
+      'zh-Hant': z.string().trim().max(MAX_ZH_CHARS),
       en: z.string().trim(),
     })
     .nullable(),

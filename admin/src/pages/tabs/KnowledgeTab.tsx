@@ -17,6 +17,7 @@ import {
   countFilesWithLabel,
   fileLabelState,
   guestCorpusState,
+  MANUAL_PROMPT_MAX_ZH_CHARS,
   isValidLabelId,
   kbScopeId,
   labelNameFor,
@@ -937,14 +938,16 @@ export default function KnowledgeTab({
                       {editingSource === source && (
                         <div className="form-grid" style={{ marginBlockStart: 8 }}>
                           <div className="field">
-                            <label className="field-label">繁體中文（必填，20 字以內）</label>
+                            <label className="field-label">
+                              繁體中文（必填，{MANUAL_PROMPT_MAX_ZH_CHARS} 字以內）
+                            </label>
                             <input
                               className="input"
                               value={manualDraft["zh-Hant"]}
                               onChange={(e) =>
                                 setManualDraft((d) => ({ ...d, "zh-Hant": e.target.value }))
                               }
-                              maxLength={20}
+                              maxLength={MANUAL_PROMPT_MAX_ZH_CHARS}
                             />
                           </div>
                           <div className="field">

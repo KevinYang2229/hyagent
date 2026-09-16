@@ -94,3 +94,12 @@ export function guestCorpusState(guest: {
   if (!guest.source && guest.files === 0) return 'no-corpus';
   return 'ok';
 }
+
+/**
+ * 手動推薦詞的中文字數上限，需與 server 的 MAX_ZH_CHARS（knowledge.suggest.ts）同值。
+ *
+ * 依 widget chip 容量推算：面板 400px，扣掉 .quick-bar 的 px-5 與 .quick-chip 的 px-3
+ * 後文字寬約 336px，text-xs（12px）全形一行約 28 字，line-clamp-2 兩行約 56 字才截斷。
+ * 前端這份只做輸入框的即時限制與提示，最終仍以 server 驗證為準。
+ */
+export const MANUAL_PROMPT_MAX_ZH_CHARS = 30;

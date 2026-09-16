@@ -5,7 +5,7 @@ jest.mock('@/modules/knowledge/knowledge.visibility', () => ({
 /**
  * 驗證未過時把原因回饋給模型重試，最多 MAX_GENERATE_ATTEMPTS（4）次。
  *
- * 門檻很窄（中文 20 字元以內又要具體指向本知識庫），模型輸出長度會在這條線附近擺盪，
+ * 門檻很窄（中文字數上限以內又要具體指向本知識庫），模型輸出長度會在這條線附近擺盪，
  * 只試兩次的實測結果是同一份索引「有時成功有時失敗」。一次 Haiku 呼叫約兩百個 token，
  * 多試兩輪遠比讓管理者手動重按便宜。
  */
@@ -16,7 +16,7 @@ jest.mock('@/lib/llm', () => ({
 
 import { getLLMProvider } from '@/lib/llm';
 import { knowledgeStore } from '@/modules/knowledge/knowledge.store';
-import { refreshSuggestedPrompts } from '@/modules/knowledge/knowledge.suggest';
+import { MAX_ZH_CHARS, refreshSuggestedPrompts } from '@/modules/knowledge/knowledge.suggest';
 import type { KnowledgeIndexFile } from '@/modules/knowledge/knowledge-index.types';
 
 const idx: KnowledgeIndexFile = {
@@ -25,6 +25,9 @@ const idx: KnowledgeIndexFile = {
   source: 's',
   chunks: [{ id: 'w1', url: 'https://x.com/a', title: '方案', text: '智慧閱讀提供三種方案', visibilityScopes: ['kb:public'], vector: [1] }],
 };
+
+/** 必定超過字數上限的輸出；由常數推導，調整上限時不會靜默失效 */
+const TOO_LONG = `{"zh-Hant":"${'長'.repeat(MAX_ZH_CHARS + 1)}","en":"What plans?"}`;
 
 let mockCreate: jest.Mock;
 
@@ -49,7 +52,7 @@ it('第一次超過字數上限、第二次合格時寫入第二次的結果', a
   const tenantId = 'retry-ok';
   knowledgeStore.setMeta(tenantId, { status: 'ready', chunkCount: 1 });
   mockLLM(
-    '{"zh-Hant":"請問貴公司的智慧閱讀方案總共有哪幾種可以選擇呢？","en":"What plans?"}',
+    TOO_LONG,
     '{"zh-Hant":"有哪些方案？","en":"What plans?"}',
   );
 
@@ -93,9 +96,9 @@ it('第四次才合格時仍寫入，不會提早放棄', async () => {
   const tenantId = 'retry-late-ok';
   knowledgeStore.setMeta(tenantId, { status: 'ready', chunkCount: 1 });
   mockLLM(
-    '{"zh-Hant":"請問貴公司的智慧閱讀方案總共有哪幾種可以選擇呢？","en":"What plans?"}',
+    TOO_LONG,
     '不是 JSON',
-    '{"zh-Hant":"這句一樣長到超過二十個字元的上限所以不會合格","en":"What plans?"}',
+    TOO_LONG,
     '{"zh-Hant":"有哪些方案？","en":"What plans?"}',
   );
 
