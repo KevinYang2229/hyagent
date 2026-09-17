@@ -63,6 +63,23 @@ export function isPermanentFailure(err: unknown): boolean {
   return err.statusCode >= 400 && err.statusCode < 500;
 }
 
+/** 上游回報「帳號額度用完」的錯誤碼：credit_balance_exhausted 為現行，insufficient_quota 為舊版 */
+const CREDIT_EXHAUSTED_CODES = new Set(['credit_balance_exhausted', 'insufficient_quota']);
+
+/**
+ * 帳號額度用完：與限流同為 429，但不會等一下就好——在儲值之前每次呼叫都會失敗。
+ *
+ * 依錯誤碼而非 status 判定：一般限流（rate_limit_exceeded）必須照舊留在暫時性，
+ * 否則尖峰時段一次限流就會讓整輪停擺。
+ */
+function isCreditExhausted(err: unknown): boolean {
+  const code = (err as { code?: unknown } | null)?.code;
+  return typeof code === 'string' && CREDIT_EXHAUSTED_CODES.has(code);
+}
+
+/** ingestOne 往上拋、要求整輪停下的訊號；檔案本身沒有錯，故不歸檔 */
+class RoundHalt extends Error {}
+
 /** 把任意拋出物轉成可寫進 .error.txt 的字串 */
 export function describeError(err: unknown): string {
   if (err instanceof Error) return err.message;
@@ -91,6 +108,11 @@ export interface RoundResult {
   locked: number;
   /** 本輪實際有成功匯入檔案的租戶 */
   tenants: string[];
+  /**
+   * 本輪中途停下的原因（目前只有 embedding 帳號額度用完）。有值時剩下的檔案都沒嘗試、
+   * 留在原地；呼叫端應停止輪詢並提示處理，而不是下一輪繼續撞同一面牆。
+   */
+  halted?: string;
 }
 
 /** 跨輪次保留的狀態；由 CLI 持有，每輪傳入 */
@@ -179,7 +201,14 @@ export async function runFolderIngestRound(
     }
     try {
       for (const it of items) {
-        const outcome = await ingestOne(source, it, opts);
+        let outcome: Awaited<ReturnType<typeof ingestOne>>;
+        try {
+          outcome = await ingestOne(source, it, opts);
+        } catch (err) {
+          if (!(err instanceof RoundHalt)) throw err;
+          result.halted = err.message;
+          break;
+        }
         if (outcome === 'done') {
           result.done += 1;
           touched.add(tenantId);
@@ -194,6 +223,8 @@ export async function runFolderIngestRound(
     } finally {
       await releaseIngestLock(lock);
     }
+    // 額度是整個帳號共用的：換下一個租戶一樣會失敗，直接結束本輪
+    if (result.halted) break;
   }
 
   // 推薦問句每租戶只重生一次：逐檔觸發會讓 N-1 次呼叫因世代防護而白花。
@@ -292,6 +323,11 @@ async function ingestOne(
     await source.settle(item, 'done');
     return 'done';
   } catch (err) {
+    // 額度用完：不歸檔（檔案沒問題）、不重試（儲值前必然再失敗），通知上層停下整輪
+    if (isCreditExhausted(err)) {
+      logger.error({ tenantId: item.tenantId, name: item.name, err }, 'embedding 帳號額度用完，停止本輪匯入');
+      throw new RoundHalt(describeError(err));
+    }
     if (isPermanentFailure(err)) {
       const reason = describeError(err);
       await source.settle(item, 'failed', reason);
@@ -305,6 +341,10 @@ async function ingestOne(
       await source.settle(item, 'done');
       return 'done';
     } catch (retryErr) {
+      if (isCreditExhausted(retryErr)) {
+        logger.error({ tenantId: item.tenantId, name: item.name, err: retryErr }, 'embedding 帳號額度用完，停止本輪匯入');
+        throw new RoundHalt(describeError(retryErr));
+      }
       logger.warn(
         { tenantId: item.tenantId, name: item.name, err: retryErr },
         '匯入失敗（暫時性），保留原檔待下輪重試',

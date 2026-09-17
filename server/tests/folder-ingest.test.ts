@@ -221,6 +221,53 @@ describe('runFolderIngestRound', () => {
     expect(source.settled[0].outcome).toBe('done');
   });
 
+  it('embedding 帳號額度用完時整輪停下：不重試、不搬檔、後續檔案不再嘗試，並回報 halted', async () => {
+    // OpenAI SDK 拋出的原始錯誤形狀（平台 key 不經 mapProviderError 轉換）
+    const exhausted = Object.assign(new Error('429 You have no credits remaining.'), {
+      status: 429,
+      code: 'credit_balance_exhausted',
+    });
+    mockIngestFile.mockRejectedValue(exhausted);
+    const source = new FakeSource([item('一.txt', 100), item('二.txt', 100)]);
+    const result = await runTwice(source);
+
+    // 額度不會自己回來：重試或換下一個檔都只是再撞一次同一面牆
+    expect(mockIngestFile).toHaveBeenCalledTimes(1);
+    expect(source.settled).toEqual([]);
+    expect(result.halted).toContain('no credits remaining');
+    expect(mockRelease).toHaveBeenCalledTimes(1);
+  });
+
+  it('重試時才撞到額度用完，一樣停下整輪', async () => {
+    mockIngestFile
+      .mockRejectedValueOnce(new Error('socket hang up'))
+      .mockRejectedValue(Object.assign(new Error('429 no credits'), { status: 429, code: 'credit_balance_exhausted' }));
+    const source = new FakeSource([item('一.txt', 100), item('二.txt', 100)]);
+    const result = await runTwice(source);
+
+    expect(result.halted).toBeDefined();
+    expect(mockIngestFile).toHaveBeenCalledTimes(2); // 一.txt 首次 + 重試；二.txt 不再嘗試
+  });
+
+  it('舊版 insufficient_quota 錯誤碼同樣視為額度用完', async () => {
+    mockIngestFile.mockRejectedValue(
+      Object.assign(new Error('429 You exceeded your current quota'), { status: 429, code: 'insufficient_quota' }),
+    );
+    const result = await runTwice(new FakeSource([item('一.txt', 100)]));
+    expect(result.halted).toBeDefined();
+    expect(mockIngestFile).toHaveBeenCalledTimes(1);
+  });
+
+  it('一般 429 限流仍照舊重試，不會停下整輪', async () => {
+    mockIngestFile.mockRejectedValue(
+      Object.assign(new Error('429 Rate limit reached'), { status: 429, code: 'rate_limit_exceeded' }),
+    );
+    const result = await runTwice(new FakeSource([item('一.txt', 100)]));
+    expect(result.halted).toBeUndefined();
+    expect(result.retry).toBe(1);
+    expect(mockIngestFile).toHaveBeenCalledTimes(2);
+  });
+
   it('資料夾名對不到真實租戶時判永久性失敗，且完全不呼叫 ingestFile', async () => {
     // 這是「拿租戶名稱當資料夾名」的形態。少了這道閘會安靜建出幽靈租戶的索引：
     // chunks 寫進去了、embedding 的錢也付了，但 tenants 表沒這個 id，

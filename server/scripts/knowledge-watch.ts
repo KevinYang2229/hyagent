@@ -203,6 +203,16 @@ async function main(): Promise<void> {
           ` / skipped ${result.skipped} / locked ${result.locked}`,
       );
     }
+    if (result.halted) {
+      // 額度用完不會自己恢復：繼續輪詢只會每輪把每個檔再撞一次、把日誌洗成同一行錯誤。
+      // 停下並講清楚要做什麼；檔案都還留在原地，儲值後重跑即接續匯入。
+      console.error(
+        `\n⛔ embedding 帳號額度用完，已停止匯入：${result.halted}\n` +
+          "   未處理的檔案都留在原資料夾，儲值（或更換 OPENAI_API_KEY）後重新執行即可接續。",
+      );
+      process.exitCode = 1;
+      stopping = true;
+    }
     if (result.locked > 0) {
       console.warn(
         `⚠️  有 ${result.locked} 個檔因該租戶正被另一條匯入流程處理而略過。` +
