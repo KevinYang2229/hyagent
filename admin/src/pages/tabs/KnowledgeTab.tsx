@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { Checkbox, useToast } from "@hyagent/ui";
 import {
   api,
@@ -180,7 +181,7 @@ export default function KnowledgeTab({
         const m = await api.uploadKnowledgeFile(tenantId, pendingFile);
         toast.success(`已匯入 ${m.chunks} 個段落`);
         setPendingFile(null);
-        await load();
+        await Promise.all([load(), loadAcl()]);
       }
     } catch (e) {
       onError(e);
@@ -201,7 +202,7 @@ export default function KnowledgeTab({
   const clear = async () => {
     try {
       await api.deleteKnowledge(tenantId);
-      await load();
+      await Promise.all([load(), loadAcl()]);
       setHits([]);
     } catch (e) {
       onError(e);
@@ -382,6 +383,73 @@ export default function KnowledgeTab({
   return (
     // 兩欄各自直向堆疊：欄內卡片緊密相接，不會像單一 grid 那樣在矮卡旁留出空洞
     <div className="kb-cols">
+      {aclReport && (
+        <section className="card" style={{ gridColumn: "1 / -1" }} aria-label="知識庫可見範圍">
+          <div className="card-head">
+            <div>
+              <div className="card-title">誰可以查詢這些知識？</div>
+              <div className="card-desc">
+                需要完成兩步：替來源選擇標籤，再到「權限」將相同標籤授權給部門。只有設定標籤，並不代表已開放查詢。
+              </div>
+            </div>
+            <Link className="btn btn-sm" to="?tab=permissions">設定部門授權</Link>
+          </div>
+          <div className="card-body">
+            <div className="row-title">訪客／未建檔帳號</div>
+            <p className="row-sub">以下只顯示訪客的可見範圍；其他使用者請到「測試查詢」指定身分驗證。</p>
+            <div className="kb-label-chips">
+              <span className={`kb-label-chip${guestCorpusState(aclReport.guest) === "ok" ? "" : " kb-label-chip--warn"}`}>
+                {guestCorpusState(aclReport.guest) === "ok" ? "有可查詢的內容" : "目前無法查詢任何內容"}
+              </span>
+              <span className="kb-label-chip">網站：{aclReport.guest.source ? "可查詢" : "無可查詢內容"}</span>
+              <span className="kb-label-chip">可查詢檔案：{aclReport.guest.files} 份</span>
+            </div>
+            <p className="row-sub">
+              已授權標籤：{aclReport.guest.scopes.length
+                ? aclReport.guest.scopes.map((scope) => labelNameFor(labels, scope)).join("、")
+                : "尚未授權"}
+            </p>
+            {guestCorpusState(aclReport.guest) === "no-grant" && (
+              <p className="row-sub">下一步：到「權限」，將要開放的標籤授權給「{aclReport.guest.department}」部門。</p>
+            )}
+            {guestCorpusState(aclReport.guest) === "no-corpus" && (
+              <p className="row-sub">下一步：替要開放的網站或檔案，選擇上方任一已授權標籤。目前沒有符合標籤的內容。</p>
+            )}
+            <p className="row-sub">公開聊天視窗與自動開場推薦詞會使用訪客可見的內容。</p>
+            <hr style={{ border: 0, borderTop: "1px solid var(--border-color)", marginBlock: 16 }} />
+            <div className="row-title">待設定標籤的檔案：{aclReport.unlabeled.length} 份</div>
+            <p className="row-sub">這些檔案尚未設定可見範圍，目前無人可查詢。網站狀態另列於下方。</p>
+            <ul className="list">
+              {aclReport.unlabeled.map((f) => (
+                <li key={f.fileId} className="row">
+                  <div className="row-main"><div className="row-title">{f.name}</div></div>
+                  <button type="button" className="btn btn-sm" onClick={() => {
+                    startEditFile(f);
+                    document.getElementById(`kb-file-${f.fileId}`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+                  }}>設定標籤</button>
+                </li>
+              ))}
+              {aclReport.unlabeled.length === 0 && <li className="empty">沒有待設定的檔案；是否可查詢仍取決於部門授權。</li>}
+            </ul>
+            <p className="row-sub">
+              網站：{!aclReport.source.configured ? "尚無網站內容" : sourceNeedsAclWarning(aclReport.source)
+                ? "尚未設定標籤，目前無人可查詢。請在「建立知識來源」選擇標籤並儲存網站設定。"
+                : aclReport.source.explicitlyEmpty ? "已設為不開放，目前無人可查詢。"
+                : "已設定標籤，可查詢對象依部門授權決定。"}
+            </p>
+            <details>
+              <summary style={{ cursor: "pointer" }}>已設為不開放的檔案：{aclReport.explicitlyEmpty.length} 份</summary>
+              <p className="row-sub">這些檔案的標籤已被清空，目前無人可查詢；與尚未設定的待辦分開列出。</p>
+              <ul className="list">
+                {aclReport.explicitlyEmpty.map((f) => (
+                  <li key={f.fileId} className="row"><div className="row-main"><div className="row-title">{f.name}</div></div></li>
+                ))}
+                {aclReport.explicitlyEmpty.length === 0 && <li className="empty">沒有設為不開放的檔案。</li>}
+              </ul>
+            </details>
+          </div>
+        </section>
+      )}
       <div className="kb-col">
         <div className="card">
           <div className="card-head">
@@ -647,7 +715,7 @@ export default function KnowledgeTab({
             <div>
               <div className="card-title">可見性標籤</div>
               <div className="card-desc">
-                標籤決定哪些人看得到哪些文件；未標記的文件 fail-closed，無人可見。
+                先替文件選擇標籤，再到「權限」授權給部門。未設定標籤時無人可查詢。
               </div>
             </div>
           </div>
@@ -756,7 +824,7 @@ export default function KnowledgeTab({
                     .toLowerCase();
                   const labelState = fileLabelState(f.visibilityScopes);
                   return (
-                    <li key={f.fileId} className="row">
+                    <li key={f.fileId} id={`kb-file-${f.fileId}`} className="row">
                       <span className="kfile-ext" data-ext={ext}>
                         {ext}
                       </span>
@@ -769,13 +837,14 @@ export default function KnowledgeTab({
                         {/* 標籤 chips：未標記／已清空都是無人可見，fail-closed 下等於白花錢，
                             用 danger 紅刺眼提示，不能跟正常標籤混在一起不顯眼 */}
                         <div className="kb-label-chips">
+                          {labelState === "labeled" && <span className="row-sub">可見性標籤（仍需部門授權）：</span>}
                           {labelState === "unlabeled" ? (
                             <span className="kb-label-chip kb-label-chip--warn">
-                              未標記（無人可見）
+                              待設定標籤（無人可查詢）
                             </span>
                           ) : labelState === "empty" ? (
                             <span className="kb-label-chip kb-label-chip--warn">
-                              已清空（無人可見）
+                              不開放（標籤已清空）
                             </span>
                           ) : (
                             (f.visibilityScopes ?? []).map((s) => (
@@ -1046,95 +1115,7 @@ export default function KnowledgeTab({
         </div>
       </div>
 
-      {aclReport && (
-        <div className="card" style={{ gridColumn: "1 / -1" }}>
-          <div className="card-head">
-            <div>
-              <div className="card-title">ACL 盤點</div>
-              <div className="card-desc">
-                文件必須有可見性標籤，且使用者獲得對應授權，才會出現在查詢與報告中。
-              </div>
-            </div>
-            {/* 權限過濾無條件生效，沒有每租戶開關——這是常數，不是狀態 */}
-            <span className="badge badge-on">已啟用</span>
-          </div>
-          <div className="card-body">
-            {sourceNeedsAclWarning(aclReport.source) && (
-              <div className="row-sub" style={{ marginBottom: 12, color: "var(--status-danger)" }}>
-                警示：網站來源尚未標記可見性（來源標籤是整個來源一組，不在下方檔案清單內，
-                不算進「未標記文件」的數字）。目前整個網站語料都不可被查詢，請先設定標籤。
-              </div>
-            )}
 
-            {/*
-              訪客可見範圍：標籤標好≠訪客看得到。兩者是獨立的兩步，但只有前者在
-              上方清單看得到——先前管理者把標籤全標好、面板全綠，公開推薦詞卻固定回
-              「沒有訪客可見的語料」，畫面上沒有任何地方指得出缺的是部門授權那一步。
-            */}
-            <div style={{ fontWeight: 500, marginBottom: 8 }}>
-              訪客可見範圍（未建檔帳號，公開 widget 與推薦詞用）
-            </div>
-            <div className="row-sub" style={{ marginBottom: 16 }}>
-              {guestCorpusState(aclReport.guest) === "no-grant" ? (
-                <span style={{ color: "var(--status-danger)" }}>
-                  「{aclReport.guest.department}」部門未獲得任何可見性標籤，訪客看不到任何內容，
-                  公開推薦詞無法生成。請到「權限」把標籤授權給該部門（知識庫標籤只能在部門層指派）。
-                </span>
-              ) : guestCorpusState(aclReport.guest) === "no-corpus" ? (
-                <span style={{ color: "var(--status-danger)" }}>
-                  訪客已獲得 {aclReport.guest.scopes
-                    .map((s) => labelNameFor(labels, s))
-                    .join("、")}，但沒有任何網站來源或檔案掛著這些標籤，
-                  公開推薦詞仍無語料可用。請回上方替來源或檔案標上同一個標籤。
-                </span>
-              ) : (
-                <>
-                  訪客已獲得 {aclReport.guest.scopes
-                    .map((s) => labelNameFor(labels, s))
-                    .join("、")}
-                  ；網站來源{aclReport.guest.source ? "可見" : "不可見"}、
-                  對訪客可見的檔案 {aclReport.guest.files} 份。
-                </>
-              )}
-            </div>
-
-            {/* unlabeled（從未標記＝待辦）與 explicitlyEmpty（已清空＝已完成的決定）分開列，
-                兩者查詢效果相同但語意不同，混在一起會讓「還沒做」跟「做過了」分不清 */}
-            <div style={{ fontWeight: 500, marginBottom: 8 }}>
-              未標記文件（待辦，共 {aclReport.unlabeled.length} 份）
-            </div>
-            <ul className="list" style={{ marginBottom: 16 }}>
-              {aclReport.unlabeled.map((f) => (
-                <li key={f.fileId} className="row">
-                  <div className="row-main">
-                    <div className="row-title">{f.name}</div>
-                  </div>
-                </li>
-              ))}
-              {aclReport.unlabeled.length === 0 && (
-                <li className="empty">沒有未標記的文件。</li>
-              )}
-            </ul>
-
-            <div style={{ fontWeight: 500, marginBottom: 8 }}>
-              明確清空（已決定無人可見，共 {aclReport.explicitlyEmpty.length} 份）
-            </div>
-            <ul className="list" style={{ marginBottom: 16 }}>
-              {aclReport.explicitlyEmpty.map((f) => (
-                <li key={f.fileId} className="row">
-                  <div className="row-main">
-                    <div className="row-title">{f.name}</div>
-                  </div>
-                </li>
-              ))}
-              {aclReport.explicitlyEmpty.length === 0 && (
-                <li className="empty">沒有明確清空的文件。</li>
-              )}
-            </ul>
-
-          </div>
-        </div>
-      )}
     </div>
   );
 }
