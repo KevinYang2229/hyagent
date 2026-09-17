@@ -131,13 +131,25 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
- * 同名檔視為更新：找出應被取代的舊檔。
+ * 同名且同標籤的檔視為更新：找出應被取代的舊檔。
+ *
+ * 只比檔名的話，不同部門各自的同名文件（hr/作業辦法.pdf、finance/作業辦法.pdf）會互相
+ * 取代——後處理的那份把前一份連同標籤整個換掉，沒有任何錯誤訊號。故依序找：
+ *   1. 同名且標籤含本資料夾標籤的檔（含後台另外加了其他標籤的情況）
+ *   2. 同名且完全沒有標籤的檔（標籤導入前匯入、或標籤已被刪除）：對所有人都不可見，
+ *      留著只會在檔案清單裡多一份死資料，由帶標籤的新版取代
+ * 其他標籤的同名檔不動，兩份並存（chunks 與結構化表皆以 fileId 為鍵，不會互相干擾）。
  *
  * **必須在 ingestFile 之前呼叫**——匯入成功後 meta.files 會同時存在新舊兩筆同名項，
  * 屆時再找就可能選中剛寫進去的那一筆，把新檔自己刪掉。
  */
-function findSupersededFile(tenantId: string, name: string): KnowledgeFileMeta | undefined {
-  return knowledgeStore.getMeta(tenantId).files?.find((f) => f.name === name);
+function findSupersededFile(tenantId: string, name: string, labelId: string): KnowledgeFileMeta | undefined {
+  const scope = kbScopeId(labelId);
+  const sameName = knowledgeStore.getMeta(tenantId).files?.filter((f) => f.name === name) ?? [];
+  return (
+    sameName.find((f) => f.visibilityScopes?.includes(scope)) ??
+    sameName.find((f) => !f.visibilityScopes?.length)
+  );
 }
 
 /**
@@ -298,7 +310,7 @@ async function ingestOne(
 
   const attempt = async (): Promise<void> => {
     const buf = await source.read(item);
-    const superseded = findSupersededFile(item.tenantId, item.name);
+    const superseded = findSupersededFile(item.tenantId, item.name, item.labelId!);
     // deferSuggestions：推薦問句留到整輪結束統一重生；visibilityScopes：資料夾層標籤直接投影
     // ——labelId 已由上方閘門確認存在於該租戶的標籤清單。
     const meta = await ingestFile(item.tenantId, item.name, buf, {

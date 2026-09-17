@@ -146,6 +146,76 @@ describe('批次匯入擋門：資料夾標籤', () => {
 });
 
 /**
+ * 同名檔替換以「檔名 + 標籤」判定。
+ *
+ * 只比檔名時，不同部門各自的同名文件（hr/作業辦法.pdf、finance/作業辦法.pdf）會被當成
+ * 同一份的改版而互相取代——後處理的那份把前一份整個刪掉，連標籤一起換掉，沒有任何錯誤訊號。
+ */
+describe('同名檔替換：檔名與標籤都相同才算同一份', () => {
+  beforeEach(() => {
+    mockGetTenant.mockReturnValue({
+      id: 'acme',
+      name: '客戶 A',
+      knowledgeLabels: [{ id: 'hr', label: '人資' }, { id: 'finance', label: '財務' }],
+    });
+  });
+
+  const meta = (...files: { fileId: string; visibilityScopes?: string[] }[]) =>
+    mockGetMeta.mockReturnValue({ files: files.map((f) => ({ name: '作業辦法.pdf', ...f })) });
+
+  it('同名但不同標籤：不刪既有檔，兩份並存', async () => {
+    meta({ fileId: 'fin-1', visibilityScopes: [kbScopeId('finance')] });
+    const result = await runTwice(new FakeSource([item('作業辦法.pdf', 'hr')]));
+
+    expect(result.done).toBe(1);
+    expect(mockRemoveFile).not.toHaveBeenCalled();
+  });
+
+  it('同名且同標籤：視為改版，取代舊檔', async () => {
+    meta({ fileId: 'hr-1', visibilityScopes: [kbScopeId('hr')] });
+    await runTwice(new FakeSource([item('作業辦法.pdf', 'hr')]));
+
+    expect(mockRemoveFile).toHaveBeenCalledWith('acme', 'hr-1', { deferSuggestions: true });
+  });
+
+  it('舊檔在後台被加了其他標籤，只要含本資料夾的標籤仍視為同一份', async () => {
+    meta({ fileId: 'multi-1', visibilityScopes: [kbScopeId('hr'), kbScopeId('finance')] });
+    await runTwice(new FakeSource([item('作業辦法.pdf', 'hr')]));
+
+    expect(mockRemoveFile).toHaveBeenCalledWith('acme', 'multi-1', { deferSuggestions: true });
+  });
+
+  it('各標籤各有一份同名檔時，只取代同標籤的那份', async () => {
+    meta(
+      { fileId: 'fin-1', visibilityScopes: [kbScopeId('finance')] },
+      { fileId: 'hr-1', visibilityScopes: [kbScopeId('hr')] },
+    );
+    await runTwice(new FakeSource([item('作業辦法.pdf', 'hr')]));
+
+    expect(mockRemoveFile).toHaveBeenCalledTimes(1);
+    expect(mockRemoveFile).toHaveBeenCalledWith('acme', 'hr-1', { deferSuggestions: true });
+  });
+
+  it.each([
+    ['未標記（標籤導入前匯入）', undefined],
+    ['標籤被刪除後的空標籤', []],
+  ])('同名的%s舊檔：對所有人都不可見，由帶標籤的新版取代', async (_label, scopes) => {
+    meta({ fileId: 'old-1', visibilityScopes: scopes });
+    await runTwice(new FakeSource([item('作業辦法.pdf', 'hr')]));
+
+    expect(mockRemoveFile).toHaveBeenCalledWith('acme', 'old-1', { deferSuggestions: true });
+  });
+
+  it('同標籤與未標記的同名舊檔都在時，優先取代同標籤的那份', async () => {
+    meta({ fileId: 'old-1' }, { fileId: 'hr-1', visibilityScopes: [kbScopeId('hr')] });
+    await runTwice(new FakeSource([item('作業辦法.pdf', 'hr')]));
+
+    expect(mockRemoveFile).toHaveBeenCalledTimes(1);
+    expect(mockRemoveFile).toHaveBeenCalledWith('acme', 'hr-1', { deferSuggestions: true });
+  });
+});
+
+/**
  * 標籤閘門沒有繞道。
  *
  * 曾有 off/shadow/on 三態旗標，off 時這道閘不生效、未標記檔案照樣匯入（理由是「與
