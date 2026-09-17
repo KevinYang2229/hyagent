@@ -4,6 +4,7 @@ import { Checkbox, useToast } from "@hyagent/ui";
 import {
   api,
   type IngestJob,
+  type CustomSuggestedPrompt,
   type KnowledgeAclReport,
   type KnowledgeFileMeta,
   type KnowledgeLabel,
@@ -56,8 +57,21 @@ export default function KnowledgeTab({
   const [question, setQuestion] = useState("");
   const [asUserId, setAsUserId] = useState(""); // 試查身分：留空＝以管理者身分（見 test()）
   const [hits, setHits] = useState<QueryHit[]>([]);
+  const [fileSearch, setFileSearch] = useState("");
+  const [fileFilter, setFileFilter] = useState("all");
+  const [filePage, setFilePage] = useState(1);
+  const pageSize = 5;
+  const sortedFiles = [...(meta?.files ?? [])].sort((a, b) => b.ingestedAt.localeCompare(a.ingestedAt));
+  const filteredFiles = sortedFiles.filter((file) =>
+    file.name.toLocaleLowerCase().includes(fileSearch.trim().toLocaleLowerCase()) &&
+    (fileFilter === "all" || fileLabelState(file.visibilityScopes) === fileFilter),
+  );
+  const pageCount = Math.max(1, Math.ceil(filteredFiles.length / pageSize));
+  const currentPage = Math.min(filePage, pageCount);
+  const visibleFiles = filteredFiles.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   const [uploading, setUploading] = useState(false);
   // 可見性標籤：清單 + 新增／改名／刪除中的暫存狀態
+  const [departments, setDepartments] = useState<string[]>([]);
   const [labels, setLabels] = useState<KnowledgeLabel[]>([]);
   const [newLabelId, setNewLabelId] = useState("");
   const [newLabelName, setNewLabelName] = useState("");
@@ -77,6 +91,8 @@ export default function KnowledgeTab({
   // 手動編輯中的來源與草稿（null = 沒有在編輯）
   const [editingSource, setEditingSource] = useState<PromptSource | null>(null);
   const [manualDraft, setManualDraft] = useState<SuggestedPromptText>({ "zh-Hant": "", en: "" });
+  const [customDraft, setCustomDraft] = useState<{ id?: string; source: PromptSource; text: SuggestedPromptText } | null>(null);
+  const [savingCustom, setSavingCustom] = useState(false);
   const [savingManual, setSavingManual] = useState(false);
   // 來源設定：先選網站或檔案，再填完參數，最後由同一顆「開始解析」依類型處理。
   const [sourceKind, setSourceKind] = useState<SourceKind>("website");
@@ -102,11 +118,13 @@ export default function KnowledgeTab({
   /** 標籤清單 + ACL 盤點：兩者都是「標籤異動後要重看」的資料，合併成一次載入 */
   const loadAcl = useCallback(async () => {
     try {
-      const [ls, report] = await Promise.all([
+      const [ls, report, policy] = await Promise.all([
         api.listKnowledgeLabels(tenantId),
         api.getKnowledgeAclReport(tenantId),
+        api.getTenantPolicy(tenantId),
       ]);
       setLabels(ls);
+      setDepartments([...new Set([...policy.departments, ...Object.keys(policy.groups)])].filter((department) => department !== "—"));
       setAclReport(report);
     } catch (e) {
       onError(e);
@@ -252,6 +270,33 @@ export default function KnowledgeTab({
     }
   };
 
+  const saveCustomPrompt = async () => {
+    if (!customDraft || !customDraft.text["zh-Hant"].trim()) return;
+    setSavingCustom(true);
+    try {
+      const body = { source: customDraft.source, text: customDraft.text };
+      const saved = customDraft.id
+        ? await api.updateCustomSuggestion(tenantId, customDraft.id, body)
+        : await api.createCustomSuggestion(tenantId, body);
+      setMeta((current) => current ? { ...current, customSuggestedPrompts: customDraft.id
+        ? (current.customSuggestedPrompts ?? []).map((prompt) => prompt.id === saved.id ? saved : prompt)
+        : [...(current.customSuggestedPrompts ?? []), saved] } : current);
+      setCustomDraft(null);
+      toast.success("已儲存自訂提示詞");
+    } catch (e) { onError(e); } finally { setSavingCustom(false); }
+  };
+
+  const deleteCustomPrompt = async (prompt: CustomSuggestedPrompt) => {
+    if (!confirm(`確定刪除提示詞「${prompt.text["zh-Hant"]}」？`)) return;
+    setSavingCustom(true);
+    try {
+      await api.deleteCustomSuggestion(tenantId, prompt.id);
+      setMeta((current) => current ? { ...current, customSuggestedPrompts: (current.customSuggestedPrompts ?? []).filter((item) => item.id !== prompt.id) } : current);
+      if (customDraft?.id === prompt.id) setCustomDraft(null);
+      toast.success("已刪除自訂提示詞");
+    } catch (e) { onError(e); } finally { setSavingCustom(false); }
+  };
+
   /** 選檔只帶入來源；chunk/model 等參數在同一區塊確認後，再按「開始解析」。 */
   const pickFile = (file: File) => {
     setSourceKind("file");
@@ -375,7 +420,9 @@ export default function KnowledgeTab({
     !!job && ["queued", "crawling", "embedding"].includes(job.status);
   const parsing = running || uploading;
   const lockedModel = meta.model;
+  const audienceValid = src.audience?.mode !== "departments" || !!src.audience.departments?.length;
   const canParse =
+    audienceValid &&
     !parsing &&
     src.chunkChars > 0 &&
     (sourceKind === "website" ? !!src.startUrl : !!pendingFile);
@@ -389,7 +436,7 @@ export default function KnowledgeTab({
             <div>
               <div className="card-title">誰可以查詢這些知識？</div>
               <div className="card-desc">
-                需要完成兩步：替來源選擇標籤，再到「權限」將相同標籤授權給部門。只有設定標籤，並不代表已開放查詢。
+                網站依「可查詢對象」設定開放；檔案與進階標籤模式需要先選標籤，再到「權限」授權給部門。
               </div>
             </div>
             <Link className="btn btn-sm" to="?tab=permissions">設定部門授權</Link>
@@ -405,46 +452,54 @@ export default function KnowledgeTab({
               <span className="kb-label-chip">可查詢檔案：{aclReport.guest.files} 份</span>
             </div>
             <p className="row-sub">
-              已授權標籤：{aclReport.guest.scopes.length
+              訪客可見範圍：{aclReport.guest.scopes.length
                 ? aclReport.guest.scopes.map((scope) => labelNameFor(labels, scope)).join("、")
                 : "尚未授權"}
             </p>
             {guestCorpusState(aclReport.guest) === "no-grant" && (
-              <p className="row-sub">下一步：到「權限」，將要開放的標籤授權給「{aclReport.guest.department}」部門。</p>
+              <p className="row-sub">下一步：要開放網站，請將「網站可查詢對象」設為「所有人」；要開放檔案或進階標籤來源，請到「權限」授權給「{aclReport.guest.department}」部門。</p>
             )}
             {guestCorpusState(aclReport.guest) === "no-corpus" && (
               <p className="row-sub">下一步：替要開放的網站或檔案，選擇上方任一已授權標籤。目前沒有符合標籤的內容。</p>
             )}
             <p className="row-sub">公開聊天視窗與自動開場推薦詞會使用訪客可見的內容。</p>
             <hr style={{ border: 0, borderTop: "1px solid var(--border-color)", marginBlock: 16 }} />
-            <div className="row-title">待設定標籤的檔案：{aclReport.unlabeled.length} 份</div>
+            <details className="kb-acl-details">
+              <summary>待設定標籤的檔案：{aclReport.unlabeled.length} 份</summary>
             <p className="row-sub">這些檔案尚未設定可見範圍，目前無人可查詢。網站狀態另列於下方。</p>
             <ul className="list">
               {aclReport.unlabeled.map((f) => (
                 <li key={f.fileId} className="row">
                   <div className="row-main"><div className="row-title">{f.name}</div></div>
                   <button type="button" className="btn btn-sm" onClick={() => {
+                    setFileSearch("");
+                    setFileFilter("all");
+                    setFilePage(Math.floor(sortedFiles.findIndex((file) => file.fileId === f.fileId) / pageSize) + 1);
                     startEditFile(f);
-                    document.getElementById(`kb-file-${f.fileId}`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+                    requestAnimationFrame(() => document.getElementById(`kb-file-${f.fileId}`)?.scrollIntoView({ block: "center", behavior: "smooth" }));
                   }}>設定標籤</button>
                 </li>
               ))}
-              {aclReport.unlabeled.length === 0 && <li className="empty">沒有待設定的檔案；是否可查詢仍取決於部門授權。</li>}
+              {aclReport.unlabeled.length === 0 && <li className="kb-acl-empty">沒有待設定的檔案；是否可查詢仍取決於部門授權。</li>}
             </ul>
+            </details>
             <p className="row-sub">
-              網站：{!aclReport.source.configured ? "尚無網站內容" : sourceNeedsAclWarning(aclReport.source)
+              網站：{!aclReport.source.configured ? "尚未設定網站" : aclReport.source.audience?.mode === "public" ? "所有人可查詢（包含訪客）"
+                : aclReport.source.audience?.mode === "departments" ? `僅限 ${(aclReport.source.audience.departments ?? []).join("、")} 查詢`
+                : aclReport.source.audience?.mode === "disabled" ? "暫不開放"
+                : sourceNeedsAclWarning(aclReport.source)
                 ? "尚未設定標籤，目前無人可查詢。請在「建立知識來源」選擇標籤並儲存網站設定。"
                 : aclReport.source.explicitlyEmpty ? "已設為不開放，目前無人可查詢。"
                 : "已設定標籤，可查詢對象依部門授權決定。"}
             </p>
-            <details>
-              <summary style={{ cursor: "pointer" }}>已設為不開放的檔案：{aclReport.explicitlyEmpty.length} 份</summary>
+            <details className="kb-acl-details">
+              <summary>已設為不開放的檔案：{aclReport.explicitlyEmpty.length} 份</summary>
               <p className="row-sub">這些檔案的標籤已被清空，目前無人可查詢；與尚未設定的待辦分開列出。</p>
               <ul className="list">
                 {aclReport.explicitlyEmpty.map((f) => (
                   <li key={f.fileId} className="row"><div className="row-main"><div className="row-title">{f.name}</div></div></li>
                 ))}
-                {aclReport.explicitlyEmpty.length === 0 && <li className="empty">沒有設為不開放的檔案。</li>}
+                {aclReport.explicitlyEmpty.length === 0 && <li className="kb-acl-empty">沒有設為不開放的檔案。</li>}
               </ul>
             </details>
           </div>
@@ -493,30 +548,47 @@ export default function KnowledgeTab({
                   />
                 </div>
                 <div className="field">
-                  <span className="field-label">網站可見性標籤</span>
-                  {labels.length === 0 && (
-                    <span className="field-hint">請先在下方「可見性標籤」新增標籤。</span>
-                  )}
-                  {labels.map((label) => {
-                    const scope = kbScopeId(label.id);
-                    return (
-                      <label key={label.id} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <Checkbox
-                          checked={(src.visibilityScopes ?? []).includes(scope)}
-                          disabled={parsing || savingSource}
-                          onChange={(e) => update({
-                            visibilityScopes: e.target.checked
-                              ? [...(src.visibilityScopes ?? []), scope]
-                              : (src.visibilityScopes ?? []).filter((s) => s !== scope),
-                          })}
-                        />
-                        {label.label}
-                      </label>
-                    );
-                  })}
-                  <span className="field-hint">
-                    未選標籤時無人可見。公開推薦詞還需要在「權限」將相同標籤授權給「訪客／未建檔帳號」部門。
-                  </span>
+                  <label className="field-label" htmlFor="website-audience">網站可查詢對象</label>
+                  <select id="website-audience" className="select"
+                    value={src.audience?.mode ?? ((src.visibilityScopes?.length ?? 0) > 0 ? "labels" : "disabled")}
+                    disabled={parsing || savingSource}
+                    onChange={(e) => update({
+                      audience: { mode: e.target.value as NonNullable<KnowledgeSource["audience"]>["mode"], departments: src.audience?.departments ?? [] },
+                      visibilityScopes: (src.visibilityScopes ?? []).filter((scope) => scope !== "kb:__website_access"),
+                    })}>
+                    <option value="disabled">暫不開放</option>
+                    <option value="public">所有人（包含訪客）</option>
+                    <option value="departments">指定部門</option>
+                    <option value="labels">進階：使用可見性標籤</option>
+                  </select>
+                  {src.audience?.mode === "public" && <span className="field-hint">儲存後，所有人都可查詢此網站內容，也可用於公開開場推薦詞。</span>}
+                  {src.audience?.mode === "departments" && <>
+                    <div className="kb-label-options" role="group" aria-label="可查詢網站的部門">
+                      {departments.map((department) => <label key={department}>
+                        <Checkbox checked={src.audience?.departments?.includes(department) ?? false} disabled={parsing || savingSource}
+                          onChange={(e) => update({ audience: { mode: "departments", departments: e.target.checked
+                            ? [...(src.audience?.departments ?? []), department]
+                            : (src.audience?.departments ?? []).filter((value) => value !== department) } })} />
+                        <span>{department}</span>
+                      </label>)}
+                    </div>
+                    <span className="field-hint">至少選擇一個部門。訪客與其他部門無法查詢；不需另外設定標籤授權。</span>
+                    {departments.length === 0 && <span className="field-hint">尚無可選部門，請先設定人員目錄或部門權限。</span>}
+                  </>}
+                  {(src.audience?.mode === "labels" || (!src.audience && !!src.visibilityScopes?.length)) && <>
+                    <div className="kb-label-options" role="group" aria-label="網站可見性標籤">
+                      {labels.map((label) => <label key={label.id}>
+                        <Checkbox checked={(src.visibilityScopes ?? []).includes(kbScopeId(label.id))} disabled={parsing || savingSource}
+                          onChange={(e) => update({ visibilityScopes: e.target.checked
+                            ? [...(src.visibilityScopes ?? []), kbScopeId(label.id)]
+                            : (src.visibilityScopes ?? []).filter((scope) => scope !== kbScopeId(label.id)) })} />
+                        <span>{label.label}</span>
+                      </label>)}
+                    </div>
+                    <span className="field-hint">沿用標籤與部門授權。請到「權限」授權相同標籤；未選標籤時無人可查詢。</span>
+                  </>}
+                  {(src.audience?.mode === "disabled" || (!src.audience && !src.visibilityScopes?.length)) && <span className="field-hint">保留網站內容，但暫不提供任何人查詢。</span>}
+                  <span className="field-hint">僅套用到整個網站來源，不會變更檔案的可見範圍。儲存後生效，不需重新解析。</span>
                 </div>
                 <div className="field">
                   <label className="field-label">最大頁數</label>
@@ -687,7 +759,7 @@ export default function KnowledgeTab({
                   type="button"
                   className="btn"
                   onClick={saveSourceSettings}
-                  disabled={parsing || savingSource || !src.startUrl.trim()}
+                  disabled={parsing || savingSource || !src.startUrl.trim() || !audienceValid}
                 >
                   {savingSource ? "儲存中…" : "儲存網站設定（不重新解析）"}
                 </button>
@@ -806,135 +878,90 @@ export default function KnowledgeTab({
       </div>
 
       <div className="kb-col">
-        {(meta.files ?? []).length > 0 && (
-          <div className="card">
-            <div className="card-head">
-              <div>
-                <div className="card-title">已匯入檔案</div>
-                <div className="card-desc">
-                  檔案內容會與網站來源合併進同一份索引。
-                </div>
-              </div>
+        <section className="card" aria-label="已匯入檔案">
+          <div className="card-head">
+            <div>
+              <div className="card-title">已匯入檔案 <span className="row-sub">共 {sortedFiles.length} 份</span></div>
+              <div className="card-desc">依匯入時間由新到舊排列，每頁顯示 {pageSize} 份。</div>
             </div>
-            {(meta.files ?? []).length > 0 && (
-              <ul className="list kfile-list">
-                {(meta.files ?? []).map((f) => {
-                  const ext = f.name
-                    .slice(f.name.lastIndexOf(".") + 1)
-                    .toLowerCase();
-                  const labelState = fileLabelState(f.visibilityScopes);
-                  return (
-                    <li key={f.fileId} id={`kb-file-${f.fileId}`} className="row">
-                      <span className="kfile-ext" data-ext={ext}>
-                        {ext}
-                      </span>
-                      <div className="row-main">
-                        <div className="row-title">{f.name}</div>
-                        <div className="row-sub">
-                          {f.chunks} 個段落 ·{" "}
-                          {new Date(f.ingestedAt).toLocaleString()}
-                        </div>
-                        {/* 標籤 chips：未標記／已清空都是無人可見，fail-closed 下等於白花錢，
-                            用 danger 紅刺眼提示，不能跟正常標籤混在一起不顯眼 */}
-                        <div className="kb-label-chips">
-                          {labelState === "labeled" && <span className="row-sub">可見性標籤（仍需部門授權）：</span>}
-                          {labelState === "unlabeled" ? (
-                            <span className="kb-label-chip kb-label-chip--warn">
-                              待設定標籤（無人可查詢）
-                            </span>
-                          ) : labelState === "empty" ? (
-                            <span className="kb-label-chip kb-label-chip--warn">
-                              不開放（標籤已清空）
-                            </span>
-                          ) : (
-                            (f.visibilityScopes ?? []).map((s) => (
-                              <span key={s} className="kb-label-chip">
-                                {labelNameFor(labels, s)}
-                              </span>
-                            ))
-                          )}
-                          <button
-                            type="button"
-                            className="btn btn-sm"
-                            onClick={() =>
-                              editingFileId === f.fileId ? setEditingFileId(null) : startEditFile(f)
-                            }
-                          >
-                            {editingFileId === f.fileId ? "取消" : "編輯標籤"}
-                          </button>
-                        </div>
-                        {editingFileId === f.fileId && (
-                          <div style={{ marginTop: 8 }}>
-                            <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
-                              {labels.length === 0 && (
-                                <span className="row-sub">
-                                  尚未建立任何標籤，請先在上方「可見性標籤」新增。
-                                </span>
-                              )}
-                              {labels.map((l) => (
-                                <label
-                                  key={l.id}
-                                  style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}
-                                >
-                                  <Checkbox
-                                    checked={editScopes.includes(l.id)}
-                                    onChange={() => toggleEditScope(l.id)}
-                                  />
-                                  <span style={{ fontSize: 13.5 }}>{l.label}</span>
-                                </label>
-                              ))}
-                            </div>
-                            <div className="row-actions" style={{ marginTop: 8 }}>
-                              <button
-                                type="button"
-                                className="btn btn-primary btn-sm"
-                                onClick={() => saveFileVisibility(f)}
-                                disabled={savingVisibility}
-                              >
-                                儲存
-                              </button>
-                              <button
-                                type="button"
-                                className="btn btn-sm"
-                                onClick={() => setEditingFileId(null)}
-                              >
-                                取消
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                      <div className="row-actions">
-                        <button
-                          className="btn btn-danger btn-sm kfile-del"
-                          title="刪除"
-                          aria-label={`刪除 ${f.name}`}
-                          onClick={() => removeFile(f)}
-                        >
-                          <svg
-                            width="15"
-                            height="15"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            aria-hidden="true"
-                          >
-                            <path d="M3 6h18" />
-                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
-                            <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                          </svg>
-                        </button>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
           </div>
-        )}
+          <div className="card-body kb-file-toolbar">
+            <input className="input" aria-label="搜尋檔案名稱" placeholder="搜尋檔案名稱…" value={fileSearch}
+              onChange={(e) => { setFileSearch(e.target.value); setFilePage(1); }} />
+            <select className="select" aria-label="篩選檔案可見性設定" value={fileFilter}
+              onChange={(e) => { setFileFilter(e.target.value); setFilePage(1); }}>
+              <option value="all">全部設定狀態</option>
+              <option value="unlabeled">待設定標籤</option>
+              <option value="labeled">已設定標籤</option>
+              <option value="empty">不開放</option>
+            </select>
+          </div>
+          <ul className="list">
+            {visibleFiles.map((f) => {
+              const ext = f.name.split(".").pop()?.toLowerCase() ?? "";
+              const scopes = f.visibilityScopes ?? [];
+              const state = fileLabelState(f.visibilityScopes);
+              return (
+                <li key={f.fileId} id={`kb-file-${f.fileId}`} className="kb-file-item">
+                  <div className="kb-file-heading">
+                    <span className="kfile-ext" data-ext={ext}>{ext}</span>
+                    <div className="row-main">
+                      <div className="row-title">{f.name}</div>
+                      <div className="row-sub">{f.chunks} 個段落 · {new Date(f.ingestedAt).toLocaleString("zh-TW")}</div>
+                    </div>
+                  </div>
+                  <div className="kb-file-labels">
+                    <div className="row-sub">可見性標籤 · 仍需部門授權</div>
+                    <div className="kb-label-chips">
+                      {state !== "labeled" ? <span className="kb-label-chip kb-label-chip--warn">
+                        {state === "unlabeled" ? "待設定標籤（無人可查詢）" : "不開放（標籤已清空）"}
+                      </span> : scopes.slice(0, 3).map((scope) => (
+                        <span key={scope} className="kb-label-chip">{labelNameFor(labels, scope)}</span>
+                      ))}
+                    </div>
+                    {scopes.length > 3 && <details className="kb-file-more-labels">
+                      <summary>另有 {scopes.length - 3} 個標籤</summary>
+                      <div className="kb-label-chips">{scopes.slice(3).map((scope) => (
+                        <span key={scope} className="kb-label-chip">{labelNameFor(labels, scope)}</span>
+                      ))}</div>
+                    </details>}
+                  </div>
+                  <div className="kb-file-actions">
+                    <button type="button" className="btn btn-sm" disabled={savingVisibility}
+                      onClick={() => editingFileId === f.fileId ? setEditingFileId(null) : startEditFile(f)}>
+                      {editingFileId === f.fileId ? "收合編輯" : "編輯標籤"}
+                    </button>
+                    <button type="button" className="btn btn-danger btn-sm" disabled={savingVisibility}
+                      aria-label={`刪除 ${f.name}`} onClick={() => removeFile(f)}>刪除檔案</button>
+                  </div>
+                  {editingFileId === f.fileId && <div className="kb-file-editor">
+                    <div className="row-title">選擇可見性標籤 <span className="row-sub">已選 {editScopes.length} 個</span></div>
+                    <div className="kb-label-options" role="group" aria-label="可見性標籤選項">
+                      {labels.map((label) => <label key={label.id}>
+                        <Checkbox checked={editScopes.includes(label.id)} disabled={savingVisibility} onChange={() => toggleEditScope(label.id)} />
+                        <span>{label.label}</span>
+                      </label>)}
+                      {labels.length === 0 && <div className="row-sub">請先在「可見性標籤」新增標籤。</div>}
+                    </div>
+                    {editScopes.length === 0 && <div className="row-sub">未選擇任何標籤，儲存後無人可查詢。</div>}
+                    <div className="kb-file-actions">
+                      <button type="button" className="btn btn-primary btn-sm" disabled={savingVisibility} onClick={() => saveFileVisibility(f)}>{savingVisibility ? "儲存中…" : "儲存標籤"}</button>
+                      <button type="button" className="btn btn-sm" disabled={savingVisibility} onClick={() => setEditingFileId(null)}>取消</button>
+                    </div>
+                  </div>}
+                </li>
+              );
+            })}
+            {visibleFiles.length === 0 && <li className="empty">{sortedFiles.length ? "找不到符合條件的檔案，請調整搜尋或篩選。" : "尚未匯入檔案。"}</li>}
+          </ul>
+          <nav className="kb-file-pagination" aria-label="檔案清單分頁">
+            <span className="row-sub" aria-live="polite">共 {filteredFiles.length} 份 · 第 {currentPage} / {pageCount} 頁</span>
+            <div className="kb-file-actions">
+              <button type="button" className="btn btn-sm" disabled={currentPage <= 1 || savingVisibility} onClick={() => setFilePage(currentPage - 1)}>上一頁</button>
+              <button type="button" className="btn btn-sm" disabled={currentPage >= pageCount || savingVisibility} onClick={() => setFilePage(currentPage + 1)}>下一頁</button>
+            </div>
+          </nav>
+        </section>
 
         <div className="card">
           <div className="card-head">
@@ -952,10 +979,11 @@ export default function KnowledgeTab({
               </div>
             ) : meta.status === "ready" ? (
               <>
-                <div className="row-sub">
-                  {meta.chunkCount} 片段｜來源 {meta.source ?? "—"}｜
-                  {meta.generatedAt ?? ""}
-                </div>
+                <dl className="kb-index-summary">
+                  <div><dt>已建立段落</dt><dd>{meta.chunkCount} 個</dd></div>
+                  <div><dt>來源</dt><dd>{meta.source ?? "—"}</dd></div>
+                  <div><dt>更新時間</dt><dd>{meta.generatedAt ? new Date(meta.generatedAt).toLocaleString("zh-TW") : "—"}</dd></div>
+                </dl>
                 {/* 開場推薦詞：widget 的推薦 chip 依來源各一顆，未生成就不會有 chip */}
                 {(["website", "file"] as const).map((source) => {
                   const slot = meta.suggestedPrompts?.[source];
@@ -967,18 +995,23 @@ export default function KnowledgeTab({
                     ? meta.chunkCountBySource[source]
                     : meta.chunkCount;
                   return (
-                    <div className="row-sub" key={source}>
-                      {source === "website" ? "網站來源" : "檔案來源"}｜
-                      {effective
-                        ? `${effective["zh-Hant"]}｜${effective.en || "（英文未填）"}`
-                        : "尚未生成，widget 不會顯示這顆 chip"}
-                      {slot?.manual ? "（手動）" : "（自動）"}
+                    <section className="kb-suggestion" key={source} aria-label={source === "website" ? "網站開場推薦詞" : "檔案開場推薦詞"}>
+                      <div className="kb-suggestion-heading">
+                        <h3>{source === "website" ? "網站來源" : "檔案來源"}推薦詞</h3>
+                        <span className="kb-label-chip">{slot?.manual ? "手動設定" : "自動生成"}</span>
+                      </div>
+                      {effective ? (
+                        <div className="kb-suggestion-copy">
+                          <p lang="zh-Hant">{effective["zh-Hant"]}</p>
+                          <p lang="en">{effective.en || "英文尚未填寫"}</p>
+                        </div>
+                      ) : <p className="kb-suggestion-empty">尚未生成，聊天視窗暫不顯示此推薦詞。</p>}
+                      <div className="kb-suggestion-actions">
                       <button
                         type="button"
                         className="btn btn-sm"
                         onClick={() => regenerateSuggestion(source)}
                         disabled={regenerating !== null || count === 0}
-                        style={{ marginInlineStart: 8 }}
                       >
                         {regenerating === source ? "生成中…" : "重新生成"}
                       </button>
@@ -990,7 +1023,6 @@ export default function KnowledgeTab({
                           setManualDraft(slot?.manual ?? { "zh-Hant": "", en: "" });
                         }}
                         disabled={editingSource !== null && editingSource !== source}
-                        style={{ marginInlineStart: 4 }}
                       >
                         編輯
                       </button>
@@ -999,11 +1031,11 @@ export default function KnowledgeTab({
                           type="button"
                           className="btn btn-sm"
                           onClick={() => clearManual(source)}
-                          style={{ marginInlineStart: 4 }}
-                        >
+                          >
                           恢復自動
                         </button>
                       )}
+                      </div>
                       {editingSource === source && (
                         <div className="form-grid" style={{ marginBlockStart: 8 }}>
                           <div className="field">
@@ -1046,7 +1078,7 @@ export default function KnowledgeTab({
                           </div>
                         </div>
                       )}
-                    </div>
+                    </section>
                   );
                 })}
               </>
@@ -1057,6 +1089,43 @@ export default function KnowledgeTab({
                 尚未建立索引，設定來源後按「開始解析」。
               </div>
             )}
+            <section className="kb-suggestion" aria-label="自訂開場提示詞">
+              <div className="kb-suggestion-heading"><h3>自訂開場提示詞</h3><span className="row-sub">{meta.customSuggestedPrompts?.length ?? 0} 個</span></div>
+              <p className="kb-suggestion-empty">預設保留網站、檔案各一個推薦詞，也可額外新增。自訂內容不會被自動生成覆蓋；對應來源有訪客可查詢的內容時，才會顯示在前台。</p>
+              {(meta.customSuggestedPrompts ?? []).map((prompt) => (
+                <div className="kb-custom-prompt" key={prompt.id}>
+                  <span className="kb-label-chip">{prompt.source === "website" ? "網站來源" : "檔案來源"} · 自訂</span>
+                  <div className="kb-suggestion-copy"><p lang="zh-Hant">{prompt.text["zh-Hant"]}</p><p lang="en">{prompt.text.en || "英文未填，英文介面不顯示"}</p></div>
+                  <div className="kb-suggestion-actions">
+                    <button type="button" className="btn btn-sm" disabled={savingCustom || customDraft !== null} onClick={() => setCustomDraft({ ...prompt, text: { ...prompt.text } })}>編輯</button>
+                    <button type="button" className="btn btn-danger btn-sm" disabled={savingCustom} onClick={() => deleteCustomPrompt(prompt)}>刪除</button>
+                  </div>
+                </div>
+              ))}
+              {customDraft ? (
+                <form className="kb-file-editor" onSubmit={(event) => { event.preventDefault(); void saveCustomPrompt(); }}>
+                  <div className="row-title">{customDraft.id ? "編輯提示詞" : "新增提示詞"}</div>
+                  <label className="field"><span className="field-label">對應來源</span>
+                    <select className="select" disabled={savingCustom} value={customDraft.source} onChange={(event) => setCustomDraft({ ...customDraft, source: event.target.value as PromptSource })}>
+                      <option value="website">網站</option><option value="file">檔案</option>
+                    </select>
+                  </label>
+                  <label className="field"><span className="field-label">繁體中文（必填，{MANUAL_PROMPT_MAX_ZH_CHARS} 字以內）</span>
+                    <input className="input" required maxLength={MANUAL_PROMPT_MAX_ZH_CHARS} disabled={savingCustom} value={customDraft.text["zh-Hant"]}
+                      onChange={(event) => setCustomDraft({ ...customDraft, text: { ...customDraft.text, "zh-Hant": event.target.value } })} />
+                  </label>
+                  <label className="field"><span className="field-label">英文（選填，留空則英文介面不顯示）</span>
+                    <input className="input" maxLength={200} disabled={savingCustom} value={customDraft.text.en}
+                      onChange={(event) => setCustomDraft({ ...customDraft, text: { ...customDraft.text, en: event.target.value } })} />
+                  </label>
+                  <div className="kb-file-actions">
+                    <button type="submit" className="btn btn-primary btn-sm" disabled={savingCustom || !customDraft.text["zh-Hant"].trim()}>{savingCustom ? "儲存中…" : "儲存提示詞"}</button>
+                    <button type="button" className="btn btn-sm" disabled={savingCustom} onClick={() => setCustomDraft(null)}>取消</button>
+                  </div>
+                </form>
+              ) : <div className="kb-suggestion-actions"><button type="button" className="btn btn-sm" disabled={savingCustom}
+                onClick={() => setCustomDraft({ source: "website", text: { "zh-Hant": "", en: "" } })}>＋ 新增提示詞</button></div>}
+            </section>
           </div>
         </div>
 

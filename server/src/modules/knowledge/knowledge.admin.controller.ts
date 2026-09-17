@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+import type { CustomSuggestedPrompt } from './prompt-slots';
 /**
  * 知識庫 admin controller：每租戶知識來源設定、觸發解析、查進度、測試查詢、清除索引。
  * 全部端點受 requireAdmin 保護（掛載於 admin.routes）。
@@ -7,12 +9,13 @@ import { AppError } from '@/utils/app-error';
 import { assertValidLabelId, kbScopeId } from '@/modules/authz/scope-catalog';
 import { scopePolicy } from '@/modules/authz/scope-policy';
 import { tenantStore } from '@/modules/tenant/tenant.store';
-import { UNKNOWN_DEPARTMENT } from '@/modules/user/user.directory';
+import { sourceVisibilityScopes } from './source-access';
+import { listDepartments, UNKNOWN_DEPARTMENT } from '@/modules/user/user.directory';
 import type { IngestParams } from './ingest.service';
 import { deleteIndex, loadIndexText } from './knowledge.index.repo';
 import { ingestFile, removeFile } from './knowledge-file.service';
 import { getJob, getRunningJobForTenant, startIngestJob } from './knowledge.job';
-import { knowledgeStore, type KnowledgeFileMeta, type KnowledgeSource } from './knowledge.store';
+import { knowledgeStore, refreshKnowledgeStore, type KnowledgeFileMeta, type KnowledgeSource } from './knowledge.store';
 import { regenerateSlot, type RegenerateFailure } from './knowledge.suggest';
 import { splitChunksBySource, type SourceKey } from './prompt-slots';
 import { pickRetriever } from './retriever.pick';
@@ -63,6 +66,19 @@ function assertKnownScopes(tenantId: string, scopes: string[]): void {
   if (bad.length) throw AppError.badRequest(`未知的標籤：${bad.join('、')}`);
 }
 
+function prepareSource(tenantId: string, source: Omit<KnowledgeSource, 'updatedAt'>): Omit<KnowledgeSource, 'updatedAt'> {
+  if (!source.audience || source.audience.mode === 'labels') {
+    if (source.visibilityScopes) assertKnownScopes(tenantId, source.visibilityScopes);
+  }
+  if (source.audience?.mode === 'departments') {
+    const known = new Set([...listDepartments(tenantId), ...Object.keys(scopePolicy.getPolicy(tenantId).groups)]);
+    if (!source.audience.departments?.length || source.audience.departments.some((department) => department === UNKNOWN_DEPARTMENT || !known.has(department))) {
+      throw AppError.badRequest('請選擇有效的部門');
+    }
+  }
+  return { ...source, visibilityScopes: sourceVisibilityScopes(source) };
+}
+
 /** 由已存來源設定組出 ingest 參數；未設定起始網址則擋下 */
 function ingestParamsFor(tenantId: string): IngestParams {
   const s = knowledgeStore.getSource(tenantId);
@@ -95,7 +111,7 @@ function regenerateError(reason: RegenerateFailure, detail?: string): AppError {
     case 'no-visible-chunks': {
       return AppError.unprocessable(
         '該來源有索引內容，但沒有訪客可見的語料，無法生成公開推薦詞。'
-          + '請在知識庫設定網站來源或檔案的可見性標籤，再到「權限」將相同標籤授權給「訪客／未建檔帳號」部門。'
+          + '若要公開網站內容，請將網站可查詢對象設為「所有人（包含訪客）」。檔案或進階標籤模式則需設定可見性標籤，再到「權限」將相同標籤授權給「訪客／未建檔帳號」部門。'
           + '儲存後即可重新生成，不必重新解析。僅限登入者可見的內容不會用於公開推薦詞。',
       );
     }
@@ -118,6 +134,7 @@ function regenerateError(reason: RegenerateFailure, detail?: string): AppError {
 export const knowledgeAdminController = {
   async get(req: Request, res: Response): Promise<void> {
     const tenantId = String(req.params.id);
+    await refreshKnowledgeStore(tenantId);
     res.json({
       data: {
         source: knowledgeStore.getSource(tenantId),
@@ -130,9 +147,9 @@ export const knowledgeAdminController = {
   async saveSource(req: Request, res: Response): Promise<void> {
     const tenantId = String(req.params.id);
     const body = req.body as Omit<KnowledgeSource, 'updatedAt'>;
-    if (body.visibilityScopes) assertKnownScopes(tenantId, body.visibilityScopes);
-    await setSourceVisibility(tenantId, body.visibilityScopes ?? []);
-    const saved = knowledgeStore.saveSource(tenantId, { ...body, visibilityScopes: body.visibilityScopes ?? [] });
+    const prepared = prepareSource(tenantId, body);
+    await setSourceVisibility(tenantId, prepared.visibilityScopes ?? []);
+    const saved = knowledgeStore.saveSource(tenantId, prepared);
     res.json({ data: saved });
   },
 
@@ -141,12 +158,9 @@ export const knowledgeAdminController = {
     const body = req.body as Partial<KnowledgeSource>;
     // 有帶覆寫參數時先存起來，再依最終設定啟動 job
     if (body.startUrl) {
-      if (body.visibilityScopes) assertKnownScopes(tenantId, body.visibilityScopes);
-      if (body.visibilityScopes) await setSourceVisibility(tenantId, body.visibilityScopes);
-      knowledgeStore.saveSource(tenantId, {
-        ...knowledgeStore.getSource(tenantId),
-        ...body,
-      } as Omit<KnowledgeSource, 'updatedAt'>);
+      const prepared = prepareSource(tenantId, { ...knowledgeStore.getSource(tenantId), ...body });
+      await setSourceVisibility(tenantId, prepared.visibilityScopes ?? []);
+      knowledgeStore.saveSource(tenantId, prepared);
     }
     const job = startIngestJob(ingestParamsFor(tenantId));
     res.status(202).json({ data: { jobId: job.id, status: job.status } });
@@ -238,6 +252,36 @@ export const knowledgeAdminController = {
   },
 
   /** 上傳單一檔案（multipart field: file）：解析→切塊→embed→附加索引 */
+  async createCustomSuggestion(req: Request, res: Response): Promise<void> {
+    const tenantId = String(req.params.id);
+    await refreshKnowledgeStore(tenantId);
+    const meta = knowledgeStore.getMeta(tenantId);
+    const prompt: CustomSuggestedPrompt = { ...(req.body as Omit<CustomSuggestedPrompt, 'id'>), id: randomUUID() };
+    knowledgeStore.setMeta(tenantId, { ...meta, customSuggestedPrompts: [...(meta.customSuggestedPrompts ?? []), prompt] });
+    res.status(201).json({ data: prompt });
+  },
+
+  async updateCustomSuggestion(req: Request, res: Response): Promise<void> {
+    const tenantId = String(req.params.id);
+    await refreshKnowledgeStore(tenantId);
+    const meta = knowledgeStore.getMeta(tenantId);
+    const promptId = String(req.params.promptId);
+    if (!meta.customSuggestedPrompts?.some((prompt) => prompt.id === promptId)) throw AppError.notFound('查無自訂提示詞');
+    const prompt: CustomSuggestedPrompt = { ...(req.body as Omit<CustomSuggestedPrompt, 'id'>), id: promptId };
+    knowledgeStore.setMeta(tenantId, { ...meta, customSuggestedPrompts: meta.customSuggestedPrompts.map((item) => item.id === promptId ? prompt : item) });
+    res.json({ data: prompt });
+  },
+
+  async deleteCustomSuggestion(req: Request, res: Response): Promise<void> {
+    const tenantId = String(req.params.id);
+    await refreshKnowledgeStore(tenantId);
+    const meta = knowledgeStore.getMeta(tenantId);
+    const promptId = String(req.params.promptId);
+    if (!meta.customSuggestedPrompts?.some((prompt) => prompt.id === promptId)) throw AppError.notFound('查無自訂提示詞');
+    knowledgeStore.setMeta(tenantId, { ...meta, customSuggestedPrompts: meta.customSuggestedPrompts.filter((prompt) => prompt.id !== promptId) });
+    res.json({ data: { id: promptId } });
+  },
+
   async uploadFile(req: Request, res: Response): Promise<void> {
     const tenantId = String(req.params.id);
     // 索引檔無鎖：爬網 job 進行中同時附加會有 read-modify-write 競態（可能默默蓋掉彼此的 chunks），
@@ -255,6 +299,7 @@ export const knowledgeAdminController = {
   /** 刪除已上傳檔案：索引與 meta 一併移除；查無回 404 */
   async deleteFile(req: Request, res: Response): Promise<void> {
     const tenantId = String(req.params.id);
+    await refreshKnowledgeStore(tenantId);
     // 同上：爬網進行中不允許動索引（競態守門）
     if (getRunningJobForTenant(tenantId)) {
       throw AppError.conflict('解析任務進行中，請待完成後再刪除檔案');
@@ -320,6 +365,7 @@ export const knowledgeAdminController = {
    */
   async deleteLabel(req: Request, res: Response): Promise<void> {
     const tenantId = String(req.params.id);
+    await refreshKnowledgeStore(tenantId);
     const labelId = String(req.params.labelId);
     ensureTenant(tenantId);
     const scope = kbScopeId(labelId);
@@ -355,6 +401,7 @@ export const knowledgeAdminController = {
    */
   async setFileVisibilityHandler(req: Request, res: Response): Promise<void> {
     const tenantId = String(req.params.id);
+    await refreshKnowledgeStore(tenantId);
     const fileId = String(req.params.fileId);
     const { scopes } = req.body as { scopes: string[] };
     assertKnownScopes(tenantId, scopes);
@@ -375,6 +422,7 @@ export const knowledgeAdminController = {
    */
   async aclReport(req: Request, res: Response): Promise<void> {
     const tenantId = String(req.params.id);
+    await refreshKnowledgeStore(tenantId);
     const files = knowledgeStore.getMeta(tenantId).files ?? [];
     /*
      * 網站來源的可見性標籤是整個來源一組（KnowledgeSource.visibilityScopes），不是逐檔
@@ -410,6 +458,7 @@ export const knowledgeAdminController = {
         unlabeled: files.filter((f) => f.visibilityScopes === undefined),
         explicitlyEmpty: files.filter((f) => f.visibilityScopes?.length === 0),
         source: {
+          audience: source.audience,
           configured: sourceConfigured,
           unlabeled: sourceConfigured && source.visibilityScopes === undefined,
           explicitlyEmpty: sourceConfigured && source.visibilityScopes?.length === 0,

@@ -20,6 +20,13 @@ export interface PromptSlot {
 
 export type SourceKey = 'website' | 'file';
 
+/** 管理者額外新增的開場提示詞，與兩個預設來源格位分開保存。 */
+export interface CustomSuggestedPrompt {
+  id: string;
+  source: SourceKey;
+  text: SuggestedPrompts;
+}
+
 /** 顯示與處理順序固定：網站在前、檔案在後 */
 export const SOURCE_KEYS: readonly SourceKey[] = ['website', 'file'];
 

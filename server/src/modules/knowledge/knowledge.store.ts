@@ -8,10 +8,11 @@ import type { Prisma } from '@prisma/client';
 import { connectDb, DbWriteQueue } from '@/lib/db';
 import { env } from '@/config/env';
 import { logger } from '@/lib/logger';
-import { normalizeSuggestedPrompts, type SourceKey, type SuggestedPromptSlots } from './prompt-slots';
+import { normalizeSuggestedPrompts, type SourceKey, type SuggestedPromptSlots, type CustomSuggestedPrompt } from './prompt-slots';
 
 /** 每租戶的網站爬取與 embedding 設定 */
 export interface KnowledgeSource {
+  audience?: { mode: 'public' | 'departments' | 'disabled' | 'labels'; departments?: string[] };
   /** 爬取起點 URL */
   startUrl: string;
   /** 最大爬取頁數 */
@@ -80,6 +81,7 @@ export interface KnowledgeIndexMeta {
    * 有效句 = manual ?? generated；無內容時不存在，widget 即不顯示該顆 chip。
    */
   suggestedPrompts?: SuggestedPromptSlots;
+  customSuggestedPrompts?: CustomSuggestedPrompt[];
   /** Authorization fingerprint for each generated (public) prompt. */
   generatedPromptAcl?: Partial<Record<'website' | 'file', string>>;
   /**
@@ -189,6 +191,32 @@ export async function initKnowledgeStore(): Promise<void> {
     if (meta && Object.keys(meta).length) metas.set(r.tenantId, meta);
   }
   logger.info({ count: rows.length }, 'knowledge config restored from db');
+}
+
+/** 後台操作前更新單一租戶快照，讀取 watcher 等其他程序已完成的匯入。 */
+export async function refreshKnowledgeStore(tenantId: string): Promise<void> {
+  let source: KnowledgeSource | undefined;
+  let meta: KnowledgeIndexMeta | undefined;
+  if (env.DATA_BACKEND === 'db') {
+    // 先完成本程序的寫入，避免剛儲存的資料被舊 DB 值取代。
+    await writeQueue.flush();
+    const db = await connectDb();
+    const row = await db.knowledgeSourceRow.findUnique({ where: { tenantId } });
+    source = row?.source as unknown as KnowledgeSource | undefined;
+    meta = row?.meta as unknown as KnowledgeIndexMeta | undefined;
+  } else {
+    if (!existsSync(FILE)) return;
+    const raw = JSON.parse(readFileSync(FILE, 'utf8')) as {
+      sources?: [string, KnowledgeSource][];
+      metas?: [string, KnowledgeIndexMeta][];
+    };
+    source = raw.sources?.find(([id]) => id === tenantId)?.[1];
+    meta = raw.metas?.find(([id]) => id === tenantId)?.[1];
+  }
+  if (source && Object.keys(source).length) sources.set(tenantId, source);
+  else sources.delete(tenantId);
+  if (meta && Object.keys(meta).length) metas.set(tenantId, meta);
+  else metas.delete(tenantId);
 }
 
 /** meta 的預設空狀態；DB 的 jsonb 欄位預設 '{}'，與「未設定」同義 */

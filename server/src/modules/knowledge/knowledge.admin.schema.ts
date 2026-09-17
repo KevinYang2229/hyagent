@@ -24,6 +24,12 @@ export const sourceSchema = z.object({
    * 就等於把既有值清掉，不是「保留」。
    */
   visibilityScopes: z.array(z.string()).optional(),
+  audience: z.object({
+    mode: z.enum(['public', 'departments', 'disabled', 'labels']),
+    departments: z.array(z.string().trim().min(1)).optional(),
+  }).refine((value) => value.mode !== 'departments' || !!value.departments?.length, {
+    message: '請至少選擇一個部門',
+  }).optional(),
 });
 
 /** 觸發解析（POST /knowledge/ingest 的 body）：可部分覆寫已存設定 */
@@ -90,3 +96,15 @@ export const labelParamSchema = z.object({
 
 /** 檔案可見性標註（PATCH /knowledge/files/:fileId/visibility） */
 export const fileVisibilitySchema = z.object({ scopes: z.array(z.string()).default([]) });
+
+export const customSuggestionSchema = z.object({
+  source: promptSourceSchema,
+  text: z.object({
+    'zh-Hant': z.string().trim().min(1).max(MAX_ZH_CHARS),
+    en: z.string().trim().max(200),
+  }),
+});
+export const customSuggestionParamSchema = z.object({
+  id: z.string().min(1),
+  promptId: z.string().uuid(),
+});

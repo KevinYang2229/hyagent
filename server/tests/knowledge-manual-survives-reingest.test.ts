@@ -27,6 +27,8 @@ import type { KnowledgeIndexFile } from '@/modules/knowledge/knowledge-index.typ
 
 const manual = { 'zh-Hant': '手動句，不該被清掉', en: 'Manual, must survive' };
 
+const custom = [{ id: 'custom-1', source: 'website' as const, text: { 'zh-Hant': '自訂問題？', en: 'Custom?' } }];
+
 const baseParams = {
   startUrl: 'https://x.com',
   maxPages: 5,
@@ -52,6 +54,7 @@ it('重爬成功後，既有的 manual 推薦詞仍在', async () => {
   knowledgeStore.setMeta(tenantId, {
     status: 'ready',
     chunkCount: 3,
+    customSuggestedPrompts: custom,
     chunkCountBySource: { website: 3, file: 0 },
     suggestedPrompts: {
       website: {
@@ -68,6 +71,7 @@ it('重爬成功後，既有的 manual 推薦詞仍在', async () => {
 
   expect(getJob(job.id)?.status).toBe('done');
   expect(knowledgeStore.getMeta(tenantId).suggestedPrompts?.website?.manual).toEqual(manual);
+  expect(knowledgeStore.getMeta(tenantId).customSuggestedPrompts).toEqual(custom);
 });
 
 it('重爬失敗後，既有的 manual 推薦詞仍在', async () => {
@@ -75,6 +79,7 @@ it('重爬失敗後，既有的 manual 推薦詞仍在', async () => {
   knowledgeStore.setMeta(tenantId, {
     status: 'ready',
     chunkCount: 3,
+    customSuggestedPrompts: custom,
     chunkCountBySource: { website: 3, file: 0 },
     suggestedPrompts: {
       website: {
@@ -92,4 +97,5 @@ it('重爬失敗後，既有的 manual 推薦詞仍在', async () => {
 
   expect(getJob(job.id)?.status).toBe('failed');
   expect(knowledgeStore.getMeta(tenantId).suggestedPrompts?.website?.manual).toEqual(manual);
+  expect(knowledgeStore.getMeta(tenantId).customSuggestedPrompts).toEqual(custom);
 });

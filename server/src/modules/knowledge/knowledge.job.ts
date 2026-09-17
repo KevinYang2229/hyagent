@@ -96,7 +96,7 @@ export function startIngestJob(
       // - suggestedPrompts 消失會把管理者設定的 manual 一併清掉——且這裡清空後緊接著的
       //   void refreshSuggestedPrompts(...) 會讀到已清空的 meta，兩格都判定「無 manual」
       //   而重新生成，manual 因此永久消失（而非暫時被蓋過）。
-      const { files, suggestedPrompts } = knowledgeStore.getMeta(params.tenantId);
+      const { files, suggestedPrompts, customSuggestedPrompts } = knowledgeStore.getMeta(params.tenantId);
       // 計數向資料層要：runIngest 回傳的 idx 只含本次爬到的網站 chunks，檔案來源的 chunks
       // 由 replaceWebsiteChunks 原地保留、從不經過這裡，拿 idx.chunks 算會漏掉它們
       const counts = await countChunksBySource(params.tenantId);
@@ -109,6 +109,7 @@ export function startIngestJob(
         chunkCountBySource: counts,
         ...(files ? { files } : {}),
         ...(suggestedPrompts ? { suggestedPrompts } : {}),
+        ...(customSuggestedPrompts ? { customSuggestedPrompts } : {}),
       });
 
       // 推薦問句生成：不阻塞、不影響索引狀態。失敗時前端就不顯示推薦 chip。
@@ -131,7 +132,7 @@ export function startIngestJob(
       // 失敗路徑同樣不得清掉既有的 files 與 suggestedPrompts（理由同上）。
       // 這裡比成功路徑更嚴重：失敗路徑不會觸發 refreshSuggestedPrompts 補救，
       // 若漏帶 suggestedPrompts，manual 與 generated 會一起永久消失、無從恢復。
-      const { files: filesOnFail, suggestedPrompts: suggestedPromptsOnFail } = knowledgeStore.getMeta(
+      const { files: filesOnFail, suggestedPrompts: suggestedPromptsOnFail, customSuggestedPrompts: customOnFail } = knowledgeStore.getMeta(
         params.tenantId,
       );
       knowledgeStore.setMeta(params.tenantId, {
@@ -140,7 +141,7 @@ export function startIngestJob(
         error: job.error,
         chunkCountBySource: { website: 0, file: 0 },
         ...(filesOnFail ? { files: filesOnFail } : {}),
-        ...(suggestedPromptsOnFail ? { suggestedPrompts: suggestedPromptsOnFail } : {}),
+        ...(suggestedPromptsOnFail ? { suggestedPrompts: suggestedPromptsOnFail, customSuggestedPrompts: customOnFail } : {}),
       });
 
       logger.warn({ err, tenantId: params.tenantId }, 'ingest job failed');

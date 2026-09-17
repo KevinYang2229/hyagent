@@ -16,7 +16,7 @@ jest.mock('@/lib/llm', () => ({
 
 import { getLLMProvider } from '@/lib/llm';
 import { knowledgeStore } from '@/modules/knowledge/knowledge.store';
-import { MAX_ZH_CHARS, refreshSuggestedPrompts } from '@/modules/knowledge/knowledge.suggest';
+import { MAX_ZH_CHARS, refreshSuggestedPrompts, regenerateSlot } from '@/modules/knowledge/knowledge.suggest';
 import type { KnowledgeIndexFile } from '@/modules/knowledge/knowledge-index.types';
 
 const idx: KnowledgeIndexFile = {
@@ -125,4 +125,30 @@ it('每次呼叫都帶固定的低 temperature', async () => {
   for (const [params] of mockCreate.mock.calls) {
     expect(params.temperature).toBe(0.4);
   }
+});
+
+const previousPrompt = { 'zh-Hant': '有哪些方案？', en: 'What plans?' };
+
+it('重新生成遇到相同推薦詞時重試，且提示模型避開前次內容', async () => {
+  const tenantId = 'regenerate-duplicate';
+  knowledgeStore.setMeta(tenantId, { status: 'ready', chunkCount: 1, suggestedPrompts: { website: { generated: previousPrompt } } });
+  const next = { 'zh-Hant': '智慧閱讀方案有什麼差異？', en: 'How do the reading plans differ?' };
+  mockLLM(JSON.stringify(previousPrompt), JSON.stringify(next));
+  const result = await regenerateSlot(tenantId, 'website', idx);
+  expect(result).toEqual({ ok: true, prompts: next });
+  expect(mockCreate).toHaveBeenCalledTimes(2);
+  expect(mockCreate.mock.calls[0][0].messages[0].content[0].text).toContain(previousPrompt['zh-Hant']);
+  expect(mockCreate.mock.calls[1][0].messages[0].content[0].text).toContain('重複');
+  expect(knowledgeStore.getMeta(tenantId).suggestedPrompts?.website?.generated).toEqual(next);
+});
+
+it('只改標點或大小寫仍算重複，四次失敗保留原推薦詞', async () => {
+  const tenantId = 'regenerate-duplicate-fail';
+  knowledgeStore.setMeta(tenantId, { status: 'ready', chunkCount: 1, suggestedPrompts: { website: { generated: previousPrompt } } });
+  const repeated = JSON.stringify({ 'zh-Hant': '有 哪些方案!', en: 'WHAT PLANS!' });
+  mockLLM(repeated, repeated, repeated, repeated);
+  const result = await regenerateSlot(tenantId, 'website', idx);
+  expect(result).toMatchObject({ ok: false, reason: 'generation-failed', detail: expect.stringContaining('重複') });
+  expect(mockCreate).toHaveBeenCalledTimes(4);
+  expect(knowledgeStore.getMeta(tenantId).suggestedPrompts?.website?.generated).toEqual(previousPrompt);
 });

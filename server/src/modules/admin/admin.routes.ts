@@ -25,6 +25,8 @@ import {
   queryTestSchema,
   sourceSchema,
   suggestionManualSchema,
+  customSuggestionSchema,
+  customSuggestionParamSchema,
   suggestionRefreshSchema,
 } from '@/modules/knowledge/knowledge.admin.schema';
 import { putLlmConfigSchema } from '@/modules/tenant/llm-config.schema';
@@ -244,6 +246,21 @@ router.put(
   '/tenants/:id/knowledge/suggestion',
   validate({ params: tenantParamSchema, body: suggestionManualSchema }),
   asyncHandler(knowledgeAdminController.setSuggestionManual),
+);
+router.post(
+  '/tenants/:id/knowledge/custom-suggestions',
+  validate({ params: tenantParamSchema, body: customSuggestionSchema }),
+  asyncHandler(knowledgeAdminController.createCustomSuggestion),
+);
+router.put(
+  '/tenants/:id/knowledge/custom-suggestions/:promptId',
+  validate({ params: customSuggestionParamSchema, body: customSuggestionSchema }),
+  asyncHandler(knowledgeAdminController.updateCustomSuggestion),
+);
+router.delete(
+  '/tenants/:id/knowledge/custom-suggestions/:promptId',
+  validate({ params: customSuggestionParamSchema }),
+  asyncHandler(knowledgeAdminController.deleteCustomSuggestion),
 );
 router.post(
   '/tenants/:id/knowledge/files',

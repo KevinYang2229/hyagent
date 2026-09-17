@@ -169,6 +169,7 @@ async function reqUpload<T>(method: string, path: string, formData: FormData): P
 }
 
 export interface KnowledgeSource {
+  audience?: { mode: 'public' | 'departments' | 'disabled' | 'labels'; departments?: string[] };
   /** 整個網站來源的可見性標籤 */
   visibilityScopes?: string[];
   startUrl: string;
@@ -200,6 +201,7 @@ export interface KnowledgeLabel {
  * 一律為 false，沒有網站語料就談不上「待標記」。
  */
 export interface KnowledgeAclSourceStatus {
+  audience?: KnowledgeSource["audience"];
   configured: boolean;
   unlabeled: boolean;
   explicitlyEmpty: boolean;
@@ -234,7 +236,13 @@ export interface PromptSlotView {
   generated?: SuggestedPromptText;
   manual?: SuggestedPromptText;
 }
+export interface CustomSuggestedPrompt {
+  id: string;
+  source: PromptSource;
+  text: SuggestedPromptText;
+}
 export interface KnowledgeMeta {
+  customSuggestedPrompts?: CustomSuggestedPrompt[];
   status: 'none' | 'ready' | 'failed';
   chunkCount: number;
   generatedAt?: string;
@@ -441,6 +449,12 @@ export const api = {
       `/admin/tenants/${id}/knowledge/suggestion`,
       { source, manual },
     ),
+  createCustomSuggestion: (id: string, body: Omit<CustomSuggestedPrompt, 'id'>) =>
+    req<CustomSuggestedPrompt>('POST', `/admin/tenants/${id}/knowledge/custom-suggestions`, body),
+  updateCustomSuggestion: (id: string, promptId: string, body: Omit<CustomSuggestedPrompt, 'id'>) =>
+    req<CustomSuggestedPrompt>('PUT', `/admin/tenants/${id}/knowledge/custom-suggestions/${promptId}`, body),
+  deleteCustomSuggestion: (id: string, promptId: string) =>
+    req<{ id: string }>('DELETE', `/admin/tenants/${id}/knowledge/custom-suggestions/${promptId}`),
   uploadKnowledgeFile: (id: string, file: File) => {
     const form = new FormData();
     form.append('file', file);

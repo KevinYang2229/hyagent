@@ -98,7 +98,8 @@ describe('POST /admin/tenants/:id/knowledge/suggestion', () => {
       .set(auth).send({ source: 'website' });
 
     const blocked = await regenerate().expect(422);
-    expect(blocked.body.error.message).toContain('網站來源或檔案');
+    expect(blocked.body.error.message).toContain('所有人（包含訪客）');
+    expect(blocked.body.error.message).toContain('進階標籤模式');
     expect(blocked.body.error.message).toContain('訪客／未建檔帳號');
     expect(blocked.body.error.message).not.toContain('關閉');
 
@@ -122,6 +123,19 @@ describe('POST /admin/tenants/:id/knowledge/suggestion', () => {
     expect(saved.body.data.departments).toContain('—');
     const recovered = await regenerate().expect(200);
     expect(recovered.body.data.slot.generated['zh-Hant']).toBe('育兒補助要附什麼？');
+  });
+
+  it('網站設為所有人後，不需部門標籤授權即可生成公開推薦詞', async () => {
+    const tenantId = tenantStore.createTenant('public-source-suggestion').id;
+    writeIndex(tenantId, [chunk]);
+    knowledgeStore.setMeta(tenantId, { status: 'ready', chunkCount: 1 });
+    mockLLM('{"zh-Hant":"育兒補助要附什麼？","en":"What to submit for the subsidy?"}');
+    await request(app).put(`/api/admin/tenants/${tenantId}/knowledge/source`).set(auth)
+      .send({ ...knowledgeStore.getSource(tenantId), startUrl: 'https://x.com', audience: { mode: 'public' } }).expect(200);
+    const result = await request(app).post(`/api/admin/tenants/${tenantId}/knowledge/suggestion`).set(auth)
+      .send({ source: 'website' }).expect(200);
+    expect(result.body.data.slot.generated['zh-Hant']).toBe('育兒補助要附什麼？');
+    expect(scopePolicy.getPolicy(tenantId).groups).toEqual({});
   });
 
   it('尚未建立索引時回 422', async () => {

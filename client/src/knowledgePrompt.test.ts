@@ -45,3 +45,14 @@ describe('pickKnowledgePrompts', () => {
     ).toEqual([]);
   });
 });
+
+ it('自訂提示詞超過預設兩筆時完整顯示，空白英文仍不顯示', () => {
+   const suggested = [
+     { 'zh-Hant': '網站', en: 'Website' },
+     { 'zh-Hant': '檔案', en: 'File' },
+     { 'zh-Hant': '自訂一', en: 'Custom' },
+     { 'zh-Hant': '自訂二', en: '' },
+   ];
+   expect(pickKnowledgePrompts({ knowledgeEnabled: true, language: 'zh-Hant', suggested })).toEqual(['網站', '檔案', '自訂一', '自訂二']);
+   expect(pickKnowledgePrompts({ knowledgeEnabled: true, language: 'en', suggested })).toEqual(['Website', 'File', 'Custom']);
+ });

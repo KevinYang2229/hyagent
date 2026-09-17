@@ -11,6 +11,10 @@ jest.mock('@/modules/knowledge/knowledge.suggest', () => ({
 }));
 
 import request from 'supertest';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { env } from '@/config/env';
+import { knowledgeStore } from '@/modules/knowledge/knowledge.store';
 import { createApp } from '@/app';
 import { startIngestJob } from '@/modules/knowledge/knowledge.job';
 import type { KnowledgeIndexFile } from '@/modules/knowledge/knowledge-index.types';
@@ -19,6 +23,24 @@ const app = createApp();
 const auth = { 'x-admin-key': 'test-admin-key' };
 
 describe('admin knowledge API', () => {
+  it('批次程序寫入的檔案不需重啟即可出現在清單與權限盤點', async () => {
+    const tenantId = `external-batch-${Date.now()}`;
+    knowledgeStore.setMeta(tenantId, { status: 'none', chunkCount: 0 });
+    const path = resolve(process.cwd(), env.KNOWLEDGE_INDEX_DIR, 'knowledge-config.json');
+    const raw = JSON.parse(readFileSync(path, 'utf8'));
+    const file = { fileId: 'external-file', name: 'batch.txt', chunks: 2, ingestedAt: '2026-09-17' };
+    raw.metas = raw.metas.map(([id, meta]: [string, unknown]) => [id, id === tenantId
+      ? { status: 'ready', chunkCount: 2, files: [file] } : meta]);
+    writeFileSync(path, JSON.stringify(raw));
+    expect(knowledgeStore.getMeta(tenantId).files).toBeUndefined();
+
+    // 盤點可獨立刷新，不依賴清單 API 先執行。
+    const report = await request(app).get(`/api/admin/tenants/${tenantId}/knowledge/acl-report`).set(auth).expect(200);
+    expect(report.body.data.unlabeled).toEqual([file]);
+    const res = await request(app).get(`/api/admin/tenants/${tenantId}/knowledge`).set(auth).expect(200);
+    expect(res.body.data.meta.files).toEqual([file]);
+  });
+
   it('PUT source 後 GET 讀回', async () => {
     await request(app)
       .put('/api/admin/tenants/default/knowledge/source')

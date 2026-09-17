@@ -9,7 +9,7 @@ export function promptAclFingerprint(tenantId: string): string {
   const files = knowledgeStore.getMeta(tenantId).files ?? [];
   return createHash('sha256').update(JSON.stringify({
     version: 1, guest: guestVisibilityScopesOf(tenantId).sort(),
-    source: source.visibilityScopes ?? null,
+    source: source.visibilityScopes ?? null, audience: source.audience ?? null,
     files: files.map((f) => [f.fileId, f.visibilityScopes ?? null]),
   })).digest('hex');
 }

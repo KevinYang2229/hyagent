@@ -74,6 +74,30 @@ describe('knowledgeStore（db 後端）', () => {
     expect(knowledgeStore.getMeta('t3').chunkCount).toBe(42);
   });
 
+  it('重新整理可讀取批次程序新增的檔案，並保留其他租戶快照', async () => {
+    const { knowledgeStore, initKnowledgeStore, refreshKnowledgeStore } = loadStoreInDbMode();
+    findMany.mockResolvedValueOnce([
+      { tenantId: 'batch', source: {}, meta: { status: 'none', chunkCount: 0 } },
+      { tenantId: 'other', source: {}, meta: { status: 'ready', chunkCount: 5 } },
+    ]);
+    await initKnowledgeStore();
+    const file = { fileId: 'batch-file', name: 'batch.pdf', chunks: 3, ingestedAt: '2026-09-17' };
+    findUnique.mockResolvedValueOnce({ source: {}, meta: { status: 'ready', chunkCount: 3, files: [file] } });
+    expect(knowledgeStore.getMeta('batch').files).toBeUndefined();
+    await refreshKnowledgeStore('batch');
+    expect(knowledgeStore.getMeta('batch').files).toEqual([file]);
+    expect(knowledgeStore.getMeta('other').chunkCount).toBe(5);
+    expect(upsert).not.toHaveBeenCalled();
+  });
+
+  it('重新整理會清除外部已刪除的舊紀錄', async () => {
+    const { knowledgeStore, initKnowledgeStore, refreshKnowledgeStore } = loadStoreInDbMode();
+    findMany.mockResolvedValueOnce([{ tenantId: 'removed', source: {}, meta: { status: 'ready', chunkCount: 9 } }]);
+    await initKnowledgeStore();
+    await refreshKnowledgeStore('removed');
+    expect(knowledgeStore.getMeta('removed')).toEqual({ status: 'none', chunkCount: 0 });
+  });
+
   it('空的 source/meta（jsonb 預設 {}）不會污染預設值', async () => {
     findMany.mockResolvedValueOnce([{ tenantId: 't4', source: {}, meta: {} }]);
     const { knowledgeStore, initKnowledgeStore } = loadStoreInDbMode();

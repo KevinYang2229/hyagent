@@ -19,7 +19,7 @@ export interface SuggestedPrompts {
 export function pickKnowledgePrompts(opts: {
   knowledgeEnabled: boolean;
   language: string;
-  /** 後端依各來源索引生成的問句（網站在前、檔案在後），最多兩筆 */
+  /** 後端依各來源索引生成的問句（預設網站、檔案各一筆，後接自訂提示詞） */
   suggested?: SuggestedPrompts[];
 }): string[] {
   if (!opts.knowledgeEnabled || !opts.suggested) return [];

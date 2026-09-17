@@ -12,6 +12,8 @@
 import { resolveScopes, resolveGuestScopes } from '@/modules/authz/resolve-scopes';
 import { isKbScope } from '@/modules/authz/scope-catalog';
 import { knowledgeStore } from './knowledge.store';
+import { getApplicant, UNKNOWN_DEPARTMENT } from '@/modules/user/user.directory';
+import { WEBSITE_ACCESS_SCOPE, sourceVisibilityScopes } from './source-access';
 import { env } from '@/config/env';
 import { connectDb } from '@/lib/db';
 import type { RetrievalPrincipal } from './retriever.types';
@@ -22,12 +24,18 @@ import type { RetrievalPrincipal } from './retriever.types';
  * 不需要額外防守碼。
  */
 export function visibilityScopesOf(principal: RetrievalPrincipal): string[] {
-  return resolveScopes(principal).filter(isKbScope);
+  const scopes = resolveScopes(principal).filter((scope) => isKbScope(scope) && scope !== WEBSITE_ACCESS_SCOPE);
+  const audience = knowledgeStore.getSource(principal.tenantId).audience;
+  const department = principal.userId ? getApplicant(principal.userId, principal.tenantId).department : UNKNOWN_DEPARTMENT;
+  if (audience?.mode === 'public' || (audience?.mode === 'departments' && department !== UNKNOWN_DEPARTMENT && audience.departments?.includes(department))) scopes.push(WEBSITE_ACCESS_SCOPE);
+  return scopes;
 }
 
 /** Guest scopes never inherit a real account with the same ID as the tenant. */
 export function guestVisibilityScopesOf(tenantId: string): string[] {
-  return resolveGuestScopes(tenantId).filter(isKbScope);
+  const scopes = resolveGuestScopes(tenantId).filter((scope) => isKbScope(scope) && scope !== WEBSITE_ACCESS_SCOPE);
+  if (knowledgeStore.getSource(tenantId).audience?.mode === 'public') scopes.push(WEBSITE_ACCESS_SCOPE);
+  return scopes;
 }
 
 /**
@@ -63,7 +71,7 @@ export function currentChunkScopes(tenantId: string, chunk: { fileId?: string; v
     if (file) return file.visibilityScopes ?? [];
   } else {
     const source = knowledgeStore.getSource(tenantId);
-    if (source.visibilityScopes !== undefined) return source.visibilityScopes;
+    if (source.audience || source.visibilityScopes !== undefined) return sourceVisibilityScopes(source);
   }
   return chunk.visibilityScopes ?? [];
 }

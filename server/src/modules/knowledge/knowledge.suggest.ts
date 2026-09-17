@@ -252,8 +252,12 @@ type GenerateOutcome =
  * 呼叫 LLM 生成一句並驗證；驗證未過時把原因回饋給模型再試，最多 MAX_GENERATE_ATTEMPTS 次。
  * 全部不過時回報最後一次的原因與輸出。
  */
-async function generateOne(tenantId: string, material: string): Promise<GenerateOutcome> {
-  let text = material;
+async function generateOne(tenantId: string, material: string, previous: SuggestedPrompts[] = []): Promise<GenerateOutcome> {
+  const normalize = (value: string) => value.normalize('NFKC').toLowerCase().replace(/[\p{P}\p{Z}\s]/gu, '');
+  const input = previous.length
+    ? `${material}\n\n以下是先前推薦詞（僅供排除，不是知識素材）：${JSON.stringify(previous)}\n請根據上述知識素材換一個提問角度。中英文都必須不同於先前推薦詞，不可只改標點、空白或大小寫。`
+    : material;
+  let text = input;
   for (let attempt = 1; attempt <= MAX_GENERATE_ATTEMPTS; attempt++) {
     const result = await getLLMProvider(tenantStore.getTenant(tenantId)?.llmConfig).createMessage({
       system: SUGGESTION_SYSTEM_PROMPT,
@@ -267,15 +271,19 @@ async function generateOne(tenantId: string, material: string): Promise<Generate
     usageStore.recordLLMUsage(tenantId, result);
 
     const parsed = parseSuggestion(result.text);
-    if (parsed.ok) return { ok: true, prompts: parsed.prompts };
+    const duplicate = parsed.ok && previous.some((old) =>
+      (['zh-Hant', 'en'] as const).some((lang) => old[lang] && normalize(old[lang]) === normalize(parsed.prompts[lang])),
+    );
+    if (parsed.ok && !duplicate) return { ok: true, prompts: parsed.prompts };
+    const reason = parsed.ok ? '推薦詞與前一次重複，請更換提問角度並同時重寫中英文' : parsed.reason;
 
     const output = result.text.trim().slice(0, OUTPUT_ECHO_CHARS);
     logger.warn(
-      { tenantId, attempt, maxAttempts: MAX_GENERATE_ATTEMPTS, reason: parsed.reason, text: output },
+      { tenantId, attempt, maxAttempts: MAX_GENERATE_ATTEMPTS, reason, text: output },
       'suggested prompt 驗證未過',
     );
-    if (attempt === MAX_GENERATE_ATTEMPTS) return { ok: false, reason: parsed.reason, output };
-    text = `${material}\n\n上一次的輸出不合格：${parsed.reason}。請重新輸出。`;
+    if (attempt === MAX_GENERATE_ATTEMPTS) return { ok: false, reason, output };
+    text = `${input}\n\n上一次的輸出不合格：${reason}。請重新輸出。`;
   }
   // 迴圈必定在 MAX_GENERATE_ATTEMPTS 回合內 return；此行只為滿足型別檢查
   return { ok: false, reason: '未取得合格輸出', output: '' };
@@ -416,7 +424,9 @@ export async function regenerateSlot(
     const material = sampleIndexForSuggestion({ ...idx, chunks });
     if (!material) return { ok: false, reason: 'blank-material' };
 
-    const outcome = await generateOne(tenantId, material);
+    const slot = knowledgeStore.getMeta(tenantId).suggestedPrompts?.[source];
+    const previous = [slot?.generated, slot?.manual].filter((p): p is SuggestedPrompts => !!p);
+    const outcome = await generateOne(tenantId, material, previous);
     if (!outcome.ok) {
       return {
         ok: false,

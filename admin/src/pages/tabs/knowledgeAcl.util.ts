@@ -25,6 +25,7 @@ export function isValidLabelId(id: string): boolean {
 
 /** 依 scope 找標籤顯示名稱；標籤已被刪除（孤兒 scope）時退回顯示 labelId 本身，不讓畫面空白 */
 export function labelNameFor(labels: { id: string; label: string }[], scope: string): string {
+  if (scope === "kb:__website_access") return "網站：所有人可查詢";
   const labelId = stripKbPrefix(scope);
   return labels.find((l) => l.id === labelId)?.label ?? labelId;
 }

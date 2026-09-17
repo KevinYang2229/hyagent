@@ -1,3 +1,4 @@
+import { guestVisibilityScopesOf, currentChunkScopes } from '@/modules/knowledge/knowledge.visibility';
 import { publicPromptSlots } from '@/modules/knowledge/prompt-visibility';
 /**
  * 公開 widget 設定：依 resolveTenant 解出的租戶回外觀。
@@ -44,9 +45,17 @@ export const widgetController = {
       website: meta?.chunkCount ?? 0,
       file: meta?.chunkCount ?? 0,
     };
+    const guestScopes = new Set(req.tenant ? guestVisibilityScopesOf(req.tenant.id) : []);
+    const hasGuestContent = {
+      website: !!req.tenant && currentChunkScopes(req.tenant.id, {}).some((scope) => guestScopes.has(scope)),
+      file: (meta?.files ?? []).some((file) => (file.visibilityScopes ?? []).some((scope) => guestScopes.has(scope))),
+    };
+    const customPrompts = (meta?.customSuggestedPrompts ?? [])
+      .filter((prompt) => counts[prompt.source] > 0 && hasGuestContent[prompt.source])
+      .map((prompt) => prompt.text);
     const suggestedPrompts =
       knowledgeEnabled && meta?.status === 'ready' && meta.chunkCount > 0
-        ? effectivePrompts(publicPromptSlots(req.tenant!.id), counts)
+        ? [...effectivePrompts(publicPromptSlots(req.tenant!.id), counts), ...customPrompts]
         : [];
     res.status(200).json({ data: { appearance, knowledgeEnabled, suggestedPrompts } });
   },

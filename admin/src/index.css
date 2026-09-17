@@ -794,7 +794,7 @@ a {
 
 /* ---- 知識庫分頁：雙欄堆疊（欄內卡片緊密相接，消除高矮不一造成的空缺） ---- */
 .kb-cols {
-  @apply grid grid-cols-2 items-start gap-[18px];
+  @apply grid grid-cols-2 items-start gap-[14px];
 }
 @media (max-width: 920px) {
   .kb-cols {
@@ -802,18 +802,18 @@ a {
   }
 }
 .kb-col {
-  @apply flex min-w-0 flex-col gap-[18px];
+  @apply flex min-w-0 flex-col gap-[14px];
 }
 .kb-source-tabs {
-  @apply mb-[18px];
+  @apply mb-3;
 }
 .kb-param-block {
-  @apply mt-[18px] border-t border-[var(--border-color)] pt-[18px];
+  @apply mt-3 border-t border-[var(--border-color)] pt-3;
 }
 
 /* ---- 知識庫檔案來源：拖放上傳區 ---- */
 .kdrop {
-  @apply flex cursor-pointer flex-col items-center gap-1.5 rounded-xl border border-dashed border-[var(--border-color)] bg-[var(--bg-secondary)] px-4 py-8 text-center transition-colors;
+  @apply flex cursor-pointer flex-col items-center gap-1.5 rounded-xl border border-dashed border-[var(--border-color)] bg-[var(--bg-secondary)] px-4 py-5 text-center transition-colors;
 }
 .kdrop:hover {
   border-color: rgba(var(--primary-color-rgb), 0.5);
@@ -886,3 +886,78 @@ a {
 .kb-label-chip--warn {
   @apply border-[var(--status-danger)] bg-[var(--badge-danger-bg)] font-semibold text-[var(--status-danger)];
 }
+
+/* 索引摘要與推薦詞：文字、狀態和操作各自分行，長網址與英文可自然換行。 */
+.kb-index-summary {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  font-size: 13px;
+}
+.kb-index-summary > div {
+  display: grid;
+  grid-template-columns: 78px minmax(0, 1fr);
+  gap: 12px;
+}
+.kb-index-summary dt { color: var(--text-secondary); }
+.kb-index-summary dd { margin: 0; overflow-wrap: anywhere; }
+.kb-suggestion {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color);
+}
+.kb-suggestion-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.kb-suggestion-heading h3 { margin: 0; font-size: 14px; font-weight: 600; }
+.kb-suggestion-copy { margin-top: 8px; }
+.kb-suggestion-copy p, .kb-suggestion-empty {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.kb-suggestion-copy p + p { margin-top: 6px; color: var(--text-secondary); }
+.kb-suggestion-empty { margin-top: 8px; color: var(--text-secondary); }
+.kb-suggestion-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+
+/* 大量檔案與部門標籤：分頁清單、獨立操作列、限高的標籤選擇區。 */
+.kb-file-toolbar { display: flex; flex-wrap: wrap; gap: 10px; }
+.kb-file-toolbar .input { flex: 1 1 180px; min-width: 0; }
+.kb-file-toolbar .select { flex: 1 1 150px; min-width: 0; }
+.kb-file-item { padding: 14px 16px; border-bottom: 1px solid var(--border-color); }
+.kb-file-heading { display: flex; align-items: flex-start; gap: 12px; }
+.kb-file-heading .kfile-ext { margin: 0; }
+.kb-file-heading .row-title { overflow-wrap: anywhere; }
+.kb-file-labels { margin-top: 10px; }
+.kb-file-labels .kb-label-chip { max-width: 100%; overflow-wrap: anywhere; }
+.kb-file-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.kb-file-item > .kb-file-actions { margin-top: 10px; }
+.kb-file-more-labels { margin-top: 8px; font-size: 12px; color: var(--text-secondary); }
+.kb-file-more-labels summary { cursor: pointer; }
+.kb-file-more-labels > div { max-height: 140px; overflow-y: auto; }
+.kb-file-editor { display: grid; gap: 8px; margin-top: 12px; padding: 12px; background: var(--bg-secondary); border-radius: 8px; }
+.kb-label-options { max-height: 200px; overflow-y: auto; display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.kb-label-options label { max-width: 100%; display: inline-flex; align-items: center; gap: 8px; padding: 6px 4px; font-size: 13px; cursor: pointer; overflow-wrap: anywhere; }
+.kb-label-options label span { min-width: 0; }
+.kb-file-pagination { padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+
+/* 知識庫設定採一致的緊湊間距，保留操作元件原本的點擊尺寸。 */
+.kb-cols .card-head { padding: 12px 16px; flex-wrap: wrap; }
+.kb-cols .card-body { padding: 16px; }
+.kb-cols .form-grid { gap: 12px; }
+.kb-cols .field { gap: 6px; }
+.kb-cols .form-actions { margin-top: 14px; padding-top: 12px; gap: 8px; flex-wrap: wrap; }
+.kb-cols .row { padding: 10px 16px; gap: 10px; }
+.kb-cols .card-body > .row-sub { margin-block: 6px; }
+.kb-cols .kb-index-summary { gap: 6px; }
+
+.kb-acl-details > summary { cursor: pointer; font-size: 13px; font-weight: 500; }
+.kb-acl-details > .row-sub { margin-block: 8px; }
+.kb-acl-empty { padding-block: 8px; font-size: 12px; color: var(--text-secondary); }
+
+.kb-custom-prompt { padding-block: 12px; border-bottom: 1px solid var(--border-color); }
+.kb-file-editor .field + .field { margin-top: 0; }
