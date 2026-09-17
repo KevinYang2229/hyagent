@@ -134,6 +134,9 @@ export function createOpenAIProvider(settings: ResolvedLLMSettings): LLMProvider
           input: parseArgs(tc.function.arguments),
         }));
 
+      // OpenAI 的 prompt_tokens 已含 cached_tokens；拆成「未命中快取的輸入」與「cache 讀取」，
+      // 與 Anthropic（input_tokens 不含 cache）同語意，用量加總與成本才不會把 cache 算兩次
+      const cached = resp.usage?.prompt_tokens_details?.cached_tokens ?? undefined;
       return {
         text,
         toolCalls,
@@ -141,9 +144,9 @@ export function createOpenAIProvider(settings: ResolvedLLMSettings): LLMProvider
         model,
         keySource: settings.keySource,
         usage: {
-          inputTokens: resp.usage?.prompt_tokens ?? 0,
+          inputTokens: Math.max(0, (resp.usage?.prompt_tokens ?? 0) - (cached ?? 0)),
           outputTokens: resp.usage?.completion_tokens ?? 0,
-          cacheReadTokens: resp.usage?.prompt_tokens_details?.cached_tokens ?? undefined,
+          cacheReadTokens: cached,
         },
       };
     },
