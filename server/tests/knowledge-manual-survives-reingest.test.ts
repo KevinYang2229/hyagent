@@ -99,3 +99,24 @@ it('重爬失敗後，既有的 manual 推薦詞仍在', async () => {
   expect(knowledgeStore.getMeta(tenantId).suggestedPrompts?.website?.manual).toEqual(manual);
   expect(knowledgeStore.getMeta(tenantId).customSuggestedPrompts).toEqual(custom);
 });
+
+it('重爬失敗後，只有自訂提示詞（沒有預設推薦詞）時也不會被清掉', async () => {
+  // 回歸：失敗路徑曾把 customSuggestedPrompts 綁在 suggestedPrompts 的條件裡帶回，
+  // 租戶沒有預設推薦詞時，一次解析失敗就把自訂提示詞整批清掉，且無從恢復
+  const tenantId = 'custom-survive-reingest-failure';
+  knowledgeStore.setMeta(tenantId, {
+    status: 'ready',
+    chunkCount: 3,
+    chunkCountBySource: { website: 3, file: 0 },
+    customSuggestedPrompts: custom,
+  });
+
+  const failRun = async () => {
+    throw new Error('crawl failed');
+  };
+  const job = startIngestJob({ ...baseParams, tenantId }, failRun as never);
+  await new Promise((r) => setTimeout(r, 30));
+
+  expect(getJob(job.id)?.status).toBe('failed');
+  expect(knowledgeStore.getMeta(tenantId).customSuggestedPrompts).toEqual(custom);
+});

@@ -141,7 +141,9 @@ export function startIngestJob(
         error: job.error,
         chunkCountBySource: { website: 0, file: 0 },
         ...(filesOnFail ? { files: filesOnFail } : {}),
-        ...(suggestedPromptsOnFail ? { suggestedPrompts: suggestedPromptsOnFail, customSuggestedPrompts: customOnFail } : {}),
+        ...(suggestedPromptsOnFail ? { suggestedPrompts: suggestedPromptsOnFail } : {}),
+        // 與 suggestedPrompts 各自判斷：自訂提示詞不依附預設推薦詞存在
+        ...(customOnFail ? { customSuggestedPrompts: customOnFail } : {}),
       });
 
       logger.warn({ err, tenantId: params.tenantId }, 'ingest job failed');
