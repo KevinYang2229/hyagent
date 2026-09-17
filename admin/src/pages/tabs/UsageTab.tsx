@@ -1,5 +1,7 @@
 import { lazy, Suspense, useEffect, useState, type CSSProperties } from 'react';
 import { api, type Tenant, type Usage } from '../../api';
+import { formatTokens } from '../../components/tokenGauge.util';
+import { recentMonths, tokenBreakdown } from '../../components/usageSummary.util';
 
 const TokenGauge = lazy(() => import('../../components/TokenGauge'));
 
@@ -31,10 +33,29 @@ export default function UsageTab({ tenant, onError }: { tenant: Tenant; onError:
     );
   }
 
-  const items: { label: string; value: number }[] = [
-    { label: '對話數', value: usage.conversations ?? 0 },
-    { label: '訊息數', value: usage.messages ?? 0 },
-    { label: '送出數', value: usage.submissions ?? 0 },
+  const conversations = usage.conversations ?? 0;
+  const messages = usage.messages ?? 0;
+  const submissions = usage.submissions ?? 0;
+  const ratio = (a: number, b: number) => (b > 0 ? a / b : 0);
+  const items: { label: string; value: number; hint: string; sub: [string, string, string] }[] = [
+    {
+      label: '對話數',
+      value: conversations,
+      hint: '使用者開啟的對話段數',
+      sub: ['平均每段 ', ratio(messages, conversations).toFixed(1), ' 則訊息'],
+    },
+    {
+      label: '訊息數',
+      value: messages,
+      hint: '使用者送出的提問則數（不含 AI 回覆）',
+      sub: ['平均每則分攤 ', formatTokens(ratio(usage.llmTokens ?? 0, messages)), ' tokens'],
+    },
+    {
+      label: '送出數',
+      value: submissions,
+      hint: '經對話完成並送出的表單件數',
+      sub: ['占對話 ', `${(ratio(submissions, conversations) * 100).toFixed(1)}%`, ''],
+    },
   ];
 
   // 本月用量 vs 配額（配額守門對照的是月度分桶，不是 lifetime 累計）
@@ -42,6 +63,14 @@ export default function UsageTab({ tenant, onError }: { tenant: Tenant; onError:
   const monthUsed = usage.monthlyLlmTokens?.[month] ?? 0;
   const quota = tenant.quotaMonthlyLlmTokens ?? 0;
   const quotaPct = quota > 0 ? Math.min(100, (monthUsed / quota) * 100) : 0;
+
+  // 與 Token 組成、月度分桶、配額同一口徑：LLM（輸入＋輸出＋Cache 讀取）＋向量化
+  const totalTokens = (usage.llmTokens ?? 0) + (usage.embeddingTokens ?? 0);
+  const parts = tokenBreakdown(usage);
+  const partsTotal = parts.reduce((acc, p) => acc + p.value, 0);
+  const trend = recentMonths(usage.monthlyLlmTokens, 6);
+  const trendMax = Math.max(1, ...trend.map((t) => t.tokens));
+  const perConversation = usage.conversations > 0 ? totalTokens / usage.conversations : 0;
 
   return (
     <div style={{ display: 'grid', gap: 16 }}>
@@ -80,14 +109,89 @@ export default function UsageTab({ tenant, onError }: { tenant: Tenant; onError:
         )}
       </div>
 
-      <Suspense fallback={<div className="card"><div className="empty">載入圖表…</div></div>}>
-        <TokenGauge tokens={usage.llmTokens ?? 0} />
-      </Suspense>
+      <div className="card">
+        <div className="card-body usage-overview">
+          <div>
+            <Suspense fallback={<div className="empty">載入圖表…</div>}>
+              <TokenGauge tokens={totalTokens} />
+            </Suspense>
+            <div className="card-desc" style={{ textAlign: 'center' }}>
+              不分月份的歷來總量（含向量化）
+              <br />
+              本月用量見上方「本月 AI 用量」
+            </div>
+          </div>
+
+          <div className="usage-side">
+            <div className="usage-kpis">
+              <div className="usage-kpi">
+                <div className="stat-label">平均每段對話</div>
+                <div className="usage-kpi-value">{formatTokens(perConversation)} tokens</div>
+              </div>
+              <div className="usage-kpi">
+                <div className="stat-label">累計預估成本</div>
+                <div className="usage-kpi-value">{usage.cost ? `$${usage.cost.totalUsd.toFixed(2)}` : '—'}</div>
+              </div>
+            </div>
+
+            <div>
+              <div className="usage-section-title">Token 組成</div>
+              <div className="usage-split" role="img" aria-label={parts.map((p) => `${p.label} ${p.value}`).join('、')}>
+                {partsTotal > 0 &&
+                  parts
+                    .filter((p) => p.value > 0)
+                    .map((p) => (
+                      <span
+                        key={p.key}
+                        title={`${p.label}：${p.value.toLocaleString()}`}
+                        style={{ flexGrow: p.value, background: `var(--series-${parts.indexOf(p) + 1})` }}
+                      />
+                    ))}
+              </div>
+              <div className="usage-legend">
+                {parts.map((p, i) => (
+                  <div key={p.key} className="usage-legend-item">
+                    <span className="usage-swatch" style={{ background: `var(--series-${i + 1})` }} />
+                    {p.label}
+                    <b>
+                      {formatTokens(p.value)}
+                      {partsTotal > 0 && ` · ${Math.round((p.value / partsTotal) * 100)}%`}
+                    </b>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <div className="usage-section-title">近 6 個月（— 表示該月無紀錄）</div>
+              <div className="usage-bars">
+                {trend.map((t) => (
+                  <div
+                    key={t.month}
+                    className={`usage-bar${t.month === month ? ' is-current' : ''}`}
+                    title={`${t.month}：${t.tokens.toLocaleString()} tokens`}
+                  >
+                    <span className="usage-bar-value">{t.tokens > 0 ? formatTokens(t.tokens) : '—'}</span>
+                    <div className="usage-bar-fill" style={{ height: `${(t.tokens / trendMax) * 80}%` }} />
+                    <span className="usage-bar-month">{Number(t.month.slice(5))}月</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
       <div className="stats">
         {items.map((it) => (
           <div key={it.label} className="stat">
             <div className="stat-label">{it.label}</div>
             <div className="stat-value">{it.value.toLocaleString()}</div>
+            <div className="stat-hint">{it.hint}</div>
+            <div className="stat-sub">
+              {it.sub[0]}
+              <b>{it.sub[1]}</b>
+              {it.sub[2]}
+            </div>
           </div>
         ))}
       </div>

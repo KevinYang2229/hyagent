@@ -28,7 +28,7 @@ function buildGaugeOptions(tokens: number, _theme: Theme): Highcharts.Options {
   const sub = cssVar('--text-secondary', '#52514e');
   const border = cssVar('--border-color', '#e1e0d9');
   return {
-    chart: { type: 'gauge', backgroundColor: 'transparent', height: 260 },
+    chart: { type: 'gauge', backgroundColor: 'transparent', height: 240 },
     title: { text: undefined },
     credits: { enabled: false },
     tooltip: { enabled: false },
@@ -71,7 +71,7 @@ function buildGaugeOptions(tokens: number, _theme: Theme): Highcharts.Options {
           borderWidth: 0,
           y: 34,
           formatter(this: Highcharts.PointLabelObject) {
-            return `<div style="text-align:center"><span style="font-size:26px;font-weight:800;color:${ink}">${formatTokens(tokens)}</span><br/><span style="font-size:11px;color:${sub}">累計 Token</span></div>`;
+            return `<div style="text-align:center"><span style="font-size:26px;font-weight:800;color:${ink}">${formatTokens(tokens)}</span><br/><span style="font-size:11px;color:${sub}">全期間累計 Token</span></div>`;
           },
         },
       },
@@ -82,9 +82,5 @@ function buildGaugeOptions(tokens: number, _theme: Theme): Highcharts.Options {
 export default function TokenGauge({ tokens }: { tokens: number }) {
   const theme = useTheme();
   const options = useMemo(() => buildGaugeOptions(tokens, theme), [tokens, theme]);
-  return (
-    <div className="card" style={{ padding: 16 }}>
-      <HighchartsReact highcharts={Highcharts} options={options} />
-    </div>
-  );
+  return <HighchartsReact highcharts={Highcharts} options={options} />;
 }
