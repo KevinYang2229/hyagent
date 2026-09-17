@@ -37,8 +37,11 @@ process.env.ANTHROPIC_API_KEY ??= 'test-anthropic-key';
 process.env.OPENAI_API_KEY ??= 'test-openai-key';
 // 啟用管理 API（Form Designer 端點測試用）
 process.env.ADMIN_API_KEY ??= 'test-admin-key';
-// 知識庫索引/設定寫檔隔離到暫存目錄，避免污染 repo 的 server/data
-process.env.KNOWLEDGE_INDEX_DIR ??= join(tmpdir(), 'oa-agent-test-knowledge');
+// 知識庫索引/設定寫檔隔離到暫存目錄，避免污染 repo 的 server/data。
+// 目錄須依 worker 分開：knowledge.store 會整份覆寫 knowledge-config.json，refreshKnowledgeStore
+// 又會從檔案重讀並刪掉檔案裡沒有的租戶；多個 worker 共用同一檔時，別的 worker 的快照會把
+// 本 worker 剛建立的租戶資料清掉，完整測試因而隨機失敗（--runInBand 則全過）。
+process.env.KNOWLEDGE_INDEX_DIR ??= join(tmpdir(), `oa-agent-test-knowledge-${process.env.JEST_WORKER_ID ?? '0'}`);
 
 // LLM 設定測試與本機 server/.env 脫鉤：setupFiles 先佔住的值 dotenv 不會覆蓋
 process.env.LLM_PROVIDER ??= 'anthropic';
