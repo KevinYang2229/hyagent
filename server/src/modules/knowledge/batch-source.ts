@@ -27,19 +27,6 @@ export interface PendingItem {
   labelId?: string;
 }
 
-/**
- * 自匯入路徑取出 labelId：`<root>/<tenantId>/<labelId>/<file>`。
- * 未分層（檔案直接放在租戶目錄下）回 undefined，由呼叫端依 fail-closed 規則擋下——
- * 這裡刻意不做「擋門」判斷，純解析與擋門邏輯分開，好單獨測試。
- */
-export function parseLabelFromRef(ref: string, root: string, tenantId: string): string | undefined {
-  const rel = ref.startsWith(root) ? ref.slice(root.length) : ref;
-  const segs = rel.split('/').filter(Boolean);
-  // segs = [tenantId, ...middle, filename]
-  if (segs[0] !== tenantId || segs.length < 3) return undefined;
-  return segs[1];
-}
-
 export type SettleOutcome = 'done' | 'failed';
 
 export interface BatchSource {
@@ -106,8 +93,8 @@ export class LocalFolderSource implements BatchSource {
         if (isReserved(entry.name)) continue;
 
         if (entry.isFile()) {
-          // 未分層：檔案直接放在租戶目錄下，之後 parseLabelFromRef 會回 undefined
-          await this.collectFile(items, dir.name, tenantPath, entry.name);
+          // 未分層：檔案直接放在租戶目錄下，labelId 為 undefined
+          await this.collectFile(items, dir.name, undefined, tenantPath, entry.name);
           continue;
         }
 
@@ -125,7 +112,7 @@ export class LocalFolderSource implements BatchSource {
           }
           for (const labelEntry of labelEntries) {
             if (!labelEntry.isFile() || isReserved(labelEntry.name)) continue;
-            await this.collectFile(items, dir.name, labelPath, labelEntry.name);
+            await this.collectFile(items, dir.name, entry.name, labelPath, labelEntry.name);
           }
         }
       }
@@ -133,10 +120,17 @@ export class LocalFolderSource implements BatchSource {
     return items;
   }
 
-  /** 單一候選檔案：篩副檔名、stat、算 labelId，成功才推進 items */
+  /**
+   * 單一候選檔案：篩副檔名、stat，成功才推進 items。
+   *
+   * labelId 由走訪當下的目錄名直接傳入，不從完整路徑反推：路徑經 join() 正規化，
+   * 而使用者給的 --root 未必（./inbox、結尾 /.、重複斜線），用字串前綴去切會對不上，
+   * 結構正確的檔案就整批被當成「未分層」擋進 _failed/。
+   */
   private async collectFile(
     items: PendingItem[],
     tenantId: string,
+    labelId: string | undefined,
     dirPath: string,
     fileName: string,
   ): Promise<void> {
@@ -159,7 +153,7 @@ export class LocalFolderSource implements BatchSource {
       ref,
       size: st.size,
       mtimeMs: st.mtimeMs,
-      labelId: parseLabelFromRef(ref, this.root, tenantId),
+      labelId,
     });
   }
 

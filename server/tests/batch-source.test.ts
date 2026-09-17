@@ -4,7 +4,7 @@
  */
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, existsSync, chmodSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { LocalFolderSource, type PendingItem, DONE_DIR, FAILED_DIR } from '@/modules/knowledge/batch-source';
 
 jest.mock('@/lib/logger', () => ({
@@ -80,6 +80,19 @@ describe('LocalFolderSource.list', () => {
 
     const items = await new LocalFolderSource(root).list();
     expect(byName(items)).toEqual(['default/政策.txt']);
+  });
+
+  it.each([
+    ['結尾帶 /.', (r: string) => `${r}/.`],
+    ['含重複斜線', (r: string) => r.replace(/\//g, '//')],
+    ['./ 開頭的相對路徑', (r: string) => `./${relative(process.cwd(), r)}`],
+  ])('--root 寫法未正規化（%s）時，標籤層的 labelId 仍正確', async (_label, spell) => {
+    // 回歸：labelId 曾以 ref.startsWith(root) 切出，而 ref 經 join() 正規化、root 沒有，
+    // 兩邊寫法一不同就切不出來——資料夾結構完全正確，卻整批被當成「未分層」擋進 _failed/
+    write('default/hr/政策.txt');
+
+    const items = await new LocalFolderSource(spell(root)).list();
+    expect(items.map((i) => i.labelId)).toEqual(['hr']);
   });
 
   it('回報 size 與 mtimeMs', async () => {

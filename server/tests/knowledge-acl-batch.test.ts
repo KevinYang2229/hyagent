@@ -46,26 +46,8 @@ jest.mock('@/lib/logger', () => ({
 }));
 
 import { createWatchState, runFolderIngestRound, type RoundOptions } from '@/modules/knowledge/folder-ingest.service';
-import { parseLabelFromRef, type BatchSource, type PendingItem, type SettleOutcome } from '@/modules/knowledge/batch-source';
+import { type BatchSource, type PendingItem, type SettleOutcome } from '@/modules/knowledge/batch-source';
 import { kbScopeId } from '@/modules/authz/scope-catalog';
-
-describe('parseLabelFromRef', () => {
-  it('自路徑第二層解析 labelId', () => {
-    expect(parseLabelFromRef('/inbox/acme/hr/policy.pdf', '/inbox', 'acme')).toBe('hr');
-  });
-
-  it('未分層（直接放在租戶目錄下）回 undefined', () => {
-    expect(parseLabelFromRef('/inbox/acme/policy.pdf', '/inbox', 'acme')).toBeUndefined();
-  });
-
-  it('租戶名不符時回 undefined（防止跨租戶目錄誤判）', () => {
-    expect(parseLabelFromRef('/inbox/other/hr/policy.pdf', '/inbox', 'acme')).toBeUndefined();
-  });
-
-  it('root 無結尾斜線、ref 亦同，解析結果不受影響', () => {
-    expect(parseLabelFromRef('/inbox/acme/hr/sub/policy.pdf', '/inbox', 'acme')).toBe('hr');
-  });
-});
 
 /** 可程式化的假來源：list 回預設清單，settle 記錄呼叫 */
 class FakeSource implements BatchSource {
