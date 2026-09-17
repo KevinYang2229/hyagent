@@ -434,6 +434,43 @@ a {
   @apply bg-[var(--card-bg)] text-[var(--primary-color)] shadow-[var(--shadow-xs)];
 }
 
+/* ---- 權限模式三段切換（未開通／全租戶／指定對象） ---- */
+.mode-seg {
+  @apply inline-flex shrink-0 gap-[2px] rounded-[10px] border border-[var(--border-color)] bg-[var(--bg-secondary)] p-[3px];
+}
+.mode-seg button {
+  @apply cursor-pointer appearance-none whitespace-nowrap rounded-[7px] border-none bg-transparent px-3 py-[5px] text-[13px] font-medium text-[var(--text-secondary)];
+  font-family: inherit;
+  transition: all 0.15s;
+}
+.mode-seg button:hover {
+  @apply text-[var(--text-primary)];
+}
+.mode-seg button[aria-pressed="true"] {
+  @apply bg-[var(--card-bg)] font-semibold text-[var(--text-primary)] shadow-[var(--shadow-xs)];
+}
+.mode-seg button[data-mode="all"][aria-pressed="true"] {
+  @apply text-[var(--status-positive)];
+}
+.mode-seg button[data-mode="some"][aria-pressed="true"] {
+  @apply text-[var(--primary-color)];
+}
+
+/* 權限列：左側名稱＋狀態摘要，右側切換；窄螢幕切換換到下一行 */
+.perm-row-head {
+  @apply flex flex-wrap items-center gap-x-3 gap-y-2;
+}
+.perm-summary {
+  @apply mt-1 text-[12.5px] leading-[1.5] text-[var(--text-secondary)];
+}
+.perm-summary .perm-summary-edit {
+  @apply ml-2 cursor-pointer border-none bg-transparent p-0 text-[12.5px] text-[var(--link-color)];
+  font-family: inherit;
+}
+.perm-summary .perm-summary-edit:hover {
+  @apply underline;
+}
+
 /* ---- 表格 / 列表 ---- */
 .list {
   @apply m-0 list-none p-0;

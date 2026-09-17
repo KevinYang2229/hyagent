@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Checkbox, useToast } from '@hyagent/ui';
 import { api, type ScopeDef, type TenantPolicyView } from '../../api';
 import BundlesSection from './BundlesSection';
@@ -24,14 +24,19 @@ function stripScope(map: Record<string, string[]>, scope: string): Record<string
   );
 }
 
-const modeStyle: CSSProperties = {
-  padding: '4px 8px',
-  borderRadius: 6,
-  border: '1px solid var(--border-color)',
-  background: 'transparent',
-  color: 'inherit',
-  fontSize: 13,
-};
+const MODES: { value: Mode; label: string }[] = [
+  { value: 'off', label: '未開通' },
+  { value: 'all', label: '全租戶' },
+  { value: 'some', label: '指定對象' },
+];
+
+/** 摘要最多列出幾個對象名稱，其餘以「等 N 個」帶過 */
+const SUMMARY_MAX_NAMES = 3;
+
+function summarizeTargets(names: string[]): string {
+  if (names.length <= SUMMARY_MAX_NAMES) return names.join('、');
+  return `${names.slice(0, SUMMARY_MAX_NAMES).join('、')} 等 ${names.length} 個`;
+}
 
 export default function PermissionsTab({
   tenantId,
@@ -46,6 +51,8 @@ export default function PermissionsTab({
   // 使用者明確選了「指定對象」但尚未勾任何人的能力：資料上三處皆無、推導會誤判成「未開通」，
   // 用此集合讓模式停留在指定對象、展開區得以顯示（勾了人之後自然由資料推導）。
   const [someOverride, setSomeOverride] = useState<Set<string>>(new Set());
+  // 「指定對象」的勾選區預設收合、只顯示摘要；此集合記錄使用者展開編輯中的能力
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     try {
@@ -117,8 +124,23 @@ export default function PermissionsTab({
           Object.values(policy.accountBundles).some((ids) => ids.includes(b.id))),
     );
 
+  const toggleExpanded = (id: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
   const setMode = (id: string, mode: Mode) => {
     setSomeOverride((prev) => {
+      const next = new Set(prev);
+      if (mode === 'some') next.add(id);
+      else next.delete(id);
+      return next;
+    });
+    // 切到指定對象時直接展開勾選區，離開時收起
+    setExpanded((prev) => {
       const next = new Set(prev);
       if (mode === 'some') next.add(id);
       else next.delete(id);
@@ -186,7 +208,7 @@ export default function PermissionsTab({
         <div>
           <div className="card-title">權限</div>
           <div className="card-desc">
-            每個能力可設「未開通／全租戶／指定對象」；選指定對象再勾部門或帳號。（表單填寫與送出屬基礎功能，於此控制各表單可見性。）
+            每個能力可切換「未開通／全租戶／指定對象」；指定對象會列出已選部門與帳號，點「編輯對象」調整。（表單填寫與送出屬基礎功能，於此控制各表單可見性。）
           </div>
         </div>
       </div>
@@ -207,41 +229,60 @@ export default function PermissionsTab({
               const pickedUsers = policy.users.filter((u) =>
                 (policy.accounts[u.id] ?? []).includes(s.id),
               );
+              const grants = bundleGrants(s.id);
+              const targetNames = [...pickedDeps.map(formatDepartment), ...pickedUsers.map((u) => u.label)];
+              // 尚未勾任何對象時強制展開，避免摘要只剩警告、找不到勾選處
+              const showPicker = mode === 'some' && (expanded.has(s.id) || targetNames.length === 0);
               return (
-                <li key={s.id} className="row" style={{ display: 'block', padding: '8px 0' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
+                <li key={s.id} className="row" style={{ display: 'block', padding: '10px 0' }}>
+                  <div className="perm-row-head">
+                    <div style={{ flex: '1 1 240px', minWidth: 0 }}>
                       <span style={{ fontWeight: 500 }}>{s.label}</span>
                       <span className="row-sub" style={{ marginLeft: 8 }}>
                         {s.id}
                       </span>
+                      {mode === 'all' && <div className="perm-summary">租戶內所有人皆可使用</div>}
+                      {mode === 'some' && targetNames.length > 0 && (
+                        <div className="perm-summary">
+                          指定對象：{summarizeTargets(targetNames)}
+                          <button
+                            type="button"
+                            className="perm-summary-edit"
+                            onClick={() => toggleExpanded(s.id)}
+                            aria-expanded={showPicker}
+                          >
+                            {showPicker ? '收合' : '編輯對象'}
+                          </button>
+                        </div>
+                      )}
+                      {grants.length > 0 && (
+                        <div className="perm-summary">另由角色授予：{grants.join('；')}</div>
+                      )}
+                      {s.id.startsWith('form:') &&
+                        (mode !== 'off' || grants.length > 0) &&
+                        !formServiceGranted && (
+                          <div className="perm-summary">
+                            ⚠️ 「填表申請」服務未開通，此表單的授權實際不可用。
+                          </div>
+                        )}
                     </div>
-                    <select
-                      style={modeStyle}
-                      value={mode}
-                      onChange={(e) => setMode(s.id, e.target.value as Mode)}
-                      aria-label={`${s.label} 的授權模式`}
-                    >
-                      <option value="off">未開通</option>
-                      <option value="all">全租戶</option>
-                      <option value="some">指定對象</option>
-                    </select>
+                    <div className="mode-seg" role="group" aria-label={`${s.label} 的授權模式`}>
+                      {MODES.map((m) => (
+                        <button
+                          key={m.value}
+                          type="button"
+                          data-mode={m.value}
+                          aria-pressed={mode === m.value}
+                          onClick={() => mode !== m.value && setMode(s.id, m.value)}
+                        >
+                          {m.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
 
-                  {bundleGrants(s.id).length > 0 && (
-                    <div className="row-sub" style={{ marginTop: 4 }}>
-                      另由角色授予：{bundleGrants(s.id).join('；')}
-                    </div>
-                  )}
-                  {s.id.startsWith('form:') &&
-                    (mode !== 'off' || bundleGrants(s.id).length > 0) &&
-                    !formServiceGranted && (
-                      <div className="row-sub" style={{ marginTop: 4 }}>
-                        ⚠️ 「填表申請」服務未開通，此表單的授權實際不可用。
-                      </div>
-                    )}
-                  {mode === 'some' && (
-                    <div style={{ marginTop: 8, marginLeft: 2, display: 'grid', gap: 6 }}>
+                  {showPicker && (
+                    <div style={{ marginTop: 10, marginLeft: 2, display: 'grid', gap: 6 }}>
                       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12 }}>
                         <span className="row-sub" style={{ width: 34 }}>部門</span>
                         {policy.departments.map((dep) => (
