@@ -402,6 +402,10 @@ a {
 .form-grid .field + .field {
   @apply mt-0;
 }
+.form-grid + .field,
+.field + .form-grid {
+  @apply mt-3;
+}
 @media (max-width: 720px) {
   .form-grid {
     @apply grid-cols-1;

@@ -172,34 +172,36 @@ export default function SettingsTab({
           </div>
         </div>
         <div className="card-body">
-          <div className="field">
-            <label className="field-label">供應商</label>
-            <select
-              className="select"
-              value={llmProvider}
-              onChange={(e) => setLlmProvider(e.target.value as '' | 'anthropic' | 'openai' | 'local')}
-            >
-              <option value="">平台預設</option>
-              <option value="anthropic">Anthropic (Claude)</option>
-              <option value="openai">OpenAI</option>
-              <option value="local">地端（自架模型）</option>
-            </select>
-            {llmProvider === 'local' && (
-              <div className="card-desc">
-                地端對話模型使用平台部署層設定的端點。注意：知識庫查詢的 embedding 是否地端化由平台部署層決定，非此處設定。
-              </div>
-            )}
-          </div>
+          <div className="form-grid">
+            <div className="field">
+              <label className="field-label">供應商</label>
+              <select
+                className="select"
+                value={llmProvider}
+                onChange={(e) => setLlmProvider(e.target.value as '' | 'anthropic' | 'openai' | 'local')}
+              >
+                <option value="">平台預設</option>
+                <option value="anthropic">Anthropic (Claude)</option>
+                <option value="openai">OpenAI</option>
+                <option value="local">地端（自架模型）</option>
+              </select>
+              {llmProvider === 'local' && (
+                <div className="card-desc">
+                  地端對話模型使用平台部署層設定的端點。注意：知識庫查詢的 embedding 是否地端化由平台部署層決定，非此處設定。
+                </div>
+              )}
+            </div>
 
-          <div className="field">
-            <label className="field-label">模型</label>
-            <input
-              className="input"
-              value={llmModel}
-              onChange={(e) => setLlmModel(e.target.value)}
-              disabled={llmProvider === ''}
-              placeholder="未填用供應商預設（如 gpt-4o-mini / claude-sonnet-4-5 / Qwen2.5-32B-Instruct）"
-            />
+            <div className="field">
+              <label className="field-label">模型</label>
+              <input
+                className="input"
+                value={llmModel}
+                onChange={(e) => setLlmModel(e.target.value)}
+                disabled={llmProvider === ''}
+                placeholder="未填用供應商預設（如 gpt-4o-mini / claude-sonnet-4-5）"
+              />
+            </div>
           </div>
 
           {llmProvider !== 'local' && (
