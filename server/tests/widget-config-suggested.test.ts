@@ -18,6 +18,7 @@ import { promptAclFingerprint } from '@/modules/knowledge/prompt-visibility';
 import { createApp } from '@/app';
 import { knowledgeStore } from '@/modules/knowledge/knowledge.store';
 import { tenantStore } from '@/modules/tenant/tenant.store';
+import { scopePolicy } from '@/modules/authz/scope-policy';
 
 const app = createApp();
 
@@ -221,5 +222,81 @@ describe('widget config 推薦問句', () => {
 
     expect(res.body.data.suggestedPrompts).toEqual([]);
     expect(res.body.data.knowledgeEnabled).toBe(false);
+  });
+  /*
+   * 回歸：knowledgeEnabled 先前只讀租戶層 grantedScopes（權限頁的「全租戶」），
+   * 看不到指派給訪客部門的授權。但訪客真正問得到什麼，是由 serviceRegistry.enabledFor
+   * → resolveGuestScopes 的聯集模型決定（租戶 ∪ 訪客部門零散 ∪ 訪客部門角色能力）。
+   * 兩道判準不一致的症狀：管理者用「角色能力」開通知識庫、權限頁維持「未開通」，
+   * 訪客問得到答案，chip 與推薦詞卻整排消失。
+   */
+  it('角色能力把 service:knowledge 指派給訪客部門時啟用（權限頁維持未開通）', async () => {
+    const tenant = tenantStore.createTenant('widget-suggest-bundle-guest');
+    const apiKey = tenantStore.createApiKey(tenant.id, 'publishable');
+    tenantStore.updateTenant(tenant.id, { grantedScopes: [] });
+    scopePolicy.setPolicy(tenant.id, {
+      groups: {},
+      accounts: {},
+      bundles: [{ id: 'guest-kb', name: '訪客問答', scopes: ['service:knowledge'] }],
+      groupBundles: { '—': ['guest-kb'] },
+    });
+    knowledgeStore.setMeta(tenant.id, {
+      status: 'ready',
+      chunkCount: 3,
+      chunkCountBySource: { website: 3, file: 0 },
+      suggestedPrompts: { website: { generated: { 'zh-Hant': '補助怎麼申請？', en: 'How to apply?' } } },
+    });
+
+    const fingerprint = promptAclFingerprint(tenant.id);
+    knowledgeStore.setMeta(tenant.id, { ...knowledgeStore.getMeta(tenant.id), generatedPromptAcl: { website: fingerprint, file: fingerprint } });
+    const res = await request(app).get('/api/widget/config').query({ key: apiKey.key }).expect(200);
+
+    expect(res.body.data.knowledgeEnabled).toBe(true);
+    expect(res.body.data.suggestedPrompts).toEqual([{ 'zh-Hant': '補助怎麼申請？', en: 'How to apply?' }]);
+  });
+
+  it('訪客部門的零散授權同樣啟用（權限頁選「指定對象」只勾訪客）', async () => {
+    const tenant = tenantStore.createTenant('widget-suggest-group-guest');
+    const apiKey = tenantStore.createApiKey(tenant.id, 'publishable');
+    tenantStore.updateTenant(tenant.id, { grantedScopes: [] });
+    scopePolicy.setPolicy(tenant.id, { groups: { '—': ['service:knowledge'] }, accounts: {} });
+    knowledgeStore.setMeta(tenant.id, {
+      status: 'ready',
+      chunkCount: 3,
+      chunkCountBySource: { website: 3, file: 0 },
+      suggestedPrompts: { website: { generated: { 'zh-Hant': '補助怎麼申請？', en: 'How to apply?' } } },
+    });
+
+    const fingerprint = promptAclFingerprint(tenant.id);
+    knowledgeStore.setMeta(tenant.id, { ...knowledgeStore.getMeta(tenant.id), generatedPromptAcl: { website: fingerprint, file: fingerprint } });
+    const res = await request(app).get('/api/widget/config').query({ key: apiKey.key }).expect(200);
+
+    expect(res.body.data.knowledgeEnabled).toBe(true);
+    expect(res.body.data.suggestedPrompts).toEqual([{ 'zh-Hant': '補助怎麼申請？', en: 'How to apply?' }]);
+  });
+
+  it('只指派給一般部門、訪客部門沒有時仍關閉（不得越權外洩）', async () => {
+    const tenant = tenantStore.createTenant('widget-suggest-bundle-staff-only');
+    const apiKey = tenantStore.createApiKey(tenant.id, 'publishable');
+    tenantStore.updateTenant(tenant.id, { grantedScopes: [] });
+    scopePolicy.setPolicy(tenant.id, {
+      groups: { 人資部: ['service:knowledge'] },
+      accounts: {},
+      bundles: [{ id: 'hr-kb', name: '人資問答', scopes: ['service:knowledge'] }],
+      groupBundles: { 人資部: ['hr-kb'] },
+    });
+    knowledgeStore.setMeta(tenant.id, {
+      status: 'ready',
+      chunkCount: 3,
+      chunkCountBySource: { website: 3, file: 0 },
+      suggestedPrompts: { website: { generated: { 'zh-Hant': '補助怎麼申請？', en: 'How to apply?' } } },
+    });
+
+    const fingerprint = promptAclFingerprint(tenant.id);
+    knowledgeStore.setMeta(tenant.id, { ...knowledgeStore.getMeta(tenant.id), generatedPromptAcl: { website: fingerprint, file: fingerprint } });
+    const res = await request(app).get('/api/widget/config').query({ key: apiKey.key }).expect(200);
+
+    expect(res.body.data.knowledgeEnabled).toBe(false);
+    expect(res.body.data.suggestedPrompts).toEqual([]);
   });
 });
