@@ -1,4 +1,5 @@
 // 對應後端 auth / conversation / form / leave API。型別共用 @hyagent/shared（單一來源）。
+import type { KnowledgeFeed } from './knowledgePrompt';
 import type {
   TaskCenterData,
   MySkillsView,
@@ -257,6 +258,12 @@ export const auth = {
 
 export const api = {
   mySkills: () => request<MySkillsView>(`${API_ORIGIN}/api/skills`),
+  /**
+   * 登入者視角的知識庫開場資料（開關＋推薦句）。
+   * 免登入的 /widget/config 只能用訪客部門判斷開關，指派給一般部門的授權它看不到；
+   * 登入後改用這支覆蓋，判準與對話守門同一套。
+   */
+  knowledgeFeed: () => request<KnowledgeFeed>(`${API_ORIGIN}/api/knowledge/suggested-prompts`),
   listNotifications(): Promise<NotificationFeed> {
     return request<NotificationFeed>(`${API_ORIGIN}/api/notifications`);
   },

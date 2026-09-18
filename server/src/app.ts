@@ -15,6 +15,7 @@ import { tenantService } from '@/modules/tenant/tenant.service';
 import { authRouter } from '@/modules/auth/auth.routes';
 import { conversationRouter } from '@/modules/conversation/conversation.routes';
 import { formRouter } from '@/modules/form/form.routes';
+import { knowledgeMemberRouter } from '@/modules/knowledge/knowledge.member.routes';
 import { notificationsRouter } from '@/modules/notifications/notifications.routes';
 import { skillsRouter } from '@/modules/skills/skills.routes';
 import { tasksRouter } from '@/modules/tasks/tasks.routes';
@@ -115,6 +116,8 @@ export function createApp(): Express {
   // 報告的成本已由同租戶單一任務與節數上限守住
   app.use('/api/notifications', resolveTenant, requireAuth, tenantRateLimit, notificationsRouter);
   app.use('/api/skills', resolveTenant, requireAuth, tenantRateLimit, skillsRouter);
+  // 知識庫（登入者視角）：開場推薦詞的開關要用本人的權限判定，免登入的 /api/widget/config 做不到
+  app.use('/api/knowledge', resolveTenant, requireAuth, tenantRateLimit, knowledgeMemberRouter);
   app.use('/api/tasks', resolveTenant, requireAuth, tenantRateLimit, tasksRouter);
   app.use('/api/reports', resolveTenant, requireAuth, tenantRateLimit, reportRouter);
   app.use('/api/leave', resolveTenant, requireAuth, leaveRouter);

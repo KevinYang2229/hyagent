@@ -22,7 +22,7 @@ import {
 import type { TenantAppearance } from '@hyagent/shared';
 import { changeLanguage } from './i18n';
 import { embedConfig, fetchAppearance } from './embedConfig';
-import { pickKnowledgePrompts, type SuggestedPrompts } from './knowledgePrompt';
+import { pickKnowledgePrompts, resolveKnowledgeFeed, type KnowledgeFeed, type SuggestedPrompts } from './knowledgePrompt';
 import { pickInitialFormId, shouldShowFormPicker } from './formPicker';
 import FormView from './FormView';
 import TaskCenter from './TaskCenter';
@@ -179,6 +179,9 @@ export default function App() {
   const [expanded, setExpanded] = useState(false);
   const [canExpand, setCanExpand] = useState(true);
   const [suggestedPrompts, setSuggestedPrompts] = useState<SuggestedPrompts[] | undefined>();
+  // 登入者視角的知識庫開場資料：免登入的 /widget/config 只能用訪客部門判斷開關，
+  // 指派給一般部門的授權它看不到。登入後改以本人權限判定的結果覆蓋（null＝未登入／尚未取得）
+  const [memberFeed, setMemberFeed] = useState<KnowledgeFeed | null>(null);
   // 主題優先序：data-theme（宿主明確）> 嵌入時略過本地記憶（避免與第一方 App 共用 localStorage 互相干擾，
   // 改由租戶 theme/預設決定）> 第一方 App 才讀本地記憶 > 預設淺色。後端 theme 於下方 effect 補上。
   const [theme, setTheme] = useState<Theme>(
@@ -308,6 +311,23 @@ export default function App() {
     })();
      
   }, []);
+
+  // 登入後改用本人權限判定知識庫開場資料（開關＋推薦句）。
+  // 依 authUser?.id 重跑：換人登入要重新判定，登出則清回 null（回到訪客那份，不殘留前一位的結果）。
+  // 失敗時同樣清回 null——維持這支端點存在之前的行為，不因為多打一支 API 而讓 chip 整排消失。
+  useEffect(() => {
+    if (PREVIEW || !authUser) {
+      setMemberFeed(null);
+      return;
+    }
+    let cancelled = false;
+    void api.knowledgeFeed()
+      .then((feed) => { if (!cancelled) setMemberFeed(feed); })
+      .catch(() => { if (!cancelled) setMemberFeed(null); });
+    return () => { cancelled = true; };
+    // 依 authUser 物件本身（而非 id）為相依：setAuthUser 只在登入／還原／登出三處呼叫，
+    // 物件換新就是身分換了，不會有多餘重打
+  }, [authUser]);
 
   const scrollToEnd = useCallback(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
@@ -651,11 +671,16 @@ export default function App() {
         defaultValue: selectedForm.examples ?? [],
       }) as string[])
     : [];
-  // 知識庫推薦用詞：後端依租戶索引內容生成，沒有生成句就不顯示（不再回落寫死句）
+  // 知識庫推薦用詞：後端依租戶索引內容生成，沒有生成句就不顯示（不再回落寫死句）。
+  // 已登入時整份改用本人權限判定的結果，見 resolveKnowledgeFeed。
+  const knowledgeFeed = resolveKnowledgeFeed(
+    { knowledgeEnabled, suggested: suggestedPrompts },
+    memberFeed,
+  );
   const knowledgePrompts = pickKnowledgePrompts({
-    knowledgeEnabled,
+    knowledgeEnabled: knowledgeFeed.knowledgeEnabled,
     language: i18n.language,
-    suggested: suggestedPrompts,
+    suggested: knowledgeFeed.suggested,
   });
 
   // 建議回覆：只取「最新一則 agent 訊息」附帶的建議，作為可一鍵送出的快捷按鈕

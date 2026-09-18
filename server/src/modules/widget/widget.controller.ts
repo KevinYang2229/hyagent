@@ -1,5 +1,3 @@
-import { guestVisibilityScopesOf, currentChunkScopes } from '@/modules/knowledge/knowledge.visibility';
-import { publicPromptSlots } from '@/modules/knowledge/prompt-visibility';
 /**
  * 公開 widget 設定：依 resolveTenant 解出的租戶回外觀。
  * widget iframe 載入時讀取（帶 ?key=pk_…）；未設外觀則回內建預設。
@@ -7,8 +5,7 @@ import { publicPromptSlots } from '@/modules/knowledge/prompt-visibility';
 import type { Request, Response } from 'express';
 import type { TenantAppearance } from '@hyagent/shared';
 import { resolveGuestScopes } from '@/modules/authz/resolve-scopes';
-import { knowledgeStore } from '@/modules/knowledge/knowledge.store';
-import { effectivePrompts } from '@/modules/knowledge/prompt-slots';
+import { publicSuggestedPrompts } from '@/modules/knowledge/prompt-feed';
 
 const DEFAULT_APPEARANCE: Required<Pick<TenantAppearance, 'theme' | 'position'>> = {
   theme: 'light',
@@ -37,31 +34,11 @@ export const widgetController = {
       : !(req.tenant?.disabledServices ?? []).includes('knowledge');
     // 依索引內容生成的推薦問句；恆為陣列（無內容時為空陣列），順序固定網站在前、檔案在後，
     // 前端依陣列長度決定是否顯示 chip（無寫死後備句）。
-    // 整組語系一起回傳、不在後端挑：widget 語系可於執行期切換，後端挑定就切不動了
-    const meta = req.tenant ? knowledgeStore.getMeta(req.tenant.id) : undefined;
-    // 世代防護只堵得住 refreshSuggestedPrompts 彼此之間的競態，堵不住刪索引／爬取失敗
-    // 這兩個外部寫入端（它們不遞增世代，也不清 suggestedPrompts）：LLM 若在這兩者之後
-    // 才寫回，過期問句會留在 meta 裡、跨重啟存活。故一律以 status === 'ready' 為準，
-    // 與 admin 卡片的門檻（僅 ready 時顯示）一致；同時比照 admin 卡片守 knowledgeEnabled，
-    // 避免內部文件（docx/pdf）生成的問句在服務關閉後仍透過這個免登入端點外洩。
-    // 各來源的 chunk 數：舊 meta 未帶此欄時不做逐格封鎖（全域的 status/chunkCount 守門仍在），
-    // 下一次索引異動就會補上正確數字
-    const counts = meta?.chunkCountBySource ?? {
-      website: meta?.chunkCount ?? 0,
-      file: meta?.chunkCount ?? 0,
-    };
-    const guestScopes = new Set(req.tenant ? guestVisibilityScopesOf(req.tenant.id) : []);
-    const hasGuestContent = {
-      website: !!req.tenant && currentChunkScopes(req.tenant.id, {}).some((scope) => guestScopes.has(scope)),
-      file: (meta?.files ?? []).some((file) => (file.visibilityScopes ?? []).some((scope) => guestScopes.has(scope))),
-    };
-    const customPrompts = (meta?.customSuggestedPrompts ?? [])
-      .filter((prompt) => counts[prompt.source] > 0 && hasGuestContent[prompt.source])
-      .map((prompt) => prompt.text);
-    const suggestedPrompts =
-      knowledgeEnabled && meta?.status === 'ready' && meta.chunkCount > 0
-        ? [...effectivePrompts(publicPromptSlots(req.tenant!.id), counts), ...customPrompts]
-        : [];
+    // 整組語系一起回傳、不在後端挑：widget 語系可於執行期切換，後端挑定就切不動了。
+    // 句子集合與登入後的 GET /api/knowledge/suggested-prompts 共用 publicSuggestedPrompts
+    // （含索引狀態與 ACL 守門）；此處另守 knowledgeEnabled，避免內部文件生成的問句在服務
+    // 關閉後仍透過這個免登入端點外洩。
+    const suggestedPrompts = knowledgeEnabled && req.tenant ? publicSuggestedPrompts(req.tenant.id) : [];
     res.status(200).json({ data: { appearance, knowledgeEnabled, suggestedPrompts } });
   },
 };

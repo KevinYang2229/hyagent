@@ -125,6 +125,18 @@ export const openapiSpec = {
         },
       },
     },
+    "/api/knowledge/suggested-prompts": {
+      get: {
+        tags: ["Knowledge"],
+        summary: "登入者視角的知識庫開場資料（開關與推薦問句）",
+        description:
+          "開關判準與對話守門同一套（serviceRegistry.enabledFor），涵蓋租戶層、部門零散授權、部門角色能力與帳號層；免登入的 /api/widget/config 只能用訪客部門判定，故登入後改讀此端點。推薦句本身仍為訪客可見語料生成的公開集合，不因登入而擴增。回應禁止快取。",
+        responses: {
+          "200": { description: "data: { knowledgeEnabled, suggestedPrompts }；未啟用時 suggestedPrompts 為空陣列" },
+          "401": { description: "未登入或租戶身分不符" },
+        },
+      },
+    },
     "/api/tasks": {
       get: {
         tags: ["tasks"],

@@ -28,3 +28,24 @@ export function pickKnowledgePrompts(opts: {
     .map((s) => s[opts.language as keyof SuggestedPrompts])
     .filter((text): text is string => !!text);
 }
+
+/** 一份「知識庫開場資料」：開關與句子恆為同一次判定的結果，不得各自來源 */
+export interface KnowledgeFeed {
+  knowledgeEnabled: boolean;
+  suggested?: SuggestedPrompts[];
+}
+
+/**
+ * 訪客那份與登入者那份的取捨：登入後一律以本人權限判定的結果為準。
+ *
+ * 免登入的 /widget/config 只能用訪客部門（'—'）判斷開關，管理者把知識庫指派給某個部門時，
+ * 該部門成員問得到答案、chip 卻不出現。登入後改用 /api/knowledge/suggested-prompts 覆蓋。
+ *
+ * 刻意整份覆蓋而非只覆蓋 knowledgeEnabled：開關與句子必須是同一次判定的結果，
+ * 混用兩邊會出現「開關說開、句子是另一份判定留下的」這種對不起來的狀態。
+ * 覆蓋是雙向的——本人沒有權限時同樣要關掉訪客那份，否則反而成了越權顯示。
+ * member 為 null（未登入／登出／尚未取得）時回訪客那份，不殘留上一位登入者的結果。
+ */
+export function resolveKnowledgeFeed(guest: KnowledgeFeed, member: KnowledgeFeed | null): KnowledgeFeed {
+  return member ?? guest;
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pickKnowledgePrompts } from './knowledgePrompt';
+import { pickKnowledgePrompts, resolveKnowledgeFeed } from './knowledgePrompt';
 
 const web = { 'zh-Hant': '網站句？', en: 'Website?' };
 const file = { 'zh-Hant': '檔案句？', en: 'File?' };
@@ -56,3 +56,26 @@ describe('pickKnowledgePrompts', () => {
    expect(pickKnowledgePrompts({ knowledgeEnabled: true, language: 'zh-Hant', suggested })).toEqual(['網站', '檔案', '自訂一', '自訂二']);
    expect(pickKnowledgePrompts({ knowledgeEnabled: true, language: 'en', suggested })).toEqual(['Website', 'File', 'Custom']);
  });
+
+describe('resolveKnowledgeFeed', () => {
+  const guest = { knowledgeEnabled: false, suggested: undefined };
+  const member = { knowledgeEnabled: true, suggested: [web] };
+
+  it('未登入時用訪客那份', () => {
+    expect(resolveKnowledgeFeed(guest, null)).toEqual(guest);
+  });
+
+  it('登入後一律以本人權限覆蓋（訪客關、本人開）', () => {
+    expect(resolveKnowledgeFeed(guest, member)).toEqual(member);
+  });
+
+  it('本人沒有權限時覆蓋成關閉（訪客開、本人關）', () => {
+    const openGuest = { knowledgeEnabled: true, suggested: [web] };
+    const closedMember = { knowledgeEnabled: false, suggested: [] };
+    expect(resolveKnowledgeFeed(openGuest, closedMember)).toEqual(closedMember);
+  });
+
+  it('登出後回到訪客那份（不殘留上一位登入者的結果）', () => {
+    expect(resolveKnowledgeFeed(guest, null)).toEqual(guest);
+  });
+});
