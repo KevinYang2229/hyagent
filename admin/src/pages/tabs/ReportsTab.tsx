@@ -91,7 +91,7 @@ export default function ReportsTab({ tenantId, onError }: { tenantId: string; on
           </div>
           <div className="field">
             <label className="field-label">產生日期</label>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div className="report-date-range">
               <DatePicker value={from} onChange={setFrom} placeholder="起始日" />
               <span className="field-hint">至</span>
               <DatePicker value={to} onChange={setTo} placeholder="結束日" />

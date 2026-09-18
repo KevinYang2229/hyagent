@@ -348,7 +348,7 @@ a {
 .input,
 .textarea,
 .select {
-  @apply w-full rounded-[10px] border border-[var(--border-color)] bg-[var(--card-bg)] px-3 py-[10px] text-sm text-[var(--text-primary)];
+  @apply w-full rounded-[10px] border border-[var(--border-color)] bg-[var(--card-bg)] px-2 py-[6px] text-sm text-[var(--text-primary)];
   font-family: inherit;
   transition:
     border-color 0.15s,
@@ -368,10 +368,10 @@ a {
   @apply min-h-[90px] resize-y leading-normal;
 }
 .select {
-  @apply appearance-none pr-9;
+  @apply appearance-none pr-7;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
-  background-position: right 11px center;
+  background-position: right 8px center;
 }
 .color-field {
   @apply flex items-center gap-3;
@@ -1126,3 +1126,13 @@ a {
 .directory-form { display: grid; gap: 12px; }
 .directory-form h3 { margin: 0; font-size: 14px; font-weight: 600; }
 .directory-form .form-actions { margin-top: 0; }
+
+/* 後台日期觸發器與緊湊輸入框對齊；日曆本體維持原有操作尺寸。 */
+.app .date-picker-trigger-btn { height: 34px; padding-inline: 8px; gap: 6px; font-size: 13px; font-weight: 500; letter-spacing: normal; }
+.app .date-picker-trigger-btn .picker-display-text { font-size: 13px; font-weight: 500; }
+.app .date-picker-trigger-btn .date-picker-icon { width: 16px; height: 16px; }
+.report-date-range { display: flex; align-items: center; flex-wrap: nowrap; gap: 6px; min-width: 0; }
+.report-date-range > .date-picker-wrapper { flex: 1 1 0; min-width: 0; }
+.report-date-range > .field-hint { flex-shrink: 0; }
+.report-date-range .date-picker-trigger-btn { max-width: none; min-width: 0; }
+.report-date-range .picker-display-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
