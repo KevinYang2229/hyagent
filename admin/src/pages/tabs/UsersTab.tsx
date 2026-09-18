@@ -47,13 +47,15 @@ export default function UsersTab({ tenantId, onError }: { tenantId: string; onEr
           <ul className="list">{users.map((user) => <li className="row" key={user.id}>
             <div><strong>{user.name}</strong><div className="row-sub">帳號：{user.id} · 部門：{user.department === '—' ? '未指定' : user.department}{user.email ? ` · ${user.email}` : ''}</div></div>
           </li>)}</ul>}
-        <form onSubmit={(event) => void add(event)} style={{ display: 'grid', gap: 12, marginTop: 20 }}>
+        <form onSubmit={(event) => void add(event)} className="directory-form settings-section">
           <h3>新增使用者</h3>
-          <label>登入帳號<input className="input" value={id} onChange={(e) => setId(e.target.value)} required maxLength={200} disabled={busy} autoComplete="off" placeholder="例如 hyweb" /></label>
-          <label>顯示名稱<input className="input" value={name} onChange={(e) => setName(e.target.value)} required maxLength={200} disabled={busy} /></label>
-          <label>部門（選填）<input className="input" value={department} onChange={(e) => setDepartment(e.target.value)} maxLength={200} disabled={busy} /></label>
-          <label>Email（選填）<input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} disabled={busy} /></label>
-          <div><button className="btn btn-primary" disabled={busy || !id.trim() || !name.trim()}>{busy ? '新增中…' : '新增使用者'}</button></div>
+          <div className="form-grid">
+          <label className="field"><span className="field-label">登入帳號</span><input className="input" value={id} onChange={(e) => setId(e.target.value)} required maxLength={200} disabled={busy} autoComplete="off" placeholder="例如 hyweb" /></label>
+          <label className="field"><span className="field-label">顯示名稱</span><input className="input" value={name} onChange={(e) => setName(e.target.value)} required maxLength={200} disabled={busy} /></label>
+          <label className="field"><span className="field-label">部門（選填）</span><input className="input" value={department} onChange={(e) => setDepartment(e.target.value)} maxLength={200} disabled={busy} /></label>
+          <label className="field"><span className="field-label">Email（選填）</span><input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} disabled={busy} /></label>
+          </div>
+          <div className="form-actions"><button className="btn btn-primary" disabled={busy || !id.trim() || !name.trim()}>{busy ? '新增中…' : '新增使用者'}</button></div>
         </form>
       </>}
     </div>

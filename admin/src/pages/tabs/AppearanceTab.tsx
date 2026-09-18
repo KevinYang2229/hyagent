@@ -244,7 +244,7 @@ export default function AppearanceTab({
             </div>
           </div>
 
-          <div className="field" style={{ marginTop: 18 }}>
+          <div className="field" style={{ marginTop: 12 }}>
             <label className="field-label">Logo URL</label>
             <input
               className="input"

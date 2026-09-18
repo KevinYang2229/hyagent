@@ -101,7 +101,7 @@ export default function SettingsTab({
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+    <div className="settings-stack">
       <div className="card">
         <div className="card-head">
           <div>

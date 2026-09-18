@@ -272,7 +272,7 @@ a {
   @apply rounded-[var(--radius)] border border-[var(--border-color)] bg-[var(--card-bg)] shadow-[var(--shadow-sm)];
 }
 .card-head {
-  @apply flex items-center justify-between gap-3 border-b border-[var(--border-color)] px-[22px] py-[18px];
+  @apply flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-color)] px-4 py-3;
 }
 .card-title {
   @apply text-[15px] font-bold;
@@ -281,7 +281,7 @@ a {
   @apply mt-[3px] text-[12.5px] font-normal text-[var(--text-secondary)];
 }
 .card-body {
-  @apply p-[22px];
+  @apply p-4;
 }
 
 /* ---- 按鈕 ---- */
@@ -334,10 +334,10 @@ a {
 
 /* ---- 表單欄位 ---- */
 .field {
-  @apply flex flex-col gap-[7px];
+  @apply flex flex-col gap-1.5;
 }
 .field + .field {
-  @apply mt-[18px];
+  @apply mt-3;
 }
 .field-label {
   @apply text-[12.5px] font-semibold text-[var(--text-primary)];
@@ -397,7 +397,7 @@ a {
 }
 
 .form-grid {
-  @apply grid grid-cols-2 gap-[18px];
+  @apply grid grid-cols-2 gap-3;
 }
 .form-grid .field + .field {
   @apply mt-0;
@@ -409,7 +409,7 @@ a {
 }
 
 .form-actions {
-  @apply mt-[22px] flex gap-[10px] border-t border-[var(--border-color)] pt-[18px];
+  @apply mt-[14px] flex flex-wrap gap-2 border-t border-[var(--border-color)] pt-3;
 }
 
 /* ui Checkbox：admin 皆用於單行置中列，去掉元件預設的 mt-1.5
@@ -420,7 +420,7 @@ a {
 
 /* ---- 分頁（segmented） ---- */
 .tabs {
-  @apply mb-[22px] inline-flex max-w-full flex-wrap gap-[3px] rounded-[12px] border border-[var(--border-color)] bg-[var(--bg-secondary)] p-1;
+  @apply mb-[14px] inline-flex max-w-full flex-wrap gap-[3px] rounded-[12px] border border-[var(--border-color)] bg-[var(--bg-secondary)] p-1;
 }
 .tab {
   @apply cursor-pointer appearance-none rounded-[9px] border-none bg-transparent px-4 py-2 text-[13.5px] font-semibold text-[var(--text-secondary)];
@@ -476,7 +476,7 @@ a {
   @apply m-0 list-none p-0;
 }
 .row {
-  @apply flex items-center justify-between gap-[14px] border-b border-[var(--border-color)] px-[22px] py-[15px];
+  @apply flex items-center justify-between gap-[10px] border-b border-[var(--border-color)] px-4 py-[10px];
   transition: background 0.12s;
 }
 .row:last-child {
@@ -674,14 +674,14 @@ a {
 }
 
 .empty {
-  @apply py-10 text-center text-[13.5px] text-[var(--text-secondary)];
+  @apply py-5 text-center text-[13.5px] text-[var(--text-secondary)];
 }
 
 .muted {
   @apply text-[var(--text-secondary)];
 }
 .toolbar {
-  @apply flex items-center gap-[10px];
+  @apply flex flex-wrap items-center gap-2;
 }
 .spacer {
   @apply flex-1;
@@ -1069,12 +1069,6 @@ a {
 .kb-file-pagination { padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
 
 /* 知識庫設定採一致的緊湊間距，保留操作元件原本的點擊尺寸。 */
-.kb-cols .card-head { padding: 12px 16px; flex-wrap: wrap; }
-.kb-cols .card-body { padding: 16px; }
-.kb-cols .form-grid { gap: 12px; }
-.kb-cols .field { gap: 6px; }
-.kb-cols .form-actions { margin-top: 14px; padding-top: 12px; gap: 8px; flex-wrap: wrap; }
-.kb-cols .row { padding: 10px 16px; gap: 10px; }
 .kb-cols .card-body > .row-sub { margin-block: 6px; }
 .kb-cols .kb-index-summary { gap: 6px; }
 
@@ -1084,3 +1078,51 @@ a {
 
 .kb-custom-prompt { padding-block: 12px; border-bottom: 1px solid var(--border-color); }
 .kb-file-editor .field + .field { margin-top: 0; }
+
+/* 角色指派：對象分頁，避免角色數量增加時撐寬整張矩陣。 */
+.assignment-section { padding: 16px; border-top: 1px solid var(--border-color); display: grid; gap: 12px; }
+.assignment-title { margin: 0; font-size: 15px; font-weight: 600; }
+.assignment-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border-color); }
+.assignment-tabs button { padding: 8px 10px; border-bottom: 2px solid transparent; color: var(--text-secondary); cursor: pointer; font-size: 14px; }
+.assignment-tabs button[aria-pressed="true"] { color: var(--primary-color); border-bottom-color: var(--primary-color); font-weight: 600; }
+.assignment-count-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 18px; margin-left: 4px; padding-inline: 6px; border-radius: 999px; background: var(--bg-secondary); color: var(--text-secondary); font-size: 11px; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
+.assignment-tabs button[aria-pressed="true"] .assignment-count-badge { background: rgba(var(--primary-color-rgb), 0.12); color: var(--primary-color); }
+.assignment-toolbar { display: flex; flex-wrap: wrap; gap: 10px; }
+.assignment-toolbar .input { flex: 1 1 240px; min-width: 0; }
+.assignment-toolbar .select { width: auto; flex: 0 1 180px; }
+.assignment-item { border-top: 1px solid var(--border-color); padding-block: 14px; }
+.assignment-item-main { display: grid; grid-template-columns: minmax(150px, 1fr) minmax(0, 2fr) auto; gap: 16px; align-items: start; }
+.assignment-identity, .assignment-summary { min-width: 0; overflow-wrap: anywhere; }
+.assignment-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.assignment-chips span { padding: 3px 8px; border-radius: 6px; background: var(--bg-secondary); font-size: 12px; max-width: 100%; overflow-wrap: anywhere; }
+.assignment-more { margin-top: 8px; font-size: 12px; }
+.assignment-more summary { cursor: pointer; color: var(--text-secondary); }
+.assignment-more .assignment-chips { max-height: 140px; overflow-y: auto; }
+.assignment-editor { margin-top: 12px; padding: 12px; background: var(--bg-secondary); border-radius: 8px; display: grid; gap: 10px; }
+.assignment-role-options { display: flex; flex-wrap: wrap; gap: 8px 16px; max-height: 200px; overflow-y: auto; }
+.assignment-role-options label { display: inline-flex; align-items: center; gap: 8px; padding: 6px 0; font-size: 13px; max-width: 100%; }
+.assignment-role-options label span { min-width: 0; overflow-wrap: anywhere; }
+.assignment-pagination { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
+.assignment-pagination > div { display: flex; gap: 8px; }
+.assignment-empty { padding: 20px 0; font-size: 13px; color: var(--text-secondary); }
+@media (max-width: 720px) {
+  .assignment-section { padding: 14px; }
+  .assignment-item-main { grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
+  .assignment-summary { grid-column: 1 / -1; grid-row: 2; }
+  .assignment-item-main > button { grid-column: 2; grid-row: 1; }
+}
+
+.permission-category-tabs { padding-inline: 16px; flex-wrap: wrap; }
+.permission-form-guide { display: flex; justify-content: space-between; align-items: start; gap: 12px; flex-wrap: wrap; padding: 12px; background: var(--bg-secondary); border-radius: 8px; font-size: 13px; }
+.permission-form-guide > div { flex: 1 1 240px; }
+.permission-step-status { display: inline-block; margin-left: 8px; font-size: 12px; color: var(--text-secondary); }
+.permission-form-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 16px; font-size: 13px; }
+.permission-form-toolbar { margin-block: 12px; }
+.mode-seg button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* 設定頁共用節奏：卡片間 14px、內容 16px、欄位間 12px。 */
+.settings-stack { display: grid; gap: 14px; }
+.settings-section { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-color); }
+.directory-form { display: grid; gap: 12px; }
+.directory-form h3 { margin: 0; font-size: 14px; font-weight: 600; }
+.directory-form .form-actions { margin-top: 0; }

@@ -73,7 +73,7 @@ export default function UsageTab({ tenant, onError }: { tenant: Tenant; onError:
   const perConversation = usage.conversations > 0 ? totalTokens / usage.conversations : 0;
 
   return (
-    <div style={{ display: 'grid', gap: 16 }}>
+    <div className="settings-stack">
       <div className="card">
         <div className="card-head">
           <div>

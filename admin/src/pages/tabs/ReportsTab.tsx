@@ -99,7 +99,7 @@ export default function ReportsTab({ tenantId, onError }: { tenantId: string; on
             <span className="field-hint">含起訖當日；留空表示不限。</span>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 8, marginTop: 18 }}>
+        <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
           <button className="btn btn-primary btn-sm" onClick={search} disabled={busy}>
             {busy ? '查詢中…' : '查詢'}
           </button>

@@ -1,55 +1,89 @@
-import { useState, type CSSProperties } from 'react';
+import { useState } from 'react';
 import { Checkbox } from '@hyagent/ui';
 import type { ScopeDef, SkillBundle, TenantPolicyView } from '../../api';
 import { formatDepartment, UNKNOWN_DEPARTMENT } from '../../components/department.util';
 
-const thStyle: CSSProperties = {
-  textAlign: 'left',
-  padding: '8px 10px',
-  borderBottom: '1px solid var(--border-color)',
-  fontWeight: 500,
-  whiteSpace: 'nowrap',
-};
-const tdStyle: CSSProperties = {
-  padding: '6px 10px',
-  borderBottom: '1px solid var(--border-color)',
-  verticalAlign: 'middle',
-};
-/** 收縮欄（對象/角色勾選）：固定為內容寬，欄距穩定；剩餘寬度全給「已指派」欄，
- *  摘要文字變長變短都只影響自己，不再牽動其他欄跳動 */
-const shrinkCol: CSSProperties = { width: '1%', whiteSpace: 'nowrap' };
-
-/** 指派矩陣的一列：對象名稱 + 各角色勾選 + 已指派摘要 */
-function AssignRow({
-  label,
-  sub,
-  assigned,
-  bundles,
-  onToggle,
-}: {
-  label: string;
-  sub?: string;
-  assigned: string[];
-  bundles: SkillBundle[];
-  onToggle: (bundleId: string) => void;
+/** 對象採分頁，角色只在編輯時展開，避免雙向增長的矩陣。 */
+export function AssignmentSection({ policy, onToggle }: {
+  policy: TenantPolicyView;
+  onToggle: (kind: 'groupBundles' | 'accountBundles', key: string, id: string) => void;
 }) {
-  const names = bundles.filter((b) => assigned.includes(b.id)).map((b) => b.name);
-  return (
-    <tr>
-      <td style={{ ...tdStyle, ...shrinkCol }}>
-        {label}
-        {sub && <span className="row-sub" style={{ marginLeft: 6 }}>{sub}</span>}
-      </td>
-      {bundles.map((b) => (
-        <td key={b.id} style={{ ...tdStyle, ...shrinkCol, textAlign: 'center', paddingInline: 18 }}>
-          <Checkbox checked={assigned.includes(b.id)} onChange={() => onToggle(b.id)} />
-        </td>
-      ))}
-      <td style={{ ...tdStyle, opacity: names.length ? 1 : 0.45 }}>
-        {names.length ? names.join('、') : '未指派'}
-      </td>
-    </tr>
-  );
+  const [kind, setKind] = useState<'groupBundles' | 'accountBundles'>('groupBundles');
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState('all');
+  const [page, setPage] = useState(1);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [roleQuery, setRoleQuery] = useState('');
+  const departmentIds = [...new Set([...policy.departments, ...Object.keys(policy.groupBundles)])];
+  const userIds = [...new Set([...policy.users.map((user) => user.id), ...Object.keys(policy.accountBundles)])];
+  const targets = kind === 'groupBundles'
+    ? departmentIds.map((id) => ({ id, label: formatDepartment(id), sub: id === UNKNOWN_DEPARTMENT ? '公開聊天視窗的訪客與未建檔帳號' : '' }))
+    : userIds.map((id) => ({ id, label: policy.users.find((user) => user.id === id)?.label ?? id,
+      sub: policy.users.some((user) => user.id === id) ? id : `${id} · 未列於目前名錄` }));
+  const selectedRoles = (id: string) => policy.bundles.filter((role) => (policy[kind][id] ?? []).includes(role.id));
+  const filtered = targets.filter((target) => {
+    const count = selectedRoles(target.id).length;
+    return `${target.label} ${target.sub}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()) &&
+      (filter === 'all' || (filter === 'assigned' ? count > 0 : count === 0));
+  });
+  const pages = Math.max(1, Math.ceil(filtered.length / 10));
+  const currentPage = Math.min(page, pages);
+  const visible = filtered.slice((currentPage - 1) * 10, currentPage * 10);
+  const roles = policy.bundles.filter((role) => role.name.toLocaleLowerCase().includes(roleQuery.trim().toLocaleLowerCase()));
+  const switchKind = (next: typeof kind) => {
+    setKind(next); setQuery(''); setFilter('all'); setPage(1); setEditing(null); setRoleQuery('');
+  };
+  return <section className="assignment-section" aria-label="角色指派">
+    <div><h3 className="assignment-title">指派對象</h3>
+      <p className="row-sub">選擇部門或帳號，再編輯角色。變更須按本頁「儲存」才會生效。</p>
+    </div>
+    <div className="assignment-tabs" role="group" aria-label="指派對象類型">
+      <button type="button" aria-pressed={kind === 'groupBundles'} onClick={() => switchKind('groupBundles')}>部門 <span className="assignment-count-badge">{departmentIds.length}</span></button>
+      <button type="button" aria-pressed={kind === 'accountBundles'} onClick={() => switchKind('accountBundles')}>帳號 <span className="assignment-count-badge">{userIds.length}</span></button>
+    </div>
+    <p className="row-sub">{kind === 'groupBundles' ? '部門指派會套用至該部門成員；訪客／未建檔帳號獨立列出。' : '此處僅顯示直接指派給帳號的角色，不含從部門繼承的角色；未直接指派不代表沒有權限。'}</p>
+    <div className="assignment-toolbar">
+      <input className="input" aria-label="搜尋指派對象" placeholder={kind === 'groupBundles' ? '搜尋部門名稱…' : '搜尋姓名或帳號…'} value={query}
+        onChange={(event) => { setQuery(event.target.value); setPage(1); }} />
+      <select className="select" aria-label="篩選指派狀態" value={filter} onChange={(event) => { setFilter(event.target.value); setPage(1); }}>
+        <option value="all">全部指派狀態</option><option value="assigned">已直接指派</option><option value="unassigned">未直接指派</option>
+      </select>
+    </div>
+    <ul className="list assignment-list" aria-label={kind === 'groupBundles' ? '部門指派清單' : '帳號指派清單'}>
+      {visible.map((target) => {
+        const assigned = selectedRoles(target.id);
+        return <li key={target.id} className="assignment-item">
+          <div className="assignment-item-main">
+            <div className="assignment-identity"><div className="row-title">{target.label}</div>{target.sub && <div className="row-sub">{target.sub}</div>}</div>
+            <div className="assignment-summary">
+              <div className="row-sub">直接指派 · {assigned.length} 個角色</div>
+              {assigned.length ? <div className="assignment-chips">{assigned.slice(0, 3).map((role) => <span key={role.id}>{role.name}</span>)}</div> : <div className="row-sub">未直接指派</div>}
+              {assigned.length > 3 && <details className="assignment-more"><summary>另有 {assigned.length - 3} 個角色</summary><div className="assignment-chips">{assigned.slice(3).map((role) => <span key={role.id}>{role.name}</span>)}</div></details>}
+            </div>
+            <button type="button" className="btn btn-sm" aria-label={`編輯 ${target.label} 的角色`} aria-expanded={editing === target.id}
+              onClick={() => { setEditing(editing === target.id ? null : target.id); setRoleQuery(''); }}>{editing === target.id ? '收合' : '編輯角色'}</button>
+          </div>
+          {editing === target.id && <div className="assignment-editor">
+            <div className="row-title">{target.label} · 選擇角色</div>
+            <input className="input" aria-label="搜尋角色" placeholder="搜尋角色名稱…" value={roleQuery} onChange={(event) => setRoleQuery(event.target.value)} />
+            <div className="assignment-role-options" role="group" aria-label={`${target.label} 的角色選項`}>
+              {roles.map((role) => <label key={role.id}><Checkbox checked={(policy[kind][target.id] ?? []).includes(role.id)} onChange={() => onToggle(kind, target.id, role.id)} /><span>{role.name}</span></label>)}
+              {!roles.length && <div className="row-sub">找不到符合的角色。</div>}
+            </div>
+            <div className="row-sub">已選 {assigned.length} 個角色。搜尋及切換頁面不會清除選擇；請按本頁「儲存」套用。</div>
+            <div><button type="button" className="btn btn-sm" onClick={() => setEditing(null)}>完成選擇</button></div>
+          </div>}
+        </li>;
+      })}
+      {!visible.length && <li className="assignment-empty">{targets.length ? '找不到符合條件的對象，請調整搜尋或篩選。' : '尚無可指派的對象。'}</li>}
+    </ul>
+    <nav className="assignment-pagination" aria-label="指派清單分頁">
+      <span className="row-sub" aria-live="polite">共 {filtered.length} 筆 · 第 {currentPage} / {pages} 頁 · 每頁 10 筆</span>
+      <div><button type="button" className="btn btn-sm" disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)}>上一頁</button>
+        <button type="button" className="btn btn-sm" disabled={currentPage === pages} onClick={() => setPage(currentPage + 1)}>下一頁</button></div>
+    </nav>
+    <p className="row-sub">角色名稱不會額外開放團隊資料或簽核權限；移除角色也不會撤銷其他來源的授權。</p>
+  </section>;
 }
 
 /**
@@ -250,65 +284,7 @@ export default function BundlesSection({
         </div>
       )}
 
-      {policy.bundles.length > 0 && (
-        <div className="card-body" style={{ borderTop: '1px solid var(--border-color)', display: 'grid', gap: 8 }}>
-          <div>
-            <div style={{ fontWeight: 500 }}>指派</div>
-            <div className="row-sub">列＝對象、欄＝角色；勾選後須按本頁「儲存」。角色名稱不會額外開放團隊資料或簽核權限。</div>
-          </div>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 13.5 }}>
-              <thead>
-                <tr>
-                  <th style={{ ...thStyle, ...shrinkCol }}>對象</th>
-                  {policy.bundles.map((b) => (
-                    <th
-                      key={b.id}
-                      style={{ ...thStyle, ...shrinkCol, textAlign: 'center', paddingInline: 18 }}
-                      title={b.scopes.map(scopeLabel).join('、')}
-                    >
-                      {b.name}
-                    </th>
-                  ))}
-                  <th style={thStyle}>已指派</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td colSpan={policy.bundles.length + 2} style={{ ...tdStyle, fontWeight: 500, background: 'var(--badge-bg, transparent)' }}>
-                    部門
-                  </td>
-                </tr>
-                {policy.departments.map((dep) => (
-                  <AssignRow
-                    key={`g-${dep}`}
-                    label={formatDepartment(dep)}
-                    sub={dep === UNKNOWN_DEPARTMENT ? '公開 widget 的訪客落在此桶' : undefined}
-                    assigned={policy.groupBundles[dep] ?? []}
-                    bundles={policy.bundles}
-                    onToggle={(id) => toggleAssign('groupBundles', dep, id)}
-                  />
-                ))}
-                <tr>
-                  <td colSpan={policy.bundles.length + 2} style={{ ...tdStyle, fontWeight: 500, background: 'var(--badge-bg, transparent)' }}>
-                    帳號
-                  </td>
-                </tr>
-                {policy.users.map((u) => (
-                  <AssignRow
-                    key={`a-${u.id}`}
-                    label={u.label}
-                    sub={u.id}
-                    assigned={policy.accountBundles[u.id] ?? []}
-                    bundles={policy.bundles}
-                    onToggle={(id) => toggleAssign('accountBundles', u.id, id)}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      {policy.bundles.length > 0 && <AssignmentSection policy={policy} onToggle={toggleAssign} />}
     </div>
   );
 }

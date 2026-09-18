@@ -47,6 +47,10 @@ export default function PermissionsTab({
 }) {
   const toast = useToast();
   const [policy, setPolicy] = useState<TenantPolicyView | null>(null);
+  const [activeCategory, setActiveCategory] = useState('服務');
+  const [formQuery, setFormQuery] = useState('');
+  const [formFilter, setFormFilter] = useState('all');
+  const [formPage, setFormPage] = useState(1);
   const [saving, setSaving] = useState(false);
   // 使用者明確選了「指定對象」但尚未勾任何人的能力：資料上三處皆無、推導會誤判成「未開通」，
   // 用此集合讓模式停留在指定對象、展開區得以顯示（勾了人之後自然由資料推導）。
@@ -82,7 +86,7 @@ export default function PermissionsTab({
         (s) => !s.id.startsWith('service:') && !s.id.startsWith('form:'),
       ),
     },
-  ].filter((g) => g.items.length > 0);
+  ];
 
   /** 該能力目前的模式：全租戶 > 指定對象（含剛切換、尚未勾人）> 未開通 */
   const modeOf = (id: string): Mode => {
@@ -196,8 +200,21 @@ export default function PermissionsTab({
     }
   };
 
+  const forms = groups.find((group) => group.label === '表單')!.items;
+  const hasFormGrant = (id: string) => modeOf(id) !== 'off' || bundleGrants(id).length > 0;
+  const filteredForms = forms.filter((form) =>
+    `${form.label} ${form.description ?? ''}`.toLocaleLowerCase().includes(formQuery.trim().toLocaleLowerCase()) &&
+    (formFilter === 'all' || (formFilter === 'configured' ? hasFormGrant(form.id) : !hasFormGrant(form.id))),
+  );
+  const formPages = Math.max(1, Math.ceil(filteredForms.length / 10));
+  const currentFormPage = Math.min(formPage, formPages);
+  const activeGroup = groups.find((group) => group.label === activeCategory)!;
+  const visibleScopes = activeCategory === '表單'
+    ? filteredForms.slice((currentFormPage - 1) * 10, currentFormPage * 10)
+    : activeGroup.items;
+
   return (
-    <div style={{ display: 'grid', gap: 16 }}>
+    <div className="settings-stack">
       <BundlesSection
         policy={policy}
         onChange={(updater) => setPolicy((p) => (p ? updater(p) : p))}
@@ -208,20 +225,39 @@ export default function PermissionsTab({
         <div>
           <div className="card-title">權限</div>
           <div className="card-desc">
-            每個能力可切換「未開通／全租戶／指定對象」；指定對象會列出已選部門與帳號，點「編輯對象」調整。（表單填寫與送出屬基礎功能，於此控制各表單可見性。）
+            先開通服務，再設定可用表單或外部能力。切換分類會保留尚未儲存的設定，完成後統一按「儲存」。
           </div>
         </div>
       </div>
 
-      {groups.map((g, gi) => (
-        <div
-          key={g.label}
-          className="card-body"
-          style={gi > 0 ? { borderTop: '1px solid var(--border-color)' } : undefined}
-        >
-          <div style={{ fontWeight: 500, marginBottom: 8 }}>{g.label}</div>
-          <ul className="list">
-            {g.items.map((s) => {
+      <div className="permission-category-tabs assignment-tabs" role="group" aria-label="權限分類">
+        {groups.map((group) => <button key={group.label} type="button" aria-pressed={activeCategory === group.label}
+          onClick={() => setActiveCategory(group.label)}>{group.label}<span className="assignment-count-badge">{group.items.length}</span></button>)}
+      </div>
+      <div className="card-body" aria-label={`${activeCategory}權限設定`}>
+        {activeCategory === '表單' && <>
+          <div className="permission-form-guide">
+            <div><strong>1. 開通填表申請</strong><span className="permission-step-status">{formServiceGranted ? '已有授權對象' : '尚未開通'}</span>
+              <p className="row-sub">{formServiceGranted ? '使用者必須同時取得「填表申請」及個別表單權限，才能使用表單。' : '請先設定哪些人可以使用填表申請，再選擇允許的表單。既有表單設定會保留。'}</p>
+            </div>
+            <button type="button" className="btn btn-sm" onClick={() => {
+              setActiveCategory('服務');
+              requestAnimationFrame(() => document.getElementById('permission-service-form')?.scrollIntoView({ block: 'center', behavior: 'smooth' }));
+            }}>{formServiceGranted ? '調整服務對象' : '前往開通服務'}</button>
+          </div>
+          <div className="permission-form-heading"><strong>2. 選擇可用表單</strong><span className="row-sub">已設定 {forms.filter((form) => hasFormGrant(form.id)).length} / {forms.length} 份</span></div>
+          <p className="row-sub">每份表單可分別授權。選擇「全租戶」仍需具備填表申請服務權限；角色授權會另列於表單下方。</p>
+          <div className="assignment-toolbar permission-form-toolbar">
+            <input className="input" aria-label="搜尋表單" placeholder="搜尋表單名稱或說明…" value={formQuery}
+              onChange={(event) => { setFormQuery(event.target.value); setFormPage(1); }} />
+            <select className="select" aria-label="篩選表單設定" value={formFilter}
+              onChange={(event) => { setFormFilter(event.target.value); setFormPage(1); }}>
+              <option value="all">全部表單</option><option value="configured">已設定授權</option><option value="unconfigured">尚未設定</option>
+            </select>
+          </div>
+        </>}
+        <ul className="list">
+            {visibleScopes.map((s) => {
               const mode = modeOf(s.id);
               const pickedDeps = policy.departments.filter((d) =>
                 (policy.groups[d] ?? []).includes(s.id),
@@ -234,13 +270,14 @@ export default function PermissionsTab({
               // 尚未勾任何對象時強制展開，避免摘要只剩警告、找不到勾選處
               const showPicker = mode === 'some' && (expanded.has(s.id) || targetNames.length === 0);
               return (
-                <li key={s.id} className="row" style={{ display: 'block', padding: '10px 0' }}>
+                <li key={s.id} id={s.id === 'service:form' ? 'permission-service-form' : undefined} className="row" style={{ display: 'block', padding: '10px 0' }}>
                   <div className="perm-row-head">
                     <div style={{ flex: '1 1 240px', minWidth: 0 }}>
                       <span style={{ fontWeight: 500 }}>{s.label}</span>
-                      <span className="row-sub" style={{ marginLeft: 8 }}>
-                        {s.id}
-                      </span>
+                      {s.description && <div className="row-sub">{s.description}</div>}
+                      {s.id === 'service:form' && <div className="perm-summary">
+                        <button type="button" className="perm-summary-edit" onClick={() => setActiveCategory('表單')}>選擇可用表單（{forms.filter((form) => hasFormGrant(form.id)).length} / {forms.length}）</button>
+                      </div>}
                       {mode === 'all' && <div className="perm-summary">租戶內所有人皆可使用</div>}
                       {mode === 'some' && targetNames.length > 0 && (
                         <div className="perm-summary">
@@ -272,6 +309,7 @@ export default function PermissionsTab({
                           key={m.value}
                           type="button"
                           data-mode={m.value}
+                          disabled={s.id.startsWith('form:') && !formServiceGranted}
                           aria-pressed={mode === m.value}
                           onClick={() => mode !== m.value && setMode(s.id, m.value)}
                         >
@@ -289,6 +327,7 @@ export default function PermissionsTab({
                           <label key={dep} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
                             <Checkbox
                               checked={(policy.groups[dep] ?? []).includes(s.id)}
+                              disabled={s.id.startsWith('form:') && !formServiceGranted}
                               onChange={() => toggleDept(dep, s.id)}
                             />
                             <span
@@ -306,6 +345,7 @@ export default function PermissionsTab({
                           <label key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
                             <Checkbox
                               checked={(policy.accounts[u.id] ?? []).includes(s.id)}
+                              disabled={s.id.startsWith('form:') && !formServiceGranted}
                               onChange={() => toggleAccount(u.id, s.id)}
                             />
                             <span style={{ fontSize: 13.5 }}>
@@ -323,9 +363,14 @@ export default function PermissionsTab({
                 </li>
               );
             })}
+          {visibleScopes.length === 0 && <li className="assignment-empty">{activeCategory === '表單' && forms.length ? '找不到符合條件的表單，請調整搜尋或篩選。' : '目前沒有可設定的項目。'}</li>}
           </ul>
+          {activeCategory === '表單' && <nav className="assignment-pagination" aria-label="表單分頁">
+            <span className="row-sub" aria-live="polite">共 {filteredForms.length} 份 · 第 {currentFormPage} / {formPages} 頁 · 每頁 10 份</span>
+            <div><button type="button" className="btn btn-sm" disabled={currentFormPage === 1} onClick={() => setFormPage(currentFormPage - 1)}>上一頁</button>
+              <button type="button" className="btn btn-sm" disabled={currentFormPage === formPages} onClick={() => setFormPage(currentFormPage + 1)}>下一頁</button></div>
+          </nav>}
         </div>
-      ))}
 
       <div className="card-body" style={{ borderTop: '1px solid var(--border-color)' }}>
         <button className="btn btn-primary" onClick={save} disabled={saving}>
