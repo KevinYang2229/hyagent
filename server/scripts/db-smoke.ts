@@ -10,6 +10,7 @@
  * submissions、usage(月分桶)、audit、forms、scope-policy(+bundle)、webhooks、attachments。
  */
 import { closeDb, connectDb } from '../src/lib/db';
+import { generateHyAgentKeyPair } from '../src/lib/assertion';
 import { auditStore, initAuditStore } from '../src/modules/audit/audit.store';
 import { initScopePolicy, scopePolicy } from '../src/modules/authz/scope-policy';
 import { resolveScopes } from '../src/modules/authz/resolve-scopes';
@@ -51,7 +52,13 @@ async function initAll(): Promise<void> {
 async function write(): Promise<void> {
   await initAll();
 
-  const tenant = tenantStore.createTenant(TENANT_NAME, ['https://smoke.example.com'], 'sso-smoke-secret-16ch');
+  const tenant = tenantStore.createTenant(TENANT_NAME, ['https://smoke.example.com']);
+  // Assertion 公鑰走 write-through 落地，且刻意不加密（公鑰本就可公開）——
+  // verify 階段要驗的是它有沒有原樣還原，所以這裡先登記一把。
+  tenantStore.addPublicKey(tenant.id, {
+    publicKey: generateHyAgentKeyPair('ES256').publicKeyPem,
+    label: 'smoke',
+  });
   const key = tenantStore.createApiKey(tenant.id, 'secret');
   tenantStore.updateTenant(tenant.id, {
     llmConfig: { provider: 'anthropic', anthropicApiKey: 'sk-ant-smoke-byo-key' },
@@ -110,7 +117,8 @@ async function verify(): Promise<void> {
 
   const tenant = tenantStore.getTenant(tenantId);
   check('tenant 還原', tenant?.name === TENANT_NAME);
-  check('ssoSecret 解密還原', tenant?.ssoSecret === 'sso-smoke-secret-16ch');
+  // 公鑰不加密（本就可公開），所以這裡驗的是「有沒有原樣還原」而非解密
+  check('公鑰還原', tenantStore.listPublicKeys(tenantId).length === 1);
   check('BYO key 解密還原', tenant?.llmConfig?.anthropicApiKey === 'sk-ant-smoke-byo-key');
   check('配額還原', tenant?.quotaMonthlyLlmTokens === 12345);
   const apiKey = tenantStore.getApiKey(rawKey);

@@ -14,7 +14,9 @@ const router = Router();
 router.post('/login', loginRateLimit, resolveTenant, validate({ body: loginSchema }), asyncHandler(authController.login));
 router.post('/refresh', refreshRateLimit, validate({ body: refreshSchema }), asyncHandler(authController.refresh));
 
-// SSO handoff：需帶 API Key（resolveTenant 解析租戶）→ 驗宿主 user token → 換發本系統 token
+// Identity Assertion → HyAgent Session（規格 §5.3、§7.1）。
+// 仍掛 resolveTenant 是為了外觀設定與 CORS，**不**參與身分判定——租戶由 Assertion 的 iss 決定
+// （決策 A）。API Key 未帶或屬於別的租戶都不影響換發結果。
 router.post(
   '/sso/exchange',
   ssoRateLimit,
@@ -25,5 +27,7 @@ router.post(
 
 // 受保護端點
 router.get('/me', requireAuth, asyncHandler(authController.me));
+// 結束目前 Session（規格 §7.2）。帳密登入的 JWT 打這支是 no-op，回 204 不報錯。
+router.post('/logout', requireAuth, asyncHandler(authController.logout));
 
 export const authRouter = router;

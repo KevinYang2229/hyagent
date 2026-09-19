@@ -35,7 +35,12 @@ import { adminAuthController } from './admin.auth.controller';
 import {
   adminLoginSchema,
   createKeySchema,
+  addPublicKeySchema,
   createTenantSchema,
+  patchAssertionSettingsSchema,
+  revokeSessionsSchema,
+  setPublicKeyStatusSchema,
+  tenantKeyParamSchema,
   adminReportQuerySchema,
   createWebhookSchema,
   patchTenantSchema,
@@ -95,6 +100,33 @@ router.delete(
   '/tenants/:id',
   validate({ params: tenantParamSchema }),
   asyncHandler(adminController.deleteTenant),
+);
+
+// ── Assertion 公鑰與逐租戶設定（規格 §7.3、§7.4；僅後台，不對外開放等效 API）──
+router.get(
+  '/tenants/:id/assertion-keys',
+  validate({ params: tenantParamSchema }),
+  asyncHandler(adminController.listPublicKeys),
+);
+router.post(
+  '/tenants/:id/assertion-keys',
+  validate({ params: tenantParamSchema, body: addPublicKeySchema }),
+  asyncHandler(adminController.addPublicKey),
+);
+router.patch(
+  '/tenants/:id/assertion-keys/:kid',
+  validate({ params: tenantKeyParamSchema, body: setPublicKeyStatusSchema }),
+  asyncHandler(adminController.setPublicKeyStatus),
+);
+router.patch(
+  '/tenants/:id/assertion-settings',
+  validate({ params: tenantParamSchema, body: patchAssertionSettingsSchema }),
+  asyncHandler(adminController.updateAssertionSettings),
+);
+router.post(
+  '/tenants/:id/sessions/revoke',
+  validate({ params: tenantParamSchema, body: revokeSessionsSchema }),
+  asyncHandler(adminController.revokeSessionsBySub),
 );
 
 router.post(

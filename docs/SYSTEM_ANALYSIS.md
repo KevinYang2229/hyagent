@@ -71,7 +71,7 @@ flowchart LR
 | 邊界                      | 信任原則                                                                     |
 | ------------------------- | ---------------------------------------------------------------------------- |
 | Browser → Server          | Browser 傳入的 User ID、Role、Scope 均不可信，必須由 Token／後端政策解析     |
-| Host Site → Widget        | `postMessage` 及 Query Parameter 不可直接授權；身分須透過簽章 SSO Token 交換 |
+| Host Site → Widget        | 通道本身不授權：授權來自**簽章**。Identity Assertion 走 `postMessage` 交付（雙向驗 origin 與 source），**憑證不得進 URL**——query string 會留在瀏覽器歷史、`Referer` 與存取日誌 |
 | Tenant → Tenant           | `tenantId` 是硬隔離邊界，跨租戶資料查詢應回 404                              |
 | LLM → Tool Executor       | 模型輸出的工具名稱與參數皆不可信，執行前需驗證 Schema、Scope 與狀態          |
 | Server → External System  | 需設定 Timeout、錯誤映射、簽章、重試及必要的冪等機制                         |
@@ -154,7 +154,7 @@ User identity：這次請求代表哪個終端使用者
 | 維度   | 來源                                                      | 解析結果                                          |
 | ------ | --------------------------------------------------------- | ------------------------------------------------- |
 | Tenant | `x-api-key`、`Authorization: ApiKey` 或 Widget `?key=pk_` | `req.tenant`、`req.apiKeyType`                    |
-| User   | `Authorization: Bearer <accessToken>`                     | `req.user.sub`、Role、登入方式與 SSO Tenant Claim |
+| User   | `Authorization: Bearer <token>`：帳密登入為 JWT accessToken，嵌入路徑為不透明 `sessionToken`（`hyas_…`，查 auth session store） | `req.user.sub`、Role、登入方式與所屬租戶 |
 
 未帶 API Key 時，`resolveTenant` 為向後相容會落到 Default Tenant。正式環境若不需要舊版相容，應評估取消此 Fail-open 行為。
 
@@ -198,33 +198,34 @@ sequenceDiagram
 
     User->>Host: 登入既有帳號
     Host->>HostBE: 取得 HyAgent SSO Token
-    HostBE->>HostBE: 以 Tenant ssoSecret 簽署 sub/name/role/exp
+    HostBE->>HostBE: 以自家私鑰簽署 Identity Assertion（iss=Tenant ID / sub / exp / jti）
     HostBE-->>Host: 短效 User Token
-    Host->>Widget: 傳入 data-user-token + pk_ Key
+    Host->>Widget: 傳入 data-token-url + pk_ Key（憑證走 postMessage，不進 URL）
     Widget->>Server: POST /api/auth/sso/exchange + Tenant Key
-    Server->>Server: resolveTenant + 驗證租戶 ssoSecret
-    Server-->>Widget: HyAgent Access/Refresh Token
+    Server->>Server: 以 iss 取租戶 + 以其登記公鑰驗章 + jti 防重放
+    Server-->>Widget: 不透明 sessionToken（無 refresh；到期前 60 秒重走 token provider）
     Widget->>Server: Bearer Token + Tenant Key 呼叫 API
 ```
 
 目前的帳號連結採「外部 `sub` 直接作為 HyAgent `userId`」的輕量模型，尚無獨立 `account_links` 資料表。這代表不同身分提供者或同一 `sub` 在不同租戶的唯一性，需依 `tenantId + userId` 組合判斷。
 
-### 5.5 SSO Tenant 一致性缺口
+### 5.5 Tenant 一致性（已實作）
 
-SSO Access Token 含 `tenantId` Claim，但目前 `requireAuth` 只驗 JWT 簽章與期限，沒有統一比對：
+**此節原為 P0 缺口，現已補上。** `requireAuth` 在解析出使用者身分後統一比對：
 
 ```text
-req.user.tenantId === req.tenant.id
+req.user.tenantId === req.tenant.id   // 不一致 → 401 'Token tenant mismatch'
 ```
 
-因此，正式上線前應新增 Tenant Binding Middleware：
+現行行為：
 
-1. Password Login Token 若沒有 `tenantId`，依產品政策決定是否只允許 Default／First-party Tenant。
-2. SSO Token 必須有 `tenantId`，且與 API Key 解析出的租戶完全一致。
-3. 不一致回 `403 TENANT_MISMATCH`，不得進入 Rate Limit、Scope 解析或 Domain Service。
-4. Refresh Token 輪替必須保留相同 Tenant Claim。
-
-此項列為 P0 安全需求。
+1. 帳密登入 Token 綁 Default／First-party Tenant，拿它搭別的租戶金鑰會被上式擋下。
+2. 嵌入路徑的租戶來自 **Assertion 的 `iss`**（非 API Key，見 [SSO 契約](HANDOFF-SSO.md)），
+   Session 紀錄該租戶；`pk_` 只影響外觀設定與 CORS，不參與身分判定。
+3. 不一致回 `401 UNAUTHORIZED`（非原先規劃的 `403 TENANT_MISMATCH`），在 Rate Limit、
+   Scope 解析與 Domain Service 之前就擋下。
+4. Refresh Token 輪替保留相同 Tenant Claim；SSO 路徑已無 refresh token，
+   續期改為重走一次 Assertion 簽發。
 
 ## 6. 授權模型
 
@@ -276,7 +277,7 @@ flowchart TD
     TOOL -- 是 --> X[執行並寫 Audit]
 ```
 
-圖中的 SSO Tenant Binding 為應補強項，並非目前所有路由均已實作。
+圖中的 SSO Tenant Binding 已由 `requireAuth` 統一實作（見 §5.5），所有掛 `requireAuth` 的路由一體適用。
 
 ### 6.4 知識庫 ACL
 
@@ -532,7 +533,7 @@ sequenceDiagram
 
 ### 11.1 Widget
 
-- `widget.js` 建立 iframe 並以 `?key=pk_` 傳遞 Publishable Key。
+- `/sdk/widget.js` 建立 iframe 並以 `?key=pk_` 傳遞 Publishable Key。
 - 支援 Form、Locale、Theme、Position、User Token 等參數。
 - Widget Config 為公開 Endpoint，但只應回外觀、服務開關與可公開建議問題。
 - 事件以命名事件回傳宿主，例如送出完成。
@@ -724,7 +725,8 @@ Helmet / CORS
 ### 14.3 敏感資料
 
 - API Key 以 SHA-256 Hash 儲存。
-- SSO Secret 與 BYO LLM Key 在設定 `DATA_ENCRYPTION_KEY` 時以靜態加密落地。
+- BYO LLM Key 與 HyAgent Session 上的使用者識別碼（`sub`）在設定 `DATA_ENCRYPTION_KEY` 時以靜態加密落地。
+  （SSO 共享密鑰已隨非對稱改造移除——現在存的是租戶**公鑰**，公開資料，不需加密。）
 - 正式環境必須設定 Encryption Key，並建立 Key Rotation／備份復原程序。
 - Log、Audit Summary 與錯誤 Details 不得包含 Token、Secret、完整 Prompt 敏感資料或附件內容。
 
@@ -804,7 +806,7 @@ CORS_ORIGIN=https://hyagent.zeabur.app,https://hyagent-admin.zeabur.app
 | 威脅                  | 現有控制                             | 缺口／建議                                                             |
 | --------------------- | ------------------------------------ | ---------------------------------------------------------------------- |
 | 偽造 User ID          | User ID 取自 JWT `sub`               | 移除 Controller 的 `x-user-id` 測試 Fallback 死碼，避免未來誤掛路由    |
-| 跨租戶 Token 重用     | Session／資源以 Tenant + User 查詢   | P0：強制比較 SSO JWT Tenant 與 API Key Tenant                          |
+| 跨租戶 Token 重用     | `requireAuth` 比對 Token 租戶與 API Key 租戶，不一致回 401；資源另以 Tenant + User 查詢 | 已補（§5.5）。新增路由時勿繞過 `requireAuth`                           |
 | 公開 Widget 讀敏感 KB | Tenant 層禁止授予 `kb:*`             | 正式環境停用 Default Tenant `*` Origin，持續測試 Guest Department      |
 | API Key 洩漏          | `pk_`／`sk_` 分級，Store 僅存 Hash   | Key Rotation、Last-used、IP／用途限制可列後續                          |
 | Secret 落地外洩       | 可設定靜態加密                       | Production Fail-fast 要求 `DATA_ENCRYPTION_KEY`，建立 Rotation Runbook |
@@ -819,8 +821,8 @@ CORS_ORIGIN=https://hyagent.zeabur.app,https://hyagent-admin.zeabur.app
 
 | 優先級 | 項目                                | 影響                                   | 建議完成條件                                                |
 | ------ | ----------------------------------- | -------------------------------------- | ----------------------------------------------------------- |
-| P0     | SSO Token 與 API Key Tenant Binding | 可能使跨 Tenant 身分被重用             | Middleware 統一拒絕 Tenant 不一致並完成整合測試             |
-| P0     | 正式 Identity Provider              | Mock Directory／共用密碼不適合正式環境 | 完成 OIDC／企業 SSO、停權、登出與 Claim Mapping             |
+| ✅ 已完成 | SSO Token 與 API Key Tenant Binding | 可能使跨 Tenant 身分被重用             | `requireAuth` 統一比對並回 401，端點測試已涵蓋              |
+| P0     | 正式 Identity Provider（帳密路徑）  | Mock Directory／共用密碼不適合正式環境 | 嵌入路徑已由整合方自家登入承接（Identity Assertion，含停權與登出）；待補的是 HyAgent 自家帳密登入，正式環境預設關閉（`AUTH_PASSWORD_LOGIN=auto`），上線前需接 OIDC／企業 SSO 與 Claim Mapping |
 | P0     | 真 OA Connector 的冪等與錯誤契約    | 可能重複送單或無法判斷結果             | 定義 Idempotency Key、Timeout、Retry、Mapping 與 E2E 測試   |
 | P1     | Webhook 防重放與持久化 Queue        | 重啟或長時間故障可能遺失通知           | Event ID、Timestamp、持久化重試與 Dead-letter               |
 | P1     | Report Job 持久化                   | 重啟後工作狀態遺失                     | Job 狀態、租戶鎖與恢復流程落 DB                             |
@@ -863,7 +865,7 @@ CORS_ORIGIN=https://hyagent.zeabur.app,https://hyagent-admin.zeabur.app
 | 產品能力     | 系統元件                                     | 主要資料                     | 主要驗證                                  |
 | ------------ | -------------------------------------------- | ---------------------------- | ----------------------------------------- |
 | 帳號登入     | Auth Routes／Service、JWT Utils              | User Directory、Token        | 401、Refresh Rotation、停權               |
-| SSO 帳號連結 | resolveTenant、SSO Exchange、Tenant Secret   | Tenant、JWT Claims           | Signature、Expiry、Tenant Binding         |
+| SSO 帳號連結 | SSO Exchange、Assertion Verifier、Tenant 公鑰 | Tenant、Assertion Claims     | Signature、Expiry、jti 防重放、Tenant Binding |
 | 對話填寫表單 | Conversation、Form Agent、Form Engine        | Session、Definition          | Owner、Scope、State、Schema               |
 | 表單送出     | Tool Registry、Submit Registry、OA Connector | Submission、Audit            | Confirm、Idempotency、Tool Scope          |
 | 知識問答     | Knowledge Agent、Retriever                   | Chunks、Labels、Scope Policy | Tenant Filter、ACL、Threshold             |

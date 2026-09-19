@@ -48,7 +48,7 @@ Management Portal（admin 後台）
 | 目標元件 | 現況對應（程式） | 狀態 |
 | --- | --- | --- |
 | Conversation Manager | `modules/conversation/`（session store + agent loop） | ✅ |
-| Authentication | JWT login + SSO exchange（`modules/auth/`） | 🟡 demo 級，五項缺口見 [HANDOFF-SSO](HANDOFF-SSO.md) §4 |
+| Authentication | 帳密 JWT login + Identity Assertion 換發不透明 Session（`modules/auth/`、`lib/assertion/`、`lib/auth-session.store.ts`） | 🟡 嵌入路徑已完備（非對稱驗章、`jti` 防重放、依 `kid`／`sub` 批次作廢，契約見 [HANDOFF-SSO](HANDOFF-SSO.md)）；缺的是**帳密路徑的真實身分來源**（現為 mock 名錄） |
 | Context Builder | resolve-tenant + user directory + session history | 🟡 缺 Memory |
 | Intent Router | `conversation/intent-router.ts`（Haiku 分類器） | ✅ |
 | Skill Router | `conversation/service.registry.ts`（sticky + enabledFor） | ✅ |
@@ -68,7 +68,7 @@ Management Portal（admin 後台）
 | Management Portal | admin 後台（8 分頁 + Skill Library） | ✅ |
 
 持久化：10 個 runtime store 皆支援 `DATA_BACKEND=db`（Prisma + Supabase Postgres），
-DDL 見 `server/db/migrations/`。API key 存 sha256 雜湊、BYO key / ssoSecret 以
+DDL 見 `server/db/migrations/`。API key 存 sha256 雜湊、BYO key / Session 上的使用者識別碼以
 `DATA_ENCRYPTION_KEY` 靜態加密。詳見 [../README.md](../README.md)。
 
 ### 知識庫檢索後端
@@ -112,7 +112,7 @@ HNSW 索引的 2000 維上限，只有 `halfvec`（上限 4000 維）建得了�
 | **真 BPM / Workflow 引擎** | 公司 OA 簽核規格到位 | 等外部規格，非工程自主 |
 | **OA 送單對接** | 公司 OA 端點/欄位規格到位 | 連接器（`lib/oa/http.connector.ts`）已完成且不該改，要改的是每張表單的 `oa.schema.json` |
 | **OA 介面補完**（簽核狀態查詢／附件本體／額度端點） | 同上，且 OA 的查詢與收附件方式確認 | 這三處**填 schema 解決不了**：`OAConnector` 沒有查簽核的方法（現為本地時間推演）、`Attachment` 只有 metadata 沒有檔案、`LEAVE_BALANCE_PATH` 寫死於程式。見 [HANDOFF-OA-HTTP](HANDOFF-OA-HTTP.md) §5 |
-| **真實身分來源 / OAuth** | 導入正式部署、SSO 決策定案 | 目前 mock 名錄 + SSO handoff 足夠 demo；上線前必補的五項（鎖 `algorithms`／驗 `iss`+`aud`／強制 `exp`／replay 防護／名錄回退）見 [HANDOFF-SSO](HANDOFF-SSO.md) §4 |
+| **真實身分來源 / OAuth** | 導入正式部署 | 嵌入路徑的身分來源就是**整合方自家的登入**（Identity Assertion），該條路已可上線，見 [HANDOFF-SSO](HANDOFF-SSO.md)；當初列的五項（鎖 `algorithms`／驗 `iss`+`aud`／強制 `exp`／replay 防護／名錄回退）已隨非對稱改造完成。待補的是 HyAgent 自家帳密登入仍用 mock 名錄，正式環境預設關閉（`AUTH_PASSWORD_LOGIN=auto`） |
 
 ## 不做清單（明確排除，避免反覆糾結）
 

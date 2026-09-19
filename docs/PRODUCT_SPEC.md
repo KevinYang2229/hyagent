@@ -110,7 +110,7 @@ HyAgent 是一個可嵌入既有網站或獨立使用的多租戶 AI Agent 整�
 1. 管理者建立租戶並設定 `allowedOrigins`。
 2. 系統核發可公開使用的 `pk_` API Key；`sk_` 僅供伺服器端使用。
 3. 宿主站台載入 Widget Script，傳入 API Key、表單、語系、主題或位置等設定。
-4. 若需帳號連結，宿主後端以租戶 `ssoSecret` 簽發短效 Token。
+4. 若需帳號連結，宿主後端以自家私鑰簽發短效 Identity Assertion（HyAgent 只持有對應公鑰）。
 5. Widget 將 Token 送至 `/api/auth/sso/exchange`，交換為 HyAgent JWT。
 6. Widget 透過事件通知宿主送單結果，宿主亦可呼叫 `open`、`close`、`toggle` 控制介面。
 
@@ -123,7 +123,7 @@ HyAgent 是一個可嵌入既有網站或獨立使用的多租戶 AI Agent 整�
 | AUTH-01 | 系統應支援帳號密碼登入並核發 Access Token 與 Refresh Token | 登入成功後可呼叫受保護 API；無效憑證回傳 401 |
 | AUTH-02 | 系統應支援 Token Refresh | 有效 Refresh Token 可換發新 Access Token |
 | AUTH-03 | 系統應提供目前登入者資訊 | `/api/auth/me` 回傳可信任的使用者資料 |
-| AUTH-04 | 每個租戶可設定 SSO Secret | 未設定或簽章無效時不得完成 SSO 交換 |
+| AUTH-04 | 每個租戶可登記 Assertion 公鑰（最多 2 把啟用中，`kid` 由公鑰算出） | 未登記公鑰或簽章無效時不得完成 SSO 交換；私鑰留在整合方環境，平台不持有 |
 | AUTH-05 | SSO Token 應綁定租戶與外部使用者身分 | 交換後的 JWT 必須保留 tenant/user 關係，避免跨租戶冒用 |
 | AUTH-06 | 管理後台使用獨立管理密碼登入 | `ADMIN_PASSWORD` 未設定時，管理後台登入應停用 |
 
@@ -206,7 +206,7 @@ HyAgent 是一個可嵌入既有網站或獨立使用的多租戶 AI Agent 整�
 | 功能 | 規格摘要 |
 |---|---|
 | 租戶列表 | 建立、查看及進入租戶設定；平台管理者可刪除租戶 |
-| 設定 | 租戶名稱、允許來源、SSO Secret、API Key 與服務設定 |
+| 設定 | 租戶名稱、允許來源、Assertion 公鑰清單、API Key 與服務設定 |
 | 外觀 | AI 名稱、Logo、歡迎語、主色、主題、語言與 Widget 位置，支援即時預覽 |
 | 權限 | 管理群組、帳號與 Scope Policy，檢視平台 Scope Catalog |
 | 表單 | 查看、建立或更新租戶表單，進入視覺化 Designer |
@@ -310,8 +310,8 @@ queued → outlining → composing → done
 - 所有受保護 API 必須驗證 JWT、API Key 或管理憑證。
 - CORS 只允許第一方站台或租戶白名單來源，不應在正式環境無條件使用 `*`。
 - SSO Token 必須短效、驗證簽章並綁定租戶；不得相信前端直接傳入的 User ID。
-- 密碼、JWT Secret、管理金鑰、SSO Secret 與 LLM API Key 不得寫入前端 Bundle 或 Log。
-- `DATA_ENCRYPTION_KEY` 啟用時，BYO LLM Key 與 SSO Secret 等敏感設定需加密落地。
+- 密碼、JWT Secret、管理金鑰與 LLM API Key 不得寫入前端 Bundle 或 Log。整合方的 Assertion **私鑰**不得離開其自家後端；平台只持有公鑰。
+- `DATA_ENCRYPTION_KEY` 啟用時，BYO LLM Key 與 Session 上的使用者識別碼等敏感資料需加密落地（租戶公鑰為公開資料，不需加密）。
 - 管理動作、工具執行與跨使用者報告下載需留下稽核資料。
 - HTML／PDF 報告渲染不得任意存取外部網路，以避免 SSRF。
 - 表單送出、寄信等具副作用操作應要求明確確認。

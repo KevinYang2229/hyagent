@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, type ApiKey, type LLMConfigPatch, type LLMConfigView, type Tenant } from '../../api';
 import { IconCopy, IconKey } from '../../components/icons';
+import AssertionKeysPanel from './AssertionKeysPanel';
 
 export default function SettingsTab({
   tenant,
@@ -13,7 +14,6 @@ export default function SettingsTab({
 }) {
   const [name, setName] = useState(tenant.name);
   const [origins, setOrigins] = useState((tenant.allowedOrigins ?? []).join('\n'));
-  const [ssoSecret, setSsoSecret] = useState('');
   const [quota, setQuota] = useState(
     tenant.quotaMonthlyLlmTokens ? String(tenant.quotaMonthlyLlmTokens) : '',
   );
@@ -78,11 +78,9 @@ export default function SettingsTab({
     try {
       const allowedOrigins = origins.split('\n').map((s) => s.trim()).filter(Boolean);
       const patch: Parameters<typeof api.updateTenant>[1] = { name: name.trim(), allowedOrigins };
-      if (ssoSecret.trim().length >= 16) patch.ssoSecret = ssoSecret.trim();
       // 空字串或 0 = 不限（送 0 以清除既有配額）
       patch.quotaMonthlyLlmTokens = quota.trim() === '' ? 0 : Math.max(0, Number(quota) || 0);
       await api.updateTenant(tenant.id, patch);
-      setSsoSecret('');
       onSaved();
     } catch (e) {
       onError(e);
@@ -127,17 +125,7 @@ export default function SettingsTab({
             />
           </div>
 
-          <div className="field">
-            <label className="field-label">SSO 共享密鑰</label>
-            <span className="field-hint">留空＝不變更；需 ≥16 字元。</span>
-            <input
-              className="input"
-              type="password"
-              value={ssoSecret}
-              onChange={(e) => setSsoSecret(e.target.value)}
-              placeholder={tenant.ssoConfigured ? '已設定，輸入以覆蓋' : '未設定'}
-            />
-          </div>
+          <AssertionKeysPanel tenantId={tenant.id} onError={onError} />
 
           <div className="field">
             <label className="field-label">月度 AI Token 配額</label>

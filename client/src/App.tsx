@@ -10,6 +10,7 @@ import {
   api,
   ApiError,
   auth,
+  setIdentityProvider,
   setUnauthorizedHandler,
   type Applicant,
   type Definition,
@@ -22,6 +23,7 @@ import {
 import type { TenantAppearance } from '@hyagent/shared';
 import { changeLanguage } from './i18n';
 import { embedConfig, fetchAppearance } from './embedConfig';
+import { hostBridge, type UiStatePayload } from './hostBridge';
 import { pickKnowledgePrompts, resolveKnowledgeFeed, type KnowledgeFeed, type SuggestedPrompts } from './knowledgePrompt';
 import { pickInitialFormId, shouldShowFormPicker } from './formPicker';
 import FormView from './FormView';
@@ -287,16 +289,28 @@ export default function App() {
       setAuthReady(true);
       return;
     }
+    // 面板就緒，向宿主頁握手（規格 §6.6）。未被嵌入時 hostBridge 停用，這行沒有副作用。
+    hostBridge.handshake();
+    // Session 續期（規格 §6.5 呼叫時機②）：到期前 60 秒由 api 層自行重走 token provider。
+    // 註冊的就是首次取票用的那支 requestIdentity()——續期在協定上與初次取票完全相同，
+    // 宿主頁不必為此多寫一行。沒有 provider（宿主未設 data-token-url）時 api 層不排程。
+    if (embedConfig.identityAvailable) setIdentityProvider(() => hostBridge.requestIdentity());
     void (async () => {
       try {
-        // 嵌入 SSO handoff：帶 userToken 且尚未登入 → 以宿主 token 換發本系統 token（免帳密登入）
-        if (embedConfig.userToken && !auth.isAuthenticated()) {
-          try {
-            await auth.ssoExchange(embedConfig.userToken);
-          } catch {
-            // SSO 換發失敗（pk 或 ssoSecret 不正確 / 後端拒絕）：直接顯示錯誤，不落到帳密登入頁。
-            setAuthError(t('auth.ssoFailed'));
-            return;
+        // 嵌入 SSO handoff：向宿主頁要一張 Assertion 換發本系統 token（免帳密登入）。
+        // 改造前這張票是從 iframe URL 的 ?userToken= 讀的，違反規格 §10.1；現在改由
+        // postMessage 握手取得，憑證只存在記憶體裡，不留在歷史紀錄、Referer 或存取日誌。
+        if (embedConfig.identityAvailable && !auth.isAuthenticated()) {
+          // 拿不到票（使用者未登入宿主網站／取票失敗／逾時）一律當作匿名，落回自行登入頁。
+          const assertion = await hostBridge.requestIdentity();
+          if (assertion) {
+            try {
+              await auth.ssoExchange(assertion);
+            } catch {
+              // 換發失敗（pk 不正確 / 驗章不過 / 後端拒絕）：直接顯示錯誤，不落到帳密登入頁。
+              setAuthError(t('auth.ssoFailed'));
+              return;
+            }
           }
         }
         if (auth.isAuthenticated()) {
@@ -341,25 +355,21 @@ export default function App() {
   // （焦點在 iframe 內時，宿主頁的 keydown 收不到，必須由這裡自己處理）。
   useEffect(() => {
     if (!EMBED) return;
-    const onMessage = (e: MessageEvent) => {
-      const data = e.data as
-        | { type?: string; expanded?: boolean; available?: boolean }
-        | null;
-      if (!data || data.type !== 'oa-agent:expanded') return;
+    const offState = hostBridge.on<UiStatePayload>('ui:state', ({ payload }) => {
+      const data = payload ?? {};
       setExpanded(!!data.expanded);
       if (typeof data.available === 'boolean') setCanExpand(data.available);
-    };
+    });
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       setExpanded((cur) => {
-        if (cur) window.parent.postMessage({ type: 'oa-agent:expand', expanded: false }, '*');
+        if (cur) hostBridge.send('ui:expand', { expanded: false });
         return false;
       });
     };
-    window.addEventListener('message', onMessage);
     window.addEventListener('keydown', onKeyDown);
     return () => {
-      window.removeEventListener('message', onMessage);
+      offState();
       window.removeEventListener('keydown', onKeyDown);
     };
   }, []);
@@ -505,10 +515,10 @@ export default function App() {
       pushMsg('sys', t('app.submittedHint'));
       // 通知宿主頁：表單已送出（widget.js 轉成 DOM 事件 / callback 供整合方接手，如關閉彈窗或導頁）
       if (EMBED) {
-        window.parent.postMessage(
-          { type: 'oa-agent:submitted', submission: data.submission ?? null },
-          '*',
-        );
+        hostBridge.send('event', {
+          name: 'oa-agent:submitted',
+          detail: { submission: data.submission ?? null },
+        });
       }
     }
   }
@@ -701,9 +711,9 @@ export default function App() {
     taRef.current?.focus();
   }
 
-  // 嵌入模式：通知外層 widget.js 收起彈窗（widget.js 監聽此 message）。未被嵌入時 parent===self，無副作用。
+  // 嵌入模式：通知外層 widget.js 收起彈窗（widget.js 監聽此 message）。未被嵌入時 hostBridge 停用，無副作用。
   function closeWidget() {
-    window.parent.postMessage({ type: 'oa-agent:close' }, '*');
+    hostBridge.send('ui:close');
   }
 
   // 嵌入模式：請外層 widget.js 放大／還原面板（放大時 widget 會蓋上背景遮罩）。
@@ -711,7 +721,7 @@ export default function App() {
   function toggleExpand() {
     const next = !expanded;
     setExpanded(next);
-    window.parent.postMessage({ type: 'oa-agent:expand', expanded: next }, '*');
+    hostBridge.send('ui:expand', { expanded: next });
   }
 
   const valueEntries = Object.entries(values).filter(

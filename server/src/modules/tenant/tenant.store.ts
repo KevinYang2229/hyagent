@@ -17,7 +17,15 @@ import { dataFile } from '@/lib/data-dir';
 import { connectDb, DbWriteQueue } from '@/lib/db';
 import { env } from '@/config/env';
 import { logger } from '@/lib/logger';
-import type { ApiKey, ApiKeyType, Tenant } from './tenant.types';
+import type { ApiKey, ApiKeyType, Tenant, TenantPublicKey, TenantPublicKeyStatus } from './tenant.types';
+import {
+  checkCanAddKey,
+  checkCanSetStatus,
+  parsePublicKey,
+  resolveAssertionSettings,
+  validateAssertionSettings,
+  type TenantAssertionSettings,
+} from './tenant-keys';
 
 const STORE_FILE = dataFile('oa-agent-tenants.json');
 
@@ -36,13 +44,15 @@ const tenants = new Map<string, Tenant>();
 const apiKeys = new Map<string, ApiKey>();
 
 // ---- 敏感欄位加密（持久層邊界；記憶體一律持有明文）----
-// 範圍：ssoSecret + llmConfig 兩把雲端 API key。未設 DATA_ENCRYPTION_KEY 時原樣進出。
+// 範圍：llmConfig 的兩把雲端 API key。未設 DATA_ENCRYPTION_KEY 時原樣進出。
+//
+// Assertion 公鑰**不在**此範圍內：公鑰本就可公開，加密它只會製造「以為受保護」的錯覺。
+// 改造前這裡還有 ssoSecret（HS256 共享密鑰），隨該路徑一併移除。
 
 /** 進持久層（file / db）前加密敏感欄位 */
 export function sealTenant(t: Tenant): Tenant {
   if (!env.DATA_ENCRYPTION_KEY) return t;
   const sealed: Tenant = { ...t };
-  if (sealed.ssoSecret) sealed.ssoSecret = encryptSecret(sealed.ssoSecret);
   if (sealed.llmConfig?.anthropicApiKey || sealed.llmConfig?.openaiApiKey) {
     sealed.llmConfig = { ...sealed.llmConfig };
     if (sealed.llmConfig.anthropicApiKey) {
@@ -58,7 +68,6 @@ export function sealTenant(t: Tenant): Tenant {
 /** 自持久層載入後解密（明文舊資料原樣放行） */
 export function unsealTenant(t: Tenant): Tenant {
   const open: Tenant = { ...t };
-  if (open.ssoSecret) open.ssoSecret = decryptSecret(open.ssoSecret);
   if (open.llmConfig?.anthropicApiKey || open.llmConfig?.openaiApiKey) {
     open.llmConfig = { ...open.llmConfig };
     if (open.llmConfig.anthropicApiKey) {
@@ -75,7 +84,6 @@ export function unsealTenant(t: Tenant): Tenant {
 function needsResealing(): boolean {
   if (!env.DATA_ENCRYPTION_KEY) return false;
   for (const t of tenants.values()) {
-    if (t.ssoSecret && !isEncrypted(t.ssoSecret)) return true;
     if (t.llmConfig?.anthropicApiKey && !isEncrypted(t.llmConfig.anthropicApiKey)) return true;
     if (t.llmConfig?.openaiApiKey && !isEncrypted(t.llmConfig.openaiApiKey)) return true;
   }
@@ -305,13 +313,11 @@ export const tenantStore = {
     return [...tenants.values()];
   },
 
-  createTenant(name: string, allowedOrigins: string[] = [], ssoSecret?: string): Tenant {
+  createTenant(name: string, allowedOrigins: string[] = []): Tenant {
     const tenant: Tenant = {
       id: randomBytes(8).toString('hex'),
       name,
-        allowedOrigins,
-      ssoSecret,
-      ssoVersion: randomBytes(16).toString('hex'),
+      allowedOrigins,
       createdAt: new Date().toISOString(),
     };
     tenants.set(tenant.id, tenant);
@@ -348,7 +354,6 @@ export const tenantStore = {
         | 'userDirectory'
         | 'name'
         | 'allowedOrigins'
-        | 'ssoSecret'
         | 'appearance'
         | 'disabledServices'
         | 'disabledForms'
@@ -367,7 +372,6 @@ export const tenantStore = {
       ...(patch.userDirectory !== undefined ? { userDirectory: structuredClone(patch.userDirectory) } : {}),
       ...(patch.name !== undefined ? { name: patch.name } : {}),
       ...(patch.allowedOrigins !== undefined ? { allowedOrigins: patch.allowedOrigins } : {}),
-      ...(patch.ssoSecret !== undefined ? { ssoSecret: patch.ssoSecret, ssoVersion: randomBytes(16).toString('hex') } : {}),
       ...(patch.appearance !== undefined
         ? { appearance: { ...tenant.appearance, ...patch.appearance } }
         : {}),
@@ -386,6 +390,103 @@ export const tenantStore = {
     tenants.set(id, next);
     persist();
     return next;
+  },
+
+  // ───────────── Assertion 公鑰（規格 §2.5、§7.3）─────────────
+
+  /** 列出租戶的公鑰與狀態。公鑰可公開，不需遮罩。 */
+  listPublicKeys(tenantId: string): TenantPublicKey[] {
+    return [...(tenants.get(tenantId)?.publicKeys ?? [])];
+  },
+
+  /**
+   * 上傳一把公鑰。kid 由後端依 RFC 7638 算出（規格 §2.4）。
+   *
+   * 同一 kid 重複上傳為**冪等**：回既有那筆、`created: false`，不新增也不改狀態（§7.3）。
+   */
+  addPublicKey(
+    tenantId: string,
+    input: { publicKey: string; label?: string },
+  ): { key: TenantPublicKey; created: boolean } | undefined {
+    const tenant = tenants.get(tenantId);
+    if (!tenant) return undefined;
+    const parsed = parsePublicKey(input.publicKey);
+    const { existing } = checkCanAddKey(tenant.publicKeys, parsed.kid);
+    if (existing) return { key: existing, created: false };
+
+    const now = new Date().toISOString();
+    const key: TenantPublicKey = {
+      kid: parsed.kid,
+      alg: parsed.alg,
+      publicKey: parsed.publicKey,
+      status: 'active',
+      ...(input.label?.trim() ? { label: input.label.trim() } : {}),
+      createdAt: now,
+    };
+    tenants.set(tenantId, { ...tenant, publicKeys: [...(tenant.publicKeys ?? []), key] });
+    persist();
+    return { key, created: true };
+  },
+
+  /**
+   * 變更公鑰狀態（停用 / 撤銷 / 重新啟用）。不變條件見 tenant-keys.ts。
+   *
+   * 注意：撤銷**只**改這裡的狀態。以該 kid 建立的既有 Session 由 auth session store
+   * 依 kid 批次作廢（規格 §2.6），呼叫端必須把兩件事一起做完才算撤銷完成。
+   */
+  setPublicKeyStatus(
+    tenantId: string,
+    kid: string,
+    status: TenantPublicKeyStatus,
+  ): TenantPublicKey | undefined {
+    const tenant = tenants.get(tenantId);
+    if (!tenant) return undefined;
+    checkCanSetStatus(tenant.publicKeys, kid, status);
+    const now = new Date().toISOString();
+    let updated: TenantPublicKey | undefined;
+    const publicKeys = (tenant.publicKeys ?? []).map((k) => {
+      if (k.kid !== kid) return k;
+      updated = { ...k, status, statusChangedAt: now };
+      return updated;
+    });
+    tenants.set(tenantId, { ...tenant, publicKeys });
+    persist();
+    return updated;
+  },
+
+  /** 逐租戶設定的現行值（未設者填規格預設）。後台總覽面板用（§11.1）。 */
+  getAssertionSettings(tenantId: string): TenantAssertionSettings | undefined {
+    const tenant = tenants.get(tenantId);
+    return tenant ? resolveAssertionSettings(tenant) : undefined;
+  },
+
+  /** 部分更新逐租戶設定；交叉條件（skew ≤ 有效期 ¼）以合併後的整組驗證。 */
+  updateAssertionSettings(
+    tenantId: string,
+    patch: { clockSkewSeconds?: number; assertionLifetimeSeconds?: number; sessionExpiresIn?: number },
+  ): TenantAssertionSettings | undefined {
+    const tenant = tenants.get(tenantId);
+    if (!tenant) return undefined;
+    const next = validateAssertionSettings(resolveAssertionSettings(tenant), patch);
+    tenants.set(tenantId, { ...tenant, ...next });
+    persist();
+    return next;
+  },
+
+  /**
+   * 撤銷判定專用的租戶讀取：db 模式**直接查 DB**，不走記憶體 Map。
+   *
+   * 規格 §2.6 第 1、2 條：公鑰與撤銷狀態的查詢不得使用 TTL > 30 秒的快取，且必須讀
+   * primary。本 store 的記憶體 Map 是 write-through 快取，多副本部署下在 A 副本撤銷的
+   * 公鑰，B 副本到重啟前都還會繼續接受——那是無限 TTL，遠超 30 秒上限（評估文件 §6.4）。
+   *
+   * file 模式沿用 Map：單一行程，Map 本身即 primary，沒有副本可落後。
+   */
+  async getTenantFromPrimary(id: string): Promise<Tenant | undefined> {
+    if (env.DATA_BACKEND !== 'db') return tenants.get(id);
+    const db = await connectDb();
+    const row = await db.tenantRow.findUnique({ where: { id } });
+    return row ? unsealTenant(tenantFromRow(row)) : undefined;
   },
 
   /**

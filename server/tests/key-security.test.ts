@@ -115,21 +115,19 @@ describe('API key 雜湊儲存', () => {
 });
 
 describe('敏感欄位靜態加密（落地層）', () => {
-  it('設定 DATA_ENCRYPTION_KEY：ssoSecret / BYO key 落地為密文、讀回為明文', () => {
+  it('設定 DATA_ENCRYPTION_KEY：BYO key 落地為密文、讀回為明文', () => {
     const dir = mkdtempSync(join(tmpdir(), 'oa-agent-keysec-'));
     const { store } = bootStoreIsolated({ OA_AGENT_DATA_DIR: dir, DATA_ENCRYPTION_KEY: TEST_ENC_KEY });
-    const t = store.createTenant('enc-test', [], 'sso-plain-secret');
+    const t = store.createTenant('enc-test', []);
     store.updateTenant(t.id, {
       llmConfig: { provider: 'anthropic', anthropicApiKey: 'sk-ant-byo-key-00001' },
     });
 
     // 記憶體一律明文（服務層直接可用）
-    expect(store.getTenant(t.id)?.ssoSecret).toBe('sso-plain-secret');
     expect(store.getTenant(t.id)?.llmConfig?.anthropicApiKey).toBe('sk-ant-byo-key-00001');
 
     // 落地檔案不含明文、帶 enc:v1: 標記
     const onDisk = readFileSync(join(dir, 'oa-agent-tenants.json'), 'utf-8');
-    expect(onDisk).not.toContain('sso-plain-secret');
     expect(onDisk).not.toContain('sk-ant-byo-key-00001');
     expect(onDisk).toContain('enc:v1:');
 
@@ -138,16 +136,29 @@ describe('敏感欄位靜態加密（落地層）', () => {
       OA_AGENT_DATA_DIR: dir,
       DATA_ENCRYPTION_KEY: TEST_ENC_KEY,
     });
-    expect(rebooted.getTenant(t.id)?.ssoSecret).toBe('sso-plain-secret');
     expect(rebooted.getTenant(t.id)?.llmConfig?.anthropicApiKey).toBe('sk-ant-byo-key-00001');
+  });
+
+  it('Assertion 公鑰刻意不加密：它本就可公開，加密只會製造受保護的錯覺', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'oa-agent-keysec-'));
+    const { store } = bootStoreIsolated({ OA_AGENT_DATA_DIR: dir, DATA_ENCRYPTION_KEY: TEST_ENC_KEY });
+    const { generateHyAgentKeyPair } = require('@/lib/assertion') as typeof import('@/lib/assertion');
+    const pair = generateHyAgentKeyPair('ES256');
+    const t = store.createTenant('pubkey-test', []);
+    store.addPublicKey(t.id, { publicKey: pair.publicKeyPem });
+
+    const onDisk = readFileSync(join(dir, 'oa-agent-tenants.json'), 'utf-8');
+    expect(onDisk).toContain('BEGIN PUBLIC KEY');
+    expect(store.listPublicKeys(t.id)[0].kid).toBe(pair.kid);
   });
 
   it('未設金鑰時維持現狀：明文落地（dev 便利、向後相容）', () => {
     const dir = mkdtempSync(join(tmpdir(), 'oa-agent-keysec-'));
     const { store } = bootStoreIsolated({ OA_AGENT_DATA_DIR: dir });
-    store.createTenant('plain-test', [], 'sso-visible');
+    const t = store.createTenant('plain-test', []);
+    store.updateTenant(t.id, { llmConfig: { provider: 'openai', openaiApiKey: 'sk-visible-plain' } });
     const onDisk = readFileSync(join(dir, 'oa-agent-tenants.json'), 'utf-8');
-    expect(onDisk).toContain('sso-visible');
-    expect(isEncrypted('sso-visible')).toBe(false);
+    expect(onDisk).toContain('sk-visible-plain');
+    expect(isEncrypted('sk-visible-plain')).toBe(false);
   });
 });

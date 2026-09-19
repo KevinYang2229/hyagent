@@ -37,7 +37,7 @@
         <div class="feature">
           <h3>⚡ 一行嵌入</h3>
           <p>
-            <code>&lt;script src=".../widget.js"&gt;</code> 貼上即用，純
+            <code>&lt;script src=".../sdk/widget.js"&gt;</code> 貼上即用，純
             JS、零依賴、不必打包。
           </p>
         </div>
@@ -48,7 +48,7 @@
         <div class="feature">
           <h3>🔐 SSO 免登入</h3>
           <p>
-            帶 <code>data-user-token</code> 沿用宿主登入身分，使用者免再登入。
+            帶 <code>data-token-url</code> 指向你家的 Identity Endpoint，沿用宿主登入身分，使用者免再登入。
           </p>
         </div>
         <div class="feature">
@@ -79,18 +79,27 @@
       <section id="usage" class="usage">
         <h2>怎麼接？三步</h2>
         <ol>
-          <li>跟我們申請租戶，拿到公開金鑰 <code>pk_…</code>。</li>
           <li>
-            （選用）你的後端用租戶 ssoSecret 簽
-            <code>userToken</code> 達成免登入。
+            跟我們申請租戶，拿到 Tenant ID 與公開金鑰 <code>pk_…</code>；
+            你自己產一組金鑰對，把<strong>公鑰</strong>交給我們登記。
+            <strong>私鑰留在你的環境，我們不持有</strong>。
+          </li>
+          <li>
+            你的後端開一支 Identity Endpoint，用<strong>你自己的私鑰</strong>現簽一張短效憑證，
+            widget 需要時才來取（<code>data-token-url</code>）。
           </li>
           <li>
             在頁面貼上載入碼：<br /><code
-              >&lt;script src="https://你的網域/widget.js"
-              data-key="pk_…"&gt;&lt;/script&gt;</code
+              >&lt;script src="https://hyagent.example.com/sdk/widget.js"
+              data-key="pk_…" data-token-url="/api/mybot/identity"&gt;&lt;/script&gt;</code
             >
           </li>
         </ol>
+        <p class="note">
+          <strong><code>src</code> 用我們提供給你的 HyAgent 網域</strong>——
+          widget 與聊天面板都由我們託管，你不需要自行部署或代管任何檔案；
+          要換成你自己網域的只有 <code>data-key</code> 與 <code>data-token-url</code>。
+        </p>
         <p class="note">
           本頁即為示範：已自動帶入 SSO，點右下角小幫手就能直接對話。
         </p>
@@ -101,22 +110,19 @@
     <script>
       (function () {
         var cfg = window.__OA__;
-        fetch("/sso-token")
-          .then(function (r) {
-            return r.json();
-          })
-          .then(function (d) {
-            var s = document.createElement("script");
-            s.src = cfg.origin + "/widget.js";
-            s.setAttribute("data-key", cfg.key);
-            // 前後端分開部署時，API 在 server 網域（≠ widget.js 的 client 網域）→ 明確指定。
-            if (cfg.api) s.setAttribute("data-api", cfg.api);
-            s.setAttribute("data-user-token", d.userToken);
-            // 不設 data-title → 啟動按鈕沿用租戶後台設定的 AI 名稱（與面板內名稱一致）。
-            // 若要在本宿主頁覆寫成自訂文字，再取消下一行註解：
-            // s.setAttribute("data-title", "Hyweb 小幫手");
-            document.body.appendChild(s); // 不設 data-launcher → 顯示預設右下浮動按鈕
-          });
+        var s = document.createElement("script");
+        s.src = cfg.origin + "/sdk/widget.js";
+        s.setAttribute("data-key", cfg.key);
+        // 前後端分開部署時，API 在 server 網域（≠ widget.js 的 client 網域）→ 明確指定。
+        if (cfg.api) s.setAttribute("data-api", cfg.api);
+        // Token Provider：本站自家的 Identity Endpoint。widget 需要身分時才來這裡現取一張，
+        // 不再由本頁預先取好再寫進 script 標籤——那張票只有幾分鐘有效且是一次性的，
+        // 使用者真的點開面板時多半已經過期（規格 §6.5）。
+        s.setAttribute("data-token-url", "/api/mybot/identity");
+        // 不設 data-title → 啟動按鈕沿用租戶後台設定的 AI 名稱（與面板內名稱一致）。
+        // 若要在本宿主頁覆寫成自訂文字，再取消下一行註解：
+        // s.setAttribute("data-title", "Hyweb 小幫手");
+        document.body.appendChild(s); // 不設 data-launcher → 顯示預設右下浮動按鈕
       })();
     </script>
   </body>

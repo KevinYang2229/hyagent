@@ -106,7 +106,7 @@ Zeabur 連上 GitHub repo 後，會 watch 指定分支；**每次 `git push` 到
 
 14. 在同一個 Project 再 **Add Service → Git → 選同一個 oa-agent repo**。
 15. 因為這支 Dockerfile 名稱不是 server/client/admin，**一定要**到 **Variables** 加 `ZBPACK_DOCKERFILE_NAME = presale-tenant`（後綴，不是完整檔名）。
-16. 同一個 **Variables** 加（見下方表）：`OA_ORIGIN` 填 **client 服務**的 Domain（widget panel 從 client 載入）、`TENANT_PK` / `TENANT_SSO_SECRET` 填**目標租戶**的公開金鑰與 SSO 密鑰、`DEMO_USER_*` 自訂展示用使用者。
+16. 同一個 **Variables** 加（見下方表）：`OA_ORIGIN` 填 **client 服務**的 Domain（widget panel 從 client 載入）、`TENANT_PK` / `TENANT_ID` / `TENANT_PRIVATE_KEY` 填**目標租戶**的公開金鑰、租戶 id 與簽發私鑰、`DEMO_USER_*` 自訂展示用使用者。
 17. **Networking → 產生 Domain**（例：`hyagent-demo.zeabur.app`）。
 18. 回服務 A（server）把這個 demo 的 Domain **也加進 `CORS_ORIGIN`**，並確認該租戶的 `allowedOrigins` 含此 Domain（widget.js 會跨網域抓 `/widget/config`）。
 
@@ -118,7 +118,9 @@ Zeabur 連上 GitHub repo 後，會 watch 指定分支；**每次 `git push` 到
 
 | 變數                 | 必填     | 範例 / 說明                                                                                                                                                                                                |
 | -------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `NODE_ENV`           | 建議     | `production`                                                                                                                                                                                               |
+| `NODE_ENV`           | 建議     | `production`（`Dockerfile.server` 已內建，不設也是這個值）                                                                                                                                                  |
+| `DATA_BACKEND`       | ✅ 必填  | 正式環境填 `db`（另需 `DATABASE_URL`，且 DDL 要先套，見上方先決條件）。**留空＝`file`，在 `production` 下會 boot fail-fast**——見下一列                                                                      |
+| `ALLOW_FILE_BACKEND_IN_PRODUCTION` | 視需要 | 只有「確定單一副本 + 持久磁碟、仍要用 `file`」時填 `true`。file 模式的記憶體 Map 就是 primary，多副本下撤銷不會傳播、Session 隨負載平衡飄移，且**不會有任何錯誤訊息**，所以要求明示                          |
 | `ANTHROPIC_API_KEY`  | ✅ 必填  | 沒填 server 啟動會直接 fail-fast 退出                                                                                                                                                                      |
 | `JWT_ACCESS_SECRET`  | ✅       | ≥32 字元隨機字串                                                                                                                                                                                           |
 | `JWT_REFRESH_SECRET` | ✅       | ≥32 字元隨機字串（與上者不同）                                                                                                                                                                             |
@@ -159,12 +161,14 @@ Zeabur 連上 GitHub repo 後，會 watch 指定分支；**每次 `git push` 到
 | ------------------------ | ---- | -------------------------------------------------------------------------------------- |
 | `OA_ORIGIN`              | ✅   | **client（widget）服務**的對外網址（widget panel 從這裡載入）。runtime 讀取，不需 bake |
 | `TENANT_PK`              | ✅   | 目標租戶的公開金鑰 `pk_…`（可放前端，會注入頁面）                                      |
-| `TENANT_SSO_SECRET`      | ✅   | 該租戶的 SSO 密鑰；**機密，只在此 server 端用來簽 token**，切勿放前端                  |
+| `TENANT_ID`              | ✅   | 租戶 id，會成為 Assertion 的 `iss`                                                    |
+| `TENANT_PRIVATE_KEY`     | ✅   | 簽發 Assertion 的私鑰（PKCS#8 PEM）；**機密，只在此 server 端使用**，切勿放前端；對應公鑰須已在後台登記 |
 | `DEMO_USER_ID`           | 選填 | 模擬登入者帳號（預設 `hyweb`）                                                         |
 | `DEMO_USER_NAME`         | 選填 | 模擬登入者姓名（預設 `測試員`）                                                        |
 | `ZBPACK_DOCKERFILE_NAME` | ✅   | 固定填 `presale-tenant`（後綴）；因服務名不會剛好等於它                                |
 
-> 這個 demo 的 `TENANT_SSO_SECRET` 必須等於該租戶建立時設定的 `ssoSecret`，否則 SSO 換 token 會失敗。
+> 這個 demo 需要 `TENANT_ID`（＝租戶 id，會成為 Assertion 的 `iss`）與 `TENANT_PRIVATE_KEY`，
+> 且該私鑰對應的公鑰必須已在後台登記給同一個租戶，否則換發會回 `UNKNOWN_KID`。
 > 並記得把此 demo 的 Domain 加進 server 的 `CORS_ORIGIN` 與該租戶 `allowedOrigins`。
 
 ---

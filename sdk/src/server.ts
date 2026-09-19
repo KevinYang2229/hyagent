@@ -1,52 +1,34 @@
 /**
- * @hyagent/sdk/server — 伺服器端 SSO 工具（給「整合方後端」用）。
+ * @hyagent/sdk/server — 伺服器端工具（給「整合方後端」用）。
  *
- * 用途：整合方在自己的後端，於使用者登入後，用該租戶的 ssoSecret 簽一張「終端使用者 token」，
- * 交給前端塞進 HyAgent widget（data-user-token）。HyAgent 收到後驗章換發本系統 token，達成免登入。
+ * 兩塊內容：
+ *   1. Identity Assertion 簽發（`issueAssertion` / `generateKeyPair`）——貴方的
+ *      Identity Endpoint（規格 §5.2）拿它簽發短效憑證，widget 需要身分時來取。
+ *   2. Webhook 事件驗簽。
  *
- * 注意：依賴 jsonwebtoken，僅供 Node 端使用；瀏覽器端請用主入口 createOAAgent。
- * ssoSecret 是後端機密，切勿外洩到前端。
+ * 零執行期相依，只用 `node:crypto`；僅供 Node 端使用，瀏覽器端請用主入口 createOAAgent。
+ *
+ * **私鑰絕不可離開貴方環境**（規格 §2.2）。HyAgent 只持有公鑰，因此沒有能力偽造
+ * 任何一位使用者的身分——改造前的 `ssoSecret`（HS256 共享密鑰）雙方都持有，做不到這點。
  */
-import jwt, { type SignOptions } from 'jsonwebtoken';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
-export interface UserTokenClaims {
-  /** 終端使用者在宿主系統的唯一識別（工號 / 帳號） */
-  sub: string;
-  /** 顯示名稱（選填） */
-  name?: string;
-  /** 角色（舊版相容欄位；HyAgent 不採用此值授權，一律換發 employee） */
-  role?: string;
-}
-
-export interface SignUserTokenOptions extends UserTokenClaims {
-  /** 該租戶的 ssoSecret（建租戶時設定，須留在後端） */
-  secret: string;
-  /** 有效期，預設 '5m'（建議短效，因為會出現在前端） */
-  expiresIn?: SignOptions['expiresIn'];
-}
-
-/**
- * 用租戶 ssoSecret 簽一張 HyAgent SSO user token。
- * 回傳的字串交給前端，作為 widget 的 data-user-token 或 SDK 的 userToken。
- */
-export function signUserToken(opts: SignUserTokenOptions): string {
-  const { secret, sub, name, role, expiresIn = '5m' } = opts;
-  if (!secret) throw new Error('signUserToken: secret（租戶 ssoSecret）為必填');
-  if (!sub) throw new Error('signUserToken: sub（使用者識別）為必填');
-  const claims: UserTokenClaims = { sub };
-  if (name !== undefined) claims.name = name;
-  if (role !== undefined) claims.role = role;
-  return jwt.sign(claims, secret, { expiresIn, algorithm: 'HS256', issuer: 'hyagent:handoff', audience: 'hyagent:sso' });
-}
-
-/**
- * 驗證一張 user token（測試 / 除錯用；正式環境的驗章由 HyAgent 後端負責）。
- * 失敗會丟出 jsonwebtoken 的錯誤。
- */
-export function verifyUserToken(token: string, secret: string): UserTokenClaims {
-  return jwt.verify(token, secret, { algorithms: ['HS256'], issuer: 'hyagent:handoff', audience: 'hyagent:sso', maxAge: '5m' }) as UserTokenClaims;
-}
+// Identity Assertion 簽發（規格 §3、§4）。零相依，見 ./assertion.ts。
+export {
+  AssertionIssuer,
+  DEFAULT_AUDIENCE,
+  DEFAULT_LIFETIME_SECONDS,
+  MAX_ASSERTION_BYTES,
+  MAX_LIFETIME_SECONDS,
+  MIN_RSA_MODULUS_BITS,
+  computeKid,
+  detectAlgorithm,
+  generateKeyPair,
+  issueAssertion,
+  type AssertionAlgorithm,
+  type GeneratedKeyPair,
+  type IssueAssertionOptions,
+} from './assertion.ts';
 
 // ───────────────────────── Webhook 接收端工具 ─────────────────────────
 

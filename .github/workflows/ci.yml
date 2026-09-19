@@ -58,7 +58,7 @@ jobs:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/oa_agent_test
       # 開機 fail-fast 需要的最小 env（db-smoke 不實際呼叫 LLM）
       ANTHROPIC_API_KEY: ci-dummy-key
-      # 走加密路徑（驗證 ssoSecret / BYO key 落地加密＋讀回解密）
+      # 走加密路徑（驗證 BYO key / Session 使用者識別碼落地加密＋讀回解密）
       DATA_ENCRYPTION_KEY: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
     steps:
       - uses: actions/checkout@v4

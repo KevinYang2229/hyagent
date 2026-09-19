@@ -44,17 +44,21 @@
         這個頁面模擬第三方網站。它本身與 OA 系統無關，只在頁尾加入了一行 widget
         載入碼，右下角就會出現浮動按鈕；點擊後彈出聊天視窗即可串接後端 AI。
       </p>
-      <p>最簡接入（對方只需貼這一行，落到預設租戶，向後相容）：</p>
+      <p>
+        最簡接入（對方只需貼這一行，落到預設租戶，向後相容）。
+        <strong><code>src</code> 一律是 HyAgent 自己的網域</strong>——
+        widget 與面板都由 HyAgent 託管，整合方不需要代管任何檔案：
+      </p>
       <code
-        >&lt;script src="https://你的網域/widget.js"&gt;&lt;/script&gt;</code
+        >&lt;script src="https://hyagent.example.com/sdk/widget.js"&gt;&lt;/script&gt;</code
       >
 
       <p>產品化接入（多租戶、預選表單、語言、外觀、SSO）：</p>
       <code
-        >&lt;script src="https://你的網域/widget.js" data-title="客服小幫手"
+        >&lt;script src="https://hyagent.example.com/sdk/widget.js" data-title="客服小幫手"
         data-key="pk_xxxxx" data-form="leave-request" data-locale="zh-Hant"
-        data-theme="light" data-position="right" data-user-token="&lt;宿主簽發的
-        JWT&gt;"&gt;&lt;/script&gt;</code
+        data-theme="light" data-position="right"
+        data-token-url="/your/token-endpoint"&gt;&lt;/script&gt;</code
       >
 
       <p>宿主頁可監聽事件、或程式化控制：</p>
@@ -75,7 +79,7 @@
       });
     </script>
     <script
-      src="/widget.js"
+      src="/sdk/widget.js"
       data-title="OA 小幫手"
       data-form="leave-request"
       data-locale="zh-Hant"

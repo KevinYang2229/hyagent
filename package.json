@@ -12,6 +12,7 @@
     "admin"
   ],
   "scripts": {
+    "keygen": "node sdk/bin/keygen.mjs",
     "dev:server": "npm run dev -w server",
     "dev:client": "npm run dev -w client",
     "dev:admin": "npm run dev -w admin",

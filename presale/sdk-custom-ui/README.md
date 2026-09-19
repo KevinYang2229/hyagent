@@ -19,7 +19,7 @@
 ## 執行
 
 前提：HyAgent server 已啟動，且 `TENANT_PK` 對應的租戶
-**`allowedOrigins` 含 `http://localhost:4200`（或 `*`）且有 `ssoSecret`**。
+**`allowedOrigins` 含 `http://localhost:4200`（或 `*`）且已登記 Assertion 公鑰**。
 
 ```bash
 # 從 repo 根目錄
@@ -34,16 +34,17 @@ open http://localhost:4200
 ```
 瀏覽器開 http://localhost:4200
    │
-   ├─ 取 SSO token ── GET /sso-token（後端用 SDK signUserToken 簽）
+   ├─ 取 Assertion ── GET /api/mybot/identity（後端用 SDK issueAssertion 以私鑰簽）
+   │     ↑ 由 SDK 依需要重複呼叫：首次換發、Session 到期前 60 秒、收到 401 時
    ├─ 載入 /app.js（esbuild 把 app.ts + @hyagent/sdk 打包成 ESM）
    │
-   └─ app.ts：createOAAgent({ key, userToken, apiBase }) → authenticate()
+   └─ app.ts：createOAAgent({ key, assertion: fetchAssertion, apiBase }) → refreshIdentity()
         → conversations.create / sendMessage / submit
         → 自己渲染訊息、suggestions、已收集欄位（全部自訂 DOM/CSS）
 ```
 
 ## 設定
 
-環境變數同 [.env.example](.env.example)：`PORT / OA_ORIGIN / TENANT_PK / TENANT_SSO_SECRET / DEMO_USER_ID / DEMO_USER_NAME`。
+環境變數同 [.env.example](.env.example)：`PORT / OA_ORIGIN / TENANT_PK / TENANT_ID / TENANT_PRIVATE_KEY / DEMO_USER_ID / DEMO_USER_NAME`。
 
 > 關鍵：SDK 自訂 UI 是**跨網域**呼叫 OA，務必確認租戶 `allowedOrigins` 含本站網址，否則被 CORS 擋。

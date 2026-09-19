@@ -15,16 +15,18 @@
       "default": "./src/server.ts"
     }
   },
+  "bin": {
+    "hyagent-keygen": "./bin/keygen.mjs"
+  },
   "scripts": {
+    "keygen": "node bin/keygen.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
-    "@hyagent/shared": "*",
-    "jsonwebtoken": "^9.0.2"
+    "@hyagent/shared": "*"
   },
   "devDependencies": {
-    "@types/jsonwebtoken": "^9.0.7",
     "typescript": "^5.6.3",
     "vitest": "^2.1.8"
   }

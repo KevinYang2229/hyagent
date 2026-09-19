@@ -14,12 +14,20 @@ export const envSchema = z.object({
   // store 持久化後端：file＝記憶體 Map + JSON 檔（沿用既有行為）；db＝記憶體 Map + Postgres write-through
   // （第一階段僅 tenant store 支援 db，其餘 store 仍走檔案；見 tenant.store.ts）
   DATA_BACKEND: z.enum(['file', 'db']).default('file'),
+  // production 仍要用 file 模式時的明示開關（見 superRefine 的 fail-fast）。
+  // 不用 z.coerce.boolean()：它把任何非空字串都當 true，連 'false' 也是——安全開關不能有這種陷阱。
+  ALLOW_FILE_BACKEND_IN_PRODUCTION: z
+    .preprocess(
+      (v) => (typeof v === 'string' ? v.trim().toLowerCase() : v),
+      z.enum(['true', 'false', '1', '0']).default('false'),
+    )
+    .transform((v) => v === 'true' || v === '1'),
   // DATA_BACKEND=db 時必填（Supabase 建議用 session pooler；transaction pooler 需加 ?pgbouncer=true）
   DATABASE_URL: z.string().optional(),
   // Prisma 連線池上限；未設時 lib/db 會套用保守預設（見該檔的 DEFAULT_CONNECTION_LIMIT）。
   // Supabase session pooler 全帳號共用 15 條，Prisma 的原生預設會超過。
   DB_CONNECTION_LIMIT: z.coerce.number().int().positive().optional(),
-  // 敏感欄位靜態加密金鑰（BYO LLM key / ssoSecret）：64 hex（openssl rand -hex 32）。
+  // 敏感欄位靜態加密金鑰（BYO LLM key / Session 上的使用者識別碼）：64 hex（openssl rand -hex 32）。
   // 未設＝明文落地（dev 便利）；設定後新寫入即加密，舊明文資料開機自動補加密。
   // 空字串視為未設定（測試環境以 '' 固定關閉加密，見 tests/setup-env.ts）
   DATA_ENCRYPTION_KEY: z.preprocess(
@@ -161,6 +169,21 @@ export const envSchema = z.object({
         path: ['AUTH_DEV_PASSWORD'],
         message:
           'AUTH_DEV_PASSWORD must be overridden when AUTH_PASSWORD_LOGIN=on in production (still using insecure dev default)',
+      });
+    }
+    // file 模式的每一項機制都建立在「只有一個副本」上：記憶體 Map 即 primary、
+    // 落檔用 `wx` 當鎖、auth session 與 jti 的索引開機才重建。多副本跑 file 不會報錯，
+    // 只會安靜地各自為政——A 副本撤銷的公鑰，B 副本在重啟前仍繼續接受（規格 §2.6 的
+    // 「快取 TTL ≤ 30 秒」在這個情況下等同無限），使用者的 Session 也會隨負載平衡時有時無。
+    // 單副本 + 持久磁碟是合法部署，所以不是硬擋，而是要求明示：把單副本這個前提寫進環境變數。
+    if (val.DATA_BACKEND === 'file' && !val.ALLOW_FILE_BACKEND_IN_PRODUCTION) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['DATA_BACKEND'],
+        message:
+          'DATA_BACKEND=file assumes a single replica and is refused in production. ' +
+          'Set DATA_BACKEND=db (with DATABASE_URL), or set ALLOW_FILE_BACKEND_IN_PRODUCTION=true ' +
+          'if this deployment really runs exactly one replica backed by persistent storage.',
       });
     }
   }

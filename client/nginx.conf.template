@@ -39,14 +39,24 @@ server {
         try_files $uri =404;
     }
 
-    # widget.js 是第三方網站直接嵌入的入口檔，檔名固定、不帶 hash，改版後對方瀏覽器
-    # 多久拿到新版必須可控。先前這裡沒有任何 Cache-Control，瀏覽器會改用「啟發式快取」
-    # （依 Last-Modified 的久遠程度自行推算，通常取距今時間的 10%），檔案越久沒動就被
-    # 快取越久且不重新驗證——實際造成過宿主頁跑舊版 widget、後台改了外觀卻沒反應。
-    # no-cache 不是不快取：仍會存下來，但每次都帶 ETag 回來問，沒改回 304 不重下載。
-    location = /widget.js {
-        add_header Cache-Control "no-cache";
+    # /sdk/widget.js 是第三方網站直接嵌入的入口檔（規格 §7.2 定稿的對外路徑），
+    # 檔名固定、不帶 hash，改版後對方瀏覽器多久拿到新版必須可控。沒有 Cache-Control 時
+    # 瀏覽器會改用「啟發式快取」（依 Last-Modified 的久遠程度自行推算，通常取距今時間的
+    # 10%），檔案越久沒動就被快取越久且不重新驗證——實際造成過宿主頁跑舊版 widget、
+    # 後台改了外觀卻沒反應。
+    #
+    # 規格要求 max-age ≤ 300：這條路徑是可變的，緊急修補靠「就地更新」推送，
+    # 而 300 秒就是修補的傳播上限。這也是為什麼規格不強制 SRI——鎖住雜湊等於鎖住修補。
+    location = /sdk/widget.js {
+        add_header Cache-Control "public, max-age=300";
         try_files $uri =404;
+    }
+
+    # 舊的根路徑：檔案已搬到 /sdk/widget.js，這裡不留別名也不轉址——規格 §7.2 要的是
+    # 單一可變路徑。但必須明確回 404：不寫這條會掉進下面的 SPA fallback 拿到 index.html，
+    # 宿主頁把 HTML 當 JS 執行只會噴一句 "Unexpected token '<'"，完全看不出是路徑改了。
+    location = /widget.js {
+        return 404;
     }
 
     # 後端 API

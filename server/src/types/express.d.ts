@@ -9,6 +9,8 @@ declare global {
       tenant?: Tenant;
       /** 帶入的 API Key 種類；未帶 key 時 undefined */
       apiKeyType?: ApiKeyType;
+      /** 以 HyAgent Session（不透明 token）通過驗證時的原始 token，供登出使用 */
+      authSessionToken?: string;
     }
   }
 }

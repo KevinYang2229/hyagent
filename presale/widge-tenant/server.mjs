@@ -5,19 +5,23 @@
  * 點擊彈出聊天室，並自動 SSO 免登入。
  *
  * 本服務負責：
- *   1. /sso-token   — 用 SDK 的 signUserToken 簽 user token（模擬整合方後端）。
+ *   1. /api/mybot/identity — Identity Endpoint（規格 §5.2）：用 SDK 的 issueAssertion
+ *      以**私鑰**現簽一張短效 Assertion（模擬整合方後端）。路徑沿用規格範例，可直接照抄。
  *   2. /styles.css  — landing page 樣式。
  *   3. /            — landing page，注入 OA 來源與租戶金鑰，bootstrap 載入 widget。
  *
  * 執行（從 repo 根目錄）：node presale/widge-tenant/server.mjs → 開 http://localhost:4000
- * 設定見同目錄 .env（server 會自動載入）：PORT / OA_ORIGIN / TENANT_PK / TENANT_SSO_SECRET / DEMO_USER_*
+ * 設定見同目錄 .env（server 會自動載入）：PORT / OA_ORIGIN / TENANT_PK / TENANT_PRIVATE_KEY / DEMO_USER_*
+ *
+ * 私鑰未設時會**當場產生一組**並把公鑰印在 console，方便第一次跑起來；正式環境請把私鑰
+ * 放進 KMS / Vault 或環境變數，且**絕不可**讓它離開貴方環境（規格 §2.2）。
  */
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-// 用 SDK 的伺服器端工具簽 token（取代直接呼叫 jsonwebtoken）
-import { signUserToken } from '@hyagent/sdk/server';
+// 用 SDK 的伺服器端工具簽 Assertion（零相依，只用 node:crypto）
+import { computeKid, generateKeyPair, issueAssertion } from '@hyagent/sdk/server';
 
 const DIR = path.dirname(fileURLToPath(import.meta.url));
 
@@ -33,21 +37,31 @@ const OA_ORIGIN = process.env.OA_ORIGIN ?? 'http://localhost:3000';
 // API（server）對外來源。前後端分開部署時，這要指向 server 網域（≠ 載入 widget.js 的 client 網域）。
 // 同網域 / dev proxy 情境留空即可（預設沿用 OA_ORIGIN）。
 const OA_API_ORIGIN = process.env.OA_API_ORIGIN ?? OA_ORIGIN;
-// ↓↓↓ 換成你自己的租戶 pk 與 ssoSecret（建租戶時取得/設定）↓↓↓
+// ↓↓↓ 換成你自己的租戶 pk 與 Tenant ID（建租戶時取得）↓↓↓
 const TENANT_PK =
   process.env.TENANT_PK ?? 'pk_3dc8a9721d103efb0972aac2c0ef79d237698f765178fc6a';
-const TENANT_SSO_SECRET = process.env.TENANT_SSO_SECRET ?? 'test-secret1234567890';
+// Assertion 的 iss 必須等於 Tenant ID（規格 §8.4 步驟 10）——它現在是換發時的租戶依據，
+// pk 只影響外觀與 CORS，不再參與身分判定。
+const TENANT_ID = process.env.TENANT_ID ?? '';
+// 私鑰：正式環境放 KMS / Vault / 環境變數。未設時當場產一組，只為了讓 demo 跑得起來。
+const generated = process.env.TENANT_PRIVATE_KEY ? null : generateKeyPair('ES256');
+const PRIVATE_KEY = process.env.TENANT_PRIVATE_KEY ?? generated.privateKeyPem;
+const PUBLIC_KEY = generated?.publicKeyPem ?? null;
 // 模擬「對方系統目前登入的使用者」
 const DEMO_USER_ID = process.env.DEMO_USER_ID ?? 'hyweb';
 const DEMO_USER_NAME = process.env.DEMO_USER_NAME ?? '測試員';
 
-/** 模擬：使用者已登入對方系統 → 後端用租戶 ssoSecret 簽一張短效 userToken（透過 SDK） */
-function mintUserToken() {
-  return signUserToken({
-    sub: DEMO_USER_ID,
-    name: DEMO_USER_NAME,
-    secret: TENANT_SSO_SECRET,
-    expiresIn: '5m',
+/**
+ * 模擬：使用者已登入對方系統 → 後端以私鑰現簽一張短效 Assertion。
+ *
+ * 每次呼叫都重簽：Assertion 有效期 60 秒且一次性，快取重用會被 TOKEN_REPLAYED 拒絕（§6.5）。
+ */
+function mintAssertion() {
+  return issueAssertion({
+    privateKey: PRIVATE_KEY,
+    tenant: TENANT_ID,
+    subject: DEMO_USER_ID,
+    profile: { name: DEMO_USER_NAME },
   });
 }
 
@@ -60,10 +74,31 @@ const html = fs
   );
 
 const server = http.createServer((req, res) => {
-  if (req.url === '/sso-token') {
-    // 真實情境：這裡會先確認「使用者已登入本系統」，再用 ssoSecret 簽 token
-    res.writeHead(200, { 'content-type': 'application/json' });
-    res.end(JSON.stringify({ userToken: mintUserToken() }));
+  if (req.url === '/api/mybot/identity') {
+    // 規格 §5.2：GET；認證一律以「自家的登入 Session」判定，不得接受前端傳入的身分參數。
+    // 本 demo 假設使用者已登入（DEMO_USER_*）；真實情境這裡要先驗自家 cookie，未登入回 401。
+    if (req.method !== 'GET') {
+      res.writeHead(405, { allow: 'GET' }).end();
+      return;
+    }
+    // 簽發失敗（最常見：忘了設 TENANT_ID）必須回成錯誤回應，不能讓它往上炸——
+    // 這支 demo 是單一 http server，未捕捉的例外會直接讓整個行程結束，
+    // 表現成「點一下小幫手，網站就掛了」，而真正的原因埋在 console 最底下。
+    let token;
+    try {
+      token = mintAssertion();
+    } catch (err) {
+      console.error('[identity] 簽發失敗：', err.message);
+      res.writeHead(500, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+      res.end(JSON.stringify({ error: 'ISSUE_FAILED', message: err.message }));
+      return;
+    }
+    res.writeHead(200, {
+      'content-type': 'application/json',
+      // 規格 §5.2、§10.1：憑證不得被 CDN / 瀏覽器快取
+      'cache-control': 'no-store',
+    });
+    res.end(JSON.stringify({ token, expiresIn: 60 }));
     return;
   }
   if (req.url === '/hy_logo.png') {
@@ -88,5 +123,13 @@ server.listen(PORT, () => {
   console.log(`模擬租戶網站已啟動： http://localhost:${PORT}`);
   console.log(`  → HyAgent:    ${OA_ORIGIN}`);
   console.log(`  → 租戶 pk:     ${TENANT_PK.slice(0, 12)}…`);
+  console.log(`  → Tenant ID:  ${TENANT_ID || '(未設！Assertion 的 iss 會是空字串，換發必失敗)'}`);
   console.log(`  → 登入使用者:  ${DEMO_USER_NAME}(${DEMO_USER_ID})`);
+  if (PUBLIC_KEY) {
+    console.log('');
+    console.log('  未設 TENANT_PRIVATE_KEY，已當場產生一組金鑰（重啟會變）。');
+    console.log(`  請到 HyAgent 後台把下面這把公鑰貼給租戶 ${TENANT_ID}（kid: ${computeKid(PUBLIC_KEY)}）：`);
+    console.log('');
+    console.log(PUBLIC_KEY);
+  }
 });

@@ -2,9 +2,14 @@
  * 嵌入模式設定：解析 widget iframe URL 上的查詢參數。
  *
  * widget.js 會把宿主頁的 data-* 設定轉成 query：
- *   /?embed=1&key=pk_xxx&form=leave-request&locale=zh-Hant&theme=dark&userToken=<jwt>
+ *   /?embed=1&key=pk_xxx&form=leave-request&locale=zh-Hant&theme=dark&host=https%3A%2F%2Foa.example.com&identity=1
  *
  * 全部選填——未帶任何參數時等同改造前的純 ?embed=1 行為（向後相容）。
+ *
+ * 這裡**沒有**身分憑證：Assertion 改由 postMessage 握手取得（規格 §6.6、§10.1），
+ * 詳見 hostBridge.ts。URL 上只留得下「宿主 origin」與「宿主有沒有設 token provider」
+ * 這兩個非機敏的事實——前者是 postMessage 的 targetOrigin 必須事先知道的值，
+ * 後者讓面板不必為了沒有 provider 的宿主頁白等一次握手。
  */
 import type { TenantAppearance } from '@hyagent/shared';
 import type { SuggestedPrompts } from './knowledgePrompt';
@@ -43,8 +48,17 @@ export const embedConfig = {
   theme: (pick('theme') as Theme | null) ?? null,
   /** AI 名稱覆寫（後台預覽即時帶入；優先於後端外觀） */
   assistantName: pick('name'),
-  /** SSO handoff：宿主簽發的終端使用者 token，換發本系統 token（免內部帳密登入） */
-  userToken: pick('userToken'),
+  /**
+   * 宿主頁 origin，由 widget.js 於建立 iframe 時帶入。
+   * postMessage 的 targetOrigin 必須是具體 origin（§6.6 禁用 "*"），而面板無法自行
+   * 得知宿主是誰——`document.referrer` 會被宿主頁的 Referrer-Policy 清掉，只能當退路。
+   */
+  hostOrigin: pick('host'),
+  /**
+   * 宿主頁是否備有 token provider（widget.js 判定：有設 data-token-url 才帶 identity=1）。
+   * 沒有就不必送 identity:request，直接走匿名／自行登入。
+   */
+  identityAvailable: params.get('identity') === '1',
 };
 
 // API 來源：與 api.ts 同源。dev 留空走相對路徑（Vite proxy）；
