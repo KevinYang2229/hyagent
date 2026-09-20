@@ -373,3 +373,51 @@ describe('UI 訊息與對宿主頁的事件轉發', () => {
     expect(onEvent).toHaveBeenCalledWith(expect.objectContaining({ type: 'oa-agent:submitted' }));
   });
 });
+
+describe('data-debug：整合期把身分握手印到 console', () => {
+  /** 組一張形狀正確的 JWS（簽章是假的——widget.js 只解碼顯示，不驗章） */
+  function fakeAssertion(claims: Record<string, unknown>): string {
+    const b64 = (o: unknown) => Buffer.from(JSON.stringify(o), 'utf-8').toString('base64url');
+    return `${b64({ alg: 'ES256', typ: 'JWT', kid: 'kid-abc' })}.${b64(claims)}.c2ln`;
+  }
+
+  it('未設 data-debug 時什麼都不印，panel URL 也不帶 debug=1', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.stubGlobal('fetch', mockFetch(ok({ token: fakeAssertion({ sub: 'hyweb' }) })));
+    loadWidget({ 'data-key': 'pk_test', 'data-token-url': TOKEN_URL });
+    openPanel();
+    const posted = watchPanelMessages();
+
+    panelSends({ type: 'identity:request', requestId: 'req-1' });
+    await waitForIdentityResponse(posted);
+
+    expect(panelIframe()?.src).not.toContain('debug=1');
+    expect(log).not.toHaveBeenCalled();
+  });
+
+  it('data-debug=1 時把 debug 旗標帶進面板，並印出 claims 與遮罩後的憑證（原文不進 console）', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const assertion = fakeAssertion({ iss: 't_demo', sub: 'hyweb', name: '測試員', exp: 1 });
+    vi.stubGlobal('fetch', mockFetch(ok({ token: assertion })));
+    loadWidget({ 'data-key': 'pk_test', 'data-token-url': TOKEN_URL, 'data-debug': '1' });
+    openPanel();
+    const posted = watchPanelMessages();
+
+    panelSends({ type: 'identity:request', requestId: 'req-1' });
+    await waitForIdentityResponse(posted);
+
+    // 面板跑在 iframe 裡，開關得靠 query 傳過去，否則只有宿主頁這半段有輸出
+    expect(panelIframe()?.src).toContain('debug=1');
+
+    const printed = log.mock.calls.find((args) => String(args[2]).includes('取得 Identity Assertion'));
+    expect(printed).toBeDefined();
+    const detail = printed![3] as { assertion: string; kid: string; claims: Record<string, unknown> };
+    expect(detail.kid).toBe('kid-abc');
+    // 「登入的是誰」正是要看的東西：sub 與 name 完整印出
+    expect(detail.claims).toMatchObject({ iss: 't_demo', sub: 'hyweb', name: '測試員' });
+    // 憑證只留前 8 碼與長度——console 會被截圖、被貼進 issue，原文不該出現在那裡
+    expect(detail.assertion).not.toBe(assertion);
+    expect(detail.assertion).toContain(assertion.slice(0, 8));
+    expect(JSON.stringify(log.mock.calls)).not.toContain(assertion);
+  });
+});

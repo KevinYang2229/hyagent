@@ -16,6 +16,7 @@
  *   - 接收：同時檢查 `event.origin` 與 `event.source`。兩者缺一不可——只驗 origin
  *     擋不住宿主頁上同源的其他 frame 冒充宿主，只驗 source 則擋不住宿主頁被導到他站。
  */
+import { debugLog, maskToken } from './debugLog';
 import { embedConfig } from './embedConfig';
 
 export const MESSAGE_SOURCE = 'hyagent';
@@ -186,9 +187,17 @@ export class HostBridge {
         if (message.requestId !== requestId) return;
         const payload = message.payload ?? {};
         const assertion = typeof payload.assertion === 'string' ? payload.assertion.trim() : '';
+        debugLog('② 收到宿主頁的 identity:response', {
+          assertion: maskToken(assertion),
+          error: payload.error ?? null,
+        });
         finish(assertion || null);
       });
-      timer = setTimeout(() => finish(null), timeoutMs);
+      timer = setTimeout(() => {
+        debugLog('② 等不到 identity:response（逾時），改以匿名模式運作');
+        finish(null);
+      }, timeoutMs);
+      debugLog('① 向宿主頁要求身分（identity:request）', { hostOrigin: this.hostOrigin, requestId });
       this.send('identity:request', null, requestId);
     });
   }

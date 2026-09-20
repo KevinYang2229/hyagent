@@ -295,6 +295,9 @@ curl -i -b "你的登入cookie" https://your-site.example.com/api/mybot/identity
 | `data-launcher` | `none`＝不顯示內建按鈕，改由自家按鈕呼叫 `OAAgent.open()` | — |
 | `data-locale` | 例 `zh-Hant` | 面板預設 |
 
+另有 `data-debug="1"`：把自動登入的每一步印到瀏覽器 console，用來確認「小幫手現在是誰在用」
+（見 §7.5）。**正式上線請拿掉。**
+
 同一頁重複載入只會初始化一次。
 
 ### 5.2 事件（需要時才用）
@@ -388,6 +391,30 @@ Widget 端另有兩個本地代碼：`NO_TOKEN_PROVIDER`（沒設 `data-token-ur
 | 一開始正常，過一陣子掉回未登入 | Identity Endpoint 回傳了快取的舊憑證（少了 `no-store`，或程式自己快取了） |
 | 間歇性失敗、錯誤在 `TOKEN_EXPIRED` 與 `TOKEN_NOT_ACTIVE` 之間跳 | 伺服器時鐘漂移，去校 NTP |
 | 本機正常、上測試環境就 403 | 測試環境網域沒登記進 Allowed Origins |
+
+### 7.5 看它到底登入了誰（`data-debug`）
+
+面板跑在 iframe 裡，畫面上不一定看得出目前的身分。在 script 標籤加 `data-debug="1"`，
+自動登入的每一步都會印到瀏覽器 console：
+
+```html
+<script src="https://<hyagent 網域>/sdk/widget.js"
+        data-key="pk_…"
+        data-token-url="/api/mybot/identity"
+        data-debug="1"
+        async></script>
+```
+
+| 標記 | 這一行告訴你 |
+| --- | --- |
+| `[hyagent:host]` | 宿主頁這一側：Identity Endpoint 的 HTTP 狀態、簽出來的 claims（`iss` / `sub` / `name` / `exp`）與 `kid` |
+| `[hyagent:panel]` | 面板那一側：換發結果、Session 有效期，以及 **`GET /api/auth/me` 回傳的登入者**——那份就是最終身分 |
+
+兩者在同一個 devtools console，`[hyagent:panel]` 的行來自 iframe（Chrome 需把 console 的
+context 切到面板那個 frame，或勾選 selected context only 以外的顯示方式）。
+
+憑證一律遮罩後才輸出（只留前 8 碼與長度），**但 claims 裡的使用者代號與姓名會完整印出**——
+那正是要看的東西。因此這是整合期的工具，**不要留在正式站**。
 
 ---
 

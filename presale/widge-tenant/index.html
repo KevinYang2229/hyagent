@@ -119,6 +119,9 @@
         // 不再由本頁預先取好再寫進 script 標籤——那張票只有幾分鐘有效且是一次性的，
         // 使用者真的點開面板時多半已經過期（規格 §6.5）。
         s.setAttribute("data-token-url", "/api/mybot/identity");
+        // demo 專用：把 SSO 握手、Assertion claims、換發結果與登入者印到瀏覽器 console
+        // （宿主頁這側標 [hyagent:host]，面板那側標 [hyagent:panel]）。正式站請拿掉這行。
+        s.setAttribute("data-debug", "1");
         // 不設 data-title → 啟動按鈕沿用租戶後台設定的 AI 名稱（與面板內名稱一致）。
         // 若要在本宿主頁覆寫成自訂文字，再取消下一行註解：
         // s.setAttribute("data-title", "Hyweb 小幫手");

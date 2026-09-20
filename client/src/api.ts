@@ -86,6 +86,7 @@ interface LoginData {
   user: Applicant;
 }
 
+import { debugLog, maskToken } from './debugLog';
 import { embedConfig } from './embedConfig';
 import { embedderOrigin } from './hostBridge';
 import i18n from './i18n';
@@ -348,12 +349,25 @@ export const auth = {
     // embedOrigin：規格 §8.6 的來源檢查。換發請求由本面板發出，因此它的 Origin header
     // 恆為 HyAgent 自己的網域，無從分辨是誰把我們嵌起來——真正的答案在 document.referrer，
     // 由瀏覽器設定、嵌入方無法偽造。後端拿它比對租戶白名單，讀不到就拒絕。
+    const embedOrigin = embedderOrigin();
+    debugLog('③ 以 Assertion 換發 HyAgent Session', { assertion: maskToken(assertion), embedOrigin });
     const res = await fetch(`${AUTH}/sso/exchange`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', ...apiKeyHeader() },
-      body: JSON.stringify({ assertion, embedOrigin: embedderOrigin() }),
+      body: JSON.stringify({ assertion, embedOrigin }),
     });
-    const data = await unwrap<{ sessionToken: string; expiresIn: number }>(res);
+    // user 是後端從 Assertion claims 取出的 sub / name，本流程不使用（登入者資料一律以
+    // /me 為準），但它是「這張票換到誰」最直接的證據，除錯時印出來。
+    const data = await unwrap<{
+      sessionToken: string;
+      expiresIn: number;
+      user?: { sub: string; name?: string };
+    }>(res);
+    debugLog('④ 換發成功', {
+      user: data.user ?? '(後端未回傳)',
+      sessionToken: maskToken(data.sessionToken),
+      expiresIn: `${data.expiresIn} 秒`,
+    });
     // expiresIn 逐租戶可設（300～28800 秒），不能在前端寫死——續期時機由它決定。
     setSessionToken(data.sessionToken, data.expiresIn);
   },

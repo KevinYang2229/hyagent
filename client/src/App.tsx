@@ -22,6 +22,7 @@ import {
 } from './api';
 import type { TenantAppearance } from '@hyagent/shared';
 import { changeLanguage } from './i18n';
+import { debugLog } from './debugLog';
 import { embedConfig, fetchAppearance } from './embedConfig';
 import { hostBridge, type UiStatePayload } from './hostBridge';
 import { pickKnowledgePrompts, resolveKnowledgeFeed, type KnowledgeFeed, type SuggestedPrompts } from './knowledgePrompt';
@@ -306,15 +307,21 @@ export default function App() {
           if (assertion) {
             try {
               await auth.ssoExchange(assertion);
-            } catch {
+            } catch (err) {
               // 換發失敗（pk 不正確 / 驗章不過 / 後端拒絕）：直接顯示錯誤，不落到帳密登入頁。
+              debugLog('④ 換發失敗，顯示錯誤畫面', err);
               setAuthError(t('auth.ssoFailed'));
               return;
             }
+          } else {
+            debugLog('③ 宿主頁沒給身分，落回自行登入');
           }
         }
         if (auth.isAuthenticated()) {
-          setAuthUser(await auth.me());
+          const me = await auth.me();
+          // 「現在是誰在用小幫手」的最終答案：面板所有權限判定都以這份為準。
+          debugLog('⑤ 目前登入者（GET /api/auth/me）', me);
+          setAuthUser(me);
         }
       } catch {
         // 還原登入（me）失敗：401 已由 onUnauthorized 設好 authError；其餘（如伺服器無法連線）退回登入頁。

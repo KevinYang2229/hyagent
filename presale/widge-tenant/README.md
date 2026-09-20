@@ -49,6 +49,29 @@ open http://localhost:4000
 
 點右下角「Hyweb 小幫手」→ 應該**不會看到登入頁**，直接進對話（身分＝SSO 帶入的使用者）。
 
+## 怎麼看「它到底登入了誰、拿到什麼」
+
+面板跑在 iframe 裡，畫面上只有放大後的標題列會顯示使用者名稱。本 demo 的載入碼已帶
+`data-debug="1"`（[index.html](index.html)），整段握手會印在兩個地方：
+
+**瀏覽器 console**（F12）
+
+| 標記 | 內容 |
+|------|------|
+| `[hyagent:host]` | 宿主頁這一側：widget 初始化參數、`GET /api/widget/config` 回的租戶設定、Identity Endpoint 的 HTTP 狀態、**簽出來的 claims（`iss` / `sub` / `name` / `exp`）與 `kid`** |
+| `[hyagent:panel]` | 面板那一側：①要求身分 →②收到憑證 →③送出換發 →④換發成功（Session 有效期）→⑤**`GET /api/auth/me` 回的登入者**，那份就是最終身分 |
+
+`[hyagent:panel]` 的行來自 iframe，Chrome devtools 要把 console 的 context 切到面板那個 frame 才看得到。
+
+**跑 server.mjs 的終端機**：每次簽發印一行，例如
+
+```
+[identity] 14:02:31 簽發給 測試員(hyweb) { iss: 't_xxx', sub: 'hyweb', name: '測試員', jti: '…', exp: '14:03:31' }
+```
+
+憑證本身一律遮罩（只留前 8 碼與長度）後才輸出，但 claims 裡的使用者代號與姓名會完整印出——
+那正是要看的東西。所以 `data-debug` 是整合期工具，交付給客戶的載入碼不要留。
+
 ## 設定
 
 設定的來源是同目錄 `.env`（server.mjs 會自動載入；`run_tenant.bat` 首次執行會從

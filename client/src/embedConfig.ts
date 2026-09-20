@@ -59,6 +59,11 @@ export const embedConfig = {
    * 沒有就不必送 identity:request，直接走匿名／自行登入。
    */
   identityAvailable: params.get('identity') === '1',
+  /**
+   * 整合除錯輸出（widget.js 的 data-debug="1" 帶入）。開啟後面板會把身分握手、
+   * 換發結果與登入者資料印到 console，詳見 debugLog.ts。預設關閉。
+   */
+  debug: params.get('debug') === '1',
 };
 
 // API 來源：與 api.ts 同源。dev 留空走相對路徑（Vite proxy）；

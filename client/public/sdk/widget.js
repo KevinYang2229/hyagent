@@ -65,6 +65,7 @@
   //   data-offset-y    距上／下緣（依 position）距離（px，預設 20；調高可避開頁面既有的 go-to-top 按鈕）
   //   data-token-url   SSO handoff：宿主自家的 Identity Endpoint（Token Provider，規格 §6.5）。
   //                    面板需要身分時才由這裡同源帶 cookie 取回，經 postMessage 交給面板。
+  //   data-debug       "1" 時把 SSO 握手與登入者印到 console（整合期除錯用，正式站請拿掉）
   function attr(name) {
     var v = script.getAttribute(name);
     return v && v.trim() ? v.trim() : null;
@@ -121,6 +122,54 @@
     );
   }
 
+  // data-debug="1"：把整段 SSO 握手印到 console（宿主頁這一側標 [hyagent:host]，
+  // 面板那一側由 ?debug=1 帶進去標 [hyagent:panel]）。整合期用來回答兩個問題：
+  // 「面板到底登入了誰」與「從 Identity Endpoint／HyAgent 取回了什麼」。
+  //
+  // 預設關閉，正式站不要開：console 的內容會被截圖、被貼進 issue。開啟時也只印遮罩過的
+  // 憑證片段與 claims 摘要，Assertion 原文不進 console。
+  var debug = /^(1|true|on)$/i.test(attr("data-debug") || "");
+  var DEBUG_STYLE = "color:#fff;background:#2563eb;padding:1px 5px;border-radius:3px";
+  function dlog() {
+    if (!debug) return;
+    var args = ["%c[hyagent:host]", DEBUG_STYLE];
+    for (var i = 0; i < arguments.length; i++) args.push(arguments[i]);
+    try {
+      console.log.apply(console, args);
+    } catch (_e) {}
+  }
+  /** 憑證只印前 8 碼與長度——足以比對「是不是同一張」，又不足以拿去用。 */
+  function maskToken(t) {
+    return t ? t.slice(0, 8) + "…（共 " + t.length + " 字元）" : "(無)";
+  }
+  /**
+   * 解出 JWS 的 header／payload 供除錯檢視。
+   * 純顯示用：這裡**不驗章**，真正的驗證在 HyAgent 後端（規格 §8）。
+   */
+  function decodeJws(t) {
+    function seg(part) {
+      var b64 = part.replace(/-/g, "+").replace(/_/g, "/");
+      while (b64.length % 4) b64 += "=";
+      var bin = atob(b64);
+      var text;
+      if (typeof TextDecoder === "function") {
+        var bytes = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        text = new TextDecoder("utf-8").decode(bytes);
+      } else {
+        text = decodeURIComponent(escape(bin)); // 舊瀏覽器退路：claims 含中文姓名，不能直接用 atob 的結果
+      }
+      return JSON.parse(text);
+    }
+    try {
+      var parts = String(t).split(".");
+      if (parts.length < 2) return null;
+      return { header: seg(parts[0]), payload: seg(parts[1]) };
+    } catch (_e) {
+      return null;
+    }
+  }
+
   // 把設定組成 panel iframe 的 query；只附帶有值的參數。
   // 身分憑證**不在這裡**：Assertion 一律走 postMessage（規格 §10.1 明文禁止放進 URL，
   // 否則會留在瀏覽器歷史、Referer header 與伺服器存取日誌這三個不受控的地方）。
@@ -142,8 +191,18 @@
     var params = panelParams.slice();
     params.push("host=" + encodeURIComponent(window.location.origin));
     if (tokenUrl) params.push("identity=1");
+    // 面板跑在 iframe 裡，宿主頁的 data-debug 傳不進去 → 用同一個 query 把開關帶過去
+    if (debug) params.push("debug=1");
     return origin + "/?" + params.join("&");
   }
+
+  dlog("widget 初始化", {
+    宿主頁: window.location.origin,
+    面板來源: origin,
+    API: apiBase,
+    租戶金鑰: cfg.key || "(未設，後端會落到預設租戶)",
+    IdentityEndpoint: tokenUrl || "(未設，面板將走自行登入)",
+  });
 
   var Z = 2147483000; // 盡量蓋在宿主頁面之上
   var open = false;
@@ -285,6 +344,7 @@
         return r.ok ? r.json() : null;
       })
       .then(function (j) {
+        dlog("租戶設定（GET /api/widget/config）", (j && j.data) || j);
         var ap = j && j.data && j.data.appearance;
         if (!ap) return;
         if (!explicitTitle && ap.assistantName && ap.assistantName.trim()) {
@@ -432,6 +492,7 @@
     return fetch(tokenUrl, init)
       .then(
         function (res) {
+          dlog("Identity Endpoint 回應 HTTP " + res.status + "：" + tokenUrl);
           // 401 / 403＝使用者根本沒登入宿主網站，重試幾次仍舊沒登入 → 直接走匿名模式（§6.5）。
           // 只有 5xx 這種暫時性失敗才值得退避重試。
           if (!res.ok) return { retryable: res.status >= 500 };
@@ -490,11 +551,22 @@
   // 不快取、不共用結果：Assertion 是一次性兌換券，同一張送兩次第二次會被 TOKEN_REPLAYED 拒絕。
   function provideIdentity(requestId) {
     if (!tokenUrl) {
+      dlog("面板要求身分，但未設 data-token-url → 回 NO_TOKEN_PROVIDER");
       sendToPanel("identity:response", { assertion: null, error: { code: "NO_TOKEN_PROVIDER" } }, requestId);
       return;
     }
+    dlog("面板要求身分 → 向 Identity Endpoint 取票：" + tokenUrl);
     callTokenProvider().then(function (assertion) {
       if (assertion) {
+        if (debug) {
+          var jws = decodeJws(assertion);
+          dlog("取得 Identity Assertion（交給面板）", {
+            assertion: maskToken(assertion),
+            kid: (jws && jws.header && jws.header.kid) || "(解不出)",
+            // iss＝租戶、sub＝貴站的使用者代號、name＝顯示名、exp＝到期時間
+            claims: (jws && jws.payload) || "(解不出)",
+          });
+        }
         sendToPanel("identity:response", { assertion: assertion }, requestId);
         return;
       }

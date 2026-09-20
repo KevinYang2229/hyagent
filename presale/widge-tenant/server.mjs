@@ -65,6 +65,20 @@ function mintAssertion() {
   });
 }
 
+/**
+ * 只為了把「這次簽了什麼給小幫手」印在 console（demo 用）。
+ *
+ * 正式環境不需要這段，也不該把 claims 值寫進日誌（規格 §11.1）——這裡是本機示範，
+ * 目的正是讓整合方看得見身分是怎麼帶過去的。
+ */
+function peekClaims(token) {
+  try {
+    return JSON.parse(Buffer.from(String(token).split('.')[1], 'base64url').toString('utf-8'));
+  } catch {
+    return null;
+  }
+}
+
 // landing page：注入 OA 來源與租戶金鑰供前端 bootstrap 使用
 const html = fs
   .readFileSync(path.join(DIR, 'index.html'), 'utf-8')
@@ -93,6 +107,20 @@ const server = http.createServer((req, res) => {
       res.end(JSON.stringify({ error: 'ISSUE_FAILED', message: err.message }));
       return;
     }
+    const claims = peekClaims(token);
+    console.log(
+      `[identity] ${new Date().toLocaleTimeString('zh-TW', { hour12: false })} 簽發給` +
+        ` ${DEMO_USER_NAME}(${DEMO_USER_ID})`,
+      claims
+        ? {
+            iss: claims.iss,
+            sub: claims.sub,
+            name: claims.name,
+            jti: claims.jti,
+            exp: new Date(claims.exp * 1000).toLocaleTimeString('zh-TW', { hour12: false }),
+          }
+        : '(claims 解析失敗)',
+    );
     res.writeHead(200, {
       'content-type': 'application/json',
       // 規格 §5.2、§10.1：憑證不得被 CDN / 瀏覽器快取
