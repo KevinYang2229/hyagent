@@ -105,6 +105,10 @@
   .app-meta-value {
     @apply font-medium text-[var(--text-primary)];
   }
+  /* 部門／職稱：附在姓名後面的次要資訊，權重低於姓名，窄視窗時第一個被犧牲 */
+  .app-meta-org {
+    @apply truncate text-[var(--text-secondary)];
+  }
   /* 細分隔線（換行時自動隱藏，避免落單） */
   .app-meta-sep {
     @apply h-3.5 w-px shrink-0 bg-[var(--border-color)];

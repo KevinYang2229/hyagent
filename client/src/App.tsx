@@ -747,6 +747,13 @@ export default function App() {
   // 未登入：擋住整個 App，只顯示登入頁
   if (!authUser) return <LoginView onLogin={handleLogin} assistantName={aiName} />;
 
+  // 標題列的組織資訊：SSO Assertion 的 hyagent:profile 或租戶人員目錄帶來的公司／部門／職稱。
+  // 後端在查不到人時把部門填成 UNKNOWN_DEPARTMENT（'—'），那是「未建檔」的佔位符，
+  // 顯示出來只會讓人以為系統壞了，所以濾掉——沒有組織資訊就只顯示姓名。
+  const userOrg = [authUser.company, authUser.department, authUser.title]
+    .filter((value) => value && value !== '—')
+    .join(' ');
+
   return (
     <div className={`app-shell${EMBED ? ' app-shell-embed' : ''}`}>
       {!EMBED && (
@@ -772,6 +779,7 @@ export default function App() {
             <span className="app-meta-item">
               <span className="app-meta-label">{t('app.user')}</span>
               <span className="app-meta-value">{authUser.name}</span>
+              {userOrg && <span className="app-meta-org">{userOrg}</span>}
             </span>
 
             <span className="app-meta-sep" aria-hidden="true" />
@@ -843,6 +851,7 @@ export default function App() {
                 <span className="app-meta-item">
                   <span className="app-meta-label">{t('app.user')}</span>
                   <span className="app-meta-value">{authUser.name}</span>
+                  {userOrg && <span className="app-meta-org">{userOrg}</span>}
                 </span>
                 <span className="app-meta-sep" aria-hidden="true" />
                 <Badge status={status ? STATUS_BADGE[status] : 'normal'}>
