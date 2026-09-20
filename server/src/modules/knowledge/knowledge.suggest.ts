@@ -46,7 +46,7 @@ const MAX_TOTAL_CHARS = 2000;
 /**
  * 推薦問句的中文字數上限，依 widget chip 的實際容量推算。
  *
- * widget 面板寬 400px（client/public/widget.js），扣掉 .quick-bar 的 px-5（左右各 20）
+ * widget 面板寬 400px（client/public/sdk/widget.js），扣掉 .quick-bar 的 px-5（左右各 20）
  * 與 .quick-chip 的 px-3（左右各 12），文字可用寬度約 336px；chip 是 text-xs（12px）、
  * 中文全形約一字一格，故一行約 28 字，而 .quick-chip 有 line-clamp-2，兩行約 56 字
  * 才會出現省略號（見 client/src/index.css）。
