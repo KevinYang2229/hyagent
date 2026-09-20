@@ -23,6 +23,7 @@
  * `sessionToken` 本身也不落地，只存 sha256——與 apiKeys 同樣的理由：DB 外洩不該等於
  * 一批可直接使用的有效 Session。
  */
+import type { Prisma } from '@prisma/client';
 import { createHash, createHmac, randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import { env } from '@/config/env';
@@ -60,6 +61,15 @@ export interface AuthSession {
   kid: string;
   /** 終端使用者顯示名（Assertion 的 name claim；選填） */
   name?: string;
+  /**
+   * Assertion 的 `hyagent:profile`，原樣保存（規格 §4.2.3）。
+   *
+   * 租戶沒在 HyAgent 建人員目錄時，`getApplicant()` 會由它補出部門與職稱，所以這份
+   * 資料必須跟著 Session 一起活——Assertion 是一次性的，用完就沒了。
+   * 敏感度與 `name` 同級（都是顯示用的組織資訊），比照它不另做加密；真正需要保護的
+   * `sub` 走 subEnc。
+   */
+  profile?: Record<string, unknown>;
   createdAt: string;
   expiresAt: string;
 }
@@ -149,8 +159,16 @@ interface AuthSessionDbRow {
   subEnc: string;
   kid: string;
   name: string | null;
+  profile: unknown;
   createdAt: Date;
   expiresAt: Date;
+}
+
+/** jsonb 欄位回來的是任意 JSON；只有「純物件」才當 profile 用，其餘視為沒有。 */
+function toProfile(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
 }
 
 function fromRow(row: AuthSessionDbRow): AuthSession {
@@ -161,6 +179,7 @@ function fromRow(row: AuthSessionDbRow): AuthSession {
     subEnc: row.subEnc,
     kid: row.kid,
     ...(row.name ? { name: row.name } : {}),
+    ...(toProfile(row.profile) ? { profile: toProfile(row.profile)! } : {}),
     createdAt: row.createdAt.toISOString(),
     expiresAt: row.expiresAt.toISOString(),
   };
@@ -172,6 +191,8 @@ export interface CreateAuthSessionInput {
   sub: string;
   kid: string;
   name?: string;
+  /** Assertion 的 `hyagent:profile`（規格 §4.2.3）；沒有就不存 */
+  profile?: Record<string, unknown>;
   /** 規格 §7.1：租戶的 sessionExpiresIn */
   expiresInSeconds: number;
 }
@@ -183,6 +204,7 @@ export const authSessionStore = {
     sub,
     kid,
     name,
+    profile,
     expiresInSeconds,
   }: CreateAuthSessionInput): Promise<CreatedAuthSession> {
     assertEncryptionReady();
@@ -196,6 +218,7 @@ export const authSessionStore = {
       subEnc: encryptSecret(sub),
       kid,
       ...(name ? { name } : {}),
+      ...(profile && Object.keys(profile).length > 0 ? { profile } : {}),
       createdAt: now.toISOString(),
       expiresAt: expiresAt.toISOString(),
     };
@@ -210,6 +233,8 @@ export const authSessionStore = {
           subEnc: session.subEnc,
           kid,
           name: name ?? null,
+          // jsonb 欄位：沒有 profile 就整個不帶（Prisma 的 JSON null 要用 DbNull，欄位本身可為空）
+          ...(session.profile ? { profile: session.profile as Prisma.InputJsonObject } : {}),
           createdAt: now,
           expiresAt,
         },

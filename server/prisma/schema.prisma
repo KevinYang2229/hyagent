@@ -59,6 +59,8 @@ model AuthSessionRow {
   /// 規格明文要求此欄位自第一版即納入 schema——事後補建涵蓋不到既有 Session。
   kid       String
   name      String?
+  /// Assertion 的 hyagent:profile（§4.2.3）。租戶未建人員目錄時，/me 與部門授權由它補值。
+  profile   Json?
   createdAt DateTime @map("created_at")
   expiresAt DateTime @map("expires_at")
 

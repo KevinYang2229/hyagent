@@ -137,11 +137,19 @@ export const assertionExchange = {
     }
 
     const name = typeof claims.name === 'string' ? claims.name : undefined;
+    // 規格 §4.2.3 的自訂 claims。驗章時已做過型別與大小檢查，這裡只確認它是純物件後
+    // 原樣收進 Session——語意解讀留到 getApplicant()，那裡才知道要對應成哪些欄位。
+    const rawProfile = claims['hyagent:profile'];
+    const profile =
+      rawProfile && typeof rawProfile === 'object' && !Array.isArray(rawProfile)
+        ? (rawProfile as Record<string, unknown>)
+        : undefined;
     const created = await authSessionStore.create({
       tenantId: tenant.id,
       sub: claims.sub,
       kid,
       ...(name ? { name } : {}),
+      ...(profile ? { profile } : {}),
       expiresInSeconds: settings.sessionExpiresIn,
     });
 

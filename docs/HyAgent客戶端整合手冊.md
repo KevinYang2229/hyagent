@@ -226,6 +226,19 @@ app.get("/api/mybot/identity", (req, res) => {
 | `locale` | string | 例 `zh-TW` |
 | `hyagent:profile` | object | 自家組織欄位（部門、公司、職稱…）集中放這裡；或用自訂短前綴如 `hyoa_deptId` |
 
+其中這四個會被 HyAgent 採用為使用者身分，並顯示在 Widget 標題列（`公司 部門 職稱 姓名`）：
+
+| Claim | 對應 |
+| --- | --- |
+| `name` | 姓名 |
+| `hyagent:profile.companyName` | 公司 |
+| `hyagent:profile.deptName` | 部門 —— **另作為部門層級知識庫可見範圍的判定依據** |
+| `hyagent:profile.jobPostName` | 職稱 |
+
+所以請確保 `deptName` 與你在 HyAgent 後台設定知識庫可見部門時填的字串一致。
+其餘欄位（`deptId`、`companyId`…）原樣保存但不解讀。
+若你已在 HyAgent 後台建了人員目錄，則以目錄為準，Assertion 不會覆蓋它。
+
 完整範例：
 
 ```json
@@ -391,6 +404,8 @@ Widget 端另有兩個本地代碼：`NO_TOKEN_PROVIDER`（沒設 `data-token-ur
 | 一開始正常，過一陣子掉回未登入 | Identity Endpoint 回傳了快取的舊憑證（少了 `no-store`，或程式自己快取了） |
 | 間歇性失敗、錯誤在 `TOKEN_EXPIRED` 與 `TOKEN_NOT_ACTIVE` 之間跳 | 伺服器時鐘漂移，去校 NTP |
 | 本機正常、上測試環境就 403 | 測試環境網域沒登記進 Allowed Origins |
+| 面板顯示的是工號而不是姓名 | Assertion 沒帶 `name` claim |
+| 部門顯示「—」、看不到該部門的知識庫 | `hyagent:profile.deptName` 沒帶，或字串與後台設定的部門名稱不一致 |
 
 ### 7.5 看它到底登入了誰（`data-debug`）
 

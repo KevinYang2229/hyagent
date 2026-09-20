@@ -526,6 +526,15 @@ Tenant 得加入自訂 claims 以承載組織資訊。為避免與未來的標�
 
 HyAgent 對自訂 claims **只做型別與大小驗證，不做語意解讀**，並原樣提供給該 Tenant 的 Agent 設定使用。
 
+> **三個約定鍵的例外**：Tenant **未**在 HyAgent 建立人員目錄時（Widget SSO 的常態，整合方不必把
+> 員工資料同步給 HyAgent），HyAgent 會採用 `hyagent:profile` 底下的 `companyName`、`deptName`、
+> `jobPostName` 作為該使用者的**公司**、**部門**、**職稱**，用於 Widget 顯示；其中**部門**另作為
+> **部門層級知識庫可見範圍**的判定依據。其餘自訂 claims 一律不解讀。
+> 已建立人員目錄的 Tenant 以目錄為準，Assertion 不覆蓋它。
+>
+> 這代表 Tenant 得以自家私鑰宣告旗下使用者的部門，進而決定其知識庫可見範圍——Tenant 本就是
+> 自家人員資料的權威來源，若要改由 HyAgent 這側控管，請改建人員目錄。
+
 **既有 SSO 欄位的落點**：企業入口既有 SSO token 常帶的組織欄位（`deptId`、`deptName`、`companyId`、`companyName`、`jobPost`、`jobPostName` 等）皆屬本類別，遷移時直接置於 `hyagent:profile` 之下即可（§4.4 範例），不需為它們新增標準 claims。
 
 #### 4.2.4 大小限制

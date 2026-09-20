@@ -9,6 +9,7 @@
  */
 import type { NextFunction, Request, Response } from 'express';
 import { authSessionStore, readSub } from '@/lib/auth-session.store';
+import { runWithSsoIdentity, type SsoIdentity } from '@/lib/sso-identity.context';
 import { validateIdentity } from '@/modules/auth/credential-version';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 import { verifyAccessToken } from '@/utils/jwt';
@@ -25,7 +26,7 @@ const SESSION_TOKEN_PREFIX = 'hyas_';
  * 它守的是撤銷發生在**另一個副本**、而本副本的請求恰好在傳播完成前進來的那個窗口。
  * 每次都讀 primary，窗口因此收斂到單次請求的長度，遠小於規格 §2.6 給的 60 秒。
  */
-async function authenticateSession(sessionToken: string, req: Request): Promise<void> {
+async function authenticateSession(sessionToken: string, req: Request): Promise<SsoIdentity> {
   const session = await authSessionStore.get(sessionToken);
   if (!session) throw AppError.unauthorized('Session 不存在或已過期');
 
@@ -34,23 +35,31 @@ async function authenticateSession(sessionToken: string, req: Request): Promise<
   const key = tenant.publicKeys?.find((k) => k.kid === session.kid);
   if (key?.status !== 'active') throw AppError.unauthorized('建立此 Session 的公鑰已失效');
 
+  const sub = readSub(session);
   req.user = {
-    sub: readSub(session),
+    sub,
     role: 'employee',
     via: 'sso',
     tenantId: session.tenantId,
     ...(session.name ? { name: session.name } : {}),
   };
   req.authSessionToken = sessionToken;
+  return {
+    tenantId: session.tenantId,
+    sub,
+    ...(session.name ? { name: session.name } : {}),
+    ...(session.profile ? { profile: session.profile } : {}),
+  };
 }
 
 export async function requireAuth(req: Request, _res: Response, next: NextFunction): Promise<void> {
+  let identity: SsoIdentity | undefined;
   try {
     const [scheme, token] = (req.header('authorization') ?? '').split(' ');
     if (scheme !== 'Bearer' || !token) throw AppError.unauthorized('Missing Authorization header');
 
     if (token.startsWith(SESSION_TOKEN_PREFIX)) {
-      await authenticateSession(token, req);
+      identity = await authenticateSession(token, req);
     } else {
       req.user = verifyAccessToken(token);
       await validateIdentity(req.user);
@@ -61,6 +70,12 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
     }
   } catch {
     next(AppError.unauthorized('Invalid or expired access token'));
+    return;
+  }
+  // Assertion 帶進來的身分只在這個請求的 continuation 裡看得到（見 sso-identity.context.ts）。
+  // 帳密登入沒有這份身分，維持原路。
+  if (identity) {
+    runWithSsoIdentity(identity, next);
     return;
   }
   next();
