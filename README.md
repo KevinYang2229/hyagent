@@ -20,7 +20,13 @@
 | [`docs/SYSTEM_ANALYSIS.md`](docs/SYSTEM_ANALYSIS.md) | 系統分析（As-Is）：現況系統規格 |
 | [`docs/HANDOFF-OA-HTTP.md`](docs/HANDOFF-OA-HTTP.md) | 交接：把表單送進真 OA（`OA_CONNECTOR=http`）的待辦與驗收 |
 | [`docs/HANDOFF-SSO.md`](docs/HANDOFF-SSO.md) | 對外契約：Identity Assertion 的金鑰、簽章、換發、續期與撤銷 |
+| [`docs/HyAgent客戶端整合手冊.md`](docs/HyAgent客戶端整合手冊.md) | **交付給整合方的操作版**：產金鑰、開 Identity Endpoint、掛 `<script>`、排錯與上線檢核清單 |
+| [`docs/HyAgent客戶網站自動登入規格.md`](docs/HyAgent客戶網站自動登入規格.md) | 自動登入的**規範正本**（Identity Assertion Protocol v1）：協定、驗證規則、錯誤碼、安全要求。雙方實作的仲裁依據 |
+| [`docs/SSO-ASSERTION-PLAN-AND-RECORD.md`](docs/SSO-ASSERTION-PLAN-AND-RECORD.md) | **僅限內部**：非對稱改造的動工前規劃、決策理由、實作記錄與剩餘缺口。不對外交付 |
+| [`docs/SECURITY-FIXES.md`](docs/SECURITY-FIXES.md) | 2026-09-13 那次安全修補的紀錄（其中 SSO 段落已被上列契約取代） |
+| [`docs/ROLE-SKILLS.md`](docs/ROLE-SKILLS.md) | 角色能力設定與前台助理的能力清單 |
 | [`docs/knowledge-reimport-manifest.md`](docs/knowledge-reimport-manifest.md) | 知識庫清空當下各租戶原本有什麼，供重新匯入對照 |
+| [`docs/superpowers/`](docs/superpowers/) | 各功能**動工前**的設計（`specs/`）與任務計畫（`plans/`）。帶日期、完成後不回頭改寫，讀它是為了知道當初為什麼那樣決定 |
 
 ## 核心理念：一份 Schema 當唯一來源
 
@@ -263,7 +269,7 @@ schemas/<formId>/*.json         六層表單 Definition（前後端共用單一�
 
 **共用 schema 不會把前後端綁死**：schema JSON 只住後端（[`form.loader.ts`](server/src/modules/form/form.loader.ts) 以 `fs` 讀 `schemas/`），前端執行時用 `GET /api/forms/:formId` 取得 Definition，**bundle 內零張 schema**。前後端唯一共用的是 `@hyagent/shared` 的 TypeScript 型別，屬 build 期便利、runtime 會被編譯掉。
 
-**gateway 典型該管的現況**：認證已接 JWT（dev 為 mock 名錄 + 共用密碼，上線前換真實身分來源）、session 已可持久化（`DATA_BACKEND=db`）、限流／配額已補齊（兩層守門：[`tenant-rate-limit.ts`](server/src/middlewares/tenant-rate-limit.ts) 依「租戶＋使用者」防突發轟炸、[`tenant-quota.ts`](server/src/middlewares/tenant-quota.ts) 依 `quotaMonthlyLlmTokens` 對照當月 usage 分桶做月配額，掛在會觸發 LLM 計費的 `/api/conversations`）；**尚未補**：真實身分來源（換掉 mock 名錄）——嵌入路徑已由 Identity Assertion 承接（宿主自家登入為身分來源），契約見 [`docs/HANDOFF-SSO.md`](docs/HANDOFF-SSO.md)；剩餘缺口見 [`docs/ASYMMETRIC-ASSERTION-ASSESSMENT.md`](docs/ASYMMETRIC-ASSERTION-ASSESSMENT.md) §11.6。
+**gateway 典型該管的現況**：認證已接 JWT（dev 為 mock 名錄 + 共用密碼，上線前換真實身分來源）、session 已可持久化（`DATA_BACKEND=db`）、限流／配額已補齊（兩層守門：[`tenant-rate-limit.ts`](server/src/middlewares/tenant-rate-limit.ts) 依「租戶＋使用者」防突發轟炸、[`tenant-quota.ts`](server/src/middlewares/tenant-quota.ts) 依 `quotaMonthlyLlmTokens` 對照當月 usage 分桶做月配額，掛在會觸發 LLM 計費的 `/api/conversations`）；**尚未補**：真實身分來源（換掉 mock 名錄）——嵌入路徑已由 Identity Assertion 承接（宿主自家登入為身分來源），契約見 [`docs/HANDOFF-SSO.md`](docs/HANDOFF-SSO.md)；剩餘缺口見 [`docs/SSO-ASSERTION-PLAN-AND-RECORD.md`](docs/SSO-ASSERTION-PLAN-AND-RECORD.md) §11.6。
 
 ## 已實作 vs 延後
 

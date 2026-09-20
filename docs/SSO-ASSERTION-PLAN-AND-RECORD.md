@@ -1,14 +1,20 @@
-# 自動登入改採非對稱金鑰：可行性評估
+# SSO Identity Assertion：實作規劃與記錄
 
 | 項目 | 內容 |
 | --- | --- |
-| 文件目的 | 評估將現行 SSO handoff（HS256 對稱式共享密鑰）改為 HyAgent Identity Assertion Protocol（RS256 / ES256 非對稱金鑰）的可行性、風險與工作量 |
-| 對照規格 | `tmp_hyagent_sdk/HyAgentSDK規格.md` v1.0-draft，**2026-09-17 版**（規範性內容已全數定稿，原附錄 B 已移除） |
-| 參考實作 | `tmp_hyagent_sdk/HyAgentSDK(js)/`（零相依可執行，**53 項測試**：verifier 33 + assertion 12 + keygen 8） |
-| 評估基準 | 本 repo 於評估當下的 `server/`、`client/`、`sdk/`、`admin/`、`presale/` |
-| 前提 | **本產品目前無既有客戶**，因此不需要雙軌並行或遷移觀察期，採直接替換 |
-| 本版變更 | 依 2026-09-17 規格更新重評。主要影響見 §0；工作量由 15–22 上修為 **約 25–37 人日**；§7 決策已全數定稿 |
-| 狀態 | **決策已全數定稿**（§7）。線 A、線 B 已完成；**Phase 1 已完成**——HS256 路徑已拔除，換發端點改吃 Assertion，Session 為伺服器端有狀態儲存。見 §11 |
+| 文件目的 | 記錄 SSO handoff 由 HS256 對稱式共享密鑰改為 HyAgent Identity Assertion Protocol（RS256 / ES256 非對稱金鑰）的**動工前規劃**與**實際實作過程** |
+| 讀者 | **僅限內部**。含工作量估算、風險評估與未完成項，不對外交付。要給整合方的是下面兩份 |
+| 規範正本 | [HyAgent客戶網站自動登入規格.md](HyAgent客戶網站自動登入規格.md)（v1.0 定稿）。§0–§9 規劃當時對照的是它的前身 `tmp_hyagent_sdk/HyAgentSDK規格.md` v1.0-draft **2026-09-17 版**，該暫存目錄已不存在，內容已收進 repo |
+| 對外文件 | [HANDOFF-SSO.md](HANDOFF-SSO.md)（簽章／換發契約）、[HyAgent客戶端整合手冊.md](HyAgent客戶端整合手冊.md)（客戶端工程師操作版） |
+| 參考實作 | 規劃階段對照 `tmp_hyagent_sdk/HyAgentSDK(js)/`（零相依，**53 項測試**：verifier 33 + assertion 12 + keygen 8）。該目錄已不存在；移植後的正式實作見 `server/src/lib/assertion/` 與 `sdk/src/assertion.ts` |
+| 前提 | **本產品無既有客戶**，因此不做雙軌並行或遷移觀察期，採直接替換 |
+| 狀態 | **已完成並落地於本 repo**（commit `3e91222`、`ae0058c`）。規格的規範性內容已全數實作並由測試涵蓋；尚未完成的兩項見 §11.6 |
+
+> **怎麼讀**：**§0–§9 是動工前的規劃**，刻意保留當時原貌——包含後來被推翻的判斷、已作廢的選項與工作量估算。它們記錄的是「當時憑什麼這樣決定」，不是現況，**不要當作現行行為的依據**。
+> **§10 是驗收標準與實際達成狀況**，**§11 是實作記錄**（逐階段的實際做法、施工中發現的缺陷、改掉的自己的決定）。
+> 想知道「現在怎麼運作」看 §11 與上表的三份文件；想知道「為什麼長成這樣」才回頭看 §0–§9。
+>
+> **章節編號有兩套**：內文的 `§n` 多半指**規格**的章節（通常寫作「規格 §n」），少數指本文自身。兩者在 §11 附近會撞號——例如「規格 §11.1」講的是逐租戶設定收斂，本文 §11.1 講的是線 A 驗證器移植。引用時請看前後文。
 
 ---
 
@@ -71,7 +77,11 @@
 
 ## 3. 現況實作盤點
 
-現行機制在 `docs/HANDOFF-SSO.md` 有完整說明，摘要如下。
+> **本節是改造「前」的快照**，描述的是已經被拔除的 HS256 共享密鑰機制。所列檔案位置與行號為**當時**狀態，部分檔案此後已搬移（`client/public/widget.js` → `client/public/sdk/widget.js`）或不再存在（`ssoSecret` / `ssoVersion` / `signUserToken`），連結點下去看到的會是改造後的內容。現行結構見 §11。
+>
+> 當時這段機制在 `docs/HANDOFF-SSO.md` 有完整說明；該文件已於本案改寫為 Identity Assertion 契約，**不再描述本節內容**。
+
+摘要如下。
 
 ### 3.1 信任鏈
 
@@ -96,7 +106,7 @@
 | 租戶讀取（**記憶體 Map**） | [tenant.store.ts:301](../server/src/modules/tenant/tenant.store.ts#L301) 的 `getTenant`，見 §6.4 |
 | 密鑰落地加密 | `tenant.store.ts` 的 `sealTenant` / `unsealTenant` |
 | 簽發端 SDK | [server.ts](../sdk/src/server.ts) 的 `signUserToken` / `verifyUserToken` |
-| token 進 URL | [widget.js:120](../client/public/widget.js#L120) → [embedConfig.ts:47](../client/src/embedConfig.ts#L47) |
+| token 進 URL | `client/public/widget.js:120`（檔案已搬至 [`client/public/sdk/widget.js`](../client/public/sdk/widget.js)）→ [embedConfig.ts:47](../client/src/embedConfig.ts#L47) |
 | Origin 白名單 | [tenant.service.ts:39](../server/src/modules/tenant/tenant.service.ts#L39)（目前僅供 CORS 使用） |
 | 管理介面 | [admin.schema.ts:10](../server/src/modules/admin/admin.schema.ts#L10)、[SettingsTab.tsx](../admin/src/pages/tabs/SettingsTab.tsx) |
 | 現有測試 | `server/tests/auth-sso.test.ts`、`server/tests/security-regressions.test.ts` |
@@ -203,7 +213,7 @@
 
 ### 6.1 【高】Assertion 走 query string
 
-[widget.js:120](../client/public/widget.js#L120) 把 token 以 `?userToken=` 附在 iframe URL 上，會殘留於瀏覽器歷史、`Referer` header 與伺服器存取日誌。規格 §10.1 明文禁止。
+當時的 `client/public/widget.js:120`（該檔已搬至 [`client/public/sdk/widget.js`](../client/public/sdk/widget.js)）把 token 以 `?userToken=` 附在 iframe URL 上，會殘留於瀏覽器歷史、`Referer` header 與伺服器存取日誌。規格 §10.1 明文禁止。
 
 正確做法是規格 §6.6 的 `postMessage` 握手（`handshake` → `identity:request` → `identity:response`），雙向驗證 `event.origin` 與 `event.source`，且**不得**使用 `targetOrigin: "*"`。
 
@@ -402,6 +412,8 @@ admin 目前是單一密鑰輸入框，需改為公鑰清單：上傳 PEM / JWK 
 
 **上修的 10–15 人日全部來自 §0 表的 #1～#5**，與「換演算法」無關 —— 它們是撤銷語意、時間語意與營運可觀測性的成本。
 
+> **本表是動工前的估算，未與實績對照**——實際投入人日沒有逐項記錄。見 §9 末。
+
 ---
 
 ## 9. 建議實施順序
@@ -428,11 +440,27 @@ admin 目前是單一密鑰輸入框，需改為公鑰清單：上傳 PEM / JWK 
 | A | 驗證器移植：新建 `server/src/lib/assertion/`，22 項檢查 + `computeKid()` + 錯誤碼 | 純新增目錄，不碰既有程式碼，驗收基準（53 項測試）現成 |
 | B | `postMessage` 改造（Phase 3） | 與演算法正交；且它本身就是現行實作的實質安全缺口，無論本案是否推進都該修 |
 
-兩條線約 7–10 人日，佔總量三分之一。**兩條皆已完成**（§11.1、§11.2），接下來就是 Phase 1 的後半段 —— 租戶公鑰模型、jti DB store 與 session store。
+兩條線約 7–10 人日，佔總量三分之一。
+
+**實際結果**（各階段的實際做法見 §11）：
+
+| 規劃階段 | 結果 |
+| --- | --- |
+| 線 A、線 B | ✅ 完成（§11.1、§11.2） |
+| Phase 0 簽核 | ✅ §7 決策全數定稿，施工中推翻了其中一項（`subEnc`，見 §11.4 末） |
+| Phase 1 後端核心 + 拔除 HS256 | ✅ 完成（§11.3 三個 store、§11.4 接線切換） |
+| Phase 2 管理面 + 客戶端 SDK | ✅ 完成（§11.4 公鑰 UI、§11.5 續期與 logout、`sdk/bin/keygen.mjs`） |
+| Phase 3 `postMessage` | ✅ 完成——即線 B。如規劃所料與 Phase 1–2 正交，兩邊沒有互相卡住（§11.2） |
+| Phase 4 撤銷傳播驗證 + skew 監測 | ⚠️ **部分**：skew 監測已上線；撤銷傳播的程式面已備齊，**多副本實測未做**（§11.6） |
+| Phase 5 presale 三站 + 文件 | ✅ 完成（§11.4 三站改私鑰簽發、§11.5 文件校正） |
+
+**實際投入人日未逐項記錄**，因此 §8 的 25–37 人日估算無法與實績對照——這是這份記錄的一個缺口，下次類案值得在動工時就順手記。
 
 ---
 
 ## 10. 驗收標準
+
+> 以下 13 項為**動工前訂下的標準**，保留原貌。逐項的實際達成狀況見 §10.1。
 
 1. 參考實作 `HyAgentSDK(js)/test/` 的 **53 項測試**（verifier 33 + assertion 12 + keygen 8）移植到 `server/tests/`，全數通過。
 2. 規格附錄 A.3 列出的 **23 個**必要測試案例全數涵蓋，特別是：
@@ -457,10 +485,42 @@ admin 目前是單一密鑰輸入框，需改為公鑰清單：上傳 PEM / JWK 
 12. 🆕 SDK 於 `/sdk/widget.js` 提供，該路徑 `Cache-Control` 的 `max-age` ≤ 300 秒；根目錄 `/widget.js` 不再對外服務。
 13. 🆕 session 紀錄不含明文 `sub`（存 `subHash`），file 模式的快照檔亦然（§6.2.1 b）。
 
+### 10.1 實際達成狀況（2026-09-20 覆核）
+
+| # | 狀況 | 依據 |
+| --- | --- | --- |
+| 1 | ✅ **超出**：54 項（verifier 34 + issuer 12 + keygen 8）。多的 1 項是刻意新增的步驟 0 順序測試（§11.1 取捨表第 4 條） | `server/tests/assertion-{verifier,issuer,keygen}.test.ts` |
+| 2 | ✅ 依 §11.1 記載已全數涵蓋。**本次覆核未逐項重新比對規格附錄 A.3 的 23 個案例** | §11.1 |
+| 3 | ✅ 依 §11.4、§11.5 記載已完成。**本次覆核未逐項重新比對規格 §12.2 的 18 項** | §11.4、§11.5 |
+| 4 | ✅ 實質達成，**但字面不成立**：`ssoSecret` 仍出現在 5 處**註解**（說明「改造前是什麼、為何移除」）、`HS256` 出現在驗證器（主動拒絕）、keygen CLI（列為不支援）與 `utils/jwt.ts`（帳密登入路徑，原就除外）。無任何一處是仍在運作的共享密鑰邏輯 | `grep -rn ssoSecret --include='*.ts'` |
+| 5 | ✅ 實質達成。`client/public/sdk/widget.js` 仍有 `body.userToken`，那是**讀宿主 Identity Endpoint 回應**時相容四種欄位名，不是 URL 傳遞；`widget.postMessage.test.ts:123` 以 `expect(src).not.toContain('userToken')` 釘住 iframe URL | `client/src/widget.postMessage.test.ts` |
+| 6 | ✅ `presale/` 已無 `TENANT_SSO_SECRET`；未設 `TENANT_PRIVATE_KEY` 時當場產一組並印出公鑰 | §11.4 |
+| 7 | ⚠️ **部分達成**。單副本端到端已實測（撤銷公鑰 → `revokedSessions: 1`、原 Session 隨即 `401`），程式面 `getTenantFromPrimary()` + 每請求重查已備齊；**多副本環境實測未做** | §11.4、§11.6 |
+| 8 | ✅ 回 `200` + `revoked: 0`，註解明寫「不得 404」的理由 | `admin.controller.ts:155` |
+| 9 | ✅ 公鑰清單、逐租戶設定、偏離預設標示、偏移分佈、依 `sub` 作廢都在同一面板 | `admin/src/pages/tabs/AssertionKeysPanel.tsx` |
+| 10 | ✅ 有專屬測試 | `assertion-exchange.test.ts:64` |
+| 11 | ✅ 換發成功只記 `tenantId` / `kid`，失敗只記 `code` / `status`；偏移監測只記 `tenantId` / `offsetSeconds` / `toleranceSeconds`。驗證器本身完全不記 log | `auth.controller.ts:42-54`、`clock-skew-monitor.ts:54` |
+| 12 | ✅ `location = /sdk/widget.js` 設 `max-age=300`；`location = /widget.js { return 404; }` | `client/nginx.conf.template:50-60` |
+| 13 | ⚠️ **做法已改**。實際存 `subHash`（HMAC，作廢比對用）**與** `subEnc`（靜態加密，業務層要原文）。接線時發現 `requireAuth` 之後每支 API 都需要真實 `sub`（對話歸屬、表單、知識庫 ACL），只存雜湊的 Session 無法服務請求。正式環境未設 `DATA_ENCRYPTION_KEY` 直接**拒絕建立 Session**；dev 沿用 repo 既有慣例存明文。原委見 §11.4 末 | `auth-session.store.ts:88` |
+
+**總結**：13 項中 11 項達成（其中 #4、#5 為實質達成、字面有註解與相容欄位殘留），#7 缺多副本實測（需環境，非程式工作），#13 的做法在施工中被自己推翻並留下紀錄。#2、#3 依 §11 記載為已完成，本次未回頭逐項重驗規格清單。
 
 ---
 
-## 11. 實作進度
+## 11. 實作記錄
+
+> 各小節末的「驗收狀態」是**該階段完成當下**的快照，數字逐段成長（1209 → 1230 → 1238）屬正常，不是互相矛盾。
+>
+> **全案完成後的實測（2026-09-20）**：
+>
+> | workspace | 結果 |
+> | --- | --- |
+> | server | 1285 passed、3 skipped、**3 failed**，159 個 test suite |
+> | client | 117 passed（14 檔） |
+> | admin | 73 passed（10 檔） |
+> | sdk | 33 passed（3 檔） |
+>
+> 那 3 項失敗是 `LocalFolderSource` 的權限測試（`batch-source`），**在本案動工前就是紅的**——Windows 的 `chmod` 不產生 POSIX 權限錯誤，與 SSO 改造無關。各階段驗收狀態描述的「既有的 3 項 `batch-source` 失敗」指的就是它們，至今仍然如此。
 
 ### 11.1 線 A：驗證器移植（已完成）
 
@@ -535,7 +595,7 @@ host   → iframe ui:state
 
 **尚未做的部分**（依賴 Phase 1 的 session 模型，不屬本條線）：§6.5 呼叫時機②「Session 到期前 60 秒重走 token provider」與 §6.3 的 `refreshIdentity()` / `logout()`。`hostBridge.requestIdentity()` 已可重複呼叫，續期接上時不需要再改協定。
 
-### 11.3 Phase 1 後端核心（進行中）
+### 11.3 Phase 1 後端核心（已完成）
 
 三個工作項已落地，**全部是純新增**：既有的 HS256 換發路徑一行未改，仍照常運作。這是刻意的施工順序——把新結構先蓋好、各自測到綠，最後才一次切換，任何中途停點都是可運作的狀態。
 
@@ -558,7 +618,7 @@ host   → iframe ui:state
 | --- | --- |
 | `server/src/lib/security-claims.ts` | `claim(key, expiresAtSeconds?)` 加 TTL、`has()` 濾過期、`sweepExpired()` |
 | **新增** `server/src/lib/assertion/claim-replay-store.ts` | `ReplayStore` 的正式實作，走 `security_claims` |
-| **新增** `server/db/migrations/0014_security_claims_ttl.sql` | `expires_at` + partial index |
+| **新增** `server/db/migrations/0015_security_claims_ttl.sql` | `expires_at` + partial index |
 | **新增** `server/tests/security-claims-ttl.test.ts` | 9 項 |
 
 `expires_at` 可為 NULL 是三態設計的關鍵：既有的 `refresh-used:` / `refresh-revoked:` 與送出防重**語意上不可過期**，清掉它們等於讓一張用過的 refresh token 重新可用。sweep 只碰有到期時間的列。
@@ -569,7 +629,7 @@ host   → iframe ui:state
 | --- | --- |
 | **新增** `server/src/lib/auth-session.store.ts` | 不透明 `sessionToken`、`kid` / `subHash` 索引、TTL、依 token / kid / sub / tenant 作廢；file / db 雙後端 |
 | **新增** `server/src/lib/expiry-sweeper.ts` | jti 與 session 共用的 5 分鐘回收排程（決策 B 的理由所在） |
-| **新增** `server/db/migrations/0015_auth_sessions.sql` + `prisma` 的 `AuthSessionRow` | 表名 `auth_sessions`，三個索引 |
+| **新增** `server/db/migrations/0016_auth_sessions.sql` + `prisma` 的 `AuthSessionRow` | 表名 `auth_sessions`，三個索引 |
 | `server/src/index.ts` | 開機掛上排程 |
 | **新增** `server/tests/auth-session-store.test.ts` | 18 項 |
 
@@ -862,6 +922,8 @@ design + plan）頂部加一行「後續變更」註記指向現行契約。
 
 ### 11.6 尚未做的部分
 
+（2026-09-20 覆核，兩項仍然成立。）
+
 | 項目 | 說明 |
 | --- | --- |
 | 撤銷傳播的多副本實測 | Phase 4。程式面已備齊（`getTenantFromPrimary()` + 每請求重查），缺的是多副本環境的實測數據——這一項需要環境，不是程式工作 |
@@ -870,6 +932,16 @@ design + plan）頂部加一行「後續變更」註記指向現行契約。
 ---
 
 ## 附錄：受影響檔案清單
+
+> **這是規劃階段預估的清單**，「動作」欄寫的是當時打算怎麼改。實際落地的檔案與內容以 §11 各階段的表格為準——兩邊有出入的地方，§11 是對的。
+>
+> 已知的三處出入：
+>
+> | 規劃時寫的 | 實際 |
+> | --- | --- |
+> | `server/src/lib/clock-skew-metrics.ts` | `server/src/modules/auth/clock-skew-monitor.ts` |
+> | `client/public/widget.js`（原地改） | 檔案搬至 `client/public/sdk/widget.js`，對外路徑 `/sdk/widget.js` |
+> | 未列 | 另新增 `server/src/modules/tenant/tenant-keys.ts`、`server/src/lib/expiry-sweeper.ts`、`client/src/hostBridge.ts`、`sdk/src/assertion.ts`、`sdk/bin/keygen.mjs` |
 
 🆕 標示者為本次規格更新新增。
 
@@ -890,7 +962,7 @@ design + plan）頂部加一行「後續變更」註記指向現行契約。
 | `server/src/modules/docs/openapi.ts` | 端點與錯誤碼定義（含 3 個管理端錯誤碼） |
 | **新增** `server/src/lib/assertion/` | 驗證器、`computeKid`、錯誤碼（移植自參考實作） |
 | 🆕 **新增** `server/src/lib/auth-session.store.ts` | 不透明 `sessionToken`、`kid` / `subHash` 索引、TTL、批次作廢；file / db 雙後端，**db 模式讀取路徑不得用記憶體 Map**（§6.2.1） |
-| 🆕 **新增** `server/src/lib/clock-skew-metrics.ts` | 偏移量記錄與告警門檻（容忍值的一半） |
+| 🆕 **新增** `server/src/modules/auth/clock-skew-monitor.ts` | 偏移量記錄與告警門檻（容忍值的一半）。**規劃時暫名 `lib/clock-skew-metrics.ts`，實作落在 `modules/auth/`** |
 | 🆕 `server/prisma/schema.prisma` | 新增 `AuthSessionRow` / `auth_sessions`（含 `kid`，**須自第一版納入**）。**不得**沿用 `SessionRow` / `sessions` —— 已被對話 session 佔用 |
 
 ### 前端 / SDK

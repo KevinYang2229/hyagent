@@ -12,6 +12,8 @@
 
 > **交付客戶端工程師時請改給** [HyAgent客戶端整合手冊.md](HyAgent客戶端整合手冊.md)：同一套協定，只保留整合方要動手做的部分（產金鑰、開 Identity Endpoint、掛 `<script>`、排錯、檢核清單）。本文件為完整規範，兩者若有出入以本文件為準。
 
+> **（HyAgent 內部）** 本規格在本 repo 的實作過程——設計決策、施工中推翻的判斷、驗收達成狀況與剩餘缺口——記在 [SSO-ASSERTION-PLAN-AND-RECORD.md](SSO-ASSERTION-PLAN-AND-RECORD.md)。該文件**不對外交付**。
+
 ---
 
 ## 1. 總覽

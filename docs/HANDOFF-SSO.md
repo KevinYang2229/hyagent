@@ -6,6 +6,10 @@
 **HyAgent 只持有公鑰，不持有任何可偽造貴方使用者身分的秘密。** 私鑰從不離開貴方環境——
 這是改造前的共享密鑰（`ssoSecret`）做不到的：那把密鑰雙方都有，我們有能力簽出任何一位使用者的身分。
 
+> 完整規範見 [HyAgent客戶網站自動登入規格.md](HyAgent客戶網站自動登入規格.md)（協定正本，兩者若有出入以它為準）；
+> 要交給整合方工程師照著做的操作版是 [HyAgent客戶端整合手冊.md](HyAgent客戶端整合手冊.md)。
+> **（HyAgent 內部）** 實作過程與剩餘缺口見 [SSO-ASSERTION-PLAN-AND-RECORD.md](SSO-ASSERTION-PLAN-AND-RECORD.md)，不對外交付。
+
 ## 金鑰
 
 | 項目 | 要求 |
