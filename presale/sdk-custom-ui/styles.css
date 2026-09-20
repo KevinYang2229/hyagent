@@ -22,8 +22,14 @@ body {
 .links { display: flex; gap: 20px; }
 .links a { color: #475569; text-decoration: none; font-size: 15px; }
 .links a:hover { color: #2563eb; }
+/* header 右側群組：已登入標示 + 線上客服鈕（靠右由本容器負責，按鈕不再自己推） */
+.header-right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+.login-badge {
+  font-size: 13px; color: #166534;
+  background: #dcfce7; padding: 5px 12px; border-radius: 999px;
+}
 .chat-btn {
-  margin-left: auto; display: inline-flex; align-items: center; gap: 8px;
+  display: inline-flex; align-items: center; gap: 8px;
   background: linear-gradient(135deg, #5896f5, #2563eb); color: #fff;
   border: none; border-radius: 10px; padding: 10px 18px; font-size: 15px; font-weight: 600;
   cursor: pointer; box-shadow: 0 4px 14px rgba(37, 99, 235, 0.3);

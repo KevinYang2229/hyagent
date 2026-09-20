@@ -38,8 +38,31 @@ const TENANT_ID = process.env.TENANT_ID ?? '';
 const generated = process.env.TENANT_PRIVATE_KEY ? null : generateKeyPair('ES256');
 const PRIVATE_KEY = process.env.TENANT_PRIVATE_KEY ?? generated.privateKeyPem;
 const PUBLIC_KEY = generated?.publicKeyPem ?? null;
-const DEMO_USER_ID = process.env.DEMO_USER_ID ?? 'hyweb';
+// 模擬「對方系統目前登入的使用者」，與 widge-tenant 同一組欄位（見那支的說明）。
+// 公司別用本站自己的品牌（Beta Cloud）——身分是這個網站發的，簽別人家的公司名沒有道理。
+const DEMO_USER_ID = process.env.DEMO_USER_ID ?? '507';
 const DEMO_USER_NAME = process.env.DEMO_USER_NAME ?? '測試員';
+/**
+ * 對方系統自家的組織欄位 → Assertion 的 `hyagent:profile`（規格 §4.2.3）。
+ * HyAgent 會採用 companyName / deptName / jobPostName 作為公司／部門／職稱；
+ * 其中部門另作為部門層級知識庫可見範圍的判定依據。留空的欄位不進 claims。
+ */
+const DEMO_PROFILE = Object.fromEntries(
+  Object.entries({
+    companyName: process.env.DEMO_COMPANY_NAME ?? 'Beta Cloud',
+    deptName: process.env.DEMO_DEPT_NAME ?? '財務部',
+    jobPostName: process.env.DEMO_JOB_POST_NAME ?? '協理',
+  }).filter(([, value]) => value),
+);
+
+const loginBadge = `● 已登入：${[
+  DEMO_PROFILE.companyName,
+  DEMO_PROFILE.deptName,
+  DEMO_PROFILE.jobPostName,
+  `${DEMO_USER_NAME}(${DEMO_USER_ID})`,
+]
+  .filter(Boolean)
+  .join(' ')}`;
 
 // 啟動時用 esbuild 把 app.ts（含 @hyagent/sdk）打包成瀏覽器可執行的 ESM。
 let appJs = '';
@@ -61,7 +84,9 @@ const html = fs
   .replace(
     '<!--OA_CONFIG-->',
     `<script>window.__OA__ = ${JSON.stringify({ origin: OA_ORIGIN, key: TENANT_PK })};</script>`,
-  );
+  )
+  // header 的「已登入」直接由簽票用的那組值產生，確保網站上顯示的人＝Assertion 裡的人
+  .replace('<!--LOGIN_BADGE-->', loginBadge);
 
 const server = http.createServer((req, res) => {
   if (req.url === '/api/mybot/identity') {
@@ -77,7 +102,10 @@ const server = http.createServer((req, res) => {
         privateKey: PRIVATE_KEY,
         tenant: TENANT_ID,
         subject: DEMO_USER_ID,
-        profile: { name: DEMO_USER_NAME },
+        profile: {
+          name: DEMO_USER_NAME,
+          ...(Object.keys(DEMO_PROFILE).length > 0 ? { 'hyagent:profile': DEMO_PROFILE } : {}),
+        },
       });
     } catch (err) {
       console.error('[identity] 簽發失敗：', err.message);
@@ -124,5 +152,8 @@ server.listen(PORT, () => {
     console.log('');
     console.log(PUBLIC_KEY);
   }
-  console.log(`  → 登入使用者: ${DEMO_USER_NAME}(${DEMO_USER_ID})`);
+  console.log(
+    `  → 登入使用者: ${DEMO_USER_NAME}(${DEMO_USER_ID})` +
+      (Object.keys(DEMO_PROFILE).length > 0 ? `　${Object.values(DEMO_PROFILE).join(' / ')}` : ''),
+  );
 });

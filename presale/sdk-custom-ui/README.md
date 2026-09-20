@@ -45,6 +45,11 @@ open http://localhost:4200
 
 ## 設定
 
-環境變數同 [.env.example](.env.example)：`PORT / OA_ORIGIN / TENANT_PK / TENANT_ID / TENANT_PRIVATE_KEY / DEMO_USER_ID / DEMO_USER_NAME`。
+環境變數同 [.env.example](.env.example)：`PORT / OA_ORIGIN / TENANT_PK / TENANT_ID / TENANT_PRIVATE_KEY /
+DEMO_USER_ID / DEMO_USER_NAME / DEMO_COMPANY_NAME / DEMO_DEPT_NAME / DEMO_JOB_POST_NAME`。
+
+後三個會包成 Assertion 的 `hyagent:profile`（規格 §4.2.3），HyAgent 採用它們作為使用者的
+公司／部門／職稱——與 [widge-tenant](../widge-tenant) 帶的是同一組欄位，兩站差別只在 UI 怎麼畫。
+header 的「已登入」標示也由同一組值產生。
 
 > 關鍵：SDK 自訂 UI 是**跨網域**呼叫 OA，務必確認租戶 `allowedOrigins` 含本站網址，否則被 CORS 擋。

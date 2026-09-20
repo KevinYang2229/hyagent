@@ -66,8 +66,21 @@ open http://localhost:4000
 **跑 server.mjs 的終端機**：每次簽發印一行，例如
 
 ```
-[identity] 14:02:31 簽發給 測試員(hyweb) { iss: 't_xxx', sub: 'hyweb', name: '測試員', jti: '…', exp: '14:03:31' }
+[identity] 22:30:38 簽發給 測試員(507) {
+  iss: '8e81d071394abb35',
+  sub: '507',
+  name: '測試員',
+  'hyagent:profile': { companyName: '凌網', deptName: '財務部', jobPostName: '協理' },
+  jti: 'f3c933a7-…',
+  exp: '22:31:38'
+}
 ```
+
+面板的 ⑤ 那行（`GET /api/auth/me`）會回
+`{ id: '507', name: '測試員', company: '凌網', department: '財務部', title: '協理' }`
+——租戶沒在後台建人員目錄時，後端就採用 Assertion 帶來的身分（`name` + `hyagent:profile` 的
+`companyName` / `deptName` / `jobPostName`，見規格 §4.2.3），小幫手放大後的標題列也會顯示這串。
+若後台為該租戶建過 id=507 的人員資料，則以目錄為準。
 
 憑證本身一律遮罩（只留前 8 碼與長度）後才輸出，但 claims 裡的使用者代號與姓名會完整印出——
 那正是要看的東西。所以 `data-debug` 是整合期工具，交付給客戶的載入碼不要留。
@@ -85,7 +98,8 @@ open http://localhost:4000
 | `TENANT_PK` | （空，**必填**） | 租戶公開金鑰。每台機器不同，故不給預設值——見下方說明 |
 | `TENANT_ID` | （必填） | 租戶 id，會成為 Assertion 的 `iss` |
 | `TENANT_PRIVATE_KEY` | （留空） | 簽發用私鑰；留空時啟動當場產一組並把公鑰印在 console |
-| `DEMO_USER_ID` / `DEMO_USER_NAME` | `hyweb` / `測試員` | 模擬「對方系統已登入的使用者」 |
+| `DEMO_USER_ID` / `DEMO_USER_NAME` | `507` / `測試員` | 模擬「對方系統已登入的使用者」，成為 Assertion 的 `sub` / `name` |
+| `DEMO_COMPANY_NAME` / `DEMO_DEPT_NAME` / `DEMO_JOB_POST_NAME` | `凌網` / `財務部` / `協理` | 對方系統自家的組織欄位，包成 `hyagent:profile`（規格 §4.2.3）；留空的欄位不進 claims |
 
 ```bash
 TENANT_PK=pk_xxx TENANT_ID=你的租戶id DEMO_USER_NAME=小明 \

@@ -47,9 +47,25 @@ const TENANT_ID = process.env.TENANT_ID ?? '';
 const generated = process.env.TENANT_PRIVATE_KEY ? null : generateKeyPair('ES256');
 const PRIVATE_KEY = process.env.TENANT_PRIVATE_KEY ?? generated.privateKeyPem;
 const PUBLIC_KEY = generated?.publicKeyPem ?? null;
-// 模擬「對方系統目前登入的使用者」
-const DEMO_USER_ID = process.env.DEMO_USER_ID ?? 'hyweb';
+// 模擬「對方系統目前登入的使用者」。沿用整合手冊 §4.3 範例那位：工號 507 的財務部協理。
+const DEMO_USER_ID = process.env.DEMO_USER_ID ?? '507';
 const DEMO_USER_NAME = process.env.DEMO_USER_NAME ?? '測試員';
+/**
+ * 對方系統自家的組織欄位（公司／部門／職稱）。
+ *
+ * 規格 §4.2.3：這類欄位沒有標準 claim，一律集中放在 `hyagent:profile` 底下，
+ * HyAgent 不解讀語意、原樣帶過。企業入口既有 SSO token 上的 deptId / companyName /
+ * jobPostName 等欄位遷移過來時直接塞進這個物件即可，不必為它們發明新的頂層 claim。
+ *
+ * 留空的欄位不進 claims——Assertion 有 4096 bytes 上限（§4.2.4），空字串沒有意義。
+ */
+const DEMO_PROFILE = Object.fromEntries(
+  Object.entries({
+    companyName: process.env.DEMO_COMPANY_NAME ?? '凌網',
+    deptName: process.env.DEMO_DEPT_NAME ?? '財務部',
+    jobPostName: process.env.DEMO_JOB_POST_NAME ?? '協理',
+  }).filter(([, value]) => value),
+);
 
 /**
  * 模擬：使用者已登入對方系統 → 後端以私鑰現簽一張短效 Assertion。
@@ -61,7 +77,10 @@ function mintAssertion() {
     privateKey: PRIVATE_KEY,
     tenant: TENANT_ID,
     subject: DEMO_USER_ID,
-    profile: { name: DEMO_USER_NAME },
+    profile: {
+      name: DEMO_USER_NAME,
+      ...(Object.keys(DEMO_PROFILE).length > 0 ? { 'hyagent:profile': DEMO_PROFILE } : {}),
+    },
   });
 }
 
@@ -79,13 +98,23 @@ function peekClaims(token) {
   }
 }
 
-// landing page：注入 OA 來源與租戶金鑰供前端 bootstrap 使用
+// landing page：注入 OA 來源與租戶金鑰供前端 bootstrap 使用，
+// 並把 header 的「已登入」換成實際會被簽進 Assertion 的那位使用者。
+const loginBadge = `● 已登入：${[
+  DEMO_PROFILE.companyName,
+  DEMO_PROFILE.deptName,
+  DEMO_PROFILE.jobPostName,
+  `${DEMO_USER_NAME}(${DEMO_USER_ID})`,
+]
+  .filter(Boolean)
+  .join(' ')}`;
 const html = fs
   .readFileSync(path.join(DIR, 'index.html'), 'utf-8')
   .replace(
     '<!--OA_CONFIG-->',
     `<script>window.__OA__ = ${JSON.stringify({ origin: OA_ORIGIN, api: OA_API_ORIGIN, key: TENANT_PK })};</script>`,
-  );
+  )
+  .replace('<!--LOGIN_BADGE-->', loginBadge);
 
 const server = http.createServer((req, res) => {
   if (req.url === '/api/mybot/identity') {
@@ -116,6 +145,7 @@ const server = http.createServer((req, res) => {
             iss: claims.iss,
             sub: claims.sub,
             name: claims.name,
+            'hyagent:profile': claims['hyagent:profile'],
             jti: claims.jti,
             exp: new Date(claims.exp * 1000).toLocaleTimeString('zh-TW', { hour12: false }),
           }
@@ -152,7 +182,10 @@ server.listen(PORT, () => {
   console.log(`  → HyAgent:    ${OA_ORIGIN}`);
   console.log(`  → 租戶 pk:     ${TENANT_PK.slice(0, 12)}…`);
   console.log(`  → Tenant ID:  ${TENANT_ID || '(未設！Assertion 的 iss 會是空字串，換發必失敗)'}`);
-  console.log(`  → 登入使用者:  ${DEMO_USER_NAME}(${DEMO_USER_ID})`);
+  console.log(
+    `  → 登入使用者:  ${DEMO_USER_NAME}(${DEMO_USER_ID})` +
+      (Object.keys(DEMO_PROFILE).length > 0 ? `　${Object.values(DEMO_PROFILE).join(' / ')}` : ''),
+  );
   if (PUBLIC_KEY) {
     console.log('');
     console.log('  未設 TENANT_PRIVATE_KEY，已當場產生一組金鑰（重啟會變）。');
