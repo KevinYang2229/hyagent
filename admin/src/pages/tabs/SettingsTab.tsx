@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, type ApiKey, type LLMConfigPatch, type LLMConfigView, type Tenant } from '../../api';
 import { IconCopy, IconKey } from '../../components/icons';
-import AssertionKeysPanel from './AssertionKeysPanel';
 
 export default function SettingsTab({
   tenant,
@@ -104,7 +103,7 @@ export default function SettingsTab({
         <div className="card-head">
           <div>
             <div className="card-title">租戶設定</div>
-            <div className="card-desc">名稱、允許嵌入來源與 SSO 共享密鑰。</div>
+            <div className="card-desc">名稱、允許嵌入來源與用量配額。</div>
           </div>
         </div>
         <div className="card-body">
@@ -124,8 +123,6 @@ export default function SettingsTab({
               placeholder="https://acme.com"
             />
           </div>
-
-          <AssertionKeysPanel tenantId={tenant.id} onError={onError} />
 
           <div className="field">
             <label className="field-label">月度 AI Token 配額</label>
