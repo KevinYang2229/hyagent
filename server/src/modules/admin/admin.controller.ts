@@ -38,6 +38,7 @@ import type {
   CreateKeyInput,
   CreateTenantInput,
   CreateWebhookInput,
+  ListSessionsQuery,
   PatchAssertionSettingsInput,
   PatchTenantInput,
   RevokeSessionsInput,
@@ -162,6 +163,40 @@ export const adminController = {
     // 稽核留租戶與筆數，不留 sub（規格 §11.1：日誌不得含 claims 值）
     logger.info({ tenantId: tenant.id, revoked }, 'sessions revoked by sub');
     res.status(200).json({ data: { revoked } });
+  },
+
+  /**
+   * 列出租戶目前有效的 Session。
+   *
+   * 回應會帶 `sub` 原文（後台要顯示是誰），但**日誌不留**——規格 §11.1 禁止日誌含
+   * claims 值，這條在 revokeSessionsBySub 已經守過一次，列表同樣不能破例。
+   * 連 query 字串都不記：它本身可能就是一個 sub。
+   */
+  async listSessions(req: Request, res: Response): Promise<void> {
+    const tenant = ensureTenant(String(req.params.id));
+    const { query, kid, limit, offset } = req.query as unknown as ListSessionsQuery;
+    const page = await authSessionStore.listByTenant({
+      tenantId: tenant.id,
+      ...(query ? { query } : {}),
+      ...(kid ? { kid } : {}),
+      limit,
+      offset,
+    });
+    logger.info(
+      { tenantId: tenant.id, returned: page.sessions.length, total: page.total },
+      'sessions listed',
+    );
+    res.status(200).json({ data: page });
+  },
+
+  /** 作廢單筆 Session。找不到回 404——這裡的 id 來自剛才那份列表，不存在通常代表它已過期或被別人踢掉了。 */
+  async revokeSession(req: Request, res: Response): Promise<void> {
+    const tenant = ensureTenant(String(req.params.id));
+    const sessionId = String(req.params.sessionId);
+    const revoked = await authSessionStore.revokeById(tenant.id, sessionId);
+    if (!revoked) throw AppError.notFound('Session 不存在或已失效');
+    logger.info({ tenantId: tenant.id }, 'session revoked by id');
+    res.status(200).json({ data: { revoked: 1 } });
   },
 
   async updateTenant(req: Request, res: Response): Promise<void> {

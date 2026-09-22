@@ -348,6 +348,21 @@ export interface AssertionKeysView {
   clockOffset: ClockOffsetStats | null;
 }
 
+/** 後台看到的一筆有效 Session。`id` 供作廢用，它不是也回推不出 sessionToken。 */
+export interface AuthSessionSummary {
+  id: string;
+  sub: string;
+  name?: string;
+  kid: string;
+  createdAt: string;
+  expiresAt: string;
+}
+
+export interface AuthSessionPage {
+  sessions: AuthSessionSummary[];
+  total: number;
+}
+
 export interface SkillLibraryView {
   skills: SkillDescriptor[];
   tenants: { id: string; name: string; disabledServices: string[] }[];
@@ -384,6 +399,30 @@ export const api = {
     ),
   updateAssertionSettings: (id: string, patch: Partial<AssertionSettings>) =>
     req<AssertionSettings>('PATCH', `/admin/tenants/${id}/assertion-settings`, patch),
+  /**
+   * 列出租戶目前有效的 Session。
+   *
+   * `query` 一個欄位兩用：完整 sub 精確命中，或 name 關鍵字模糊命中。沒帶 name 的
+   * Session 搜不到關鍵字——sub 在後端只有 HMAC 與密文，模糊比對做不了。
+   */
+  listSessions: (
+    id: string,
+    params: { query?: string; kid?: string; limit?: number; offset?: number } = {},
+  ) => {
+    const qs = new URLSearchParams();
+    if (params.query) qs.set('query', params.query);
+    if (params.kid) qs.set('kid', params.kid);
+    if (params.limit != null) qs.set('limit', String(params.limit));
+    if (params.offset != null) qs.set('offset', String(params.offset));
+    const suffix = qs.toString();
+    return req<AuthSessionPage>('GET', `/admin/tenants/${id}/sessions${suffix ? `?${suffix}` : ''}`);
+  },
+  /** 作廢單筆 Session。找不到（已過期或已被踢掉）回 404。 */
+  revokeSession: (id: string, sessionId: string) =>
+    req<{ revoked: number }>(
+      'DELETE',
+      `/admin/tenants/${id}/sessions/${encodeURIComponent(sessionId)}`,
+    ),
   /** 依 sub 批次作廢 Session。冪等：查無有效 Session 也回 200 + revoked:0（規格 §7.4） */
   revokeSessionsBySub: (id: string, sub: string) =>
     req<{ revoked: number }>('POST', `/admin/tenants/${id}/sessions/revoke`, { sub }),

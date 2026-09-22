@@ -191,3 +191,135 @@ describe('到期', () => {
     expect(lifetime).toBe(7200 * 1000);
   });
 });
+
+describe('後台列表（listByTenant）', () => {
+  const list = (over: Partial<Parameters<typeof authSessionStore.listByTenant>[0]> = {}) =>
+    authSessionStore.listByTenant({ tenantId: 'tenantA', limit: 50, offset: 0, ...over });
+
+  it('只列有效的 Session——過期紀錄要等排程才消失，一併列出等於顯示一批已經登不進來的人', async () => {
+    await create({ sub: 'live' });
+    await create({ sub: 'dead', expiresInSeconds: -1 });
+
+    const page = await list();
+
+    expect(page.total).toBe(1);
+    expect(page.sessions.map((s) => s.sub)).toEqual(['live']);
+  });
+
+  it('不跨租戶', async () => {
+    await create({ tenantId: 'tenantA', sub: '507' });
+    await create({ tenantId: 'tenantB', sub: '508' });
+
+    const page = await list();
+
+    expect(page.sessions.map((s) => s.sub)).toEqual(['507']);
+  });
+
+  it('建立時間新的在前', async () => {
+    jest.useFakeTimers();
+    try {
+      jest.setSystemTime(new Date('2026-09-22T01:00:00Z'));
+      await create({ sub: 'earlier' });
+      // 只往前 30 分鐘：跳滿一小時的話第一筆剛好到期，就變成在測到期而不是測排序
+      jest.setSystemTime(new Date('2026-09-22T01:30:00Z'));
+      await create({ sub: 'later' });
+
+      const page = await list();
+
+      expect(page.sessions.map((s) => s.sub)).toEqual(['later', 'earlier']);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('分頁：total 是符合條件的總數，不受 limit 影響', async () => {
+    await create({ sub: 'a' });
+    await create({ sub: 'b' });
+    await create({ sub: 'c' });
+
+    const first = await list({ limit: 2, offset: 0 });
+    const second = await list({ limit: 2, offset: 2 });
+
+    expect(first.sessions).toHaveLength(2);
+    expect(second.sessions).toHaveLength(1);
+    expect(first.total).toBe(3);
+    expect(second.total).toBe(3);
+  });
+
+  it('依 kid 篩選——撤銷公鑰前用它看影響範圍', async () => {
+    await create({ sub: 'on-old', kid: 'kid-old' });
+    await create({ sub: 'on-new', kid: 'kid-new' });
+
+    const page = await list({ kid: 'kid-old' });
+
+    expect(page.sessions.map((s) => s.sub)).toEqual(['on-old']);
+  });
+
+  it('搜尋：完整 sub 精確命中', async () => {
+    await create({ sub: 'employee-507' });
+    await create({ sub: 'employee-508' });
+
+    const page = await list({ query: 'employee-507' });
+
+    expect(page.sessions.map((s) => s.sub)).toEqual(['employee-507']);
+  });
+
+  it('搜尋：sub 只吃完整值，打一半找不到——它在儲存層只有 HMAC，無法做前綴比對', async () => {
+    await create({ sub: 'employee-507' });
+
+    await expect(list({ query: 'employee' })).resolves.toMatchObject({ total: 0 });
+  });
+
+  it('搜尋：name 是關鍵字模糊比對，且不分大小寫', async () => {
+    await create({ sub: '507', name: '羅玉瑩' });
+    await create({ sub: '508', name: 'Alice Wang' });
+
+    await expect(list({ query: '玉' })).resolves.toMatchObject({ total: 1 });
+    await expect(list({ query: 'alice' })).resolves.toMatchObject({ total: 1 });
+  });
+
+  it('搜尋同時試 sub 與 name，取聯集——後台顯示的是 name ?? sub，管理員照著畫面打哪個都該找得到', async () => {
+    await create({ sub: '507', name: '玉山分行 羅玉瑩' });
+    await create({ sub: '玉山', name: '陳小明' });
+
+    const page = await list({ query: '玉山' });
+
+    // 一筆靠 name 關鍵字命中、一筆靠完整 sub 命中，兩條路都要算進來
+    expect(page.total).toBe(2);
+  });
+
+  it('回傳的 sub 是解密後的原文（後台要顯示是誰）', async () => {
+    env.DATA_ENCRYPTION_KEY = TEST_ENC_KEY;
+    try {
+      await create({ sub: 'employee-507' });
+
+      const page = await list();
+
+      expect(page.sessions[0]?.sub).toBe('employee-507');
+    } finally {
+      env.DATA_ENCRYPTION_KEY = '';
+    }
+  });
+});
+
+describe('作廢單筆（revokeById）', () => {
+  it('以列表回的 id 作廢，其他 Session 不受影響', async () => {
+    const target = await create({ sub: '507' });
+    const other = await create({ sub: '508' });
+
+    await expect(authSessionStore.revokeById('tenantA', target.session.id)).resolves.toBe(true);
+    await expect(authSessionStore.get(target.sessionToken)).resolves.toBeUndefined();
+    await expect(authSessionStore.get(other.sessionToken)).resolves.toBeDefined();
+  });
+
+  it('不存在的 id 回 false', async () => {
+    await expect(authSessionStore.revokeById('tenantA', 'no-such-id')).resolves.toBe(false);
+  });
+
+  it('不跨租戶：拿別家的 id 來作廢不會成功，否則路由上的 /tenants/:id 等於白寫', async () => {
+    const theirs = await create({ tenantId: 'tenantB' });
+
+    await expect(authSessionStore.revokeById('tenantA', theirs.session.id)).resolves.toBe(false);
+    await expect(authSessionStore.get(theirs.sessionToken)).resolves.toBeDefined();
+  });
+});

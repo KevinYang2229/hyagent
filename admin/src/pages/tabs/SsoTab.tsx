@@ -18,6 +18,7 @@ import {
   type AssertionSettings,
   type TenantPublicKey,
 } from '../../api';
+import SessionsPanel from './SessionsPanel';
 
 const STATUS_LABEL: Record<TenantPublicKey['status'], string> = {
   active: '啟用中',
@@ -37,7 +38,6 @@ export default function SsoTab({
   const [label, setLabel] = useState('');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
-  const [revokeSub, setRevokeSub] = useState('');
 
   const load = useCallback(() => {
     void api.listAssertionKeys(tenantId).then(setView).catch(onError);
@@ -112,7 +112,8 @@ export default function SsoTab({
 
   return (
     <div className="settings-stack">
-      {/* 操作結果固定顯示在頂端：三張卡的按鈕散在整頁，訊息跟著按鈕跑會看不到 */}
+      {/* 公鑰與時間設定兩張卡共用的操作結果。固定在頂端，訊息跟著按鈕跑會看不到；
+          Session 列表的操作量大、回饋要貼著表格，所以它自己管一份 */}
       {notice && (
         <p className="field-hint" role="status">
           {notice}
@@ -256,40 +257,7 @@ export default function SsoTab({
         </div>
       </div>
 
-      <div className="card">
-        <div className="card-head">
-          <div>
-            <div className="card-title">作廢使用者的所有 Session</div>
-            <div className="card-desc">
-              用於帳號停權、離職。<strong>請先在客戶自家系統停權</strong>，否則對方的 Identity
-              Endpoint 還會繼續簽發新憑證，作廢完馬上又能登入。
-            </div>
-          </div>
-        </div>
-        <div className="card-body">
-          <div style={{ display: 'flex', gap: 8 }}>
-            <input
-              className="input"
-              value={revokeSub}
-              onChange={(e) => setRevokeSub(e.target.value)}
-              placeholder="使用者識別（Assertion 的 sub）"
-            />
-            <button
-              className="btn"
-              disabled={busy || !revokeSub.trim()}
-              onClick={() =>
-                void run(async () => {
-                  const r = await api.revokeSessionsBySub(tenantId, revokeSub.trim());
-                  setRevokeSub('');
-                  return `已作廢 ${r.revoked} 個 Session`;
-                })
-              }
-            >
-              作廢
-            </button>
-          </div>
-        </div>
-      </div>
+      <SessionsPanel tenantId={tenantId} keys={view.keys} onError={onError} />
     </div>
   );
 }

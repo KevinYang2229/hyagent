@@ -67,6 +67,8 @@ model AuthSessionRow {
   @@index([tenantId, kid])
   @@index([tenantId, subHash])
   @@index([expiresAt])
+  /// 後台 Session 列表：依租戶篩選、建立時間倒序分頁（上面幾個索引排序用不上）
+  @@index([tenantId, createdAt])
   @@map("auth_sessions")
 }
 

@@ -81,6 +81,43 @@ export interface CreatedAuthSession {
   session: AuthSession;
 }
 
+/**
+ * 後台列表的一筆：`sub` 已解密成原文，內部欄位（subEnc / subHash）不外流。
+ *
+ * `id` 是 sha256(sessionToken)，拿它作廢單筆用；它**不足以**回推 token，
+ * 所以交給後台前端是安全的。
+ */
+export interface AuthSessionSummary {
+  id: string;
+  sub: string;
+  name?: string;
+  kid: string;
+  createdAt: string;
+  expiresAt: string;
+}
+
+export interface ListAuthSessionsInput {
+  tenantId: string;
+  /**
+   * 使用者搜尋。同時試兩條路、取聯集：
+   *   1. 當成完整 `sub` 算 HMAC 比對（精確命中，走 tenant_id+sub_hash 索引）
+   *   2. 當成 `name` 的關鍵字（模糊，不分大小寫）
+   *
+   * `sub` 只以 HMAC 與密文落地，密文上做不了模糊比對——所以沒帶 `name` 的 Session
+   * 只能用完整 `sub` 命中。這是 store 檔頭第 3 點那個設計的必然代價，不是疏漏。
+   */
+  query?: string;
+  kid?: string;
+  limit: number;
+  offset: number;
+}
+
+export interface AuthSessionPage {
+  sessions: AuthSessionSummary[];
+  /** 符合條件的總筆數（不受 limit/offset 影響），供前端算分頁 */
+  total: number;
+}
+
 // ---- 雜湊與加密 ----
 
 function tokenId(sessionToken: string): string {
@@ -185,6 +222,18 @@ function fromRow(row: AuthSessionDbRow): AuthSession {
   };
 }
 
+/** Session → 後台列表的一筆。解密 `sub`，丟掉 subEnc / subHash / profile。 */
+function toSummary(session: AuthSession): AuthSessionSummary {
+  return {
+    id: session.id,
+    sub: readSub(session),
+    ...(session.name ? { name: session.name } : {}),
+    kid: session.kid,
+    createdAt: session.createdAt,
+    expiresAt: session.expiresAt,
+  };
+}
+
 export interface CreateAuthSessionInput {
   tenantId: string;
   /** 終端使用者識別（Assertion 的 sub）。只有這裡收得到明文，不會原樣落地。 */
@@ -281,6 +330,79 @@ export const authSessionStore = {
     const existed = sessions.delete(id);
     if (existed) persistFile();
     return existed;
+  },
+
+  /**
+   * 後台列表：該租戶目前**有效**的 Session，建立時間新的在前。
+   *
+   * 只列未過期的。過期紀錄要等清理排程才真的消失，一併列出會讓後台顯示一批其實
+   * 已經登不進來的人——判定沿用讀取路徑過濾（與 get() 同一條線），不依賴排程跑過。
+   */
+  async listByTenant({
+    tenantId,
+    query,
+    kid,
+    limit,
+    offset,
+  }: ListAuthSessionsInput): Promise<AuthSessionPage> {
+    const now = new Date();
+    if (env.DATA_BACKEND === 'db') {
+      const db = await connectDb();
+      const where: Prisma.AuthSessionRowWhereInput = {
+        tenantId,
+        expiresAt: { gt: now },
+        ...(kid ? { kid } : {}),
+        ...(query
+          ? {
+              OR: [
+                { subHash: hashSub(tenantId, query) },
+                { name: { contains: query, mode: 'insensitive' } },
+              ],
+            }
+          : {}),
+      };
+      const [rows, total] = await Promise.all([
+        db.authSessionRow.findMany({
+          where,
+          orderBy: { createdAt: 'desc' },
+          take: limit,
+          skip: offset,
+        }),
+        db.authSessionRow.count({ where }),
+      ]);
+      return { sessions: rows.map((row) => toSummary(fromRow(row))), total };
+    }
+    const nowMs = now.getTime();
+    const subHash = query ? hashSub(tenantId, query) : undefined;
+    const needle = query?.toLowerCase();
+    const matched = [...sessions.values()]
+      .filter((s) => s.tenantId === tenantId && !isExpired(s, nowMs))
+      .filter((s) => (kid ? s.kid === kid : true))
+      .filter((s) =>
+        !needle ? true : s.subHash === subHash || (s.name ?? '').toLowerCase().includes(needle),
+      )
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    return { sessions: matched.slice(offset, offset + limit).map(toSummary), total: matched.length };
+  },
+
+  /**
+   * 作廢單一 Session（後台列表用）。
+   *
+   * 與 revoke() 的差別在入口：那支吃 sessionToken 並自行算 sha256，而後台永遠拿不到
+   * token，手上只有列表回來的 `id`。**tenantId 必須一起比對**——否則在 A 租戶的頁面
+   * 貼上 B 租戶的 id 就能跨租戶作廢，路由上的 /tenants/:id 等於白寫。
+   */
+  async revokeById(tenantId: string, id: string): Promise<boolean> {
+    if (env.DATA_BACKEND === 'db') {
+      const db = await connectDb();
+      const { count } = await db.authSessionRow.deleteMany({ where: { id, tenantId } });
+      return count > 0;
+    }
+    const session = sessions.get(id);
+    if (!session || session.tenantId !== tenantId) return false;
+    sessions.delete(id);
+    persistFile();
+    return true;
   },
 
   /**

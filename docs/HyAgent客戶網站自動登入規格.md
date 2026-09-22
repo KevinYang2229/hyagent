@@ -1184,6 +1184,40 @@ Content-Type: application/json
 
 > 未來若有自動化需求（例如 HR 系統於停權當下即時連動），得於新的 minor 版本增設對外 API；屆時**必須**配發獨立管理憑證，並依 §11.1 的相容性規範發佈。
 
+#### 7.4.1 後台 Session 列表
+
+> **▶ 實作**：`admin.controller.ts` 的 `listSessions()` / `revokeSession()` →
+> `authSessionStore.listByTenant()` / `revokeById()`；測試 `server/tests/admin-sessions-endpoint.test.ts`
+
+上一節的依 `sub` 作廢要求操作者事先知道 `sub`，而後台原本無處可查——實務上只有客戶來電報工號時用得上。因此後台另備列表，讓操作者看得到再點。與 §7.4 同樣**僅**經後台 UI，**不對外開放 API**。
+
+```http
+GET    /api/admin/tenants/{tenant}/sessions?query=&kid=&limit=&offset=
+DELETE /api/admin/tenants/{tenant}/sessions/{sessionId}
+```
+
+| 規範 | 內容 |
+| --- | --- |
+| 認證 | 同 §7.4，**必須**以 HyAgent 管理者帳號認證 |
+| 列出範圍 | **僅**列出未過期的 Session。過期紀錄要待清理排程才消失，一併列出會使後台顯示一批其實已無法登入的人 |
+| `sessionId` | 即 `sha256(sessionToken)`，由列表回傳。它**不足以**回推 `sessionToken`，故得交付前端 |
+| 跨租戶 | 作廢**必須**同時比對 `tenant` 與 `sessionId`；查無者回 `404`（此處操作者已持有列表，不構成 §7.4 所指的探測面） |
+| 搜尋 | 單一 `query` 參數同時比對「完整 `sub`」（HMAC 等值）與「`name` 關鍵字」（模糊），取聯集 |
+| 稽核 | 同 §7.4，日誌**不得**留下 `sub` 等 claims 值；`query` 參數本身可能就是一個 `sub`，同樣**不得**記錄 |
+
+**搜尋的能力邊界（源自 §7.1 的儲存規範）**
+
+`sub` 僅以 HMAC 與密文落地，密文上無法做模糊比對。因此：
+
+- 帶有 `name` 的 Session：可用姓名關鍵字搜尋
+- 未帶 `name` 的 Session（Assertion 未提供 `name` claim）：**只能**以完整 `sub` 精確命中
+
+此限制**必須**於介面上明示，否則操作者會誤判為系統故障。
+
+**隱私考量**
+
+§7.4 的作廢端點刻意不洩漏帳號在線與否；列表則直接呈現「該 Tenant 目前何人在線」。這是後台操作所需，但屬於 Tenant 的人事資訊，HyAgent **應該**僅供必要的管理者存取，並記錄存取行為。
+
 ### 7.5 錯誤回應格式
 
 > **▶ 實作**：`server/src/lib/assertion/errors.ts` 的 `toErrorResponse()`

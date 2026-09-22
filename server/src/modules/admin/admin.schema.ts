@@ -57,6 +57,26 @@ export const revokeSessionsSchema = z.object({
   sub: z.string().trim().min(1),
 });
 
+/**
+ * 後台 Session 列表的查詢條件。
+ *
+ * `query` 一個欄位同時當「完整 sub」與「name 關鍵字」用（見 authSessionStore.listByTenant）：
+ * 後台顯示使用者本來就是 `name ?? sub`，若拆成兩個欄位，管理員照著畫面上的工號去搜
+ * 卻搜不到，只因為那格其實是 fallback 出來的。
+ */
+export const listSessionsQuerySchema = z.object({
+  query: z.string().trim().min(1).optional(),
+  kid: z.string().trim().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+
+/** 作廢單筆 Session：sessionId 是列表回的 id（sha256(sessionToken)），不是 token。 */
+export const sessionParamSchema = z.object({
+  id: z.string().min(1),
+  sessionId: z.string().min(1),
+});
+
 export const appearanceSchema = z.object({
   assistantName: z.string().max(30).optional(),
   primaryColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
@@ -148,6 +168,8 @@ export type SetPublicKeyStatusInput = z.infer<typeof setPublicKeyStatusSchema>;
 export type TenantKeyParam = z.infer<typeof tenantKeyParamSchema>;
 export type PatchAssertionSettingsInput = z.infer<typeof patchAssertionSettingsSchema>;
 export type RevokeSessionsInput = z.infer<typeof revokeSessionsSchema>;
+export type ListSessionsQuery = z.infer<typeof listSessionsQuerySchema>;
+export type SessionParam = z.infer<typeof sessionParamSchema>;
 export type PatchTenantInput = z.infer<typeof patchTenantSchema>;
 export type CreateKeyInput = z.infer<typeof createKeySchema>;
 export type CreateWebhookInput = z.infer<typeof createWebhookSchema>;
