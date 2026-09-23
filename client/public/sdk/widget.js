@@ -1,8 +1,15 @@
 /**
  * HyAgent 嵌入式聊天 widget（POC）。
  *
- * 第三方網站只要加一行即可接入：
- *   <script src="https://<你的網域>/widget.js"></script>
+ * 第三方網站只要加一行即可接入（src 為 HyAgent 自己的對外網域——
+ * 面板 iframe 的來源就是從這個 script 的 src 推得，見下方 `origin`，
+ * 因此本檔**必須**由 HyAgent 託管，不可讓整合方複製到自己的網域）：
+ *   <script src="https://<hyagent 網域>/sdk/widget.js"></script>
+ *
+ * 對外路徑固定為 `/sdk/widget.js`（規格 §7.2 定稿）：不含版本號的單一**可變**路徑，
+ * HyAgent 得就地更新以推送修補，因此它的 Cache-Control `max-age` 不得超過 5 分鐘
+ * （見 client/nginx.conf.template）。不強制 SRI——託管被攻破時後端回應同樣可竄改，
+ * SRI 只保護單一檔案，卻換掉緊急修補的能力。
  *
  * 載入後在右下角注入一顆浮動按鈕，點擊彈出聊天視窗（iframe 載入 OA panel 的 ?embed=1 模式）。
  * 面板標題列另有放大鈕：放大後面板水平、垂直置中並蓋上背景遮罩，點遮罩或 Esc 還原。
@@ -21,8 +28,14 @@
     document.currentScript ||
     (function () {
       var all = document.getElementsByTagName("script");
+      // 先認定稿路徑 /sdk/widget.js：宿主頁上另有同名的第三方 widget.js 時，寬鬆比對會挑錯人，
+      // 而挑錯的後果是 origin 算成別人的網域、面板永遠載不起來。找不到才退回寬鬆比對，
+      // 讓自行託管到其他路徑的情況仍能自救。
       for (var i = all.length - 1; i >= 0; i--) {
-        if (all[i].src && all[i].src.indexOf("widget.js") !== -1) return all[i];
+        if (all[i].src && all[i].src.indexOf("/sdk/widget.js") !== -1) return all[i];
+      }
+      for (var j = all.length - 1; j >= 0; j--) {
+        if (all[j].src && all[j].src.indexOf("widget.js") !== -1) return all[j];
       }
       return null;
     })();
@@ -50,9 +63,9 @@
   //   data-size        啟動按鈕尺寸（px）48 / 52 / 56（預設）；其他值視為未設
   //   data-offset-x    距側邊（左或右，依 position）距離（px，預設 20）
   //   data-offset-y    距上／下緣（依 position）距離（px，預設 20；調高可避開頁面既有的 go-to-top 按鈕）
-  //   data-user-token  SSO handoff：宿主簽發的終端使用者 token（免內部帳密登入）
-  //   data-token-url   SSO handoff（長駐頁面建議用這個）：宿主自家的短效 token 端點，
-  //                    首次點開面板時才同源帶 cookie 取回。兩者都有時 data-user-token 優先。
+  //   data-token-url   SSO handoff：宿主自家的 Identity Endpoint（Token Provider，規格 §6.5）。
+  //                    面板需要身分時才由這裡同源帶 cookie 取回，經 postMessage 交給面板。
+  //   data-debug       "1" 時把 SSO 握手與登入者印到 console（整合期除錯用，正式站請拿掉）
   function attr(name) {
     var v = script.getAttribute(name);
     return v && v.trim() ? v.trim() : null;
@@ -96,30 +109,100 @@
   var offsetY = explicitOffsetY !== null ? clampOffset(explicitOffsetY) : 20;
   // data-launcher="none"：不顯示預設浮動按鈕，由宿主自己的按鈕呼叫 OAAgent.open() 開啟
   var showLauncher = attr("data-launcher") !== "none";
-  // data-token-url：宿主自家的短效 SSO token 端點（同源路徑或絕對網址）。
-  // 與 data-user-token 的差別在「什麼時候拿票」：SSO token 僅 5 分鐘有效，寫死在 script 標籤上的
-  // 靜態值，頁面停留久一點就過期，使用者真的要用時反而換不到票；改成點開面板當下才向宿主要，
-  // 才拿得到還在有效期內的票。宿主端點用自己的登入 cookie 決定發給誰，簽章密鑰留在宿主後端。
+  // data-token-url：宿主自家的 Identity Endpoint（同源路徑或絕對網址）。
+  // 宿主端點用自己的登入 cookie 決定發給誰，簽章金鑰留在宿主後端，永不下放到瀏覽器。
   var tokenUrl = attr("data-token-url");
 
-  // 把設定組成 panel iframe 的 query；只附帶有值的參數
+  // data-user-token（已移除）：靜態字串滿足不了規格 §6.5 —— Assertion 只有 60 秒有效且是
+  // 一次性的兌換券。頁面停久一點、使用者按上一頁、或頁面被 bfcache 還原，拿到的都是同一張
+  // 早已過期或已用過的票；頁面若被 CDN 快取，那張票還會一併外流（§10.1）。改用 data-token-url。
+  if (attr("data-user-token")) {
+    console.warn(
+      "[oa-agent] data-user-token 已移除（Assertion 為一次性且僅 60 秒有效），請改用 data-token-url",
+    );
+  }
+
+  // data-debug="1"：把整段 SSO 握手印到 console（宿主頁這一側標 [hyagent:host]，
+  // 面板那一側由 ?debug=1 帶進去標 [hyagent:panel]）。整合期用來回答兩個問題：
+  // 「面板到底登入了誰」與「從 Identity Endpoint／HyAgent 取回了什麼」。
+  //
+  // 預設關閉，正式站不要開：console 的內容會被截圖、被貼進 issue。開啟時也只印遮罩過的
+  // 憑證片段與 claims 摘要，Assertion 原文不進 console。
+  var debug = /^(1|true|on)$/i.test(attr("data-debug") || "");
+  var DEBUG_STYLE = "color:#fff;background:#2563eb;padding:1px 5px;border-radius:3px";
+  function dlog() {
+    if (!debug) return;
+    var args = ["%c[hyagent:host]", DEBUG_STYLE];
+    for (var i = 0; i < arguments.length; i++) args.push(arguments[i]);
+    try {
+      console.log.apply(console, args);
+    } catch (_e) {}
+  }
+  /** 憑證只印前 8 碼與長度——足以比對「是不是同一張」，又不足以拿去用。 */
+  function maskToken(t) {
+    return t ? t.slice(0, 8) + "…（共 " + t.length + " 字元）" : "(無)";
+  }
+  /**
+   * 解出 JWS 的 header／payload 供除錯檢視。
+   * 純顯示用：這裡**不驗章**，真正的驗證在 HyAgent 後端（規格 §8）。
+   */
+  function decodeJws(t) {
+    function seg(part) {
+      var b64 = part.replace(/-/g, "+").replace(/_/g, "/");
+      while (b64.length % 4) b64 += "=";
+      var bin = atob(b64);
+      var text;
+      if (typeof TextDecoder === "function") {
+        var bytes = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        text = new TextDecoder("utf-8").decode(bytes);
+      } else {
+        text = decodeURIComponent(escape(bin)); // 舊瀏覽器退路：claims 含中文姓名，不能直接用 atob 的結果
+      }
+      return JSON.parse(text);
+    }
+    try {
+      var parts = String(t).split(".");
+      if (parts.length < 2) return null;
+      return { header: seg(parts[0]), payload: seg(parts[1]) };
+    } catch (_e) {
+      return null;
+    }
+  }
+
+  // 把設定組成 panel iframe 的 query；只附帶有值的參數。
+  // 身分憑證**不在這裡**：Assertion 一律走 postMessage（規格 §10.1 明文禁止放進 URL，
+  // 否則會留在瀏覽器歷史、Referer header 與伺服器存取日誌這三個不受控的地方）。
   var panelParams = ["embed=1"];
   var cfg = {
     key: attr("data-key"),
     form: attr("data-form"),
     locale: attr("data-locale"),
     theme: explicitTheme,
-    userToken: attr("data-user-token"),
   };
   for (var ck in cfg) {
     if (cfg[ck]) panelParams.push(ck + "=" + encodeURIComponent(cfg[ck]));
   }
-  // token 是點開當下才拿得到的，panel URL 因此改成組出來而非常數。
-  function buildPanelUrl(token) {
+  // URL 上只留兩件非機敏的事實：
+  //   host=      面板要指定 postMessage 的 targetOrigin 就得先知道宿主是誰（§6.6 禁用 "*"），
+  //              而 document.referrer 會被宿主頁的 Referrer-Policy 清掉，不能當唯一來源。
+  //   identity=1 宿主頁備有 Token Provider。沒有就讓面板直接走自行登入，不必空等一次握手。
+  function buildPanelUrl() {
     var params = panelParams.slice();
-    if (token) params.push("userToken=" + encodeURIComponent(token));
+    params.push("host=" + encodeURIComponent(window.location.origin));
+    if (tokenUrl) params.push("identity=1");
+    // 面板跑在 iframe 裡，宿主頁的 data-debug 傳不進去 → 用同一個 query 把開關帶過去
+    if (debug) params.push("debug=1");
     return origin + "/?" + params.join("&");
   }
+
+  dlog("widget 初始化", {
+    宿主頁: window.location.origin,
+    面板來源: origin,
+    API: apiBase,
+    租戶金鑰: cfg.key || "(未設，後端會落到預設租戶)",
+    IdentityEndpoint: tokenUrl || "(未設，面板將走自行登入)",
+  });
 
   var Z = 2147483000; // 盡量蓋在宿主頁面之上
   var open = false;
@@ -261,6 +344,7 @@
         return r.ok ? r.json() : null;
       })
       .then(function (j) {
+        dlog("租戶設定（GET /api/widget/config）", (j && j.data) || j);
         var ap = j && j.data && j.data.appearance;
         if (!ap) return;
         if (!explicitTitle && ap.assistantName && ap.assistantName.trim()) {
@@ -376,59 +460,199 @@
     }
   });
 
-  // 向宿主自家端點換一把短效 SSO token（同源帶 cookie，宿主用自己的登入狀態決定發給誰）。
-  // 任何失敗都回 null 而不是讓點開失敗：面板照常開，使用者改在面板內自行登入。
-  function fetchUserToken() {
-    if (typeof fetch !== "function") return Promise.resolve(null);
-    return fetch(tokenUrl, {
-      method: "POST",
+  // ---- Token Provider（規格 §5.2、§6.5）----
+  // 向宿主自家 Identity Endpoint 取一張**當下新簽發**的 Assertion（帶 cookie，
+  // 宿主用自己的登入狀態決定發給誰）。契約重點：單次等待上限 10 秒、失敗以指數退避重試最多
+  // 3 次、絕不快取結果。任何失敗都回 null 而不是讓面板開不起來：面板照常開，使用者自行登入。
+  //
+  // 方法是 GET：規格 §5.2 的端點定義（GET /api/mybot/identity）與 CSRF 那列「為 GET 且不改變
+  // 狀態」都以 GET 為準。同源請求瀏覽器會自動帶 Sec-Fetch-Site: same-origin，客戶端點得據此
+  // 擋掉他站的簡單請求。credentials 用 include 而非規格範例的 same-origin，是為了讓端點也能
+  // 架在別的網域（同源時兩者行為相同，跨源則需端點自行設好 CORS）。
+  var PROVIDER_TIMEOUT_MS = 10000;
+  var PROVIDER_BACKOFF_MS = [1000, 2000, 4000];
+
+  // 單次呼叫。回 { assertion } 成功，或 { retryable } 失敗。
+  function callTokenProviderOnce() {
+    if (typeof fetch !== "function") return Promise.resolve({ retryable: false });
+    // 沒有 AbortController 的環境退回「無逾時的請求」：拿不到票也好過整段流程當掉
+    var ctrl = typeof AbortController === "function" ? new AbortController() : null;
+    var timer = setTimeout(function () {
+      if (ctrl) ctrl.abort();
+    }, PROVIDER_TIMEOUT_MS);
+    var init = {
+      method: "GET",
       credentials: "include",
       headers: { accept: "application/json" },
-    })
-      .then(function (res) {
-        return res.ok ? res.json() : null;
-      })
-      .then(function (json) {
-        // 相容三種回應形狀：{token} / {userToken} / {data:{token}}
-        var body = (json && json.data) || json || {};
-        var t = body.token || body.userToken;
-        return typeof t === "string" && t ? t : null;
-      })
-      .catch(function () {
-        return null;
+      // 端點若被瀏覽器或 CDN 快取，拿回來的會是同一張已用過的票 → 後端 TOKEN_REPLAYED。
+      // 規格 §5.2 另要求端點自己回 Cache-Control: no-store，這裡是請求端的同一道防線。
+      cache: "no-store",
+    };
+    if (ctrl) init.signal = ctrl.signal;
+    return fetch(tokenUrl, init)
+      .then(
+        function (res) {
+          dlog("Identity Endpoint 回應 HTTP " + res.status + "：" + tokenUrl);
+          // 401 / 403＝使用者根本沒登入宿主網站，重試幾次仍舊沒登入 → 直接走匿名模式（§6.5）。
+          // 只有 5xx 這種暫時性失敗才值得退避重試。
+          if (!res.ok) return { retryable: res.status >= 500 };
+          return res.json().then(
+            function (json) {
+              // 相容四種回應形狀：{assertion} / {token} / {userToken} / {data:{…}}
+              var body = (json && json.data) || json || {};
+              var t = body.assertion || body.token || body.userToken;
+              return typeof t === "string" && t ? { assertion: t } : { retryable: false };
+            },
+            function () {
+              return { retryable: false }; // 回應不是 JSON：端點設定有誤，重試無益
+            },
+          );
+        },
+        function () {
+          return { retryable: true }; // 網路錯誤或逾時 abort
+        },
+      )
+      .then(function (r) {
+        clearTimeout(timer);
+        return r;
       });
   }
 
-  function createIframe(token) {
+  // 初次 + 最多 3 次退避重試（1s / 2s / 4s）。全數失敗回 null。
+  function callTokenProvider(attempt) {
+    attempt = attempt || 0;
+    return callTokenProviderOnce().then(function (r) {
+      if (r.assertion) return r.assertion;
+      if (!r.retryable || attempt >= PROVIDER_BACKOFF_MS.length) return null;
+      return new Promise(function (resolve) {
+        setTimeout(resolve, PROVIDER_BACKOFF_MS[attempt]);
+      }).then(function () {
+        return callTokenProvider(attempt + 1);
+      });
+    });
+  }
+
+  // ---- postMessage 協定（規格 §6.6）----
+  //   host → panel   identity:response / ui:state / session:logout / identity:refresh
+  //   panel → host   handshake / identity:request / ui:close / ui:expand / event / session:ack
+  var MSG_SOURCE = "hyagent";
+  var MSG_VERSION = 1;
+
+  // 送訊息給面板。targetOrigin 恆為面板來源，絕不使用 "*"（§6.6）。
+  function sendToPanel(type, payload, requestId) {
+    if (!iframe || !iframe.contentWindow) return;
+    var message = { source: MSG_SOURCE, version: MSG_VERSION, type: type };
+    if (requestId !== undefined) message.requestId = requestId;
+    if (payload !== undefined) message.payload = payload;
+    try {
+      iframe.contentWindow.postMessage(message, origin);
+    } catch (_e) {}
+  }
+
+  // 面板要先 handshake 才收得到訊息——iframe 還在載入時 postMessage 會直接掉在地上。
+  // 宿主頁主動發起的訊息（登出／換身分）因此先排隊，等面板回報就緒再一次送出。
+  var panelReady = false;
+  var queuedToPanel = [];
+
+  function sendWhenReady(type, payload, requestId) {
+    if (panelReady) {
+      sendToPanel(type, payload, requestId);
+      return;
+    }
+    queuedToPanel.push([type, payload, requestId]);
+  }
+
+  function flushQueuedToPanel() {
+    panelReady = true;
+    var queued = queuedToPanel;
+    queuedToPanel = [];
+    for (var i = 0; i < queued.length; i++) sendToPanel(queued[i][0], queued[i][1], queued[i][2]);
+  }
+
+  function newRequestId() {
+    try {
+      if (window.crypto && typeof window.crypto.randomUUID === "function") return window.crypto.randomUUID();
+    } catch (_e) {}
+    return "h" + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+  }
+
+  // 宿主頁 → 面板的請求（session:logout / identity:refresh），面板處理完回一則 session:ack。
+  //
+  // 逾時就放行：這兩支多半接在「按下登出，馬上要導頁」後面，卡住宿主頁比漏掉一則 ack 更糟。
+  // 面板那側清本地憑證與通知後端作廢都是同步發動的（fetch 帶 keepalive），導頁不會取消它。
+  var ACK_TIMEOUT_MS = 5000;
+  var pendingAcks = {};
+
+  function askPanel(type) {
+    // 面板可能從頭到尾沒被點開過，但 Session 仍躺在**面板網域**的 sessionStorage 裡
+    // （同一個分頁重整不會清掉它）。那份只有面板自己碰得到，所以這裡先把 iframe 建起來
+    // （面板收起時它本來就不可見）再問，否則登出會只清掉宿主這側什麼都沒有的狀態。
+    ensureIframe();
+    var requestId = newRequestId();
+    return new Promise(function (resolve) {
+      var timer = setTimeout(function () {
+        delete pendingAcks[requestId];
+        dlog("面板沒有回應 " + type + "（逾時 " + ACK_TIMEOUT_MS + "ms），不再等待");
+        resolve(false);
+      }, ACK_TIMEOUT_MS);
+      pendingAcks[requestId] = function (ack) {
+        clearTimeout(timer);
+        delete pendingAcks[requestId];
+        dlog("面板已處理 " + type, ack || {});
+        resolve(!ack || ack.ok !== false);
+      };
+      sendWhenReady(type, null, requestId);
+    });
+  }
+
+  // 面板送來 identity:request → 取一張票回去。
+  // 不快取、不共用結果：Assertion 是一次性兌換券，同一張送兩次第二次會被 TOKEN_REPLAYED 拒絕。
+  function provideIdentity(requestId) {
+    if (!tokenUrl) {
+      dlog("面板要求身分，但未設 data-token-url → 回 NO_TOKEN_PROVIDER");
+      sendToPanel("identity:response", { assertion: null, error: { code: "NO_TOKEN_PROVIDER" } }, requestId);
+      return;
+    }
+    dlog("面板要求身分 → 向 Identity Endpoint 取票：" + tokenUrl);
+    callTokenProvider().then(function (assertion) {
+      if (assertion) {
+        if (debug) {
+          var jws = decodeJws(assertion);
+          dlog("取得 Identity Assertion（交給面板）", {
+            assertion: maskToken(assertion),
+            kid: (jws && jws.header && jws.header.kid) || "(解不出)",
+            // iss＝租戶、sub＝貴站的使用者代號、name＝顯示名、exp＝到期時間
+            claims: (jws && jws.payload) || "(解不出)",
+          });
+        }
+        sendToPanel("identity:response", { assertion: assertion }, requestId);
+        return;
+      }
+      console.warn("[oa-agent] 無法從 data-token-url 取得使用者憑證，面板改為自行登入：", tokenUrl);
+      sendToPanel(
+        "identity:response",
+        { assertion: null, error: { code: "TOKEN_PROVIDER_FAILED" } },
+        requestId,
+      );
+    });
+  }
+
+  // 身分改走 postMessage 之後，iframe 不必再等換票才能建立——點開面板即刻載入，
+  // 取票與面板渲染並行。改造前那段「先 fetch 再 createIframe」的延遲一併消失。
+  function ensureIframe() {
+    if (iframe) return;
     iframe = document.createElement("iframe");
-    iframe.src = buildPanelUrl(token);
+    iframe.src = buildPanelUrl();
     iframe.title = title;
+    // 面板要能讀到 document.referrer 才有辦法告訴後端「是誰把它嵌起來」（規格 §8.6）。
+    // 元素層級的 referrerpolicy 優先於宿主頁的全域 Referrer-Policy，因此就算宿主頁設了
+    // no-referrer，這個 iframe 仍讀得到來源。用 "origin" 而非 "no-referrer-when-downgrade"：
+    // 後端只需要 origin，送出完整路徑等於把宿主頁的網址洩漏給我們，沒有必要。
+    iframe.referrerPolicy = "origin";
     iframe.style.cssText = "width:100%;height:100%;border:none;display:block;";
     // 面板載好才收得到 message：載入完成回報一次，SPA 才知道要不要顯示放大鈕
     iframe.addEventListener("load", notifyExpanded);
     panel.appendChild(iframe);
-  }
-
-  var tokenPending = false; // 換票中：連點兩下不會送出兩次請求、也不會建出兩個 iframe
-  function ensureIframe() {
-    if (iframe || tokenPending) return;
-    // 沒設 data-token-url，或宿主已直接給了靜態 token → 維持原本的同步建立，時序不變
-    if (!tokenUrl || cfg.userToken) {
-      createIframe(null);
-      return;
-    }
-    tokenPending = true;
-    fetchUserToken().then(function (token) {
-      tokenPending = false;
-      if (iframe) return;
-      if (!token) {
-        console.warn(
-          "[oa-agent] 無法從 data-token-url 取得使用者 token，面板改為自行登入：",
-          tokenUrl,
-        );
-      }
-      createIframe(token);
-    });
   }
 
   function setOpen(next) {
@@ -477,17 +701,7 @@
   // available 必須由這裡告知——面板內的 CSS media query 量到的是 iframe 自己的寬（永遠是小視窗的
   // 400px），無從分辨「桌機小視窗」與「手機全螢幕」，只有宿主頁這一層知道真正的視窗寬度。
   function notifyExpanded() {
-    if (!iframe || !iframe.contentWindow) return;
-    try {
-      iframe.contentWindow.postMessage(
-        {
-          type: "oa-agent:expanded",
-          expanded: expanded,
-          available: window.innerWidth > 480,
-        },
-        origin,
-      );
-    } catch (_e) {}
+    sendToPanel("ui:state", { expanded: expanded, available: window.innerWidth > 480 });
   }
 
   // 遮罩點擊 / Esc：還原成小視窗（不直接關閉，避免誤觸就中斷對話）
@@ -536,24 +750,59 @@
   }
   applySize();
 
-  // panel 內聊天頁透過 postMessage 與宿主溝通：oa-agent:close 收起、oa-agent:submitted 已送出…
+  // 面板送來的訊息（規格 §6.6 信封）。三重檢查缺一不可：
+  //   e.origin  必須是面板來源       —— 擋掉宿主頁上其他來源的 frame
+  //   e.source  必須是我們建的 iframe —— 只驗 origin 擋不住同源的其他 frame 冒充面板
+  //   信封      必須是 hyagent v1     —— 擋掉宿主頁自己或第三方腳本的無關訊息
   window.addEventListener("message", function (e) {
-    if (e.origin !== origin || !e.data || typeof e.data.type !== "string")
-      return;
-    var type = e.data.type;
-    if (type === "oa-agent:close") setOpen(false);
-    // 面板內標題列的放大／還原鈕
-    if (type === "oa-agent:expand") setExpanded(e.data.expanded !== false);
-    // 轉發給宿主頁：DOM CustomEvent（window.addEventListener('oa-agent:submitted', …)）＋可選全域 callback
+    if (e.origin !== origin) return;
+    if (!iframe || e.source !== iframe.contentWindow) return;
+    var msg = e.data;
+    if (!msg || typeof msg !== "object") return;
+    if (msg.source !== MSG_SOURCE || msg.version !== MSG_VERSION) return;
+    if (typeof msg.type !== "string") return;
+    var payload = msg.payload || {};
+
+    if (msg.type === "handshake") {
+      // 面板就緒：回報一次目前放大狀態（面板靠這個決定要不要顯示放大鈕），
+      // 並把面板就緒前排隊的訊息（OAAgent.logout() / refreshIdentity()）送出去。
+      notifyExpanded();
+      flushQueuedToPanel();
+    } else if (msg.type === "session:ack") {
+      // 面板回報「登出／換身分已處理完」
+      var ack = pendingAcks[msg.requestId];
+      if (ack) ack(payload);
+    } else if (msg.type === "identity:request") {
+      provideIdentity(msg.requestId);
+    } else if (msg.type === "ui:close") {
+      setOpen(false);
+      dispatchToHost("oa-agent:close", payload);
+    } else if (msg.type === "ui:expand") {
+      // 面板內標題列的放大／還原鈕
+      setExpanded(payload.expanded !== false);
+      dispatchToHost("oa-agent:expand", payload);
+    } else if (msg.type === "event") {
+      // 面板轉發的事件（如表單已送出）
+      if (typeof payload.name === "string") dispatchToHost(payload.name, payload.detail);
+    }
+  });
+
+  // 轉發給宿主頁：DOM CustomEvent（window.addEventListener('oa-agent:submitted', …)）＋可選全域 callback。
+  // 事件名與 detail 形狀沿用改造前的 oa-agent:*，宿主頁既有的接線不受本次協定改版影響。
+  function dispatchToHost(name, detail) {
+    var legacy = { type: name };
+    if (detail && typeof detail === "object") {
+      for (var k in detail) legacy[k] = detail[k];
+    }
     try {
-      window.dispatchEvent(new CustomEvent(type, { detail: e.data }));
+      window.dispatchEvent(new CustomEvent(name, { detail: legacy }));
     } catch (_e) {}
     if (window.OAAgent && typeof window.OAAgent.onEvent === "function") {
       try {
-        window.OAAgent.onEvent(e.data);
+        window.OAAgent.onEvent(legacy);
       } catch (_e2) {}
     }
-  });
+  }
 
   // 宿主頁可程式化控制：OAAgent.open() / close() / toggle() / expand() / collapse()；
   // onEvent 可在載入前先指定（保留之）
@@ -573,6 +822,36 @@
   };
   window.OAAgent.collapse = function () {
     setExpanded(false);
+  };
+
+  /**
+   * 使用者登出貴站時呼叫（規格 §6.3，整合手冊 §5.3「這段一定要做」）。
+   *
+   * HyAgent Session 存在**伺服器端**，只清瀏覽器那一份等於留一張還能用的票在後端直到
+   * 自然過期；共用電腦上那正是登出要防的情境。這支請面板作廢它（POST /api/auth/logout）
+   * 並清掉面板網域的 sessionStorage——那份宿主頁碰不到，只有面板自己清得掉。
+   *
+   * 回傳 Promise<boolean>：導頁前 `await` 它最穩妥（面板可能還在載入）；不 await 也行，
+   * 面板那側是同步發動、帶 keepalive 的請求，導頁不會取消它。
+   */
+  window.OAAgent.logout = function () {
+    dlog("宿主頁要求登出 → 通知面板作廢 Session");
+    return askPanel("session:logout").then(function (ok) {
+      setOpen(false);
+      return ok;
+    });
+  };
+
+  /**
+   * 貴站的登入者換人時呼叫（規格 §6.3，手冊 §5.3 第二列）。
+   *
+   * 面板會**先作廢舊 Session 再**向 data-token-url 取一張新的 Assertion 換發：只換新的
+   * 不作廢舊的，等於同一個瀏覽器上同時有兩個人的票還活著。不呼叫的話，面板會維持前一位
+   * 使用者的身分直到 Session 自然過期——SDK 看不到貴站的登入狀態，這件事只有你們知道。
+   */
+  window.OAAgent.refreshIdentity = function () {
+    dlog("宿主頁要求重取身分 → 通知面板換發");
+    return askPanel("identity:refresh");
   };
 
   // 宿主頁可能把 script 放在 <head>，此時 body 尚未存在 → 等 DOM ready 再掛載

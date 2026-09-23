@@ -6,7 +6,7 @@
  *   - 前端用 @hyagent/sdk（headless）拿資料，UI 完全自己畫（見 app.ts / index.html）。
  *
  * 本服務負責：
- *   1. /sso-token   — 用 SDK 的 signUserToken 簽 user token（模擬整合方後端）。
+ *   1. /api/mybot/identity — Identity Endpoint（規格 §5.2）：以私鑰現簽一張 Assertion。
  *   2. /app.js      — 用 esbuild 把 app.ts（含 SDK）打包成瀏覽器 ESM。
  *   3. /            — 自訂 UI 頁面，注入 OA 來源與租戶金鑰。
  *
@@ -17,7 +17,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as esbuild from 'esbuild';
-import { signUserToken } from '@hyagent/sdk/server';
+import { computeKid, generateKeyPair, issueAssertion } from '@hyagent/sdk/server';
 
 const DIR = path.dirname(fileURLToPath(import.meta.url));
 
@@ -32,9 +32,37 @@ const PORT = Number(process.env.PORT ?? 4200);
 const OA_ORIGIN = process.env.OA_ORIGIN ?? 'http://localhost:3000';
 const TENANT_PK =
   process.env.TENANT_PK ?? 'pk_3dc8a9721d103efb0972aac2c0ef79d237698f765178fc6a';
-const TENANT_SSO_SECRET = process.env.TENANT_SSO_SECRET ?? 'test-secret1234567890';
-const DEMO_USER_ID = process.env.DEMO_USER_ID ?? 'hyweb';
+// Assertion 的 iss 必須等於 Tenant ID（規格 §8.4 步驟 10）
+const TENANT_ID = process.env.TENANT_ID ?? '';
+// 私鑰未設時當場產一組，只為了讓 demo 跑得起來；正式環境放 KMS / Vault（規格 §2.2）
+const generated = process.env.TENANT_PRIVATE_KEY ? null : generateKeyPair('ES256');
+const PRIVATE_KEY = process.env.TENANT_PRIVATE_KEY ?? generated.privateKeyPem;
+const PUBLIC_KEY = generated?.publicKeyPem ?? null;
+// 模擬「對方系統目前登入的使用者」，與 widge-tenant 同一組欄位（見那支的說明）。
+// 公司別用本站自己的品牌（Beta Cloud）——身分是這個網站發的，簽別人家的公司名沒有道理。
+const DEMO_USER_ID = process.env.DEMO_USER_ID ?? '507';
 const DEMO_USER_NAME = process.env.DEMO_USER_NAME ?? '測試員';
+/**
+ * 對方系統自家的組織欄位 → Assertion 的 `hyagent:profile`（規格 §4.2.3）。
+ * HyAgent 會採用 companyName / deptName / jobPostName 作為公司／部門／職稱；
+ * 其中部門另作為部門層級知識庫可見範圍的判定依據。留空的欄位不進 claims。
+ */
+const DEMO_PROFILE = Object.fromEntries(
+  Object.entries({
+    companyName: process.env.DEMO_COMPANY_NAME ?? 'Beta Cloud',
+    deptName: process.env.DEMO_DEPT_NAME ?? '財務部',
+    jobPostName: process.env.DEMO_JOB_POST_NAME ?? '協理',
+  }).filter(([, value]) => value),
+);
+
+const loginBadge = `● 已登入：${[
+  DEMO_PROFILE.companyName,
+  DEMO_PROFILE.deptName,
+  DEMO_PROFILE.jobPostName,
+  `${DEMO_USER_NAME}(${DEMO_USER_ID})`,
+]
+  .filter(Boolean)
+  .join(' ')}`;
 
 // 啟動時用 esbuild 把 app.ts（含 @hyagent/sdk）打包成瀏覽器可執行的 ESM。
 let appJs = '';
@@ -56,18 +84,37 @@ const html = fs
   .replace(
     '<!--OA_CONFIG-->',
     `<script>window.__OA__ = ${JSON.stringify({ origin: OA_ORIGIN, key: TENANT_PK })};</script>`,
-  );
+  )
+  // header 的「已登入」直接由簽票用的那組值產生，確保網站上顯示的人＝Assertion 裡的人
+  .replace('<!--LOGIN_BADGE-->', loginBadge);
 
 const server = http.createServer((req, res) => {
-  if (req.url === '/sso-token') {
-    const userToken = signUserToken({
-      sub: DEMO_USER_ID,
-      name: DEMO_USER_NAME,
-      secret: TENANT_SSO_SECRET,
-      expiresIn: '5m',
-    });
-    res.writeHead(200, { 'content-type': 'application/json' });
-    res.end(JSON.stringify({ userToken }));
+  if (req.url === '/api/mybot/identity') {
+    // 規格 §5.2：GET、認證以自家登入 Session 判定、回應不得被快取
+    if (req.method !== 'GET') {
+      res.writeHead(405, { allow: 'GET' }).end();
+      return;
+    }
+    // 未捕捉的例外會讓整個 demo 行程結束（最常見原因：忘了設 TENANT_ID），改回 500
+    let token;
+    try {
+      token = issueAssertion({
+        privateKey: PRIVATE_KEY,
+        tenant: TENANT_ID,
+        subject: DEMO_USER_ID,
+        profile: {
+          name: DEMO_USER_NAME,
+          ...(Object.keys(DEMO_PROFILE).length > 0 ? { 'hyagent:profile': DEMO_PROFILE } : {}),
+        },
+      });
+    } catch (err) {
+      console.error('[identity] 簽發失敗：', err.message);
+      res.writeHead(500, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+      res.end(JSON.stringify({ error: 'ISSUE_FAILED', message: err.message }));
+      return;
+    }
+    res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+    res.end(JSON.stringify({ token, expiresIn: 60 }));
     return;
   }
   if (req.url === '/app.js') {
@@ -98,5 +145,15 @@ server.listen(PORT, () => {
   console.log(`SDK 自訂 UI 網站已啟動： http://localhost:${PORT}`);
   console.log(`  → HyAgent:   ${OA_ORIGIN}`);
   console.log(`  → 租戶 pk:    ${TENANT_PK.slice(0, 12)}…（其 allowedOrigins 須含 http://localhost:${PORT} 或 *）`);
-  console.log(`  → 登入使用者: ${DEMO_USER_NAME}(${DEMO_USER_ID})`);
+  console.log(`  → Tenant ID: ${TENANT_ID || '(未設！Assertion 的 iss 會是空字串，換發必失敗)'}`);
+  if (PUBLIC_KEY) {
+    console.log('');
+    console.log(`  未設 TENANT_PRIVATE_KEY，已當場產生一組（重啟會變）。請把下面這把公鑰貼到後台（kid: ${computeKid(PUBLIC_KEY)}）：`);
+    console.log('');
+    console.log(PUBLIC_KEY);
+  }
+  console.log(
+    `  → 登入使用者: ${DEMO_USER_NAME}(${DEMO_USER_ID})` +
+      (Object.keys(DEMO_PROFILE).length > 0 ? `　${Object.values(DEMO_PROFILE).join(' / ')}` : ''),
+  );
 });

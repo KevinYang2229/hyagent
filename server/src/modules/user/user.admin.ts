@@ -8,6 +8,7 @@ import { AppError } from '@/utils/app-error';
 const profile = z.object({
   id: z.string().trim().min(1).max(200), name: z.string().trim().min(1).max(200),
   department: z.string().trim().min(1).max(200).default('—'), title: z.string().max(200).optional(),
+  company: z.string().max(200).optional(),
   region: z.string().max(200).optional(), email: z.string().email().optional(),
   deputyIds: z.array(z.string().min(1).max(200)).max(100).optional(),
 }).strict();

@@ -7,7 +7,74 @@ export const adminLoginSchema = z.object({
 export const createTenantSchema = z.object({
   name: z.string().trim().min(1),
   allowedOrigins: z.array(z.string().trim().min(1)).optional(),
-  ssoSecret: z.string().min(16).optional(),
+});
+
+/**
+ * 上傳 Assertion 公鑰（規格 §7.3）。
+ *
+ * **沒有 `kid` 也沒有 `alg`**：兩者都由後端自公鑰算出（§2.4 的 RFC 7638 Thumbprint、
+ * §2.1 的金鑰型別）。接受呼叫端指定 kid 等於讓上傳者自選索引鍵，同一把公鑰可被登記成
+ * 多個 kid，撤銷時就漏得掉。
+ */
+export const addPublicKeySchema = z.object({
+  publicKey: z.string().trim().min(1),
+  label: z.string().trim().max(60).optional(),
+});
+
+/** 公鑰狀態變更（規格 §7.3）。不變條件由 store 強制，這裡只驗形狀。 */
+export const setPublicKeyStatusSchema = z.object({
+  status: z.enum(['active', 'disabled', 'revoked']),
+});
+
+/**
+ * 公鑰狀態變更的路由參數。
+ *
+ * **必須把 `kid` 一起列出來**：validate 中介層會用解析結果整個取代 `req.params`，
+ * 而 zod 預設會剝掉未宣告的鍵——只放 `id` 的話 `req.params.kid` 會變成 undefined，
+ * 撤銷就打在一個不存在的 kid 上，回 400 而不是真的撤銷（這個坑實際踩過）。
+ */
+export const tenantKeyParamSchema = z.object({
+  id: z.string().trim().min(1),
+  kid: z.string().trim().min(1),
+});
+
+/**
+ * 逐租戶設定（規格 §4.3、§7.1、§10.4）。
+ *
+ * 範圍與交叉條件（skew ≤ 有效期 ¼）由 tenant-keys.ts 驗證而非寫在這裡：
+ * 那是兩個欄位的組合條件，部分更新時必須拿「合併後」的整組去比，zod 看不到現行值。
+ */
+export const patchAssertionSettingsSchema = z
+  .object({
+    clockSkewSeconds: z.number().int().optional(),
+    assertionLifetimeSeconds: z.number().int().optional(),
+    sessionExpiresIn: z.number().int().optional(),
+  })
+  .refine((v) => Object.keys(v).length > 0, { message: '至少需提供一個欄位' });
+
+/** 依 sub 批次作廢 Session（規格 §7.4）。 */
+export const revokeSessionsSchema = z.object({
+  sub: z.string().trim().min(1),
+});
+
+/**
+ * 後台 Session 列表的查詢條件。
+ *
+ * `query` 一個欄位同時當「完整 sub」與「name 關鍵字」用（見 authSessionStore.listByTenant）：
+ * 後台顯示使用者本來就是 `name ?? sub`，若拆成兩個欄位，管理員照著畫面上的工號去搜
+ * 卻搜不到，只因為那格其實是 fallback 出來的。
+ */
+export const listSessionsQuerySchema = z.object({
+  query: z.string().trim().min(1).optional(),
+  kid: z.string().trim().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+
+/** 作廢單筆 Session：sessionId 是列表回的 id（sha256(sessionToken)），不是 token。 */
+export const sessionParamSchema = z.object({
+  id: z.string().min(1),
+  sessionId: z.string().min(1),
 });
 
 export const appearanceSchema = z.object({
@@ -40,7 +107,6 @@ export const patchTenantSchema = z
   .object({
     name: z.string().trim().min(1).optional(),
     allowedOrigins: z.array(z.string().trim().min(1)).optional(),
-    ssoSecret: z.string().min(16).optional(),
     appearance: appearanceSchema.optional(),
     // 月度 LLM token 配額；0 = 不限
     quotaMonthlyLlmTokens: z.number().int().min(0).optional(),
@@ -97,6 +163,13 @@ export type PutPolicyInput = z.infer<typeof putPolicySchema>;
 
 export type AdminLoginInput = z.infer<typeof adminLoginSchema>;
 export type CreateTenantInput = z.infer<typeof createTenantSchema>;
+export type AddPublicKeyInput = z.infer<typeof addPublicKeySchema>;
+export type SetPublicKeyStatusInput = z.infer<typeof setPublicKeyStatusSchema>;
+export type TenantKeyParam = z.infer<typeof tenantKeyParamSchema>;
+export type PatchAssertionSettingsInput = z.infer<typeof patchAssertionSettingsSchema>;
+export type RevokeSessionsInput = z.infer<typeof revokeSessionsSchema>;
+export type ListSessionsQuery = z.infer<typeof listSessionsQuerySchema>;
+export type SessionParam = z.infer<typeof sessionParamSchema>;
 export type PatchTenantInput = z.infer<typeof patchTenantSchema>;
 export type CreateKeyInput = z.infer<typeof createKeySchema>;
 export type CreateWebhookInput = z.infer<typeof createWebhookSchema>;

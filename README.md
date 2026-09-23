@@ -14,12 +14,19 @@
 | [`schemas/README.md`](schemas/README.md) | 各層欄位規格、引擎怎麼消費、**如何新增/設定一張表單** |
 | [`INTEGRATION.md`](INTEGRATION.md) | 對外整合：多租戶、API Key、widget/SDK、SSO handoff、webhook、後台管理 |
 | [`DEPLOY.zeabur.md`](DEPLOY.zeabur.md) | 部署：Zeabur 前後端分服務、四個 Dockerfile、環境變數清單 |
+| [`docs/LOCAL-SETUP.md`](docs/LOCAL-SETUP.md) | 本機架設：file 模式（零資料庫）跑起來的完整步驟、SSO demo 與疑難排解 |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | 目標架構、現況對照、演進觸發點——決定「要不要做某個平台機制」時查它 |
 | [`docs/PRODUCT_SPEC.md`](docs/PRODUCT_SPEC.md) | 產品規格（To-Be）：通用表單與外部系統整合的目標規格 |
 | [`docs/SYSTEM_ANALYSIS.md`](docs/SYSTEM_ANALYSIS.md) | 系統分析（As-Is）：現況系統規格 |
 | [`docs/HANDOFF-OA-HTTP.md`](docs/HANDOFF-OA-HTTP.md) | 交接：把表單送進真 OA（`OA_CONNECTOR=http`）的待辦與驗收 |
-| [`docs/HANDOFF-SSO.md`](docs/HANDOFF-SSO.md) | 交接：SSO handoff 從 demo 做到可上線的待辦與驗收 |
+| [`docs/HANDOFF-SSO.md`](docs/HANDOFF-SSO.md) | 對外契約：Identity Assertion 的金鑰、簽章、換發、續期與撤銷 |
+| [`docs/HyAgent客戶端整合手冊.md`](docs/HyAgent客戶端整合手冊.md) | **交付給整合方的操作版**：產金鑰、開 Identity Endpoint、掛 `<script>`、排錯與上線檢核清單 |
+| [`docs/HyAgent客戶網站自動登入規格.md`](docs/HyAgent客戶網站自動登入規格.md) | 自動登入的**規範正本**（Identity Assertion Protocol v1）：協定、驗證規則、錯誤碼、安全要求。雙方實作的仲裁依據 |
+| [`docs/SSO-ASSERTION-PLAN-AND-RECORD.md`](docs/SSO-ASSERTION-PLAN-AND-RECORD.md) | **僅限內部**：非對稱改造的動工前規劃、決策理由、實作記錄與剩餘缺口。不對外交付 |
+| [`docs/SECURITY-FIXES.md`](docs/SECURITY-FIXES.md) | 2026-09-13 那次安全修補的紀錄（其中 SSO 段落已被上列契約取代） |
+| [`docs/ROLE-SKILLS.md`](docs/ROLE-SKILLS.md) | 角色能力設定與前台助理的能力清單 |
 | [`docs/knowledge-reimport-manifest.md`](docs/knowledge-reimport-manifest.md) | 知識庫清空當下各租戶原本有什麼，供重新匯入對照 |
+| [`docs/superpowers/`](docs/superpowers/) | 各功能**動工前**的設計（`specs/`）與任務計畫（`plans/`）。帶日期、完成後不回頭改寫，讀它是為了知道當初為什麼那樣決定 |
 
 ## 核心理念：一份 Schema 當唯一來源
 
@@ -129,9 +136,10 @@ npm run lint         # 或 npm run lint:fix
 | GET    | `/healthz`                                | 存活檢查：回 `{ status, llm: { provider, model } }`；不打 LLM、不查 DB |
 | GET    | `/readyz`                                 | 就緒檢查：`db` 模式實際 ping 資料庫，不可達回 503，讓編排器停止導流 |
 
-> 對話 API 需 JWT：先 `POST /api/auth/login`（dev 環境為 mock 帳號 `kevin`/`hyweb` + `AUTH_DEV_PASSWORD`）取得 accessToken，之後帶 `Authorization: Bearer <token>`。widget/SDK 另可走租戶 `ssoSecret` 的 SSO handoff（`/api/auth/sso/exchange`）。`/api/reports/*` 同樣需要 JWT——`<a href>` 一般導覽不會帶 Authorization header，前端需改用 fetch 取 blob 後觸發下載。
+> 對話 API 需 JWT：先 `POST /api/auth/login`（dev 環境為 mock 帳號 `kevin`/`hyweb` + `AUTH_DEV_PASSWORD`）取得 accessToken，之後帶 `Authorization: Bearer <token>`。widget/SDK 另可走 Identity Assertion 的 SSO handoff（`/api/auth/sso/exchange`，以租戶公鑰驗章，回不透明 `sessionToken`）。`/api/reports/*` 同樣需要 JWT——`<a href>` 一般導覽不會帶 Authorization header，前端需改用 fetch 取 blob 後觸發下載。
 
-> 安全修正升級：既有登入需重登、SSO 簽章契約已收緊，DB 模式需先套用 `0012_security_claims.sql`；詳見 [升級說明](docs/SECURITY-FIXES.md)。
+> SSO 已改為非對稱 Identity Assertion（RS256 / ES256，HyAgent 只持有公鑰），簽章契約見 [SSO 契約](docs/HANDOFF-SSO.md)。
+> 更早之前那批安全修正的部署順序（含 `0012_security_claims.sql`）見 [升級說明](docs/SECURITY-FIXES.md)，其中 SSO 相關段落已被上述契約取代。
 
 
 > **互動式 API 文件**：server 起來後開 <http://localhost:3000/api/docs>（Swagger UI），原始規格在 `GET /api/openapi.json`。規格由 [`server/src/modules/docs/openapi.ts`](server/src/modules/docs/openapi.ts) 維護，涵蓋對外整合面的主要端點與三種認證維度（`x-api-key` 租戶金鑰 / `Authorization: Bearer` 使用者 JWT / `x-admin-key` 管理 API）——上面這張表只列對話與報告，整合面端點以該規格與 [`INTEGRATION.md`](INTEGRATION.md) 為準。
@@ -261,7 +269,7 @@ schemas/<formId>/*.json         六層表單 Definition（前後端共用單一�
 
 **共用 schema 不會把前後端綁死**：schema JSON 只住後端（[`form.loader.ts`](server/src/modules/form/form.loader.ts) 以 `fs` 讀 `schemas/`），前端執行時用 `GET /api/forms/:formId` 取得 Definition，**bundle 內零張 schema**。前後端唯一共用的是 `@hyagent/shared` 的 TypeScript 型別，屬 build 期便利、runtime 會被編譯掉。
 
-**gateway 典型該管的現況**：認證已接 JWT（dev 為 mock 名錄 + 共用密碼，上線前換真實身分來源）、session 已可持久化（`DATA_BACKEND=db`）、限流／配額已補齊（兩層守門：[`tenant-rate-limit.ts`](server/src/middlewares/tenant-rate-limit.ts) 依「租戶＋使用者」防突發轟炸、[`tenant-quota.ts`](server/src/middlewares/tenant-quota.ts) 依 `quotaMonthlyLlmTokens` 對照當月 usage 分桶做月配額，掛在會觸發 LLM 計費的 `/api/conversations`）；**尚未補**：真實身分來源（換掉 mock 名錄）——SSO 現況、五個待辦缺口與驗收清單見 [`docs/HANDOFF-SSO.md`](docs/HANDOFF-SSO.md)。
+**gateway 典型該管的現況**：認證已接 JWT（dev 為 mock 名錄 + 共用密碼，上線前換真實身分來源）、session 已可持久化（`DATA_BACKEND=db`）、限流／配額已補齊（兩層守門：[`tenant-rate-limit.ts`](server/src/middlewares/tenant-rate-limit.ts) 依「租戶＋使用者」防突發轟炸、[`tenant-quota.ts`](server/src/middlewares/tenant-quota.ts) 依 `quotaMonthlyLlmTokens` 對照當月 usage 分桶做月配額，掛在會觸發 LLM 計費的 `/api/conversations`）；**尚未補**：真實身分來源（換掉 mock 名錄）——嵌入路徑已由 Identity Assertion 承接（宿主自家登入為身分來源），契約見 [`docs/HANDOFF-SSO.md`](docs/HANDOFF-SSO.md)；剩餘缺口見 [`docs/SSO-ASSERTION-PLAN-AND-RECORD.md`](docs/SSO-ASSERTION-PLAN-AND-RECORD.md) §11.6。
 
 ## 已實作 vs 延後
 
@@ -281,6 +289,6 @@ schemas/<formId>/*.json         六層表單 Definition（前後端共用單一�
 - LLM：`LLM_PROVIDER`（目前 `anthropic`）— 換廠商只要新增 `lib/llm/<x>.provider.ts`
 - 地端模型：`LLM_PROVIDER=local` + `LLM_BASE_URL` 指向自架 OpenAI 相容端點（vLLM / Ollama），資料不出機房；embedding 另以 `EMBEDDING_PROVIDER=local` + `EMBEDDING_BASE_URL` 地端化。選地端時絕不 fallback 回雲端。租戶亦可於後台「AI 模型」選「地端」（沿用部署層端點，租戶不自帶 URL）。
 - 租戶 BYO key：每租戶可自帶 OpenAI / Anthropic API key 與 provider/model（`llmConfig`），未設定 fallback 平台 env 金鑰；用量按「模型 × key 來源」歸戶（`/api/admin/tenants/:id/usage` 含預估成本）。設定入口：sk_ 自助 `PUT /api/tenant/llm-config` 或 admin 後台「AI 模型」卡片。
-- 持久化：`DATA_BACKEND`（`file` / `db`）— `file` 為記憶體 + JSON 檔（dev 預設）；`db` 為記憶體 + Postgres write-through（Prisma，`DATABASE_URL` 必填、boot fail-fast），涵蓋全部 10 個 runtime store（audit 於 DB 留全史、其餘與 file 同語意），store 介面不變；知識庫索引的兩種後端與檢索差異見 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) 的「知識庫檢索後端」。API key 只存 sha256 雜湊（簽發當下顯示一次）；設 `DATA_ENCRYPTION_KEY`（64 hex）後租戶 BYO LLM key 與 ssoSecret 以 AES-256-GCM 加密落地，舊明文資料開機自動補雜湊/加密。DDL 見 `server/db/migrations/`。
+- 持久化：`DATA_BACKEND`（`file` / `db`）— `file` 為記憶體 + JSON 檔（dev 預設；檔案落在 `OA_AGENT_DATA_DIR`，未設則為 `os.tmpdir()`，用法與陷阱見 [docs/LOCAL-SETUP.md](docs/LOCAL-SETUP.md) 第八節）；`db` 為記憶體 + Postgres write-through（Prisma，`DATABASE_URL` 必填、boot fail-fast），涵蓋全部 10 個 runtime store（audit 於 DB 留全史、其餘與 file 同語意），store 介面不變；知識庫索引的兩種後端與檢索差異見 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) 的「知識庫檢索後端」。API key 只存 sha256 雜湊（簽發當下顯示一次）；設 `DATA_ENCRYPTION_KEY`（64 hex）後租戶 BYO LLM key 與 HyAgent Session 上的使用者識別碼（`sub`）以 AES-256-GCM 加密落地（`production` 未設時拒絕建立 Session），舊明文資料開機自動補雜湊/加密。DDL 見 `server/db/migrations/`。
 - 外部系統：`OA_CONNECTOR`（`stub` / `http`；變數名沿用歷史，實際是外部系統連接器的開關）— `http` 連接器已實作（[`lib/oa/http.connector.ts`](server/src/lib/oa/http.connector.ts)）；切到 `http` 需設 `OA_BASE_URL`（boot 時 fail-fast 檢查）。對方系統規格到位後**改的是 `schemas/<formId>/oa.schema.json`（端點路徑 / request 欄位映射 / 回應映射），不是連接器程式**。尚未涵蓋的三處（附件本體、真實簽核狀態查詢、`getLeaveBalance` 端點仍寫死於連接器）見 [`docs/HANDOFF-OA-HTTP.md`](docs/HANDOFF-OA-HTTP.md)。
   > **方向**：`lib/oa/` 目前是唯一的外部系統出口，但它的送出映射本來就由 schema 驅動、與 OA 無關。目標是把它抽成 Connector Registry + 通用 HTTP Connector，**OA 降為其中一個 adapter**，讓 HR / ERP / CRM / ITSM 以相同機制接入——列為正式上線前缺口，見 [`docs/PRODUCT_SPEC.md`](docs/PRODUCT_SPEC.md) 第 12 節。

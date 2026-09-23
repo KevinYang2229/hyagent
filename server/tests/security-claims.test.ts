@@ -26,9 +26,46 @@ it('DB claims use atomic conflict handling and parameter binding', async () => {
   const key = "test:'; DROP TABLE sessions;--";
   expect(await securityClaims.claim(key)).toBe(true);
   expect(await securityClaims.claim(key)).toBe(false);
-  expect(execute.mock.calls[0][0].join('?')).toContain('ON CONFLICT (key) DO NOTHING');
+  const sql = execute.mock.calls[0][0].join('?');
+  // 單一語句處理衝突：分成「先查再寫」會讓並行請求同時通過（規格 §8.5 要求原子性）
+  expect(sql).toContain('ON CONFLICT (key) DO UPDATE');
+  // 衝突時只有既有紀錄已過期才讓新的蓋過去；未過期一律影響 0 列 → claim 回 false
+  expect(sql).toContain('WHERE security_claims.expires_at IS NOT NULL');
+  expect(sql).not.toContain('DROP TABLE');
   expect(execute.mock.calls[0][1]).toBe(key);
   expect(await securityClaims.has(key)).toBe(true);
+});
+
+it('DB claims without a TTL bind NULL, so permanent records never get swept', async () => {
+  env.DATA_BACKEND = 'db';
+  const execute = jest.fn().mockResolvedValue(1);
+  jest.mocked(connectDb).mockResolvedValue({ $executeRaw: execute } as never);
+
+  await securityClaims.claim('refresh-used:abc');
+  expect(execute.mock.calls[0][2]).toBeNull();
+
+  await securityClaims.claim('assertion-jti:x', 1_700_000_000);
+  expect(execute.mock.calls[1][2]).toEqual(new Date(1_700_000_000 * 1000));
+});
+
+it('DB has() ignores expired records, so behaviour does not depend on the sweeper running', async () => {
+  env.DATA_BACKEND = 'db';
+  const query = jest.fn().mockResolvedValue([]);
+  jest.mocked(connectDb).mockResolvedValue({ $queryRaw: query } as never);
+
+  expect(await securityClaims.has('assertion-jti:x')).toBe(false);
+  expect(query.mock.calls[0][0].join('?')).toContain('expires_at IS NULL OR expires_at > now()');
+});
+
+it('DB sweep only deletes records that carry an expiry', async () => {
+  env.DATA_BACKEND = 'db';
+  const execute = jest.fn().mockResolvedValue(3);
+  jest.mocked(connectDb).mockResolvedValue({ $executeRaw: execute } as never);
+
+  expect(await securityClaims.sweepExpired()).toBe(3);
+  const sql = execute.mock.calls[0][0].join('?');
+  // 沒有到期時間的是 refresh / 送出防重，清掉它們等於讓用過的 refresh token 重新可用
+  expect(sql).toContain('expires_at IS NOT NULL');
 });
 
 it('DB failure propagates instead of accepting an unrecorded action', async () => {

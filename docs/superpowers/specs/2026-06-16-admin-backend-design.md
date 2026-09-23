@@ -3,6 +3,8 @@
 日期：2026-06-16
 狀態：已通過設計審核，待 spec 審核
 
+> **後續變更**：SSO 已於其後改為非對稱的 Identity Assertion——本文提到的租戶「SSO 密鑰」（`ssoSecret`）欄位與其輸入框已移除，改為 **Assertion 公鑰清單**（上傳／停用／撤銷，`kid` 由公鑰算出）。現行契約見 [HANDOFF-SSO.md](../../HANDOFF-SSO.md)。本文其餘設計仍然有效。
+
 ## 目標
 
 在 oa-agent monorepo 新增一個獨立的管理後台，提供管理者透過 Web 介面設定：

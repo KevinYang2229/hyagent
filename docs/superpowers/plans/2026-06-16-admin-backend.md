@@ -4,6 +4,8 @@
 
 **Goal:** 在 oa-agent monorepo 新增獨立 `admin/` 管理後台（含密碼登入），讓管理者設定 widget 外觀（依租戶套用）、租戶、webhook。
 
+> **後續變更**：SSO 已於其後改為非對稱的 Identity Assertion——本文提到的租戶「SSO 密鑰」（`ssoSecret`）欄位與其輸入框已移除，改為 **Assertion 公鑰清單**（上傳／停用／撤銷，`kid` 由公鑰算出）。現行契約見 [HANDOFF-SSO.md](../../HANDOFF-SSO.md)。本文其餘設計仍然有效。
+
 **Architecture:** 後端 `server/` 擴充：密碼登入換發 admin JWT、`require-admin` 同時接受 `x-admin-key` 或 admin JWT、`Tenant.appearance` 欄位 + `PATCH /admin/tenants/:id` + 公開 `GET /widget/config` + webhook 啟用停用。前端新增 `admin/` workspace（Vite+React+TS+react-router-dom），沿用 `@oa-agent/ui`、`@oa-agent/shared`，所有資料經既有 `/api/v1/admin/*` REST。widget `client/` 讀 `/widget/config` 套用外觀。
 
 **Tech Stack:** TypeScript、Express、Zod、jsonwebtoken、Vite、React 18、react-router-dom v6、Tailwind v4。後端測試沿用 repo 既有 smoke-script 模式（`tsx scripts/*-smoke.ts`，以 `check()` 斷言）；前端沿用 `npm run typecheck` + 手動執行驗證（repo 無前端測試框架）。

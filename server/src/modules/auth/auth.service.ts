@@ -1,17 +1,18 @@
 /**
- * 認證 service（MVP）：固定 dev 密碼驗證 + 簽發 access/refresh token。
+ * 認證 service：帳密登入路徑（access / refresh JWT）。
  *
- * 驗證邏輯刻意獨立成一段（verifyCredentials），之後接真實使用者/密碼來源
- * （DB、SSO、LDAP…）只要換掉這段，token 簽發與 refresh 流程不動。
+ * **Widget 的 SSO 路徑已不在這裡**——它改走 Identity Assertion → HyAgent Session
+ * （`assertion-exchange.ts` + `lib/auth-session.store.ts`），規格 §7.1 明文禁止
+ * self-contained JWT。連帶地，SSO 路徑上的 refresh 輪替、`family` 家族撤銷與 reuse
+ * detection 整套移除：規格 §7.1 的續期是「到期前 60 秒重走 token provider」，
+ * 不存在 refresh token。本檔保留的那套只服務帳密登入（決策 G）。
  */
-import jwt from 'jsonwebtoken';
 import { randomUUID } from 'node:crypto';
 import { securityClaims } from '@/lib/security-claims';
-import { credentialVersion, validateIdentity } from './credential-version';
+import { validateIdentity } from './credential-version';
 import type { Applicant } from '@hyagent/shared';
 import { env, isPasswordLoginEnabled } from '@/config/env';
 import { getApplicant, isKnownUser } from '@/modules/user/user.directory';
-import type { Tenant } from '@/modules/tenant/tenant.types';
 import { AppError } from '@/utils/app-error';
 import {
   signAccessToken,
@@ -19,14 +20,6 @@ import {
   verifyRefreshToken,
   type JwtPayload,
 } from '@/utils/jwt';
-
-/** 宿主後端簽發的終端使用者 token 內容（以租戶 ssoSecret 簽章） */
-interface SsoClaims {
-  exp?: number;
-  iat?: number;
-  sub?: string | number;
-  name?: string;
-}
 
 export interface AuthTokens {
   accessToken: string;
@@ -63,35 +56,6 @@ export const authService = {
     return { ...issueTokens(payload), user: getApplicant(userId, tenantId) };
   },
 
-  /**
-   * SSO handoff：宿主後端以租戶 ssoSecret 簽發的終端使用者 token → 換發本系統 token。
-   * 讓第三方網站的使用者免內部帳密即可使用 widget，身分取自宿主（取代 demo-user）。
-   */
-  ssoExchange(tenant: Tenant, userToken: string): AuthTokens {
-    if (!tenant.ssoSecret) throw AppError.forbidden('此租戶未啟用 SSO');
-    let claims: SsoClaims;
-    try {
-      claims = jwt.verify(userToken, tenant.ssoSecret, { algorithms: ['HS256'], issuer: 'hyagent:handoff', audience: 'hyagent:sso', maxAge: '5m' }) as SsoClaims;
-    } catch {
-      throw AppError.unauthorized('SSO user token 無效或已過期');
-    }
-    if (typeof claims.exp !== 'number' || typeof claims.iat !== 'number' || claims.exp - claims.iat > 300 || claims.iat > Math.floor(Date.now() / 1000)) {
-      throw AppError.unauthorized('SSO token 必須有不超過 5 分鐘的有效期限');
-    }
-    if (typeof claims.sub !== 'string' && typeof claims.sub !== 'number') throw AppError.unauthorized('SSO token 缺少 sub');
-    if (claims.name !== undefined && typeof claims.name !== 'string') throw AppError.unauthorized('SSO name 無效');
-    const sub = String(claims.sub).trim();
-    if (!sub) throw AppError.unauthorized('SSO token 缺少 sub');
-    return issueTokens({
-      sub,
-      role: 'employee',
-      credentialVersion: credentialVersion(tenant),
-      via: 'sso',
-      tenantId: tenant.id,
-      name: claims.name,
-    });
-  },
-
   /** 用 refresh token 換新的 access/refresh（輪替） */
   async refresh(refreshToken: string): Promise<AuthTokens> {
     let payload: JwtPayload;
@@ -110,17 +74,7 @@ export const authService = {
     }
     // Preserve the family so replay revokes all descendants.
 
-    if (payload.via === 'sso') {
-      return issueTokens({
-        sub: payload.sub,
-        role: 'employee',
-        family: payload.family,
-        credentialVersion: payload.credentialVersion,
-        via: 'sso',
-        tenantId: payload.tenantId,
-        name: payload.name,
-      });
-    }
+    // 只剩帳密登入會走到這裡：SSO 已改為 Session 模型，不簽發 refresh token。
     // 內部帳號：重新簽發前確認帳號仍有效
     if (!isKnownUser(payload.sub, payload.tenantId)) throw AppError.unauthorized('Unknown user');
     return issueTokens({ sub: payload.sub, role: 'employee', via: 'password', tenantId: payload.tenantId, family: payload.family });

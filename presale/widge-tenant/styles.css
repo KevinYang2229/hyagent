@@ -49,3 +49,45 @@ body {
 .usage ol { line-height: 2; color: #334155; padding-left: 20px; }
 .usage code { background: #0f172a; color: #e2e8f0; padding: 2px 6px; border-radius: 6px; font-size: 13px; }
 .usage .note { color: #64748b; font-size: 14px; }
+
+/* ── 登入狀態列（header 右側）── */
+.session-actions { display: flex; align-items: center; gap: 10px; }
+.session-actions form { margin: 0; }
+.session-actions button {
+  font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap;
+  color: #475569; background: #fff; border: 1px solid #cbd5e1;
+  padding: 5px 14px; border-radius: 999px;
+}
+.session-actions button:disabled { opacity: 0.5; cursor: progress; }
+.session-actions .logout:hover:enabled { color: #b91c1c; border-color: #fca5a5; background: #fef2f2; }
+
+/* 提醒用的 note（目前用在「登出後小幫手仍是上一位」那段空窗說明） */
+.note.warn {
+  background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px;
+  padding: 14px 16px; color: #78350f; line-height: 1.8;
+}
+.note.warn code { background: #78350f; }
+
+/* ── 登入頁 ── */
+.login-page { max-width: 620px; margin: 0 auto; padding: 72px 24px 96px; }
+.login-page h1 { font-size: 30px; margin: 0 0 12px; }
+.login-page .sub { color: #475569; line-height: 1.8; margin: 0 0 32px; }
+.login-page .sub code { background: #0f172a; color: #e2e8f0; padding: 2px 6px; border-radius: 6px; font-size: 13px; }
+.login-page .tip { color: #64748b; font-size: 14px; line-height: 1.8; margin-top: 28px; }
+
+.user-cards { display: grid; gap: 14px; }
+.user-card {
+  display: flex; align-items: center; gap: 16px; width: 100%; text-align: left;
+  font: inherit; cursor: pointer;
+  background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 18px 20px;
+}
+.user-card:hover { border-color: #2563eb; background: #f8fafc; }
+.user-card.current { border-color: #bfdbfe; background: #eff6ff; }
+.user-card .avatar {
+  flex: none; width: 46px; height: 46px; border-radius: 50%;
+  display: grid; place-items: center;
+  font-size: 19px; font-weight: 700; color: #1d4ed8; background: #dbeafe;
+}
+.user-card .who { display: flex; flex-direction: column; gap: 3px; }
+.user-card .who strong { font-size: 17px; }
+.user-card .meta { font-size: 13.5px; color: #64748b; }

@@ -1,7 +1,7 @@
 # 對外整合與多租戶產品化 — 異動與變數說明
 
 把 HyAgent 從「單一示範 widget」升級為可提供給多個外部系統整合的多租戶服務。
-**全程向後相容**：未帶 API Key 的舊 widget（`<script src=".../widget.js">`）落到內建的「預設租戶」，行為與改造前完全相同。
+**全程向後相容**：未帶 API Key 的舊 widget（`<script src=".../sdk/widget.js">`）落到內建的「預設租戶」，行為與改造前完全相同。
 
 ---
 
@@ -15,11 +15,11 @@
 - **API Key 中介層**：`x-api-key` / `Authorization: ApiKey` / `?key=pk_` → 解析租戶；未帶 key 落預設租戶。
   - `server/src/middlewares/resolve-tenant.ts`
 - **動態 CORS**：放行來源＝第一方設定 ∪ 任一租戶白名單；預設租戶為 `*` 時維持全放行。
-- **SSO handoff**：每租戶可設 `ssoSecret`，宿主簽發的使用者 token 經 `POST /api/auth/sso/exchange` 換發本系統 token（嵌入免帳密登入）。
+- **SSO handoff**：每租戶登記 Assertion 公鑰（最多 2 把），宿主以自家私鑰簽發的 Identity Assertion 經 `POST /api/auth/sso/exchange` 換發 HyAgent Session（嵌入免帳密登入）。HyAgent 只持有公鑰。
 - **每租戶 rate limit**：`server/src/middlewares/tenant-rate-limit.ts`。
 
 ### 2. 三種整合方式
-- **Surface 1 — 嵌入 widget 產品化**：`client/public/widget.js` 支援 `data-key/form/locale/theme/position/user-token/token-url`（`token-url` 為長駐頁面用的短效 SSO 端點，見 [`docs/HANDOFF-SSO.md`](docs/HANDOFF-SSO.md)），參數化 iframe URL，轉發 `oa-agent:submitted` 等事件，提供 `OAAgent.open/close/toggle/expand/collapse` 控制 API（`expand` 會把面板置中撐大並蓋上背景遮罩）。
+- **Surface 1 — 嵌入 widget 產品化**：`client/public/sdk/widget.js`（對外路徑 `/sdk/widget.js`）支援 `data-key/form/locale/theme/position/token-url`（`token-url` 指向宿主自家的 Identity Endpoint，widget 需要身分時才現取一張 Assertion；靜態的 `data-user-token` 已移除，見 [`docs/HANDOFF-SSO.md`](docs/HANDOFF-SSO.md)），參數化 iframe URL，轉發 `oa-agent:submitted` 等事件，提供 `OAAgent.open/close/toggle/expand/collapse` 控制 API（`expand` 會把面板置中撐大並蓋上背景遮罩）。
   - client：`embedConfig.ts`、`api.ts`（帶 `x-api-key` + SSO 換發）、`App.tsx`（套用 locale/theme/form、送出事件）。
 - **Surface 2 — 開發者 SDK**：新 workspace `@hyagent/sdk`（`sdk/`），headless REST + widget 事件/控制橋接 + SSO。
 - **Surface 3 — 表單結果 webhook 回拋**：每租戶可登記端點，送出成功後以 **HMAC 簽章 + 行內非同步投遞 + 指數退避重試** 推送 `form.submitted`。
@@ -61,7 +61,7 @@ Body 欄位：`provider`（`anthropic`/`openai`）、`model`、`anthropicApiKey`
 | 金鑰 | 誰產生 | 用途 |
 |------|--------|------|
 | `pk_…` / `sk_…` | 系統自動產生（建租戶 / 發金鑰時） | 租戶金鑰：解析租戶、資料隔離 |
-| `ssoSecret` | 建租戶時由你提供 | 該租戶 SSO 驗章用的共享密鑰 |
+| Assertion 公鑰 | 客戶產生金鑰對後提供公鑰，你在後台登記 | 該租戶 SSO 驗章用；私鑰留在客戶環境，我方不持有 |
 | `ADMIN_API_KEY` | 你自訂（環境變數） | 系統管理者主控密鑰，凌駕所有租戶 |
 
 ---
@@ -76,10 +76,14 @@ npm run dev:server
 # 2. 建立租戶（回傳一把公開金鑰 pk_…）
 curl -X POST http://localhost:3000/api/admin/tenants \
   -H "x-admin-key: $ADMIN_API_KEY" -H 'content-type: application/json' \
-  -d '{"name":"Acme","allowedOrigins":["https://acme.com"],"ssoSecret":"<選填>"}'
+  -d '{"name":"Acme","allowedOrigins":["https://acme.com"]}'
+
+# 2b. 登記客戶的 Assertion 公鑰（後台 UI 或內部端點；kid 由系統自公鑰算出）
+curl -X POST http://localhost:3000/api/admin/tenants/<tenantId>/assertion-keys   -H "x-admin-key: $ADMIN_API_KEY" -H 'content-type: application/json'   -d '{"publicKey":"-----BEGIN PUBLIC KEY-----
+…"}'
 
 # 3. 對方網站嵌入（帶 pk）
-# <script src="https://你的網域/widget.js" data-key="pk_..." data-form="leave-request"></script>
+# <script src="https://你的網域/sdk/widget.js" data-key="pk_..." data-form="leave-request"></script>
 
 # 4. 互動式 API 文件
 open http://localhost:3000/api/docs
@@ -101,7 +105,7 @@ npm run dev:admin    # 後台 5174
 - **登入**：`POST /api/admin/auth/login`（密碼比對 `ADMIN_PASSWORD`）換發 admin JWT；`require-admin` 同時接受 `x-admin-key` 或此 JWT（既有腳本不受影響）。
 - **分頁**：
   - **外觀** — 主色 / 主題 / 按鈕位置 / logo / 歡迎語 / 預設語言，存於租戶，widget 載入時讀 `GET /api/widget/config` 套用（`data-*` 參數仍優先）。
-  - **設定** — 名稱、允許嵌入來源、SSO 密鑰、API Keys（產生 pk_/sk_）。
+  - **設定** — 名稱、允許嵌入來源、Assertion 公鑰清單（上傳 / 停用 / 撤銷，`kid` 由系統自公鑰算出）、API Keys（產生 pk_/sk_）。
   - **Webhook** — 端點列表 / 新增 / 啟用停用 / 刪除。
   - **用量** — 對話 / 訊息 / 送出計數（唯讀）。
 

@@ -8,12 +8,12 @@
  *   node presale/webhook-receiver/trigger.mjs
  * 然後重新整理收件匣 http://localhost:4300/ 看新紀錄。
  *
- * 設定沿用同目錄 .env：OA_ORIGIN / TENANT_PK / TENANT_SSO_SECRET / DEMO_USER_ID / DEMO_USER_NAME
+ * 設定沿用同目錄 .env：OA_ORIGIN / TENANT_PK / TENANT_ID / TENANT_PRIVATE_KEY / DEMO_USER_ID / DEMO_USER_NAME
  */
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { signUserToken } from "@hyagent/sdk/server";
+import { generateKeyPair, issueAssertion } from "@hyagent/sdk/server";
 
 const DIR = path.dirname(fileURLToPath(import.meta.url));
 const envPath = path.join(DIR, ".env");
@@ -24,7 +24,12 @@ const OA = process.env.OA_ORIGIN ?? "http://localhost:3000";
 const PK =
   process.env.TENANT_PK ??
   "pk_3dc8a9721d103efb0972aac2c0ef79d237698f765178fc6a";
-const SSO_SECRET = process.env.TENANT_SSO_SECRET ?? "test-secret1234567890";
+// Assertion 的 iss 必須等於 Tenant ID（規格 §8.4 步驟 10）
+const TENANT_ID = process.env.TENANT_ID ?? "";
+// 私鑰未設時當場產一組——此時後台沒有對應公鑰，換發會以 UNKNOWN_KID 失敗，
+// 訊息會直接告訴你要把公鑰貼上去，比靜默失敗好認。
+const PRIVATE_KEY =
+  process.env.TENANT_PRIVATE_KEY ?? generateKeyPair("ES256").privateKeyPem;
 const USER_ID = process.env.DEMO_USER_ID ?? "hyweb";
 const USER_NAME = process.env.DEMO_USER_NAME ?? "測試員";
 
@@ -41,20 +46,21 @@ function futureDate(days = 14) {
 }
 
 async function main() {
-  // 1) SSO 換發本系統 token
-  const userToken = signUserToken({
-    sub: USER_ID,
-    name: USER_NAME,
-    secret: SSO_SECRET,
+  // 1) Identity Assertion 換發 HyAgent Session
+  const assertion = issueAssertion({
+    privateKey: PRIVATE_KEY,
+    tenant: TENANT_ID,
+    subject: USER_ID,
+    profile: { name: USER_NAME },
   });
   const exRes = await fetch(`${OA}/api/auth/sso/exchange`, {
     method: "POST",
     headers: J(),
-    body: JSON.stringify({ userToken }),
+    body: JSON.stringify({ assertion }),
   });
   const ex = await exRes.json();
-  if (!ex.data?.accessToken) throw new Error("SSO 失敗：" + JSON.stringify(ex));
-  const auth = J({ authorization: "Bearer " + ex.data.accessToken });
+  if (!ex.data?.sessionToken) throw new Error("換發失敗：" + JSON.stringify(ex));
+  const auth = J({ authorization: "Bearer " + ex.data.sessionToken });
 
   // 2) 建對話（不帶 message → 不觸發 LLM）
   const conv = await (

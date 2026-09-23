@@ -303,7 +303,6 @@ export const openapiSpec = {
                 properties: {
                   name: { type: "string" },
                   allowedOrigins: { type: "array", items: { type: "string" } },
-                  ssoSecret: { type: "string" },
                 },
               },
             },

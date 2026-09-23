@@ -15,6 +15,11 @@ import { contentDispositionHeader } from '@/modules/report/report.http';
 import { submissionStore } from '@/modules/workflow/submission.store';
 import { formStore } from '@/modules/form/form.store';
 import { AppError } from '@/utils/app-error';
+import { toErrorResponse } from '@/lib/assertion';
+import { authSessionStore } from '@/lib/auth-session.store';
+import { activeKeys, resolveAssertionSettings } from '@/modules/tenant/tenant-keys';
+import { clockOffsetStats } from '@/modules/auth/clock-skew-monitor';
+import { logger } from '@/lib/logger';
 import {
   SCOPE_CATALOG,
   assertGrantableScopes,
@@ -29,13 +34,32 @@ import { llmConfigService } from '@/modules/tenant/llm-config.service';
 import type { PutLLMConfigInput } from '@/modules/tenant/llm-config.schema';
 import { computeUsageCost } from '@/modules/usage/usage.cost';
 import type {
+  AddPublicKeyInput,
   CreateKeyInput,
   CreateTenantInput,
   CreateWebhookInput,
+  ListSessionsQuery,
+  PatchAssertionSettingsInput,
   PatchTenantInput,
+  RevokeSessionsInput,
+  SetPublicKeyStatusInput,
   ToggleWebhookInput,
 } from './admin.schema';
 import type { AdminReportQuery, PutPolicyInput } from './admin.schema';
+
+/**
+ * 把 HyAgentTokenError 轉成規格 §9 的管理端回應（KEY_LIMIT_EXCEEDED / LAST_ACTIVE_KEY
+ * / INVALID_REQUEST 各有自己的 HTTP 狀態），其餘錯誤照常往外丟給既有的錯誤中介層。
+ */
+async function withAssertionErrors(res: Response, fn: () => Promise<void>): Promise<void> {
+  try {
+    await fn();
+  } catch (err) {
+    const { status, body } = toErrorResponse(err);
+    if (status >= 500) throw err;
+    res.status(status).json(body);
+  }
+}
 
 function ensureTenant(id: string) {
   const tenant = tenantStore.getTenant(id);
@@ -44,14 +68,20 @@ function ensureTenant(id: string) {
 }
 
 function publicTenant(tenant: NonNullable<ReturnType<typeof tenantStore.getTenant>>) {
-  const { ssoSecret, ssoVersion: _ssoVersion, userDirectory: _userDirectory, llmConfig: _llmConfig, ...safe } = tenant;
-  return { ...safe, ssoConfigured: Boolean(ssoSecret) };
+  const { userDirectory: _userDirectory, llmConfig: _llmConfig, ...safe } = tenant;
+  // publicKeys 原樣帶出：它們是公鑰，不需遮罩。改造前這裡遮的 ssoSecret 已不存在。
+  return {
+    ...safe,
+    assertionSettings: resolveAssertionSettings(tenant),
+    // 後台總覽用（規格 §11.1）：未設 active 公鑰的租戶無法登入，要能一眼看出來
+    activeKeyCount: activeKeys(tenant.publicKeys).length,
+  };
 }
 
 export const adminController = {
   async createTenant(req: Request, res: Response): Promise<void> {
-    const { name, allowedOrigins, ssoSecret } = req.body as CreateTenantInput;
-    const tenant = tenantStore.createTenant(name, allowedOrigins ?? [], ssoSecret);
+    const { name, allowedOrigins } = req.body as CreateTenantInput;
+    const tenant = tenantStore.createTenant(name, allowedOrigins ?? []);
     // 新租戶自動授予標準服務 + 內建表單，並標記已完成遷移，避免之後被一次性遷移覆寫
     const withScopes = tenantStore.updateTenant(tenant.id, {
       grantedScopes: defaultGrantedScopes(tenant.id),
@@ -65,6 +95,108 @@ export const adminController = {
 
   async listTenants(_req: Request, res: Response): Promise<void> {
     res.status(200).json({ data: tenantStore.listTenants().map(publicTenant) });
+  },
+
+  // ───────── Assertion 公鑰管理（規格 §7.3；僅後台，不對外開放 API）─────────
+
+  async listPublicKeys(req: Request, res: Response): Promise<void> {
+    const tenant = ensureTenant(String(req.params.id));
+    res.status(200).json({
+      data: {
+        keys: tenantStore.listPublicKeys(tenant.id),
+        settings: resolveAssertionSettings(tenant),
+        clockOffset: clockOffsetStats(tenant.id, resolveAssertionSettings(tenant).clockSkewSeconds) ?? null,
+      },
+    });
+  },
+
+  async addPublicKey(req: Request, res: Response): Promise<void> {
+    const tenant = ensureTenant(String(req.params.id));
+    const body = req.body as AddPublicKeyInput;
+    await withAssertionErrors(res, async () => {
+      const result = tenantStore.addPublicKey(tenant.id, body)!;
+      await tenantStore.persistCritical();
+      // 冪等：同一把公鑰重複上傳回 200 + created:false，而不是再建一筆（§7.3）
+      res.status(result.created ? 201 : 200).json({ data: result });
+    });
+  },
+
+  /**
+   * 變更公鑰狀態。**撤銷會連帶作廢以該 kid 建立的所有 Session**（規格 §2.6）——
+   * 兩件事必須一起做完才算撤銷，只改狀態的話已經拿到 Session 的人會用到自然過期。
+   */
+  async setPublicKeyStatus(req: Request, res: Response): Promise<void> {
+    const tenant = ensureTenant(String(req.params.id));
+    const kid = String(req.params.kid);
+    const { status } = req.body as SetPublicKeyStatusInput;
+    await withAssertionErrors(res, async () => {
+      const key = tenantStore.setPublicKeyStatus(tenant.id, kid, status);
+      await tenantStore.persistCritical();
+      const revokedSessions =
+        status === 'active' ? 0 : await authSessionStore.revokeByKid(tenant.id, kid);
+      logger.info({ tenantId: tenant.id, kid, status, revokedSessions }, 'tenant public key status changed');
+      res.status(200).json({ data: { key, revokedSessions } });
+    });
+  },
+
+  /** 逐租戶設定（規格 §4.3、§7.1、§10.4）。 */
+  async updateAssertionSettings(req: Request, res: Response): Promise<void> {
+    const tenant = ensureTenant(String(req.params.id));
+    const patch = req.body as PatchAssertionSettingsInput;
+    await withAssertionErrors(res, async () => {
+      const settings = tenantStore.updateAssertionSettings(tenant.id, patch);
+      await tenantStore.persistCritical();
+      res.status(200).json({ data: settings });
+    });
+  },
+
+  /**
+   * 依 sub 批次作廢 Session（規格 §7.4）。
+   *
+   * 對「查無有效 Session 的 sub」一律回 200 + `revoked: 0`，**不得** 404——
+   * 否則這支端點就成了「這個帳號現在有沒有人在線」的探測器。
+   */
+  async revokeSessionsBySub(req: Request, res: Response): Promise<void> {
+    const tenant = ensureTenant(String(req.params.id));
+    const { sub } = req.body as RevokeSessionsInput;
+    const revoked = await authSessionStore.revokeBySub(tenant.id, sub);
+    // 稽核留租戶與筆數，不留 sub（規格 §11.1：日誌不得含 claims 值）
+    logger.info({ tenantId: tenant.id, revoked }, 'sessions revoked by sub');
+    res.status(200).json({ data: { revoked } });
+  },
+
+  /**
+   * 列出租戶目前有效的 Session。
+   *
+   * 回應會帶 `sub` 原文（後台要顯示是誰），但**日誌不留**——規格 §11.1 禁止日誌含
+   * claims 值，這條在 revokeSessionsBySub 已經守過一次，列表同樣不能破例。
+   * 連 query 字串都不記：它本身可能就是一個 sub。
+   */
+  async listSessions(req: Request, res: Response): Promise<void> {
+    const tenant = ensureTenant(String(req.params.id));
+    const { query, kid, limit, offset } = req.query as unknown as ListSessionsQuery;
+    const page = await authSessionStore.listByTenant({
+      tenantId: tenant.id,
+      ...(query ? { query } : {}),
+      ...(kid ? { kid } : {}),
+      limit,
+      offset,
+    });
+    logger.info(
+      { tenantId: tenant.id, returned: page.sessions.length, total: page.total },
+      'sessions listed',
+    );
+    res.status(200).json({ data: page });
+  },
+
+  /** 作廢單筆 Session。找不到回 404——這裡的 id 來自剛才那份列表，不存在通常代表它已過期或被別人踢掉了。 */
+  async revokeSession(req: Request, res: Response): Promise<void> {
+    const tenant = ensureTenant(String(req.params.id));
+    const sessionId = String(req.params.sessionId);
+    const revoked = await authSessionStore.revokeById(tenant.id, sessionId);
+    if (!revoked) throw AppError.notFound('Session 不存在或已失效');
+    logger.info({ tenantId: tenant.id }, 'session revoked by id');
+    res.status(200).json({ data: { revoked: 1 } });
   },
 
   async updateTenant(req: Request, res: Response): Promise<void> {

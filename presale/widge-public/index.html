@@ -37,14 +37,14 @@
         <div class="feature">
           <h3>⚡ 一行嵌入</h3>
           <p>
-            <code>&lt;script src=".../widget.js"&gt;</code> 貼上即用，純
+            <code>&lt;script src=".../sdk/widget.js"&gt;</code> 貼上即用，純
             JS、零依賴、不必打包。
           </p>
         </div>
         <div class="feature">
           <h3>🚫 不用後端</h3>
           <p>
-            不簽 token、不放 ssoSecret、不用動你的系統。只要能放一段 HTML 就行。
+            不簽憑證、不需要金鑰、不用動你的系統。只要能放一段 HTML 就行。
           </p>
         </div>
         <div class="feature">
@@ -85,16 +85,21 @@
           </li>
           <li>
             在頁面任意位置貼上這一行就好：<br /><code
-              >&lt;script src="https://你的網域/widget.js" data-key="pk_…"
+              >&lt;script src="https://hyagent.example.com/sdk/widget.js" data-key="pk_…"
               data-title="Hyweb 小幫手"&gt;&lt;/script&gt;</code
             >
           </li>
         </ol>
         <p class="note">
+          <strong><code>src</code> 用我們提供給你的 HyAgent 網域</strong>——
+          widget 與聊天面板都由我們託管，你不需要自行部署或代管任何檔案；
+          這一行裡要換成你自己的值的只有 <code>data-key</code>。
+        </p>
+        <p class="note">
           沒有第三步：不需要後端端點、不需要
-          <code>data-user-token</code
+          <code>data-token-url</code
           >。想要「沿用宿主登入身分、免再登入」的版本，見
-          <code>../widge-tenant</code>（需要一個後端簽 token 的端點）。
+          <code>../widge-tenant</code>（需要一個後端簽發憑證的端點）。
         </p>
       </section>
     </main>
@@ -102,9 +107,9 @@
     <!-- ──────────────────────────────────────────────────────────────
          載入 widget（純前端、不做 SSO）
 
-         正式環境你實際只要貼這一行（把 src / data-key 換成你的值）：
+         正式環境你實際只要貼這一行（src 用 HyAgent 提供的網域，只有 data-key 換成你的）：
 
-           <script src="https://你的網域/widget.js"
+           <script src="https://hyagent.example.com/sdk/widget.js"
                    data-key="pk_…"
                    data-title="Hyweb 小幫手"></script>
 
@@ -115,10 +120,10 @@
       (function () {
         var cfg = window.__OA__;
         var s = document.createElement("script");
-        s.src = cfg.origin + "/widget.js";
+        s.src = cfg.origin + "/sdk/widget.js";
         s.setAttribute("data-key", cfg.key);
         s.setAttribute("data-title", "Hyweb 小幫手");
-        // 注意：刻意「不」設 data-user-token → 不做免登入，由使用者在 widget 內自行登入。
+        // 注意：刻意「不」設 data-token-url → 不做免登入，由使用者在 widget 內自行登入。
         // 不設 data-launcher → 顯示預設右下浮動按鈕。
         document.body.appendChild(s);
       })();

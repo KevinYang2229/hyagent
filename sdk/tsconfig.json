@@ -7,6 +7,9 @@
     "strict": true,
     "skipLibCheck": true,
     "noEmit": true,
+    // server 子入口被 presale 的 .mjs 以 Node 原生型別剝離直接載入，relative import 必須帶
+    // 副檔名才解析得到；本套件不做 build（exports 直接指向 .ts 原始碼），故開這個旗標無副作用。
+    "allowImportingTsExtensions": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "esModuleInterop": true,

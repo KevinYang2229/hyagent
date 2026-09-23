@@ -264,6 +264,8 @@ export interface Applicant {
   name: string;
   department: string;
   title?: string;
+  /** 公司別（選填）；SSO 由 Assertion 的 `hyagent:profile.companyName` 帶入 */
+  company?: string;
   /** 所屬地區（如 台北/新竹）；決定工時政策，缺省用 policy.default */
   region?: string;
   /** 電子郵件（選填）；送出通知信等 best-effort 動作用 */

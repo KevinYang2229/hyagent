@@ -10,6 +10,7 @@ import {
   api,
   ApiError,
   auth,
+  setIdentityProvider,
   setUnauthorizedHandler,
   type Applicant,
   type Definition,
@@ -21,7 +22,9 @@ import {
 } from './api';
 import type { TenantAppearance } from '@hyagent/shared';
 import { changeLanguage } from './i18n';
+import { debugLog } from './debugLog';
 import { embedConfig, fetchAppearance } from './embedConfig';
+import { hostBridge, type UiStatePayload } from './hostBridge';
 import { pickKnowledgePrompts, resolveKnowledgeFeed, type KnowledgeFeed, type SuggestedPrompts } from './knowledgePrompt';
 import { pickInitialFormId, shouldShowFormPicker } from './formPicker';
 import FormView from './FormView';
@@ -141,6 +144,14 @@ export default function App() {
   // 登入／連線失敗訊息（SSO 換發失敗、或登入後因金鑰(pk)不正確被踢出）。
   // 有值時顯示整頁錯誤畫面，取代「靜默掉回帳密登入頁」。
   const [authError, setAuthError] = useState<string | null>(null);
+  /**
+   * 身分流程的世代編號（規格 §6.3）。
+   *
+   * 每次登出或宿主頁要求換人就 +1。取票與換發跨越好幾個 await（§6.5 的退避重試最壞逼近
+   * 一分鐘），中途被登出蓋過時，恢復執行的那段不能再把換到的 Session 寫回來——否則
+   * 「按了登出」會被一則還在路上的換發覆蓋，使用者看到的是登出沒有生效。
+   */
+  const identityEpochRef = useRef(0);
   const userId = authUser?.id ?? '';
   const [view, setView] = useState<'chat' | 'tasks' | 'notifications'>('chat');
   const notifications = useNotifications(PREVIEW ? '' : userId);
@@ -266,6 +277,47 @@ export default function App() {
     return () => window.removeEventListener('message', onMessage);
   }, []);
 
+  /**
+   * 嵌入 SSO handoff（規格 §6.5、§6.6）：向宿主頁要一張 Assertion，換發本系統的 Session。
+   *
+   * 首次載入與宿主頁呼叫 `OAAgent.refreshIdentity()` 走的是同一段，差別只在呼叫端怎麼收尾。
+   * 改造前這張票是從 iframe URL 的 ?userToken= 讀的，違反規格 §10.1；現在改由 postMessage
+   * 握手取得，憑證只存在記憶體裡，不留在歷史紀錄、Referer 或存取日誌。
+   *
+   * 回傳換到的使用者；拿不到票（未登入宿主網站／取票失敗／逾時）、換發失敗、或流程中途
+   * 被登出蓋過，一律回 null。
+   */
+  async function runSsoHandoff(): Promise<Applicant | null> {
+    const epoch = identityEpochRef.current;
+    if (embedConfig.identityAvailable && !auth.isAuthenticated()) {
+      // 拿不到票（使用者未登入宿主網站／取票失敗／逾時）一律當作匿名，落回自行登入頁。
+      const assertion = await hostBridge.requestIdentity();
+      if (identityEpochRef.current !== epoch) return null;
+      if (assertion) {
+        try {
+          await auth.ssoExchange(assertion);
+        } catch (err) {
+          // 換發失敗（pk 不正確 / 驗章不過 / 後端拒絕）：直接顯示錯誤，不落到帳密登入頁。
+          debugLog('④ 換發失敗，顯示錯誤畫面', err);
+          setAuthError(t('auth.ssoFailed'));
+          return null;
+        }
+        // 換發完成才發現已被登出蓋過：剛換到的這張票也要當場作廢，不能留著活到自然過期。
+        if (identityEpochRef.current !== epoch) {
+          auth.logout();
+          return null;
+        }
+      } else {
+        debugLog('③ 宿主頁沒給身分，落回自行登入');
+      }
+    }
+    if (!auth.isAuthenticated()) return null;
+    const me = await auth.me();
+    // 「現在是誰在用小幫手」的最終答案：面板所有權限判定都以這份為準。
+    debugLog('⑤ 目前登入者（GET /api/auth/me）', me);
+    return identityEpochRef.current === epoch ? me : null;
+  }
+
   // 啟動：還原登入狀態（有 token 就用 /me 取使用者）；並註冊 401（refresh 失敗）→ 登出
   useEffect(() => {
     // 登入後才發生的 401（且 refresh 也失敗）：多半是租戶金鑰(pk)不正確或伺服器無法連線。
@@ -287,21 +339,16 @@ export default function App() {
       setAuthReady(true);
       return;
     }
+    // 面板就緒，向宿主頁握手（規格 §6.6）。未被嵌入時 hostBridge 停用，這行沒有副作用。
+    hostBridge.handshake();
+    // Session 續期（規格 §6.5 呼叫時機②）：到期前 60 秒由 api 層自行重走 token provider。
+    // 註冊的就是首次取票用的那支 requestIdentity()——續期在協定上與初次取票完全相同，
+    // 宿主頁不必為此多寫一行。沒有 provider（宿主未設 data-token-url）時 api 層不排程。
+    if (embedConfig.identityAvailable) setIdentityProvider(() => hostBridge.requestIdentity());
     void (async () => {
       try {
-        // 嵌入 SSO handoff：帶 userToken 且尚未登入 → 以宿主 token 換發本系統 token（免帳密登入）
-        if (embedConfig.userToken && !auth.isAuthenticated()) {
-          try {
-            await auth.ssoExchange(embedConfig.userToken);
-          } catch {
-            // SSO 換發失敗（pk 或 ssoSecret 不正確 / 後端拒絕）：直接顯示錯誤，不落到帳密登入頁。
-            setAuthError(t('auth.ssoFailed'));
-            return;
-          }
-        }
-        if (auth.isAuthenticated()) {
-          setAuthUser(await auth.me());
-        }
+        const me = await runSsoHandoff();
+        if (me) setAuthUser(me);
       } catch {
         // 還原登入（me）失敗：401 已由 onUnauthorized 設好 authError；其餘（如伺服器無法連線）退回登入頁。
         setAuthUser(null);
@@ -310,6 +357,46 @@ export default function App() {
       }
     })();
      
+  }, []);
+
+  /**
+   * 宿主網站登出／換人（規格 §6.3、§6.6，整合手冊 §5.3「這段一定要做」）。
+   *
+   * 面板的 Session 存在**面板自己網域**的 sessionStorage，宿主頁碰不到——只能由這裡清掉，
+   * 並通知後端作廢（Session 是伺服器端有狀態的，只清瀏覽器等於留一張還能用的票）。
+   * 處理完回一則 session:ack，宿主頁才知道可以放心導頁。
+   *
+   * 訂閱只掛一次：兩支 handler 只呼叫 setState 與模組層的 auth，沒有隨渲染改變的狀態；
+   * 唯一的閉包值是錯誤訊息用的 t()，與上面的啟動流程同樣取自首次渲染那份。
+   */
+  useEffect(() => {
+    if (!EMBED) return;
+    const offLogout = hostBridge.on('session:logout', ({ requestId }) => {
+      debugLog('宿主頁要求登出（session:logout）→ 作廢 Session 並清本地憑證');
+      handleLogout();
+      hostBridge.send('session:ack', { ok: true, type: 'session:logout' }, requestId);
+    });
+    const offRefresh = hostBridge.on('identity:refresh', ({ requestId }) => {
+      void (async () => {
+        debugLog('宿主頁要求重取身分（identity:refresh）→ 作廢舊 Session，重走握手');
+        // 先作廢舊的再換新的：只換新的不作廢舊的，等於同一個瀏覽器同時有兩個人的票還活著。
+        handleLogout();
+        const epoch = identityEpochRef.current;
+        let user: Applicant | null = null;
+        try {
+          user = await runSsoHandoff();
+        } catch {
+          user = null;
+        }
+        // 換到人就當作一次全新的登入：前一位的對話內容不留在畫面上。
+        if (user && identityEpochRef.current === epoch) handleLogin(user);
+        hostBridge.send('session:ack', { ok: !!user, type: 'identity:refresh' }, requestId);
+      })();
+    });
+    return () => {
+      offLogout();
+      offRefresh();
+    };
   }, []);
 
   // 登入後改用本人權限判定知識庫開場資料（開關＋推薦句）。
@@ -341,25 +428,21 @@ export default function App() {
   // （焦點在 iframe 內時，宿主頁的 keydown 收不到，必須由這裡自己處理）。
   useEffect(() => {
     if (!EMBED) return;
-    const onMessage = (e: MessageEvent) => {
-      const data = e.data as
-        | { type?: string; expanded?: boolean; available?: boolean }
-        | null;
-      if (!data || data.type !== 'oa-agent:expanded') return;
+    const offState = hostBridge.on<UiStatePayload>('ui:state', ({ payload }) => {
+      const data = payload ?? {};
       setExpanded(!!data.expanded);
       if (typeof data.available === 'boolean') setCanExpand(data.available);
-    };
+    });
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       setExpanded((cur) => {
-        if (cur) window.parent.postMessage({ type: 'oa-agent:expand', expanded: false }, '*');
+        if (cur) hostBridge.send('ui:expand', { expanded: false });
         return false;
       });
     };
-    window.addEventListener('message', onMessage);
     window.addEventListener('keydown', onKeyDown);
     return () => {
-      window.removeEventListener('message', onMessage);
+      offState();
       window.removeEventListener('keydown', onKeyDown);
     };
   }, []);
@@ -469,6 +552,8 @@ export default function App() {
 
   function handleLogout() {
     setView('chat');
+    // 先遞增世代：還在路上的取票／換發恢復執行時會發現自己已經過期，不會把 Session 寫回來。
+    identityEpochRef.current += 1;
     auth.logout();
     setAuthUser(null);
     setBalances([]);
@@ -505,10 +590,10 @@ export default function App() {
       pushMsg('sys', t('app.submittedHint'));
       // 通知宿主頁：表單已送出（widget.js 轉成 DOM 事件 / callback 供整合方接手，如關閉彈窗或導頁）
       if (EMBED) {
-        window.parent.postMessage(
-          { type: 'oa-agent:submitted', submission: data.submission ?? null },
-          '*',
-        );
+        hostBridge.send('event', {
+          name: 'oa-agent:submitted',
+          detail: { submission: data.submission ?? null },
+        });
       }
     }
   }
@@ -701,9 +786,9 @@ export default function App() {
     taRef.current?.focus();
   }
 
-  // 嵌入模式：通知外層 widget.js 收起彈窗（widget.js 監聽此 message）。未被嵌入時 parent===self，無副作用。
+  // 嵌入模式：通知外層 widget.js 收起彈窗（widget.js 監聽此 message）。未被嵌入時 hostBridge 停用，無副作用。
   function closeWidget() {
-    window.parent.postMessage({ type: 'oa-agent:close' }, '*');
+    hostBridge.send('ui:close');
   }
 
   // 嵌入模式：請外層 widget.js 放大／還原面板（放大時 widget 會蓋上背景遮罩）。
@@ -711,7 +796,7 @@ export default function App() {
   function toggleExpand() {
     const next = !expanded;
     setExpanded(next);
-    window.parent.postMessage({ type: 'oa-agent:expand', expanded: next }, '*');
+    hostBridge.send('ui:expand', { expanded: next });
   }
 
   const valueEntries = Object.entries(values).filter(
@@ -729,6 +814,13 @@ export default function App() {
   if (authError) return <AuthErrorView message={authError} onRetry={handleAuthRetry} />;
   // 未登入：擋住整個 App，只顯示登入頁
   if (!authUser) return <LoginView onLogin={handleLogin} assistantName={aiName} />;
+
+  // 標題列的組織資訊：SSO Assertion 的 hyagent:profile 或租戶人員目錄帶來的公司／部門／職稱。
+  // 後端在查不到人時把部門填成 UNKNOWN_DEPARTMENT（'—'），那是「未建檔」的佔位符，
+  // 顯示出來只會讓人以為系統壞了，所以濾掉——沒有組織資訊就只顯示姓名。
+  const userOrg = [authUser.company, authUser.department, authUser.title]
+    .filter((value) => value && value !== '—')
+    .join(' ');
 
   return (
     <div className={`app-shell${EMBED ? ' app-shell-embed' : ''}`}>
@@ -755,6 +847,7 @@ export default function App() {
             <span className="app-meta-item">
               <span className="app-meta-label">{t('app.user')}</span>
               <span className="app-meta-value">{authUser.name}</span>
+              {userOrg && <span className="app-meta-org">{userOrg}</span>}
             </span>
 
             <span className="app-meta-sep" aria-hidden="true" />
@@ -826,6 +919,7 @@ export default function App() {
                 <span className="app-meta-item">
                   <span className="app-meta-label">{t('app.user')}</span>
                   <span className="app-meta-value">{authUser.name}</span>
+                  {userOrg && <span className="app-meta-org">{userOrg}</span>}
                 </span>
                 <span className="app-meta-sep" aria-hidden="true" />
                 <Badge status={status ? STATUS_BADGE[status] : 'normal'}>

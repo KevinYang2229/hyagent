@@ -12,6 +12,7 @@ import { initKnowledgeStore } from '@/modules/knowledge/knowledge.store';
 import { purgeFinishedReportJobs } from '@/modules/report/report.job';
 import { reportStore } from '@/modules/report/report.store';
 import { initTenantStore } from '@/modules/tenant/tenant.store';
+import { startExpirySweeper } from '@/lib/expiry-sweeper';
 import { initUsageStore } from '@/modules/usage/usage.store';
 import { initWebhookStore } from '@/modules/webhook/webhook.store';
 import { initSubmissionStore } from '@/modules/workflow/submission.store';
@@ -43,6 +44,10 @@ async function main(): Promise<void> {
     reportStore.purgeExpired();
     purgeFinishedReportJobs();
   }, 24 * 60 * 60 * 1000).unref();
+
+  // Assertion jti 與 HyAgent Session 的到期回收（規格 §8.5、§7.1）。
+  // 節奏是 5 分鐘而非每日：jti 的有效期上限只有 300 秒，跟著每日排程等於讓它們多躺一天。
+  startExpirySweeper();
 
   const server = http.createServer(app);
 

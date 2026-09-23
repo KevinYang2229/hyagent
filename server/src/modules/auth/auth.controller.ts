@@ -1,5 +1,8 @@
 import type { Request, Response } from 'express';
-import { AppError } from '@/utils/app-error';
+import { toErrorResponse } from '@/lib/assertion';
+import { authSessionStore } from '@/lib/auth-session.store';
+import { logger } from '@/lib/logger';
+import { assertionExchange } from './assertion-exchange';
 import { authService } from './auth.service';
 import type { LoginInput, RefreshInput, SsoExchangeInput } from './auth.schema';
 
@@ -19,13 +22,44 @@ export const authController = {
     res.status(200).json({ data: tokens });
   },
 
-  // 公開（需帶 API Key 解析租戶）：SSO handoff，宿主簽發的 user token → 換發本系統 token
+  /**
+   * 公開：Identity Assertion → HyAgent Session（規格 §5.3、§7.1）。
+   *
+   * 租戶由 Assertion 的 `iss` 決定，不是 API Key（決策 A）——所以這裡不看 req.tenant。
+   * 錯誤一律走 §7.5 的回應格式（`{ error, message, requestId }`），不是本系統的 AppError 形狀：
+   * 客戶端程式要以 `error` 代碼分流，而 §9 的細分代碼是整合期唯一的診斷依據。
+   */
   async ssoExchange(req: Request, res: Response): Promise<void> {
-    const tenant = req.tenant;
-    if (!tenant) throw AppError.unauthorized('缺少 API Key，無法解析租戶');
-    const { userToken } = req.body as SsoExchangeInput;
-    const tokens = authService.ssoExchange(tenant, userToken);
-    res.status(200).json({ data: tokens });
+    const { assertion, embedOrigin } = req.body as SsoExchangeInput;
+    const origin = req.header('origin');
+    try {
+      const result = await assertionExchange.exchange({
+        assertion,
+        ...(origin ? { origin } : {}),
+        ...(embedOrigin ? { embedOrigin } : {}),
+      });
+      // 稽核只留可關聯的識別，不留 sub 與 claims 值（規格 §11.1）
+      logger.info({ tenantId: result.tenantId, kid: result.kid }, 'assertion exchanged for session');
+      res.status(201).json({
+        data: {
+          sessionToken: result.sessionToken,
+          expiresIn: result.expiresIn,
+          user: result.user,
+        },
+      });
+    } catch (err) {
+      const { status, body } = toErrorResponse(err, req.header('x-request-id') ?? undefined);
+      // 失敗只記代碼與狀態：Assertion 原文、金鑰內容與 claims 值都不得進日誌（§11.1）
+      if (status >= 500) logger.error({ err }, 'assertion exchange failed');
+      else logger.info({ code: body.error, status }, 'assertion exchange rejected');
+      res.status(status).json(body);
+    }
+  },
+
+  /** 公開（需帶 Session）：結束目前的 HyAgent Session（規格 §7.2、SDK 的 logout()）。 */
+  async logout(req: Request, res: Response): Promise<void> {
+    if (req.authSessionToken) await authSessionStore.revoke(req.authSessionToken);
+    res.status(204).end();
   },
 
   // 受保護：回目前登入者資料（前端重整時還原登入狀態）

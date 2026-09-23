@@ -3,11 +3,11 @@
  *
  * 與隔壁 widge-tenant 的差別：
  *   - 不 import SDK（不需要 @hyagent/sdk/server）。
- *   - 沒有 /sso-token 端點，不簽任何 token，後端不持有 ssoSecret。
- *   - 載入 widget 時不帶 data-user-token → 使用者在 widget 內自行登入。
+ *   - 沒有 Identity Endpoint，不簽任何憑證，後端不持有任何金鑰。
+ *   - 載入 widget 時不帶 data-token-url → 使用者在 widget 內自行登入。
  *
  * 換句話說：這支「server」只是個靜態檔伺服器，正式環境根本不需要任何後端——
- * 把 index.html 裡那一行 <script src=".../widget.js" data-key=pk_…> 貼到你的頁面即可。
+ * 把 index.html 裡那一行 <script src=".../sdk/widget.js" data-key=pk_…> 貼到你的頁面即可。
  * 這裡保留一支 server 只是為了 demo 能用 .env 注入 OA_ORIGIN / TENANT_PK，免改檔。
  *
  * 執行：node presale/widge-public/server.mjs → 開 http://localhost:4001
@@ -29,7 +29,7 @@ if (fs.existsSync(envPath) && typeof process.loadEnvFile === 'function') {
 
 const PORT = Number(process.env.PORT ?? 4001);
 const OA_ORIGIN = process.env.OA_ORIGIN ?? 'http://localhost:3000';
-// pk 是「公開」金鑰，放前端沒問題（不像 ssoSecret 需留後端）
+// pk 是「公開」金鑰，放前端沒問題（不像簽發用的私鑰需留後端）
 const TENANT_PK =
   process.env.TENANT_PK ?? 'pk_3dc8a9721d103efb0972aac2c0ef79d237698f765178fc6a';
 
@@ -42,7 +42,7 @@ const html = fs
   );
 
 const server = http.createServer((req, res) => {
-  // 刻意「沒有」/sso-token：這版不做免登入，後端不簽任何 token。
+  // 刻意「沒有」Identity Endpoint：這版不做免登入，後端不簽任何 token。
   if (req.url === '/hy_logo.png') {
     res.writeHead(200, { 'content-type': 'image/png' });
     res.end(fs.readFileSync(path.join(DIR, 'hy_logo.png')));

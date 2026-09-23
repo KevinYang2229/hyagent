@@ -54,7 +54,11 @@ export interface Tenant {
   id: string;
   name: string;
   allowedOrigins: string[];
-  ssoConfigured?: boolean;
+  /** 目前 active 的 Assertion 公鑰數。0 代表此租戶還無法登入（規格 §11.1 的收斂標示） */
+  activeKeyCount?: number;
+  /** 逐租戶設定的現行值（未設者為規格預設） */
+  assertionSettings?: AssertionSettings;
+  publicKeys?: TenantPublicKey[];
   appearance?: TenantAppearance;
   grantedScopes?: string[];
   /** 月度 LLM token 配額；0 或未設＝不限 */
@@ -311,6 +315,54 @@ export interface SkillDescriptor {
   requiredScope?: string;
   intents: SkillIntentSummary[];
 }
+/** 租戶的 Assertion 簽章公鑰（規格 §2.5、§7.3）。公鑰可公開，不需遮罩。 */
+export interface TenantPublicKey {
+  kid: string;
+  alg: 'RS256' | 'ES256';
+  publicKey: string;
+  status: 'active' | 'disabled' | 'revoked';
+  label?: string;
+  createdAt: string;
+  statusChangedAt?: string;
+}
+
+/** 逐租戶設定（規格 §4.3、§7.1、§10.4）。 */
+export interface AssertionSettings {
+  clockSkewSeconds: number;
+  assertionLifetimeSeconds: number;
+  sessionExpiresIn: number;
+}
+
+/** 時鐘偏移分佈（規格 §10.4 的可觀測性要求）。 */
+export interface ClockOffsetStats {
+  count: number;
+  min: number;
+  max: number;
+  median: number;
+  warnCount: number;
+}
+
+export interface AssertionKeysView {
+  keys: TenantPublicKey[];
+  settings: AssertionSettings;
+  clockOffset: ClockOffsetStats | null;
+}
+
+/** 後台看到的一筆有效 Session。`id` 供作廢用，它不是也回推不出 sessionToken。 */
+export interface AuthSessionSummary {
+  id: string;
+  sub: string;
+  name?: string;
+  kid: string;
+  createdAt: string;
+  expiresAt: string;
+}
+
+export interface AuthSessionPage {
+  sessions: AuthSessionSummary[];
+  total: number;
+}
+
 export interface SkillLibraryView {
   skills: SkillDescriptor[];
   tenants: { id: string; name: string; disabledServices: string[] }[];
@@ -322,7 +374,7 @@ export const api = {
   login: (password: string) => req<{ token: string }>('POST', '/admin/auth/login', { password }),
 
   listTenants: () => req<Tenant[]>('GET', '/admin/tenants'),
-  createTenant: (input: { name: string; allowedOrigins?: string[]; ssoSecret?: string }) =>
+  createTenant: (input: { name: string; allowedOrigins?: string[] }) =>
     req<{ tenant: Tenant; publishableKey: string }>('POST', '/admin/tenants', input),
   updateTenant: (
     id: string,
@@ -331,8 +383,49 @@ export const api = {
         Tenant,
         'name' | 'allowedOrigins' | 'appearance' | 'quotaMonthlyLlmTokens'
       >
-    > & { ssoSecret?: string },
+    >,
   ) => req<Tenant>('PATCH', `/admin/tenants/${id}`, patch),
+
+  // ── Assertion 公鑰與逐租戶設定（規格 §7.3、§7.4）──
+  listAssertionKeys: (id: string) =>
+    req<AssertionKeysView>('GET', `/admin/tenants/${id}/assertion-keys`),
+  addAssertionKey: (id: string, input: { publicKey: string; label?: string }) =>
+    req<{ key: TenantPublicKey; created: boolean }>('POST', `/admin/tenants/${id}/assertion-keys`, input),
+  setAssertionKeyStatus: (id: string, kid: string, status: TenantPublicKey['status']) =>
+    req<{ key: TenantPublicKey; revokedSessions: number }>(
+      'PATCH',
+      `/admin/tenants/${id}/assertion-keys/${encodeURIComponent(kid)}`,
+      { status },
+    ),
+  updateAssertionSettings: (id: string, patch: Partial<AssertionSettings>) =>
+    req<AssertionSettings>('PATCH', `/admin/tenants/${id}/assertion-settings`, patch),
+  /**
+   * 列出租戶目前有效的 Session。
+   *
+   * `query` 一個欄位兩用：完整 sub 精確命中，或 name 關鍵字模糊命中。沒帶 name 的
+   * Session 搜不到關鍵字——sub 在後端只有 HMAC 與密文，模糊比對做不了。
+   */
+  listSessions: (
+    id: string,
+    params: { query?: string; kid?: string; limit?: number; offset?: number } = {},
+  ) => {
+    const qs = new URLSearchParams();
+    if (params.query) qs.set('query', params.query);
+    if (params.kid) qs.set('kid', params.kid);
+    if (params.limit != null) qs.set('limit', String(params.limit));
+    if (params.offset != null) qs.set('offset', String(params.offset));
+    const suffix = qs.toString();
+    return req<AuthSessionPage>('GET', `/admin/tenants/${id}/sessions${suffix ? `?${suffix}` : ''}`);
+  },
+  /** 作廢單筆 Session。找不到（已過期或已被踢掉）回 404。 */
+  revokeSession: (id: string, sessionId: string) =>
+    req<{ revoked: number }>(
+      'DELETE',
+      `/admin/tenants/${id}/sessions/${encodeURIComponent(sessionId)}`,
+    ),
+  /** 依 sub 批次作廢 Session。冪等：查無有效 Session 也回 200 + revoked:0（規格 §7.4） */
+  revokeSessionsBySub: (id: string, sub: string) =>
+    req<{ revoked: number }>('POST', `/admin/tenants/${id}/sessions/revoke`, { sub }),
   deleteTenant: (id: string) => req<{ id: string }>('DELETE', `/admin/tenants/${id}`),
   listScopes: () => req<ScopeDef[]>('GET', '/admin/scopes'),
   listSkills: () => req<SkillLibraryView>('GET', '/admin/skills'),

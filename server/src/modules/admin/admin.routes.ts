@@ -35,7 +35,14 @@ import { adminAuthController } from './admin.auth.controller';
 import {
   adminLoginSchema,
   createKeySchema,
+  addPublicKeySchema,
   createTenantSchema,
+  listSessionsQuerySchema,
+  patchAssertionSettingsSchema,
+  revokeSessionsSchema,
+  sessionParamSchema,
+  setPublicKeyStatusSchema,
+  tenantKeyParamSchema,
   adminReportQuerySchema,
   createWebhookSchema,
   patchTenantSchema,
@@ -95,6 +102,45 @@ router.delete(
   '/tenants/:id',
   validate({ params: tenantParamSchema }),
   asyncHandler(adminController.deleteTenant),
+);
+
+// ── Assertion 公鑰與逐租戶設定（規格 §7.3、§7.4；僅後台，不對外開放等效 API）──
+router.get(
+  '/tenants/:id/assertion-keys',
+  validate({ params: tenantParamSchema }),
+  asyncHandler(adminController.listPublicKeys),
+);
+router.post(
+  '/tenants/:id/assertion-keys',
+  validate({ params: tenantParamSchema, body: addPublicKeySchema }),
+  asyncHandler(adminController.addPublicKey),
+);
+router.patch(
+  '/tenants/:id/assertion-keys/:kid',
+  validate({ params: tenantKeyParamSchema, body: setPublicKeyStatusSchema }),
+  asyncHandler(adminController.setPublicKeyStatus),
+);
+router.patch(
+  '/tenants/:id/assertion-settings',
+  validate({ params: tenantParamSchema, body: patchAssertionSettingsSchema }),
+  asyncHandler(adminController.updateAssertionSettings),
+);
+router.get(
+  '/tenants/:id/sessions',
+  validate({ params: tenantParamSchema, query: listSessionsQuerySchema }),
+  asyncHandler(adminController.listSessions),
+);
+router.post(
+  '/tenants/:id/sessions/revoke',
+  validate({ params: tenantParamSchema, body: revokeSessionsSchema }),
+  asyncHandler(adminController.revokeSessionsBySub),
+);
+// 字面路徑排在 :sessionId 之前。這兩支方法不同（POST / DELETE）本來就不會互相吃掉，
+// 維持這個順序是為了日後有人補上 POST /sessions/:sessionId 時不必重新想一次。
+router.delete(
+  '/tenants/:id/sessions/:sessionId',
+  validate({ params: sessionParamSchema }),
+  asyncHandler(adminController.revokeSession),
 );
 
 router.post(

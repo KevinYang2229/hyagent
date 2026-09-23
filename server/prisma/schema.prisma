@@ -20,7 +20,11 @@ datasource db {
 model SecurityClaim {
   key String @id
   createdAt DateTime @default(now()) @map("created_at")
+  /// NULL＝永不過期（refresh 與送出防重）；非 NULL＝一次性紀錄，到期後由清理排程回收。
+  /// Assertion 的 jti 走這條（規格 §8.5），值取該 Assertion 的 exp。
+  expiresAt DateTime? @map("expires_at")
 
+  @@index([expiresAt])
   @@map("security_claims")
 }
 
@@ -34,6 +38,38 @@ model TenantRow {
   apiKeys   ApiKeyRow[]
 
   @@map("tenants")
+}
+
+/// HyAgent Session（規格 §7.1）。**與下方 SessionRow 是完全不同的東西**：
+/// 那張 sessions 是「對話」session（formId / data），這張是身分 session。
+/// 兩者語意無關，所以表名取 auth_sessions 而非沿用 sessions，避免在程式碼裡混淆。
+///
+/// 不存 sessionToken 原文（只存 sha256）、不存 sub 明文（存 HMAC + 可逆密文），
+/// 理由見 src/lib/auth-session.store.ts 檔頭。
+model AuthSessionRow {
+  /// sha256(sessionToken)
+  id        String   @id
+  tenantId  String   @map("tenant_id")
+  /// HMAC(tenantId, sub)，供依 sub 批次作廢的等值比對（§7.4）
+  subHash   String   @map("sub_hash")
+  /// 靜態加密後的 sub。業務層需要原文（對話歸屬、ACL），所以這欄位是承載身分的；
+  /// 正式環境未設 DATA_ENCRYPTION_KEY 時會在建立 Session 當下就被拒絕。
+  subEnc    String   @map("sub_enc")
+  /// 建立此 Session 時驗證通過的公鑰（§2.6 依 kid 批次作廢）。
+  /// 規格明文要求此欄位自第一版即納入 schema——事後補建涵蓋不到既有 Session。
+  kid       String
+  name      String?
+  /// Assertion 的 hyagent:profile（§4.2.3）。租戶未建人員目錄時，/me 與部門授權由它補值。
+  profile   Json?
+  createdAt DateTime @map("created_at")
+  expiresAt DateTime @map("expires_at")
+
+  @@index([tenantId, kid])
+  @@index([tenantId, subHash])
+  @@index([expiresAt])
+  /// 後台 Session 列表：依租戶篩選、建立時間倒序分頁（上面幾個索引排序用不上）
+  @@index([tenantId, createdAt])
+  @@map("auth_sessions")
 }
 
 model SessionRow {

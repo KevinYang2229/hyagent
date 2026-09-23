@@ -101,16 +101,40 @@ async function submit(): Promise<void> {
   }
 }
 
-// 首次開啟聊天室時才初始化 SDK（headless）：取 SSO token → 建 client → 換發 token
+/**
+ * Token Provider（規格 §5.2、§6.5）：向自家 Identity Endpoint 現取一張 Assertion。
+ *
+ * 傳「函式」而不是把簽好的字串傳給 SDK，是因為這是一個會一直開著的頁面：
+ * Assertion 換來的 Session 預設一小時，字串形式用掉就沒有下一張——到期或被後台撤銷之後
+ * 救不回來，使用者只能重整頁面。傳函式的話，SDK 會在**到期前 60 秒**與**收到 401 時**
+ * 自己再呼叫一次，續期與撤銷後的重新取得都不必這支 UI 操心。
+ *
+ * 回 null＝使用者沒登入自家系統。真實站台此時應導向自家登入頁；本 demo 恆為已登入。
+ */
+async function fetchAssertion(): Promise<string | null> {
+  const res = await fetch('/api/mybot/identity', {
+    // 由自家的登入 Session 決定發給誰；端點不接受前端傳入的 user id（規格 §5.2）
+    credentials: 'include',
+    headers: { accept: 'application/json' },
+    // 拿到快取的同一張等於重放，後端會以 TOKEN_REPLAYED 拒絕
+    cache: 'no-store',
+  });
+  if (!res.ok) return null;
+  const { token } = (await res.json()) as { token?: string };
+  return token ?? null;
+}
+
+// 首次開啟聊天室時才初始化 SDK（headless）：建 client → 走一次 provider → 換發 Session
 const panel = $('chat-panel');
 let booted = false;
 async function ensureBooted(): Promise<void> {
   if (booted) return;
   booted = true;
   try {
-    const { userToken } = (await (await fetch('/sso-token')).json()) as { userToken: string };
-    oa = createOAAgent({ key: cfg.key, userToken, apiBase: cfg.origin });
-    await oa.authenticate(); // SSO 換發本系統 token
+    oa = createOAAgent({ key: cfg.key, assertion: fetchAssertion, apiBase: cfg.origin });
+    // 首次換發。回 false＝provider 沒給票（使用者未登入自家系統），不是連線錯誤，
+    // 所以要自己判斷——真實站台在這裡導向登入頁，而不是顯示「初始化失敗」。
+    if (!(await oa.refreshIdentity())) throw new Error('Identity Endpoint 未回傳憑證');
     addMsg('agent', '嗨，我是用 SDK 自建 UI 的小幫手。想辦什麼？（試試「我要請假」）');
   } catch (e) {
     booted = false; // 允許下次重試

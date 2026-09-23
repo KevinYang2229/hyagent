@@ -10,26 +10,26 @@ widget 在右下角顯示**預設浮動按鈕**，點擊彈出聊天室；使用
 
 | | widge-public（本範例） | widge-tenant |
 |---|---|---|
-| 要動自己後端嗎 | ❌ 不用 | ✅ 要加 `/sso-token` 端點 |
+| 要動自己後端嗎 | ❌ 不用 | ✅ 要加 Identity Endpoint（`/api/mybot/identity`） |
 | 需要 SDK 嗎 | ❌ 不用 | 選用（簽 token，可改用任何 JWT 套件） |
-| `ssoSecret` | 用不到 | 需設定、留在後端 |
+| 金鑰對 | 用不到 | 需產生，私鑰留後端、公鑰交 HyAgent 登記 |
 | 使用者登入 | 在 widget 內自行登入 | 自動沿用宿主身分（免登入） |
-| 載入碼 | `data-key` | `data-key` + `data-user-token` |
+| 載入碼 | `data-key` | `data-key` + `data-token-url` |
 
 ## 流程
 
 ```
 瀏覽器開 http://localhost:4001（模擬對方網站）
    │
-   └─ 頁面直接注入 HyAgent widget：<script src="OA/widget.js" data-key=pk_>
-         （沒有 data-user-token → 不做免登入）
+   └─ 頁面直接注入 HyAgent widget：<script src="OA/sdk/widget.js" data-key=pk_>
+         （沒有 data-token-url → 不做免登入）
          → 點開小幫手，使用者在 widget 內自行登入後對話
 ```
 
 ## 執行
 
 前提：HyAgent server 已在 `http://localhost:3000` 啟動，且有一個租戶（取得其 `pk_…`）。
-這版**不需要**租戶設定 ssoSecret。
+這版**不需要**租戶登記 Assertion 公鑰。
 
 ```bash
 node presale/widge-public/server.mjs
@@ -49,8 +49,11 @@ open http://localhost:4001
 把這一行貼進你現有頁面就好，**不需要任何後端**：
 
 ```html
-<script src="https://你的網域/widget.js" data-key="pk_…" data-title="Hyweb 小幫手"></script>
+<script src="https://hyagent.example.com/sdk/widget.js" data-key="pk_…" data-title="Hyweb 小幫手"></script>
 ```
+
+> `src` 用 **HyAgent 提供給你的網域** —— widget 與聊天面板都由 HyAgent 託管，
+> 你不需要自行部署或代管任何檔案；這一行裡要換成自己的值的只有 `data-key`。
 
 > demo 裡用 `window.__OA__` 注入 origin/key 只是方便讀本機 .env、免改檔；
 > 正式環境直接把值寫死在上面那行即可。

@@ -86,7 +86,9 @@ interface LoginData {
   user: Applicant;
 }
 
+import { debugLog, maskToken } from './debugLog';
 import { embedConfig } from './embedConfig';
+import { embedderOrigin } from './hostBridge';
 import i18n from './i18n';
 
 // API 來源網域：dev 留空 → 走相對路徑由 Vite proxy 代理；
@@ -114,12 +116,43 @@ export class ApiError extends Error {
   }
 }
 
-// ---- token 管理（access + refresh，存 localStorage）----
+// ---- 憑證管理：兩種形式並存 ----
+//
+// HyAgent Session（Widget 走的路，規格 §7.1）：不透明字串，存 sessionStorage。
+//   規格明訂「SDK 僅保存在 HyAgent 網域的記憶體 / sessionStorage」——用 localStorage 會讓
+//   Session 跨分頁與跨瀏覽器工作階段留存，超出宿主自家登入的存續範圍（§10.5）。
+//   沒有 refresh：到期就重走 token provider 換一張新的 Assertion（§6.5 呼叫時機②）。
+//
+// access + refresh JWT（帳密登入路徑）：維持原樣，存 localStorage。規格不涵蓋此路徑。
+const SESSION_KEY = 'oa-session-token';
+// Session 到期時刻（epoch ms）。跟著 token 存 sessionStorage：面板重整後不重走握手，
+// 沒有它就不知道什麼時候該續期，Session 會一路撐到 401 才被發現。
+const SESSION_EXPIRES_KEY = 'oa-session-expires';
 const ACCESS_KEY = 'oa-access-token';
 const REFRESH_KEY = 'oa-refresh-token';
+let sessionToken: string | null = sessionStorage.getItem(SESSION_KEY);
+let sessionExpiresAt: number | null = readSessionExpiry();
 let accessToken: string | null = localStorage.getItem(ACCESS_KEY);
 let refreshToken: string | null = localStorage.getItem(REFRESH_KEY);
 
+function readSessionExpiry(): number | null {
+  const at = Number(sessionStorage.getItem(SESSION_EXPIRES_KEY));
+  return Number.isFinite(at) && at > 0 ? at : null;
+}
+
+function setSessionToken(token: string, expiresIn?: number): void {
+  sessionToken = token;
+  sessionStorage.setItem(SESSION_KEY, token);
+  sessionExpiresAt = typeof expiresIn === 'number' && expiresIn > 0 ? Date.now() + expiresIn * 1000 : null;
+  if (sessionExpiresAt) sessionStorage.setItem(SESSION_EXPIRES_KEY, String(sessionExpiresAt));
+  else sessionStorage.removeItem(SESSION_EXPIRES_KEY);
+  // 兩種憑證不並存：換到 Session 後，帳密登入留下的 JWT 不該還躺在 localStorage 裡
+  accessToken = null;
+  refreshToken = null;
+  localStorage.removeItem(ACCESS_KEY);
+  localStorage.removeItem(REFRESH_KEY);
+  scheduleRenewal();
+}
 function setTokens(a: string, r: string): void {
   accessToken = a;
   refreshToken = r;
@@ -127,10 +160,70 @@ function setTokens(a: string, r: string): void {
   localStorage.setItem(REFRESH_KEY, r);
 }
 function clearTokens(): void {
+  sessionToken = null;
+  sessionExpiresAt = null;
   accessToken = null;
   refreshToken = null;
+  sessionStorage.removeItem(SESSION_KEY);
+  sessionStorage.removeItem(SESSION_EXPIRES_KEY);
   localStorage.removeItem(ACCESS_KEY);
   localStorage.removeItem(REFRESH_KEY);
+  scheduleRenewal();
+}
+
+// ---- Session 續期（規格 §6.5 呼叫時機②、§7.1）----
+//
+// SSO 路徑沒有 refresh token：續期＝到期前 60 秒重走 token provider 拿一張新的 Assertion，
+// 再換一個新的 Session。provider 由 App 在嵌入模式下註冊為 hostBridge.requestIdentity()，
+// 與首次取票走的是同一條 postMessage 協定，宿主頁不需要為續期多寫任何東西。
+//
+// 未嵌入（第一方直接開面板）時沒有 provider，這整段等於停用——那條路徑走帳密登入的 JWT。
+const RENEW_LEAD_MS = 60_000;
+
+let identityProvider: (() => Promise<string | null>) | null = null;
+let renewTimer: ReturnType<typeof setTimeout> | null = null;
+let renewInFlight: Promise<boolean> | null = null;
+
+/** 註冊續期用的 token provider；傳 null 取消（例如面板卸載）。 */
+export function setIdentityProvider(fn: (() => Promise<string | null>) | null): void {
+  identityProvider = fn;
+  scheduleRenewal();
+}
+
+function scheduleRenewal(): void {
+  if (renewTimer !== null) {
+    clearTimeout(renewTimer);
+    renewTimer = null;
+  }
+  if (!identityProvider || !sessionToken || sessionExpiresAt === null) return;
+  renewTimer = setTimeout(() => {
+    renewTimer = null;
+    void renewSession();
+  }, Math.max(sessionExpiresAt - Date.now() - RENEW_LEAD_MS, 0));
+}
+
+/** 單一飛行：同時湧入的請求共用一次換發，避免一次燒掉好幾張一次性的 Assertion。 */
+function renewSession(): Promise<boolean> {
+  if (!renewInFlight) {
+    renewInFlight = performRenewal().finally(() => {
+      renewInFlight = null;
+    });
+  }
+  return renewInFlight;
+}
+
+async function performRenewal(): Promise<boolean> {
+  if (!identityProvider) return false;
+  try {
+    const assertion = await identityProvider();
+    // 拿不到票＝使用者已從宿主網站登出，或宿主端點失敗。兩者都不該重試到天荒地老：
+    // 讓它落到 401 → onUnauthorized，由使用者自己決定要不要重新登入。
+    if (!assertion) return false;
+    await auth.ssoExchange(assertion);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // refresh 用盡仍 401 時通知 App 導回登入頁
@@ -145,7 +238,9 @@ function headers(userId: string): HeadersInit {
 
 function withAuth(init: RequestInit): RequestInit {
   const h = new Headers(init.headers);
-  if (accessToken) h.set('authorization', `Bearer ${accessToken}`);
+  // Session 優先：有它就代表這是 Widget 的 SSO 路徑
+  const bearer = sessionToken ?? accessToken;
+  if (bearer) h.set('authorization', `Bearer ${bearer}`);
   // 嵌入時附租戶金鑰（每個受保護請求都需解析租戶）
   if (embedConfig.apiKey) h.set('x-api-key', embedConfig.apiKey);
   return { ...init, headers: h };
@@ -201,12 +296,25 @@ async function performRefresh(): Promise<boolean> {
   return true;
 }
 
-/** 受保護請求：自動帶 access token；遇 401 先嘗試 refresh 重試一次，仍失敗則登出 */
+/** 受保護請求：自動帶憑證；Session 快到期先續期，遇 401 依憑證形式各重試一次，仍失敗則登出 */
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  // 續期的主要機制是 scheduleRenewal() 的定時器，這裡是補網：背景分頁的 setTimeout 會被
+  // 瀏覽器節流到分鐘級，筆電闔上更是整段不跑——醒來時定時器還沒燒到，Session 卻早就過期了。
+  if (sessionToken && identityProvider && sessionExpiresAt !== null && Date.now() >= sessionExpiresAt - RENEW_LEAD_MS) {
+    await renewSession();
+  }
   const sentToken = accessToken;
+  const sentSession = sessionToken;
   let res = await fetch(path, withAuth(init));
-  if (res.status === 401 && refreshToken) {
+  // 帳密登入的 JWT：refresh 一次再重試
+  if (res.status === 401 && !sessionToken && refreshToken) {
     if (accessToken !== sentToken || await tryRefresh()) res = await fetch(path, withAuth(init));
+  }
+  // Session：沒有 refresh，改重走 token provider（規格 §7.1）。撤銷 kid、依 sub 作廢、
+  // file 模式重啟都會讓 Session 提早失效——使用者在宿主網站仍登入的話，這裡換一張就接回去了，
+  // 不必先把人丟回登入頁再讓他想辦法。
+  if (res.status === 401 && sessionToken && identityProvider) {
+    if (sessionToken !== sentSession || await renewSession()) res = await fetch(path, withAuth(init));
   }
   if (res.status === 401) {
     clearTokens();
@@ -217,7 +325,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export const auth = {
   /** 目前是否已登入（有 access token） */
-  isAuthenticated: (): boolean => !!accessToken,
+  isAuthenticated: (): boolean => !!sessionToken || !!accessToken,
 
   /** 帳密登入 → 儲存 token、回使用者資料 */
   async login(username: string, password: string): Promise<Applicant> {
@@ -232,17 +340,36 @@ export const auth = {
   },
 
   /**
-   * SSO handoff：以宿主簽發的終端使用者 token 換發本系統 token（嵌入情境免內部帳密登入）。
-   * 需附租戶金鑰（x-api-key）讓後端以該租戶的 ssoSecret 驗章。
+   * Identity Assertion → HyAgent Session（規格 §5.3、§7.1）。
+   *
+   * 租戶由 Assertion 的 `iss` 決定，不是 API Key——後者只影響外觀設定與 CORS。
+   * 回來的 sessionToken 是不透明字串，前端**不得**解析其內容（§7.1）。
    */
-  async ssoExchange(userToken: string): Promise<void> {
+  async ssoExchange(assertion: string): Promise<void> {
+    // embedOrigin：規格 §8.6 的來源檢查。換發請求由本面板發出，因此它的 Origin header
+    // 恆為 HyAgent 自己的網域，無從分辨是誰把我們嵌起來——真正的答案在 document.referrer，
+    // 由瀏覽器設定、嵌入方無法偽造。後端拿它比對租戶白名單，讀不到就拒絕。
+    const embedOrigin = embedderOrigin();
+    debugLog('③ 以 Assertion 換發 HyAgent Session', { assertion: maskToken(assertion), embedOrigin });
     const res = await fetch(`${AUTH}/sso/exchange`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', ...apiKeyHeader() },
-      body: JSON.stringify({ userToken }),
+      body: JSON.stringify({ assertion, embedOrigin }),
     });
-    const data = await unwrap<{ accessToken: string; refreshToken: string }>(res);
-    setTokens(data.accessToken, data.refreshToken);
+    // user 是後端從 Assertion claims 取出的 sub / name，本流程不使用（登入者資料一律以
+    // /me 為準），但它是「這張票換到誰」最直接的證據，除錯時印出來。
+    const data = await unwrap<{
+      sessionToken: string;
+      expiresIn: number;
+      user?: { sub: string; name?: string };
+    }>(res);
+    debugLog('④ 換發成功', {
+      user: data.user ?? '(後端未回傳)',
+      sessionToken: maskToken(data.sessionToken),
+      expiresIn: `${data.expiresIn} 秒`,
+    });
+    // expiresIn 逐租戶可設（300～28800 秒），不能在前端寫死——續期時機由它決定。
+    setSessionToken(data.sessionToken, data.expiresIn);
   },
 
   /** 取目前登入者資料（重整時還原登入狀態；401 會經 request 自動登出） */
@@ -250,9 +377,23 @@ export const auth = {
     return request<Applicant>(`${AUTH}/me`);
   },
 
-  /** 登出（純前端清 token；JWT 無狀態） */
+  /**
+   * 登出：清掉本地憑證，並通知後端作廢 Session（規格 §7.2、SDK §6.3 的 logout()）。
+   *
+   * Session 是伺服器端有狀態的，只清瀏覽器這一側等於留一張仍可用的票在後端直到過期。
+   * 帳密登入的 JWT 無狀態，沒有要通知的對象，維持純前端清除。
+   */
   logout(): void {
+    const token = sessionToken;
     clearTokens();
+    if (!token) return;
+    // keepalive：這支常緊接著 reload 或關閉分頁被呼叫，少了它請求會被瀏覽器當場取消，
+    // Session 就留在後端直到自然過期。回應內容不重要，失敗也不該擋住 UI。
+    void fetch(`${AUTH}/logout`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, ...apiKeyHeader() },
+      keepalive: true,
+    }).catch(() => {});
   },
 };
 

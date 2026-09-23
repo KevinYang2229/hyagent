@@ -15,8 +15,10 @@ import PermissionsTab from './tabs/PermissionsTab';
 import AuditTab from './tabs/AuditTab';
 import ReportsTab from './tabs/ReportsTab';
 import UsersTab from './tabs/UsersTab';
+import SsoTab from './tabs/SsoTab';
 
 type TabKey =
+  | 'sso'
   | 'users'
   | 'appearance'
   | 'forms'
@@ -30,6 +32,7 @@ type TabKey =
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'settings', label: '設定' },
   { key: 'appearance', label: '外觀' },
+  { key: 'sso', label: '自動登入' },
   { key: 'users', label: '使用者目錄' },
   { key: 'permissions', label: '權限' },
   { key: 'forms', label: '表單' },
@@ -112,6 +115,7 @@ export default function TenantDetailPage() {
             ))}
           </div>
 
+          {tab === 'sso' && <SsoTab key={tenant.id} tenantId={tenant.id} onError={handleErr} />}
           {tab === 'users' && <UsersTab key={tenant.id} tenantId={tenant.id} onError={handleErr} />}
           {tab === 'appearance' && <AppearanceTab tenant={tenant} onSaved={handleSaved} onError={handleErr} />}
           {tab === 'forms' && <FormsTab tenantId={tenant.id} onError={handleErr} />}
