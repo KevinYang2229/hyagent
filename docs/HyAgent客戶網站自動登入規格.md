@@ -180,7 +180,7 @@ sequenceDiagram
 | `server/tests/auth-exchange-endpoint.test.ts` | §7.1、§7.5、§9 HTTP 契約 | 12 |
 | `server/tests/tenant-public-keys.test.ts` | §2.5、§7.3 公鑰不變條件與逐租戶設定 | 25 |
 | `server/tests/auth-session-store.test.ts` | §2.6、§7.1、§7.4 Session 與批次作廢 | 21 |
-| `client/src/hostBridge.test.ts`、`client/src/widget.postMessage.test.ts` | §6.6 postMessage 協定（面板側、宿主側） | 19 + 19 |
+| `client/src/hostBridge.test.ts`、`client/src/widget.postMessage.test.ts` | §6.6 postMessage 協定（面板側、宿主側，含 §6.3 的登出／換身分） | 19 + 26 |
 | `sdk/src/keygen-cli.test.ts` | §2.4、§3 keygen CLI 與三份 `computeKid()` 的一致性 | 9 |
 | `sdk/src/server.test.ts`、`sdk/src/session.test.ts` | §4 簽發、§6.5 Session 續期與登出 | 16 + 8 |
 
@@ -892,6 +892,13 @@ Widget 的設定全部走 `<script>` 標籤的 `data-*` 屬性，宿主頁不需
 | `open()` / `close()` / `toggle()` | 開關對話視窗 |
 | `expand()` / `collapse()` | 放大／還原（放大後面板置中並蓋上背景遮罩） |
 | `onEvent(fn)` | 事件回呼，可在 `widget.js` 載入**前**先指定，載入後會保留 |
+| `logout()` | 請面板作廢 Session（§7.2）並清除面板網域的本地憑證。使用者登出宿主網站時**必須**呼叫。回傳 `Promise<boolean>` |
+| `refreshIdentity()` | 請面板**先作廢舊 Session 再**重走 §6.6 握手換發。使用者於宿主網站**切換帳號**後**必須**呼叫。回傳 `Promise<boolean>` |
+
+> 這兩支與 headless SDK 的同名方法語意相同，差別只在 Widget 的 Session 位於**面板網域**：
+> 宿主頁存取不到它的 `sessionStorage`，只能經 §6.6 的 `session:logout` / `identity:refresh`
+> 請面板自行處理。面板尚未建立時（使用者從未點開過面板），`widget.js` 會**先建立 iframe**
+> 再送出——同一分頁重整不會清掉面板的 Session，跳過這步等於沒有登出。
 
 **headless SDK（`createOAAgent()` 的回傳值）**：
 
@@ -1016,10 +1023,19 @@ interface HyAgentMessage {
 | `ui:expand` | iframe → host | 面板內按下放大／還原 |
 | `ui:state` | host → iframe | 回報目前是否放大、以及視窗寬度能不能放大 |
 | `event` | iframe → host | 轉發 §6.4 的事件（`payload.name` / `payload.detail`） |
+| `session:logout` | host → iframe | 宿主網站登出：作廢 Session（§7.2）並清除面板的本地憑證 |
+| `identity:refresh` | host → iframe | 宿主網站切換帳號：作廢舊 Session 後重走 `identity:request` |
+| `session:ack` | iframe → host | 上面兩則處理完的回報，`payload.ok` 表示成敗（配對 `requestId`） |
 
 `identity:request` 與 `identity:response` 以 `requestId` 配對；面板等待回應的上限為 **55 秒**
 ——必須大於宿主側 Token Provider 的最壞重試預算（10 秒逾時 + 1s/2s/4s 退避），否則面板會在
 宿主頁仍在重試時就自行放棄。
+
+`session:logout` / `identity:refresh` 同樣以 `requestId` 與 `session:ack` 配對，宿主側等待
+上限為 **5 秒**：這兩支多半接在「按下登出，馬上要導頁」後面，等不到 ack 時**應該**放行而非
+卡住宿主頁——面板側清除本地憑證與通知後端作廢都是同步發動、帶 `keepalive` 的，導頁不會取消它。
+面板在完成換發或登出前若又收到新的一則，**必須**以後到的為準，並作廢期間換到的任何 Session
+（否則「登出」會被一則仍在途中的換發覆蓋回來）。
 
 **憑證只走 postMessage，不進 URL**：query string 會殘留於瀏覽器歷史、`Referer` header 與
 伺服器存取日誌這三個不受控的地方（§10.1）。宿主頁不需要為此寫任何程式碼——`widget.js` 已包辦。
@@ -1447,7 +1463,7 @@ Widget 端另有兩個本地代碼（不對應 HTTP，出現在 `identity:respon
 ### 10.5 身分一致性
 
 - `sub` **必須**穩定且不可重複配發。使用者離職後其 `sub` **不得**再配給新人，否則會繼承對話紀錄。
-- 使用者於宿主網站登出或切換帳號時，Host Page **必須**呼叫 `logout()` 或 `refreshIdentity()`，否則 Widget 會維持前一位使用者的 Session 直到過期。
+- 使用者於宿主網站登出或切換帳號時，Host Page **必須**呼叫 `logout()` 或 `refreshIdentity()`（Widget 走 `window.OAAgent`、headless 走 SDK 實例，兩者語意相同，見 §6.3），否則 Widget 會維持前一位使用者的 Session 直到過期。
 - 承上，HyAgent Session 有效期（§7.1 `expiresIn`）**應該**設為**不長於客戶自家 session 的有效期**，否則會出現「客戶網站已登出、Widget 仍為登入狀態」的窗口。共用終端（如公用電腦）**應該**再往下調。
 - 帳號停權、離職等**由伺服器端發起**的身分變更，Host Page 無從察覺，**必須**依 §7.4 的順序處理（先於自家系統停權，再至 HyAgent 後台作廢該 `sub` 的 Session），不可僅依賴前端呼叫 `refreshIdentity()`。後台作廢前存在至多一個 `expiresIn` 的空窗期，見 §7.4。
 

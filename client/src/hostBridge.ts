@@ -10,6 +10,9 @@
  *   host   → iframe identity:response  回傳 Assertion 或錯誤
  *   iframe → host   ui:close / ui:expand / event
  *   host   → iframe ui:state
+ *   host   → iframe session:logout     宿主網站登出：作廢 Session 並清本地憑證（§6.3）
+ *   host   → iframe identity:refresh   宿主網站換人：作廢舊 Session 後重走握手（§6.3）
+ *   iframe → host   session:ack        上面兩則處理完的回報（配對 requestId）
  *
  * 兩個方向都**不得**使用 targetOrigin `"*"`（§6.6）：
  *   - 送出：一律指定 hostOrigin（widget.js 以 `?host=` 告知，退回 `document.referrer`）。

@@ -325,13 +325,38 @@ window.addEventListener('oa-agent:submitted', (e) => {
 
 ### 5.3 登出與切換帳號 — **這段一定要做**
 
-HyAgent Session 存在伺服器端，只清瀏覽器那份等於留一張還能用的票在後端。
+HyAgent Session 存在伺服器端，只清瀏覽器那份等於留一張還能用的票在後端。Widget 的那份還在
+**我們的網域**裡，貴站的程式碼碰不到，也不會因為你導到登入頁就消失——同一個分頁重整也不會。
 
 | 情境 | 必須做 |
 | --- | --- |
-| 使用者登出貴站 | 呼叫 `logout()`（headless SDK）或導向前先讓 Widget 結束 Session |
-| 使用者在貴站**切換帳號** | 呼叫 `refreshIdentity()`，否則 Widget 會維持前一位使用者的身分直到過期 |
+| 使用者登出貴站 | `await window.OAAgent.logout()`（Widget）或 `logout()`（headless SDK），再導頁 |
+| 使用者在貴站**切換帳號** | 先換掉貴站自己的登入狀態，再呼叫 `refreshIdentity()`；否則 Widget 會維持前一位的身分直到過期 |
 | 帳號停權 / 離職 | 見 §9.3 —— 前端無從察覺，必須走後台流程 |
+
+```html
+<!-- 登出：先讓面板作廢 Session，再送出你自己的登出表單 -->
+<form method="post" action="/logout" id="logout-form">
+  <button type="submit">登出</button>
+</form>
+<script>
+  document.getElementById('logout-form').addEventListener('submit', function (e) {
+    if (!window.OAAgent || this.dataset.done) return;   // widget 還沒載入：照原本的流程走
+    e.preventDefault();
+    var form = this;
+    window.OAAgent.logout().then(function () {
+      form.dataset.done = '1';
+      form.submit();
+    });
+  });
+</script>
+```
+
+兩支都回傳 Promise。`await` 是為了「使用者從沒點開過面板」的情況——那時面板還沒載入，
+`widget.js` 會先把它建起來再請它清；面板那側是同步發動、帶 `keepalive` 的請求，導頁不會
+取消它。等不到回應時最多 5 秒就放行，不會把導頁卡住。
+
+可跑的完整範例：[presale/widge-tenant](../presale/widge-tenant)（可登出，並以另一位使用者重新登入）。
 
 ### 5.4 自建 UI（不使用內建浮動按鈕）
 
@@ -349,6 +374,9 @@ const oa = createOAAgent({
 ```
 
 可用方法：`authenticate()`、`refreshIdentity()`、`logout()`、`conversations` / `forms`、`on(event, handler)`、`open()` / `close()` / `toggle()`、`loadWidget()`。範例見 `presale/sdk-custom-ui/`。
+
+Widget（浮動按鈕）那條路走 `window.OAAgent`，除了 `open()` / `close()` / `toggle()` /
+`expand()` / `collapse()` 之外，同樣有 `logout()` 與 `refreshIdentity()`（見 §5.3）。
 
 ---
 

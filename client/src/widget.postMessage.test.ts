@@ -51,6 +51,15 @@ function panelWindow(): Window {
   return panelIframe()!.contentWindow as Window;
 }
 
+/** widget.js 掛在宿主頁上的對外 API（vanilla IIFE，沒有型別宣告） */
+interface OAAgentApi {
+  logout(): Promise<boolean>;
+  refreshIdentity(): Promise<boolean>;
+}
+function oaAgent(): OAAgentApi {
+  return (window as unknown as { OAAgent: OAAgentApi }).OAAgent;
+}
+
 /** 攔下 widget.js 送往面板的訊息 */
 function watchPanelMessages(): Posted[] {
   const out: Posted[] = [];
@@ -419,5 +428,100 @@ describe('data-debug：整合期把身分握手印到 console', () => {
     expect(detail.assertion).not.toBe(assertion);
     expect(detail.assertion).toContain(assertion.slice(0, 8));
     expect(JSON.stringify(log.mock.calls)).not.toContain(assertion);
+  });
+});
+
+describe('宿主頁主動結束／切換身分（規格 §6.3，整合手冊 §5.3）', () => {
+  /** 送出宿主頁的請求後，取出它排給面板的那則訊息 */
+  function sentToPanel(posted: Posted[], type: string): Posted {
+    const found = posted.find((p) => p.message.type === type);
+    expect(found).toBeDefined();
+    return found!;
+  }
+
+  it('OAAgent.logout()：面板從沒被點開過也照樣清得掉（iframe 當場建起來，handshake 後補送）', async () => {
+    vi.stubGlobal('fetch', mockFetch(ok({ token: 'jwt' })));
+    loadWidget({ 'data-key': 'pk_test', 'data-token-url': TOKEN_URL });
+    // 刻意不點開面板。Session 躺在**面板網域**的 sessionStorage 裡（同分頁重整不會清），
+    // 宿主頁碰不到那份，只能把 iframe 建起來請面板自己清——這正是登出最容易漏掉的情境。
+    expect(panelIframe()).toBeNull();
+
+    const done = oaAgent().logout();
+    expect(panelIframe()).not.toBeNull();
+
+    const posted = watchPanelMessages();
+    // 面板就緒前送出去的訊息會掉在地上，所以 widget 先排隊，等 handshake 再送
+    panelSends({ type: 'handshake', payload: { origin: PANEL_ORIGIN, version: 1 } });
+
+    const msg = sentToPanel(posted, 'session:logout');
+    expect(msg.targetOrigin).toBe(PANEL_ORIGIN); // 規格 §6.6：不得用 "*"
+    expect(msg.message.requestId).toBeTruthy();
+
+    panelSends({ type: 'session:ack', requestId: msg.message.requestId, payload: { ok: true } });
+    await expect(done).resolves.toBe(true);
+  });
+
+  it('OAAgent.logout()：面板已開啟時直接送，收到 ack 後把面板收起來', async () => {
+    vi.stubGlobal('fetch', mockFetch(ok({ token: 'jwt' })));
+    loadWidget({ 'data-key': 'pk_test', 'data-token-url': TOKEN_URL });
+    openPanel();
+    const posted = watchPanelMessages();
+    panelSends({ type: 'handshake', payload: { origin: PANEL_ORIGIN, version: 1 } });
+
+    const done = oaAgent().logout();
+    const msg = sentToPanel(posted, 'session:logout');
+    panelSends({ type: 'session:ack', requestId: msg.message.requestId, payload: { ok: true } });
+    await done;
+
+    // 登出後還留著面板，使用者會以為要重新登入小幫手
+    expect(document.getElementById('oa-agent-panel')?.style.opacity).toBe('0');
+  });
+
+  it('OAAgent.refreshIdentity()：送 identity:refresh，面板回報沒換到人就回 false', async () => {
+    vi.stubGlobal('fetch', mockFetch(ok({ token: 'jwt' })));
+    loadWidget({ 'data-key': 'pk_test', 'data-token-url': TOKEN_URL });
+    openPanel();
+    const posted = watchPanelMessages();
+    panelSends({ type: 'handshake', payload: { origin: PANEL_ORIGIN, version: 1 } });
+
+    const done = oaAgent().refreshIdentity();
+    const msg = sentToPanel(posted, 'identity:refresh');
+    // 貴站已經登出時 Identity Endpoint 會回 401 → 面板換不到人
+    panelSends({ type: 'session:ack', requestId: msg.message.requestId, payload: { ok: false } });
+
+    await expect(done).resolves.toBe(false);
+  });
+
+  it('面板沒回 ack：逾時後放行，不把宿主頁的導頁卡住', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', mockFetch(ok({ token: 'jwt' })));
+    loadWidget({ 'data-key': 'pk_test', 'data-token-url': TOKEN_URL });
+    openPanel();
+    panelSends({ type: 'handshake', payload: { origin: PANEL_ORIGIN, version: 1 } });
+
+    const done = oaAgent().logout();
+    await vi.advanceTimersByTimeAsync(5000);
+
+    await expect(done).resolves.toBe(false);
+  });
+
+  it('別人的 session:ack（origin 不符）不會讓宿主頁以為登出完成', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', mockFetch(ok({ token: 'jwt' })));
+    loadWidget({ 'data-key': 'pk_test', 'data-token-url': TOKEN_URL });
+    openPanel();
+    const posted = watchPanelMessages();
+    panelSends({ type: 'handshake', payload: { origin: PANEL_ORIGIN, version: 1 } });
+
+    const done = oaAgent().logout();
+    const msg = sentToPanel(posted, 'session:logout');
+    panelSends(
+      { type: 'session:ack', requestId: msg.message.requestId, payload: { ok: true } },
+      { origin: 'https://evil.example.com' },
+    );
+
+    // 收下的話這裡會是 true；只能由逾時那條路放行
+    await vi.advanceTimersByTimeAsync(5000);
+    await expect(done).resolves.toBe(false);
   });
 });

@@ -533,6 +533,8 @@
   }
 
   // ---- postMessage 協定（規格 §6.6）----
+  //   host → panel   identity:response / ui:state / session:logout / identity:refresh
+  //   panel → host   handshake / identity:request / ui:close / ui:expand / event / session:ack
   var MSG_SOURCE = "hyagent";
   var MSG_VERSION = 1;
 
@@ -545,6 +547,62 @@
     try {
       iframe.contentWindow.postMessage(message, origin);
     } catch (_e) {}
+  }
+
+  // 面板要先 handshake 才收得到訊息——iframe 還在載入時 postMessage 會直接掉在地上。
+  // 宿主頁主動發起的訊息（登出／換身分）因此先排隊，等面板回報就緒再一次送出。
+  var panelReady = false;
+  var queuedToPanel = [];
+
+  function sendWhenReady(type, payload, requestId) {
+    if (panelReady) {
+      sendToPanel(type, payload, requestId);
+      return;
+    }
+    queuedToPanel.push([type, payload, requestId]);
+  }
+
+  function flushQueuedToPanel() {
+    panelReady = true;
+    var queued = queuedToPanel;
+    queuedToPanel = [];
+    for (var i = 0; i < queued.length; i++) sendToPanel(queued[i][0], queued[i][1], queued[i][2]);
+  }
+
+  function newRequestId() {
+    try {
+      if (window.crypto && typeof window.crypto.randomUUID === "function") return window.crypto.randomUUID();
+    } catch (_e) {}
+    return "h" + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+  }
+
+  // 宿主頁 → 面板的請求（session:logout / identity:refresh），面板處理完回一則 session:ack。
+  //
+  // 逾時就放行：這兩支多半接在「按下登出，馬上要導頁」後面，卡住宿主頁比漏掉一則 ack 更糟。
+  // 面板那側清本地憑證與通知後端作廢都是同步發動的（fetch 帶 keepalive），導頁不會取消它。
+  var ACK_TIMEOUT_MS = 5000;
+  var pendingAcks = {};
+
+  function askPanel(type) {
+    // 面板可能從頭到尾沒被點開過，但 Session 仍躺在**面板網域**的 sessionStorage 裡
+    // （同一個分頁重整不會清掉它）。那份只有面板自己碰得到，所以這裡先把 iframe 建起來
+    // （面板收起時它本來就不可見）再問，否則登出會只清掉宿主這側什麼都沒有的狀態。
+    ensureIframe();
+    var requestId = newRequestId();
+    return new Promise(function (resolve) {
+      var timer = setTimeout(function () {
+        delete pendingAcks[requestId];
+        dlog("面板沒有回應 " + type + "（逾時 " + ACK_TIMEOUT_MS + "ms），不再等待");
+        resolve(false);
+      }, ACK_TIMEOUT_MS);
+      pendingAcks[requestId] = function (ack) {
+        clearTimeout(timer);
+        delete pendingAcks[requestId];
+        dlog("面板已處理 " + type, ack || {});
+        resolve(!ack || ack.ok !== false);
+      };
+      sendWhenReady(type, null, requestId);
+    });
   }
 
   // 面板送來 identity:request → 取一張票回去。
@@ -706,8 +764,14 @@
     var payload = msg.payload || {};
 
     if (msg.type === "handshake") {
-      // 面板就緒：回報一次目前放大狀態（面板靠這個決定要不要顯示放大鈕）
+      // 面板就緒：回報一次目前放大狀態（面板靠這個決定要不要顯示放大鈕），
+      // 並把面板就緒前排隊的訊息（OAAgent.logout() / refreshIdentity()）送出去。
       notifyExpanded();
+      flushQueuedToPanel();
+    } else if (msg.type === "session:ack") {
+      // 面板回報「登出／換身分已處理完」
+      var ack = pendingAcks[msg.requestId];
+      if (ack) ack(payload);
     } else if (msg.type === "identity:request") {
       provideIdentity(msg.requestId);
     } else if (msg.type === "ui:close") {
@@ -758,6 +822,36 @@
   };
   window.OAAgent.collapse = function () {
     setExpanded(false);
+  };
+
+  /**
+   * 使用者登出貴站時呼叫（規格 §6.3，整合手冊 §5.3「這段一定要做」）。
+   *
+   * HyAgent Session 存在**伺服器端**，只清瀏覽器那一份等於留一張還能用的票在後端直到
+   * 自然過期；共用電腦上那正是登出要防的情境。這支請面板作廢它（POST /api/auth/logout）
+   * 並清掉面板網域的 sessionStorage——那份宿主頁碰不到，只有面板自己清得掉。
+   *
+   * 回傳 Promise<boolean>：導頁前 `await` 它最穩妥（面板可能還在載入）；不 await 也行，
+   * 面板那側是同步發動、帶 keepalive 的請求，導頁不會取消它。
+   */
+  window.OAAgent.logout = function () {
+    dlog("宿主頁要求登出 → 通知面板作廢 Session");
+    return askPanel("session:logout").then(function (ok) {
+      setOpen(false);
+      return ok;
+    });
+  };
+
+  /**
+   * 貴站的登入者換人時呼叫（規格 §6.3，手冊 §5.3 第二列）。
+   *
+   * 面板會**先作廢舊 Session 再**向 data-token-url 取一張新的 Assertion 換發：只換新的
+   * 不作廢舊的，等於同一個瀏覽器上同時有兩個人的票還活著。不呼叫的話，面板會維持前一位
+   * 使用者的身分直到 Session 自然過期——SDK 看不到貴站的登入狀態，這件事只有你們知道。
+   */
+  window.OAAgent.refreshIdentity = function () {
+    dlog("宿主頁要求重取身分 → 通知面板換發");
+    return askPanel("identity:refresh");
   };
 
   // 宿主頁可能把 script 放在 <head>，此時 body 尚未存在 → 等 DOM ready 再掛載
