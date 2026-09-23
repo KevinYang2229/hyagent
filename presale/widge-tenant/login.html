@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>登入 — Hyweb Corp（widget 嵌入示範）</title>
+    <link rel="icon" type="image/png" href="/hy_logo.png" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <!-- 這是「整合方自家網站」的登入頁，不是 HyAgent 的登入頁。
+         本頁刻意**不載入 widget**：登入頁上沒有已登入的使用者，小幫手也取不到票。 -->
+    <header class="site-header">
+      <div class="brand">
+        <img
+          class="logo"
+          src="https://cdn.prod.website-files.com/56161a8e00652b7b5442360d/6113706240a4e03883b974df_logo.avif"
+          alt="Hyweb"
+        />
+      </div>
+    </header>
+
+    <main class="login-page">
+      <h1>登入 Hyweb OA System</h1>
+      <p class="sub">
+        模擬客戶系統自家的登入頁。選一位使用者，之後
+        <code>/api/mybot/identity</code> 就以這個 Session 的身分簽 Assertion——
+        身分一律由後端的登入狀態決定，前端傳什麼都不算（規格 §5.2）。
+      </p>
+
+      <!-- 兩張卡由 server.mjs 依 .env 的 DEMO_USER_* / DEMO_USER2_* 產生 -->
+      <form method="post" action="/login" class="user-cards">
+        <!--USER_CARDS-->
+      </form>
+
+      <p class="tip">
+        換人登入後請看小幫手放大後的標題列：那串公司／部門／職稱要跟著換，才代表
+        Assertion 真的重簽過（整合手冊 §5.3「登出與切換帳號」）。
+      </p>
+    </main>
+  </body>
+</html>

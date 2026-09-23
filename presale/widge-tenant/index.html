@@ -17,9 +17,10 @@
         <a href="#usage">使用方式</a>
         <a href="https://www.hyweb.com.tw/">關於</a>
       </nav>
-      <!-- 已登入狀態：文字由 server.mjs 依 DEMO_USER_* / DEMO_*_NAME 置換，
-           確保「網站上顯示的人」與「Assertion 簽出去的人」永遠是同一位 -->
-      <span class="login-badge"><!--LOGIN_BADGE--></span>
+      <!-- 已登入狀態 ＋ 換人／登出：整塊由 server.mjs 依「目前 cookie session 的使用者」置換，
+           確保「網站上顯示的人」與「Assertion 簽出去的人」永遠是同一位。
+           換人／登出是整合手冊 §5.3 的必做項目，擺兩顆按鈕在這裡讓它可以當場驗。 -->
+      <!--SESSION_BOX-->
     </header>
 
     <!-- ── hero ── -->
@@ -105,6 +106,13 @@
         <p class="note">
           本頁即為示範：已自動帶入 SSO，點右下角小幫手就能直接對話。
         </p>
+        <p class="note warn">
+          <strong>登出（手冊 §5.3「這段一定要做」）：</strong>
+          HyAgent Session 存在伺服器端，只清瀏覽器那份等於留一張還能用的票在後端，而且那份在
+          HyAgent 網域裡，你的頁面碰不到。所以右上角「登出」會先
+          <code>await OAAgent.logout()</code> 讓面板作廢 Session、清掉自己網域的憑證，再送出
+          登出表單。接線方式見本頁原始碼最底下那段，可以直接照抄。
+        </p>
       </section>
     </main>
 
@@ -128,6 +136,32 @@
         // 若要在本宿主頁覆寫成自訂文字，再取消下一行註解：
         // s.setAttribute("data-title", "Hyweb 小幫手");
         document.body.appendChild(s); // 不設 data-launcher → 顯示預設右下浮動按鈕
+      })();
+    </script>
+
+    <!-- ── 登出：整合手冊 §5.3，這段一定要做 ──────────────────────────────────
+         面板的 Session 存在 HyAgent 網域的 sessionStorage，本頁碰不到，也不會因為
+         你導到登入頁就消失。少了這一支，使用者登出貴站之後，小幫手裡仍是上一位，
+         直到 Session 自然過期——共用電腦上那正是登出要防的情境。
+
+         貴站若有「不登出直接切換身分」的功能（代理人、客服代操作），換完之後要改呼叫
+         OAAgent.refreshIdentity()，否則面板留在前一位身上。本 demo 沒有那種功能，
+         換人一律走「登出 → 回登入頁選另一位」。 -->
+    <script>
+      (function () {
+        var logoutForm = document.getElementById("logout-form");
+
+        // 登出：先讓面板作廢 Session（POST /api/auth/logout）再離開本頁。
+        // 等它是為了「面板還沒載入」的情況——widget.js 會先把 iframe 建起來再請面板自己清；
+        // 面板那側是同步發動、帶 keepalive 的請求，導頁不會取消它。
+        logoutForm.addEventListener("submit", function (e) {
+          if (!window.OAAgent || !window.OAAgent.logout || logoutForm.dataset.done) return;
+          e.preventDefault();
+          window.OAAgent.logout().then(function () {
+            logoutForm.dataset.done = "1";
+            logoutForm.submit();
+          });
+        });
       })();
     </script>
   </body>

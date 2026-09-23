@@ -9,7 +9,10 @@ widget 在右下角顯示**預設浮動按鈕**，點擊彈出聊天室。
 ## 流程
 
 ```
-瀏覽器開 http://localhost:4000（模擬對方網站，使用者已登入對方系統）
+瀏覽器開 http://localhost:4000（模擬對方網站）
+   │
+   ├─ 未登入 → 導到 /login，兩位模擬使用者二選一 → 發一個自家的 cookie session
+   │     （規格 §5.2：Identity Endpoint 的身分一律由自家登入 Session 決定）
    │
    ├─ 注入 HyAgent widget：<script src="OA/sdk/widget.js" data-key=pk_ data-token-url="/api/mybot/identity">
    │
@@ -47,7 +50,39 @@ node presale/widge-tenant/server.mjs
 open http://localhost:4000
 ```
 
-點右下角「Hyweb 小幫手」→ 應該**不會看到登入頁**，直接進對話（身分＝SSO 帶入的使用者）。
+先在 `/login` 選一位使用者，再點右下角「Hyweb 小幫手」→ 應該**不會看到登入頁**，
+直接進對話（身分＝SSO 帶入的那位）。
+
+## 登出與換人登入（整合手冊 §5.3「這段一定要做」）
+
+header 右上角有「登出」，換人則走「登出 → 回登入頁選另一位」，與一般網站相同。
+登出是整合方最常漏掉的一段，所以 demo 讓它可以當場按：
+
+| 按下去 | 租戶站做的事 | 頁面接著呼叫 | 該看到什麼 |
+|--------|--------------|--------------|------------|
+| 登出 | 刪掉 cookie session | `await OAAgent.logout()`（送出表單前） | 面板作廢 Session 並清掉自己網域的憑證；之後 `GET /api/mybot/identity` 一律回 **401**，widget 收到 401 不重試（§6.5），面板改走匿名／自行登入 |
+| 再登入成另一位 | 發一張新的 cookie session | （不必額外做）面板上一位的 Session 已在登出時作廢，重走握手 | 簽出的 Assertion `sub` / `name` / `hyagent:profile` 整組換人；小幫手放大後的標題列跟著換 |
+
+接線的程式碼在 [index.html](index.html) 最底下那段，約十行，可以直接照抄。
+
+> 貴站若有「**不登出直接切換身分**」的功能（職務代理人、客服代操作、管理者 impersonate），
+> 換完身分後要改呼叫 `OAAgent.refreshIdentity()`（手冊 §5.3 第二列），否則面板會留在前一位
+> 身上。一般網站沒有這種功能，本 demo 也就不示範。
+
+兩位使用者預設是 `507 測試員／財務部／協理` 與 `902 王小明／研發部／工程師`，
+部門職稱刻意不同：小幫手放大後的標題列那串會整個變掉，不必看 console 也知道有沒有生效。
+
+### 為什麼非做不可
+
+面板的 Session 存在 **HyAgent 網域**的 `sessionStorage`，租戶站的程式碼碰不到它，導到登入頁
+也不會讓它消失（同一個分頁重整同樣不會——面板已經有 Session 就不再重走握手）。而 Session 是
+伺服器端有狀態的：只清瀏覽器那一份，等於留一張還能用的票在後端直到自然過期。
+
+所以少了 `OAAgent.logout()`，畫面上人已經登出、小幫手裡還是上一位。想看那張票的下場，
+到後台 → 該租戶 → **自動登入** → 「登入 Session」卡片：有正確呼叫時它會消失；沒呼叫的話它
+還在，得手動按「作廢」對方才會被登出。
+
+面板從沒被點開過也一樣要呼叫——`widget.js` 會為此先把 iframe 建起來，再請面板自己清。
 
 ## 怎麼看「它到底登入了誰、拿到什麼」
 
@@ -98,8 +133,9 @@ open http://localhost:4000
 | `TENANT_PK` | （空，**必填**） | 租戶公開金鑰。每台機器不同，故不給預設值——見下方說明 |
 | `TENANT_ID` | （必填） | 租戶 id，會成為 Assertion 的 `iss` |
 | `TENANT_PRIVATE_KEY` | （留空） | 簽發用私鑰；留空時啟動當場產一組並把公鑰印在 console |
-| `DEMO_USER_ID` / `DEMO_USER_NAME` | `507` / `測試員` | 模擬「對方系統已登入的使用者」，成為 Assertion 的 `sub` / `name` |
-| `DEMO_COMPANY_NAME` / `DEMO_DEPT_NAME` / `DEMO_JOB_POST_NAME` | `凌網` / `財務部` / `協理` | 對方系統自家的組織欄位，包成 `hyagent:profile`（規格 §4.2.3）；留空的欄位不進 claims |
+| `DEMO_USER_ID` / `DEMO_USER_NAME` | `507` / `測試員` | 登入頁第一位，成為 Assertion 的 `sub` / `name` |
+| `DEMO_COMPANY_NAME` / `DEMO_DEPT_NAME` / `DEMO_JOB_POST_NAME` | `凌網` / `財務部` / `協理` | 第一位的組織欄位，包成 `hyagent:profile`（規格 §4.2.3）；留空的欄位不進 claims |
+| `DEMO_USER2_*` | `902` / `王小明` / `凌網` / `研發部` / `工程師` | 登入頁第二位，欄位與上面同名對應（`DEMO_USER2_ID` / `_NAME` / `_COMPANY_NAME` / `_DEPT_NAME` / `_JOB_POST_NAME`） |
 
 ```bash
 TENANT_PK=pk_xxx TENANT_ID=你的租戶id DEMO_USER_NAME=小明 \
@@ -120,6 +156,8 @@ server 只存金鑰的 sha256，**pk 原文只在下列時機回傳一次，事�
 
 | demo 裡的東西 | 正式環境由誰做 |
 |---------------|----------------|
+| `/login` 選人、cookie session（記憶體 Map） | 整合方自家既有的登入機制。重點只有一個：Identity Endpoint 的身分**必須**由這個 session 決定 |
+| 登出／換人時呼叫 `OAAgent.logout()` / `refreshIdentity()` | 整合方的頁面，一行都不能少（手冊 §5.3） |
 | `GET /api/mybot/identity` 簽 Assertion | 整合方後端，依自家登入 Session 簽（私鑰留後端） |
 | 注入 widget 的頁面 | 整合方的網站頁面 |
 | Assertion 公鑰 | 整合方自行產生金鑰對後把**公鑰**給你，你在後台登記 |
