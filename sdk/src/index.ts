@@ -7,7 +7,7 @@
  *
  * 設計上不依賴框架，型別重用 @hyagent/shared（單一來源）。
  */
-import type { Definition, SessionStatus, SubmissionInfo } from '@hyagent/shared';
+import type { Applicant, Definition, SessionStatus, SubmissionInfo } from '@hyagent/shared';
 
 /**
  * Token Provider：需要身分時現取一張 Assertion（規格 §5.2、§6.5）。
@@ -136,6 +136,14 @@ export interface OAAgentClient {
    * 從不 reject：人要登出了，任何一邊失敗都不該卡住導頁。
    */
   logout(): Promise<void>;
+  /**
+   * 目前登入者（`GET /api/auth/me`）：HyAgent 最終認定的身分。
+   *
+   * 租戶在後台建有人員目錄時以目錄為準，未必等於 Assertion 帶的 `name` / `hyagent:profile`——
+   * 要確認「到底是誰在用」、或在自建 UI 上顯示使用者名稱，看這支而不是自己解 Assertion。
+   * 還沒換發過 Session 時會先走一次 token provider。
+   */
+  me(): Promise<Applicant>;
   conversations: {
     create(input?: { formId?: string; message?: string }): Promise<TurnData>;
     sendMessage(id: string, message: string): Promise<TurnData>;
@@ -364,6 +372,10 @@ export function createOAAgent(options: OAAgentOptions = {}): OAAgentClient {
       const widget = pageWidget();
       const widgetLogout = widget?.logout?.bind(widget);
       await Promise.all([endOwnSession(), widgetLogout ? callWidget(widgetLogout) : null]);
+    },
+
+    me(): Promise<Applicant> {
+      return request<Applicant>(`${AUTH}/me`);
     },
 
     conversations: {

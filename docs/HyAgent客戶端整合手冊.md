@@ -396,7 +396,7 @@ const oa = createOAAgent({
 });
 ```
 
-可用方法：`authenticate()`、`refreshIdentity()`、`logout()`、`conversations` / `forms`、`on(event, handler)`、`open()` / `close()` / `toggle()`、`loadWidget()`。範例見 `presale/sdk-custom-ui/`。
+可用方法：`authenticate()`、`refreshIdentity()`、`logout()`、`me()`（目前登入者）、`conversations` / `forms`、`on(event, handler)`、`open()` / `close()` / `toggle()`、`loadWidget()`。範例見 `presale/sdk-custom-ui/`。
 
 Widget（浮動按鈕）那條路走 `window.OAAgent`，除了 `open()` / `close()` / `toggle()` /
 `expand()` / `collapse()` 之外，同樣有 `logout()` 與 `refreshIdentity()`（見 §5.3、§5.4）。

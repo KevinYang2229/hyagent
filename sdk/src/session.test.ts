@@ -272,3 +272,12 @@ it('headless 與 widget 並存：refreshIdentity 兩邊都換成功才回 true',
   expect(calls.logout).toBe(1);
   expect(calls.exchange).toBe(2); // 本實例這側照樣先作廢再換
 });
+
+it('me() 帶著 Session 打 /api/auth/me，還沒換發時先走一次 provider', async () => {
+  const { log } = backend({ issue: ['hyas_1'], expiresIn: 3600 });
+  const client = createOAAgent({ apiBase: 'http://localhost', assertion: () => 'assertion' });
+
+  await client.me();
+
+  expect(log).toEqual(['exchange', 'me hyas_1']);
+});

@@ -182,7 +182,7 @@ sequenceDiagram
 | `server/tests/auth-session-store.test.ts` | §2.6、§7.1、§7.4 Session 與批次作廢 | 21 |
 | `client/src/hostBridge.test.ts`、`client/src/widget.postMessage.test.ts` | §6.6 postMessage 協定（面板側、宿主側，含 §6.3 的登出／換身分） | 19 + 26 |
 | `sdk/src/keygen-cli.test.ts` | §2.4、§3 keygen CLI 與三份 `computeKid()` 的一致性 | 9 |
-| `sdk/src/server.test.ts`、`sdk/src/session.test.ts` | §4 簽發、§6.5 Session 續期與登出、§6.3 轉呼叫內建 Widget | 16 + 16 |
+| `sdk/src/server.test.ts`、`sdk/src/session.test.ts` | §4 簽發、§6.5 Session 續期與登出、§6.3 轉呼叫內建 Widget | 16 + 17 |
 
 執行方式見附錄 A.1。
 
@@ -921,6 +921,7 @@ Widget 的設定全部走 `<script>` 標籤的 `data-*` 屬性，宿主頁不需
 | `authenticate()` | 以 Token Provider 換發 Session（不回報成敗） |
 | `refreshIdentity()` | **先作廢舊 Session**，再以 Token Provider 換發，回傳 `boolean`。宿主網站**不經登出**直接切換帳號後**必須**呼叫（§5.5）。頁面上有內建 Widget 時一併轉呼叫 `window.OAAgent.refreshIdentity()`，兩邊都成功才回 `true`。平時的續期（到期前 60 秒、收到 `401`）由 SDK 自動處理，不必呼叫這支 |
 | `logout()` | 通知後端作廢 Session（§7.2）並清除本地憑證；頁面上有內建 Widget 時一併轉呼叫 `window.OAAgent.logout()`，等其完成才 resolve，且不會 reject。使用者登出宿主網站時**必須**呼叫 |
+| `me()` | 目前登入者（`GET /api/auth/me`），即 HyAgent 最終認定的身分：租戶建有人員目錄時以目錄為準，未必等於 Assertion 帶的值 |
 | `conversations` / `forms` | 對話與表單的 REST 操作 |
 | `on(event, handler)` | 訂閱 Widget 事件，回傳取消訂閱函式 |
 | `open()` / `close()` / `toggle()` | 轉呼叫 `window.OAAgent` 的同名方法 |

@@ -27,6 +27,9 @@ const oa = createOAAgent({
   apiBase: 'https://oa.example',       // 省略則同源
 });
 
+// 目前登入者（GET /api/auth/me）：HyAgent 最終認定的身分，自建 UI 顯示使用者名稱用這個
+const me = await oa.me();              // { id, name, company?, department, title? }
+
 // 建立對話（不帶 message → 不觸發 LLM；帶 message → 起首輪）
 const turn = await oa.conversations.create({ formId: 'leave-request', message: '我要請假' });
 await oa.conversations.sendMessage(turn.id!, '明天一天');
