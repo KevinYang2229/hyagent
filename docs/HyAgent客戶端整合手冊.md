@@ -363,6 +363,7 @@ HyAgent Session 存在伺服器端，只清瀏覽器那份等於留一張還能�
 取消它。等不到回應時最多 5 秒就放行，不會把導頁卡住。
 
 可跑的完整範例：[presale/widge-tenant](../presale/widge-tenant)（可登出，並以另一位使用者重新登入）。
+headless SDK 的寫法相同，改成 `await oa.logout()`：見 [presale/sdk-custom-ui](../presale/sdk-custom-ui) 的 `app.ts`。
 
 > 帳號停權 / 離職不在此列：那是伺服器端發起的變更，前端無從察覺，必須走後台流程，見 §9.3。
 

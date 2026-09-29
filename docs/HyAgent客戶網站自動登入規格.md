@@ -831,7 +831,7 @@ HyAgent 後端依 §8 逐項驗證後建立 HyAgent Session，Widget 即可顯�
 
 ### 5.5 Step 5：登出與切換帳號
 
-> **▶ 實作**：`presale/widge-tenant/index.html` 底部的登出接線；方法定義見 §6.3
+> **▶ 實作**：登出接線 `presale/widge-tenant/index.html` 底部（Widget）、`presale/sdk-custom-ui/app.ts`（headless）；方法定義見 §6.3
 
 SDK 看不到宿主網站的登入狀態，下列兩件只能由 Host Page 通知：
 
