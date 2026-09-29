@@ -7,7 +7,7 @@
  * 本服務負責：
  *   1. **自家的登入 Session** — GET /login 兩位使用者二選一、POST /login 登入、POST /logout 登出。
  *      規格 §5.2 要求 Identity Endpoint「一律以自家的登入 Session 判定身分，不得接受前端傳入
- *      的身分參數」，所以 demo 得先有自家的登入狀態，才演得出登出與切換帳號（手冊 §5.3）。
+ *      的身分參數」，所以 demo 得先有自家的登入狀態，才演得出登出與換人登入（手冊 §5.3）。
  *      這裡用一個 httpOnly cookie 對應記憶體裡的 Map——demo 等級，正式環境請沿用貴方既有機制。
  *   2. /api/mybot/identity — Identity Endpoint（規格 §5.2）：用 SDK 的 issueAssertion
  *      以**私鑰**現簽一張短效 Assertion，簽的是**目前這個 cookie session 的使用者**；
@@ -57,7 +57,7 @@ const PUBLIC_KEY = generated?.publicKeyPem ?? null;
 /**
  * 模擬「對方系統的使用者目錄」——兩位，登入頁二選一。
  *
- * 有兩位才演得出手冊 §5.3 那張表的第二列「使用者在貴站切換帳號」：換人之後小幫手裡的身分
+ * 有兩位才演得出「登出 → 以另一位重新登入」（手冊 §5.3）：換人之後小幫手裡的身分
  * 有沒有跟著換，是整合方最容易漏掉、也最該當場驗一次的事。
  *
  * profile 是對方系統自家的組織欄位（公司／部門／職稱）。規格 §4.2.3：這類欄位沒有標準 claim，
@@ -176,7 +176,7 @@ const ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&
 const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ESCAPES[c]);
 
 /**
- * header 右側：目前登入者 ＋ 登出（整合手冊 §5.3 那張表的第一列）。
+ * header 右側：目前登入者 ＋ 登出（整合手冊 §5.3）。
  *
  * 登出鈕由 index.html 底部那段腳本接線：送出表單前先 await OAAgent.logout()，
  * 那段就是要給整合方照抄的部分。換人走「登出 → 回登入頁選另一位」，與一般網站相同。

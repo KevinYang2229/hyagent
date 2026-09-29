@@ -61,6 +61,13 @@ node presale/sdk-custom-ui/server.mjs
         → 自己渲染訊息、suggestions、已收集欄位（全部自訂 DOM/CSS）
 ```
 
+### 正式環境要補的：登出
+
+本 demo 的登入者固定是 `.env` 裡那一位，所以沒有登出鈕。正式環境使用者登出貴站時**必須**
+先 `await oa.logout()` 再導頁——Session 是伺服器端有狀態的，只清畫面等於留一張還能用的票
+（整合手冊 §5.3）。貴站若可**不經登出**直接換人，換完之後呼叫 `oa.refreshIdentity()`；
+沒有此功能可忽略（§5.4）。
+
 ## 設定
 
 設定的來源是同目錄 `.env`（server.mjs 會自動載入；`run_sdk_ui.bat` 首次執行會從
