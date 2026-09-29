@@ -205,7 +205,8 @@ $env:DEMO_USER_NAME = "王小明"
 node presale/widge-tenant/server.mjs
 ```
 
-開 http://localhost:4000 → 點右下角浮動按鈕 → **應該不經登入頁直接進對話**，身分是 SSO 帶入的使用者。
+開 http://localhost:4000 → 先在 `/login` 選一位使用者 → 點右下角浮動按鈕 → **小幫手應該不經登入頁直接進對話**，
+身分是剛才選的那位。再按右上角「登出」、改選另一位登入，小幫手裡的身分要跟著換——這驗的是整合手冊 §5.3 的登出接線。
 
 > **`OA_ORIGIN` 必須指向 5173**。widget.js 的實體在 [client/public/sdk/widget.js](../client/public/sdk/widget.js)（對外路徑 `/sdk/widget.js`），
 > 由 client dev server 提供；指到 3000 會拿到 404，widget 根本載不進來。
@@ -217,17 +218,25 @@ node presale/widge-tenant/server.mjs
 ```
 面板向宿主頁要身分（postMessage：identity:request）
   → widget.js 打 GET /api/mybot/identity，客戶後端以自家私鑰現簽一張 Assertion
-     （RS256 或 ES256 / iss=Tenant ID / aud=hyagent / exp - iat <= 300 秒）
+     （RS256 或 ES256 / iss=Tenant ID / aud=hyagent / 有效 60 秒，上限 300 秒）
   → widget.js 以 postMessage（identity:response）把票交給面板，憑證全程不進 URL
   → 面板呼叫 POST /api/auth/sso/exchange，以租戶公鑰驗章後換回不透明 sessionToken
      （租戶由 Assertion 的 iss 決定，pk 只影響外觀與 CORS；role 一律 employee）
 ```
 
-可以直接看客戶後端那一段：
+可以直接看客戶後端那一段。端點只認 demo 站自家的登入 cookie，所以要先登入（`user=1` 是登入頁第一位）：
 
 ```powershell
 curl.exe http://localhost:4000/api/mybot/identity
-# {"token":"eyJhbGciOiJIUzI1NiIs...","expiresIn":300}
+# {"error":"NOT_LOGGED_IN"}                        ← 未登入回 401，不簽發
+
+curl.exe -c jar.txt -d "user=1" http://localhost:4000/login
+curl.exe -b jar.txt http://localhost:4000/api/mybot/identity
+# {"token":"eyJhbGciOiJFUzI1NiIs...","expiresIn":60}
+
+curl.exe -b jar.txt -c jar.txt -X POST http://localhost:4000/logout
+curl.exe -b jar.txt http://localhost:4000/api/mybot/identity
+# {"error":"NOT_LOGGED_IN"}                        ← 登出後同樣不再簽發
 ```
 
 ---

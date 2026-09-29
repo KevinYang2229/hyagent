@@ -47,6 +47,10 @@ const off = oa.on('submitted', (detail) => console.log('已送出', detail));
 
 事件型別：`open` / `close` / `submitted`（對應 widget.js 發出的 `oa-agent:*` DOM 事件）。
 
+> 使用者登出貴站時（必做）在導頁前 `await oa.logout()` 即可：內建 widget 的 Session 在面板網域，
+> SDK 碰不到，會一併轉請 `window.OAAgent.logout()` 讓面板自己作廢。不經登出直接換人時的
+> `oa.refreshIdentity()` 同理（貴站無此功能可忽略）。見下方「Session 的續期與結束」。
+
 ## 產生金鑰對：keygen CLI（`bin/keygen.mjs`）
 
 導入第一天與每次金鑰輪替時用一次。**金鑰對必須在你自己的環境產生**——HyAgent 只拿公鑰，
@@ -126,7 +130,14 @@ SSO 路徑**沒有 refresh token**（規格 §7.1）。續期就是重走一次 
 | --- | --- |
 | 到期前 60 秒 | SDK 自動（下一個請求前判斷；`assertion` 須為函式） |
 | Session 被作廢（撤銷 `kid`、依 `sub` 作廢）而回 `401` | SDK 自動重取一張並重送該請求 |
-| 貴方系統換了登入者 | 呼叫 `refreshIdentity()`——SDK 看不到這件事 |
-| 使用者登出 | 呼叫 `logout()`：通知後端作廢 Session，並清掉本地憑證 |
+| 使用者登出貴站（**必做**） | 導頁前 `await logout()`：通知後端作廢 Session，並清掉本地憑證 |
+| 貴方系統**不經登出**直接換了登入者（代理人、客服代操作；無此功能可忽略） | 呼叫 `refreshIdentity()`：先作廢舊 Session 再換新的——SDK 看不到這件事 |
+
+一般「登出 → 以另一位重新登入」由 `logout()` 涵蓋，不需另外呼叫 `refreshIdentity()`。
+
+頁面上有內建 widget（`window.OAAgent`，不論是 `loadWidget()` 還是自己用 `<script>` 掛的）時，
+這兩支會一併轉給面板處理：`logout()` 等面板回報完成才 resolve（最多 5 秒），而且**從不 reject**；
+`refreshIdentity()` 要本實例與面板都換成功才回 `true`，沒設 `assertion` 時只看面板的結果。
+widget.js 還沒載入完就呼叫的話面板尚不存在，只會處理本實例這一份。
 
 `assertion` 傳字串時只能換一次（那張票是一次性的），到期後 `refreshIdentity()` 會回 `false`。

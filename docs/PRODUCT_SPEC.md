@@ -111,8 +111,9 @@ HyAgent 是一個可嵌入既有網站或獨立使用的多租戶 AI Agent 整�
 2. 系統核發可公開使用的 `pk_` API Key；`sk_` 僅供伺服器端使用。
 3. 宿主站台載入 Widget Script，傳入 API Key、表單、語系、主題或位置等設定。
 4. 若需帳號連結，宿主後端以自家私鑰簽發短效 Identity Assertion（HyAgent 只持有對應公鑰）。
-5. Widget 將 Token 送至 `/api/auth/sso/exchange`，交換為 HyAgent JWT。
+5. Widget 向宿主的 Identity Endpoint（`data-token-url`）取得 Assertion，送至 `/api/auth/sso/exchange` 換發 HyAgent Session（不透明 `sessionToken`）。
 6. Widget 透過事件通知宿主送單結果，宿主亦可呼叫 `open`、`close`、`toggle` 控制介面。
+7. 宿主使用者登出時，宿主頁必須呼叫 `OAAgent.logout()` 作廢 HyAgent Session；可不經登出直接換人的站台，換人後呼叫 `refreshIdentity()`。
 
 ## 6. 功能規格
 
@@ -124,7 +125,7 @@ HyAgent 是一個可嵌入既有網站或獨立使用的多租戶 AI Agent 整�
 | AUTH-02 | 系統應支援 Token Refresh | 有效 Refresh Token 可換發新 Access Token |
 | AUTH-03 | 系統應提供目前登入者資訊 | `/api/auth/me` 回傳可信任的使用者資料 |
 | AUTH-04 | 每個租戶可登記 Assertion 公鑰（最多 2 把啟用中，`kid` 由公鑰算出） | 未登記公鑰或簽章無效時不得完成 SSO 交換；私鑰留在整合方環境，平台不持有 |
-| AUTH-05 | SSO Token 應綁定租戶與外部使用者身分 | 交換後的 JWT 必須保留 tenant/user 關係，避免跨租戶冒用 |
+| AUTH-05 | SSO Token 應綁定租戶與外部使用者身分 | 交換後的 Session 必須保留 tenant/user 關係，避免跨租戶冒用 |
 | AUTH-06 | 管理後台使用獨立管理密碼登入 | `ADMIN_PASSWORD` 未設定時，管理後台登入應停用 |
 
 ### 6.2 對話與 Agent
@@ -224,7 +225,7 @@ HyAgent 是一個可嵌入既有網站或獨立使用的多租戶 AI Agent 整�
 |---|---|
 | API Key | `pk_` 可置於瀏覽器；`sk_` 只可用於伺服器端高權限操作 |
 | CORS | 第一方來源由 `CORS_ORIGIN` 設定；外部嵌入來源由租戶 `allowedOrigins` 管理 |
-| Widget | 支援 API Key、表單、語系、主題、位置及 SSO User Token 等參數 |
+| Widget | 支援 API Key、表單、語系、主題、位置及 Identity Endpoint（`data-token-url`）等參數；提供 `logout()` / `refreshIdentity()` 供宿主登出、換人時呼叫 |
 | SDK | 提供 Headless REST Client、Widget 控制與事件橋接 |
 | Webhook | 表單送出成功後以 HMAC 簽章投遞 `form.submitted`，支援指數退避重試 |
 | BYO LLM Key | 租戶可設定 Anthropic 或 OpenAI Provider、Model 與 API Key；Key 須先驗證且回傳時遮罩 |

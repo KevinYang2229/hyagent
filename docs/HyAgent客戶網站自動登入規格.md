@@ -10,7 +10,7 @@
 
 本文件中 **必須（MUST）**、**不得（MUST NOT）**、**應該（SHOULD）**、**建議（RECOMMENDED）**、**可以（MAY）** 依 RFC 2119 語意解讀。標示為「規範性」的章節為實作相容性的判定依據；標示為「參考性」的章節僅供理解與示範。
 
-> **交付客戶端工程師時請改給** [HyAgent客戶端整合手冊.md](HyAgent客戶端整合手冊.md)：同一套協定，只保留整合方要動手做的部分（產金鑰、開 Identity Endpoint、掛 `<script>`、排錯、檢核清單）。本文件為完整規範，兩者若有出入以本文件為準。
+> **交付客戶端工程師時請改給** [HyAgent客戶端整合手冊.md](HyAgent客戶端整合手冊.md)：同一套協定，只保留整合方要動手做的部分（產金鑰、開 Identity Endpoint、掛 `<script>`、登出接線、排錯、檢核清單）。本文件為完整規範，兩者若有出入以本文件為準。
 
 > **（HyAgent 內部）** 本規格在本 repo 的實作過程——設計決策、施工中推翻的判斷、驗收達成狀況與剩餘缺口——記在 [SSO-ASSERTION-PLAN-AND-RECORD.md](SSO-ASSERTION-PLAN-AND-RECORD.md)。該文件**不對外交付**。
 
@@ -146,7 +146,7 @@ sequenceDiagram
 | 想先看懂整個流程 | `presale/widge-tenant/`（可執行 demo） | §1.5 |
 | 客戶端：產生金鑰對、金鑰輪替 | `sdk/bin/keygen.mjs` | §2、§3、§5.1 |
 | 客戶後端：實作 Identity Endpoint | `presale/widge-tenant/server.mjs` → `sdk/src/assertion.ts` | §4、§5.2 |
-| 客戶前端：掛上 Widget | `presale/widge-tenant/index.html`（widget）、`presale/sdk-custom-ui/`（自建 UI） | §5.3、§6 |
+| 客戶前端：掛上 Widget、接登出 | `presale/widge-tenant/index.html`（widget）、`presale/sdk-custom-ui/`（自建 UI） | §5.3、§5.5、§6 |
 | HyAgent 後端：驗證 Assertion 並發 Session | `server/src/modules/auth/assertion-exchange.ts` → `server/src/lib/assertion/verifier.ts` | §7.1、§8 |
 | HyAgent 後台：上傳／撤銷公鑰、作廢 Session | `admin/src/pages/tabs/AssertionKeysPanel.tsx` → `server/src/modules/admin/admin.controller.ts` | §7.3、§7.4 |
 | 整合卡住，要查為何被拒 | `server/src/lib/assertion/errors.ts` | §9 |
@@ -182,7 +182,7 @@ sequenceDiagram
 | `server/tests/auth-session-store.test.ts` | §2.6、§7.1、§7.4 Session 與批次作廢 | 21 |
 | `client/src/hostBridge.test.ts`、`client/src/widget.postMessage.test.ts` | §6.6 postMessage 協定（面板側、宿主側，含 §6.3 的登出／換身分） | 19 + 26 |
 | `sdk/src/keygen-cli.test.ts` | §2.4、§3 keygen CLI 與三份 `computeKid()` 的一致性 | 9 |
-| `sdk/src/server.test.ts`、`sdk/src/session.test.ts` | §4 簽發、§6.5 Session 續期與登出 | 16 + 8 |
+| `sdk/src/server.test.ts`、`sdk/src/session.test.ts` | §4 簽發、§6.5 Session 續期與登出、§6.3 轉呼叫內建 Widget | 16 + 16 |
 
 執行方式見附錄 A.1。
 
@@ -788,7 +788,7 @@ app.get("/api/mybot/identity", (req, res) => {
 > **▶ 實作**：`client/public/sdk/widget.js`；可執行範例 `presale/widge-tenant/index.html`（widget）、
 > `presale/sdk-custom-ui/`（自建 UI）
 
-一行 `<script>`，宿主頁**不需要寫任何 JavaScript**：
+載入與自動登入只要一行 `<script>`，宿主頁不需要為此寫任何 JavaScript（登出另見 §5.5）：
 
 ```html
 <script src="https://{hyagent-host}/sdk/widget.js"
@@ -828,6 +828,20 @@ const oa = createOAAgent({
 ### 5.4 Step 4：HyAgent 驗證並建立 Session
 
 HyAgent 後端依 §8 逐項驗證後建立 HyAgent Session，Widget 即可顯示已登入狀態。此步驟對客戶端透明，由 SDK 自動完成。
+
+### 5.5 Step 5：登出與切換帳號
+
+> **▶ 實作**：`presale/widge-tenant/index.html` 底部的登出接線；方法定義見 §6.3
+
+SDK 看不到宿主網站的登入狀態，下列兩件只能由 Host Page 通知：
+
+| 情境 | 要求 |
+| --- | --- |
+| 使用者登出宿主網站 | Host Page **必須**呼叫 `logout()`，並**應該**等它完成再導頁 |
+| 宿主網站**不經登出**直接切換登入者（例如代理人、客服代操作） | 切換後**必須**呼叫 `refreshIdentity()`。宿主網站無此功能時不適用 |
+
+一般「登出 → 以另一位重新登入」的流程由 `logout()` 涵蓋，不需另外呼叫 `refreshIdentity()`。
+理由見 §10.5；由伺服器端發起的停權、離職不在此列，見 §7.4。
 
 ---
 
@@ -893,7 +907,7 @@ Widget 的設定全部走 `<script>` 標籤的 `data-*` 屬性，宿主頁不需
 | `expand()` / `collapse()` | 放大／還原（放大後面板置中並蓋上背景遮罩） |
 | `onEvent(fn)` | 事件回呼，可在 `widget.js` 載入**前**先指定，載入後會保留 |
 | `logout()` | 請面板作廢 Session（§7.2）並清除面板網域的本地憑證。使用者登出宿主網站時**必須**呼叫。回傳 `Promise<boolean>` |
-| `refreshIdentity()` | 請面板**先作廢舊 Session 再**重走 §6.6 握手換發。使用者於宿主網站**切換帳號**後**必須**呼叫。回傳 `Promise<boolean>` |
+| `refreshIdentity()` | 請面板**先作廢舊 Session 再**重走 §6.6 握手換發。宿主網站**不經登出**直接切換帳號後**必須**呼叫（§5.5）；經登出再登入的流程由 `logout()` 涵蓋。回傳 `Promise<boolean>` |
 
 > 這兩支與 headless SDK 的同名方法語意相同，差別只在 Widget 的 Session 位於**面板網域**：
 > 宿主頁存取不到它的 `sessionStorage`，只能經 §6.6 的 `session:logout` / `identity:refresh`
@@ -905,8 +919,8 @@ Widget 的設定全部走 `<script>` 標籤的 `data-*` 屬性，宿主頁不需
 | 方法 | 說明 |
 | --- | --- |
 | `authenticate()` | 以 Token Provider 換發 Session（不回報成敗） |
-| `refreshIdentity()` | 同上但回傳 `boolean`。使用者於宿主網站**切換帳號**後**必須**呼叫。SDK 另會在到期前 60 秒與收到 `401` 時自動呼叫 |
-| `logout()` | 通知後端作廢 Session（§7.2）並清除本地憑證。使用者登出宿主網站時**必須**呼叫 |
+| `refreshIdentity()` | **先作廢舊 Session**，再以 Token Provider 換發，回傳 `boolean`。宿主網站**不經登出**直接切換帳號後**必須**呼叫（§5.5）。頁面上有內建 Widget 時一併轉呼叫 `window.OAAgent.refreshIdentity()`，兩邊都成功才回 `true`。平時的續期（到期前 60 秒、收到 `401`）由 SDK 自動處理，不必呼叫這支 |
+| `logout()` | 通知後端作廢 Session（§7.2）並清除本地憑證；頁面上有內建 Widget 時一併轉呼叫 `window.OAAgent.logout()`，等其完成才 resolve，且不會 reject。使用者登出宿主網站時**必須**呼叫 |
 | `conversations` / `forms` | 對話與表單的 REST 操作 |
 | `on(event, handler)` | 訂閱 Widget 事件，回傳取消訂閱函式 |
 | `open()` / `close()` / `toggle()` | 轉呼叫 `window.OAAgent` 的同名方法 |
@@ -1463,7 +1477,7 @@ Widget 端另有兩個本地代碼（不對應 HTTP，出現在 `identity:respon
 ### 10.5 身分一致性
 
 - `sub` **必須**穩定且不可重複配發。使用者離職後其 `sub` **不得**再配給新人，否則會繼承對話紀錄。
-- 使用者於宿主網站登出或切換帳號時，Host Page **必須**呼叫 `logout()` 或 `refreshIdentity()`（Widget 走 `window.OAAgent`、headless 走 SDK 實例，兩者語意相同，見 §6.3），否則 Widget 會維持前一位使用者的 Session 直到過期。
+- 使用者登出宿主網站時，Host Page **必須**呼叫 `logout()`；宿主網站若可**不經登出**直接切換帳號，切換後**必須**呼叫 `refreshIdentity()`（Widget 走 `window.OAAgent`、headless 走 SDK 實例，兩者語意相同，見 §5.5、§6.3），否則 Widget 會維持前一位使用者的 Session 直到過期。
 - 承上，HyAgent Session 有效期（§7.1 `expiresIn`）**應該**設為**不長於客戶自家 session 的有效期**，否則會出現「客戶網站已登出、Widget 仍為登入狀態」的窗口。共用終端（如公用電腦）**應該**再往下調。
 - 帳號停權、離職等**由伺服器端發起**的身分變更，Host Page 無從察覺，**必須**依 §7.4 的順序處理（先於自家系統停權，再至 HyAgent 後台作廢該 `sub` 的 Session），不可僅依賴前端呼叫 `refreshIdentity()`。後台作廢前存在至多一個 `expiresIn` 的空窗期，見 §7.4。
 
@@ -1569,7 +1583,8 @@ HyAgent 後台**必須**呈現各 Tenant 的現行設定值，並標示偏離預
 - [ ] `sub` 使用穩定且不重複配發的內部 ID（非 email）
 - [ ] `ES256` 簽章為 R‖S 格式（用 `@hyagent/sdk/server` 的 `issueAssertion()` 即已處理；自行實作時 Node.js 須指定 `dsaEncoding: "ieee-p1363"`）
 - [ ] 伺服器已 NTP 校時（HyAgent 預設僅容忍 15 秒偏移，§10.4）
-- [ ] 使用者登出 / 切換帳號時有呼叫 `logout()` / `refreshIdentity()`
+- [ ] 使用者登出時先呼叫 `logout()` 再導頁（§5.5）
+- [ ] （宿主網站有「不經登出切換帳號」功能才需要）切換後有呼叫 `refreshIdentity()`
 - [ ] CSP 已放行 HyAgent 網域
 - [ ] 未將錯誤代碼直接顯示給終端使用者，僅記錄 `error` 與 `requestId`（§7.5）
 - [ ] 使用 `data-token-url`（或 headless SDK 的函式形式 `assertion`），未把簽好的憑證寫死在頁面上（§6.5）

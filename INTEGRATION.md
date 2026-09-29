@@ -19,7 +19,7 @@
 - **每租戶 rate limit**：`server/src/middlewares/tenant-rate-limit.ts`。
 
 ### 2. 三種整合方式
-- **Surface 1 — 嵌入 widget 產品化**：`client/public/sdk/widget.js`（對外路徑 `/sdk/widget.js`）支援 `data-key/form/locale/theme/position/token-url`（`token-url` 指向宿主自家的 Identity Endpoint，widget 需要身分時才現取一張 Assertion；靜態的 `data-user-token` 已移除，見 [`docs/HANDOFF-SSO.md`](docs/HANDOFF-SSO.md)），參數化 iframe URL，轉發 `oa-agent:submitted` 等事件，提供 `OAAgent.open/close/toggle/expand/collapse` 控制 API（`expand` 會把面板置中撐大並蓋上背景遮罩）。
+- **Surface 1 — 嵌入 widget 產品化**：`client/public/sdk/widget.js`（對外路徑 `/sdk/widget.js`）支援 `data-key/form/locale/theme/position/token-url`（`token-url` 指向宿主自家的 Identity Endpoint，widget 需要身分時才現取一張 Assertion；靜態的 `data-user-token` 已移除，見 [`docs/HANDOFF-SSO.md`](docs/HANDOFF-SSO.md)），參數化 iframe URL，轉發 `oa-agent:submitted` 等事件，提供 `OAAgent.open/close/toggle/expand/collapse` 控制 API（`expand` 會把面板置中撐大並蓋上背景遮罩），以及宿主登出時**必須**呼叫的 `OAAgent.logout()`（不經登出直接換人的站台另有 `refreshIdentity()`，見 [整合手冊](docs/HyAgent客戶端整合手冊.md) §5.3、§5.4）。
   - client：`embedConfig.ts`、`api.ts`（帶 `x-api-key` + SSO 換發）、`App.tsx`（套用 locale/theme/form、送出事件）。
 - **Surface 2 — 開發者 SDK**：新 workspace `@hyagent/sdk`（`sdk/`），headless REST + widget 事件/控制橋接 + SSO。
 - **Surface 3 — 表單結果 webhook 回拋**：每租戶可登記端點，送出成功後以 **HMAC 簽章 + 行內非同步投遞 + 指數退避重試** 推送 `form.submitted`。

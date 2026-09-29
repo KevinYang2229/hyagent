@@ -431,7 +431,7 @@ describe('data-debug：整合期把身分握手印到 console', () => {
   });
 });
 
-describe('宿主頁主動結束／切換身分（規格 §6.3，整合手冊 §5.3）', () => {
+describe('宿主頁主動結束／切換身分（規格 §6.3，整合手冊 §5.3、§5.4）', () => {
   /** 送出宿主頁的請求後，取出它排給面板的那則訊息 */
   function sentToPanel(posted: Posted[], type: string): Posted {
     const found = posted.find((p) => p.message.type === type);
