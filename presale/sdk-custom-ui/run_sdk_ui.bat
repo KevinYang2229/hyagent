@@ -180,7 +180,7 @@ if not defined PRIV (
 
 echo.
 echo [5/5] 啟動中，網址 http://localhost:%DEMO_PORT%  （Ctrl+C 停止）
-echo        開頁後點右上「線上客服」開聊天室；若顯示「初始化失敗」，多半是租戶沒登記
+echo        開頁後先在登入頁登入，再點右上「線上客服」開聊天室；若顯示「初始化失敗」，多半是租戶沒登記
 echo        .env 私鑰對應的公鑰，或 allowedOrigins 沒含 http://localhost:%DEMO_PORT%。
 echo.
 

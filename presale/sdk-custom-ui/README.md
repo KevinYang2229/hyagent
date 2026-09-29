@@ -5,7 +5,8 @@
 **不載入 widget、不用 iframe**。證明「用 SDK 取代 widget 後，UI 與觸發方式都可完全客製化」。
 
 - 觸發：`#open-chat`（header）/ `#hero-chat`（hero）→ 開啟面板（首次開啟才初始化 SDK）。
-- 結構：[index.html](index.html)（landing + 隱藏面板）、[styles.css](styles.css)（樣式）、[app.ts](app.ts)（SDK 串接 + 開關）。
+- 結構：[index.html](index.html)（landing + 隱藏面板）、[login.html](login.html)（本站自家的登入頁）、
+  [styles.css](styles.css)（樣式）、[app.ts](app.ts)（SDK 串接、開關、登出接線）。
 
 ## 與第一個 example（widget 版）的差異
 
@@ -45,28 +46,83 @@ node presale/sdk-custom-ui/server.mjs
 # 開瀏覽器：http://localhost:4200
 ```
 
-點右上「線上客服」→ 首次開啟時自動 SSO → 直接在自訂介面對話、收集欄位、按「確認送出表單」。
+先在 `/login` 選一位使用者 → 點右上「線上客服」→ 首次開啟時自動 SSO，歡迎詞會叫出登入者的名字
+→ 直接在自訂介面對話、收集欄位、按「確認送出表單」。按 F12 可在 console 看到整段自動登入（見下方）。
 
 ## 運作
 
 ```
 瀏覽器開 http://localhost:4200
    │
-   ├─ 取 Assertion ── GET /api/mybot/identity（後端用 SDK issueAssertion 以私鑰簽）
+   ├─ 未登入 → 導到 /login，兩位模擬使用者二選一 → 發一個自家的 cookie session
+   │     （規格 §5.2：Identity Endpoint 的身分一律由自家登入 Session 決定）
+   │
+   ├─ 取 Assertion ── GET /api/mybot/identity（後端用 SDK issueAssertion 以私鑰簽；未登入回 401）
    │     ↑ 由 SDK 依需要重複呼叫：首次換發、Session 到期前 60 秒、收到 401 時
    ├─ 載入 /app.js（esbuild 把 app.ts + @hyagent/sdk 打包成 ESM）
    │
-   └─ app.ts：createOAAgent({ key, assertion: fetchAssertion, apiBase }) → refreshIdentity()
-        → conversations.create / sendMessage / submit
-        → 自己渲染訊息、suggestions、已收集欄位（全部自訂 DOM/CSS）
+   ├─ app.ts：createOAAgent({ key, assertion: fetchAssertion, apiBase }) → refreshIdentity()
+   │    → me()（GET /api/auth/me，HyAgent 最終認定的登入者）
+   │    → conversations.create / sendMessage / submit
+   │    → 自己渲染訊息、suggestions、已收集欄位（全部自訂 DOM/CSS）
+   │
+   └─ 按「登出」→ app.ts 先 await oa.logout()（HyAgent 作廢 Session）→ 再送出 POST /logout
 ```
 
-### 正式環境要補的：登出
+## 登出（SDK 整合模式的寫法，整合手冊 §5.3「這段一定要做」）
 
-本 demo 的登入者固定是 `.env` 裡那一位，所以沒有登出鈕。正式環境使用者登出貴站時**必須**
-先 `await oa.logout()` 再導頁——Session 是伺服器端有狀態的，只清畫面等於留一張還能用的票
-（整合手冊 §5.3）。貴站若可**不經登出**直接換人，換完之後呼叫 `oa.refreshIdentity()`；
-沒有此功能可忽略（§5.4）。
+接線在 [app.ts](app.ts) 的 `logoutForm` 那段，可以直接照抄：攔下自家登出表單的送出，
+先 `await oa.logout()`，再 `form.submit()`。聊天室從沒開過（還沒建 client）就照原本的表單流程走。
+
+```ts
+logoutForm.addEventListener('submit', async (e) => {
+  if (!oa) return;
+  e.preventDefault();
+  await oa.logout();   // 從不 reject，網路不通也不會卡住導頁
+  logoutForm.submit(); // 程式呼叫 submit() 不會再觸發 submit 事件
+});
+```
+
+**為什麼非做不可**：headless 的 Session 只在本頁記憶體裡，導頁之後瀏覽器這份自然消失，
+所以**漏掉這段畫面上看不出來**——但 HyAgent 後端那張還活著，直到自然過期。
+要看差別，到後台 → 該租戶 → **自動登入** →「登入 Session」卡片：有呼叫 `oa.logout()` 時那一筆
+會消失；把上面那段拿掉再登出一次，它就留在那裡。
+
+> 與 widget 版的差別：widget 的 Session 存在面板網域的 `sessionStorage`，導頁也不會消失，
+> 漏接的話換人後小幫手裡仍是上一位（見 [widge-tenant](../widge-tenant)）；headless 則是留下後端那張。
+> 兩者都必須呼叫登出。換人走「登出 → 回登入頁選另一位」，與一般網站相同；
+> 本站沒有「不經登出直接換人」的功能，所以不需要 `refreshIdentity()` 那段（手冊 §5.4）。
+
+兩位使用者預設是 `507 測試員／財務部／協理` 與 `902 王小明／研發部／工程師`，部門職稱刻意不同：
+換人登入後歡迎詞與 console 的登入者整串都會變，一眼看得出有沒有生效。
+
+## 怎麼看「它到底登入了誰、拿到什麼」
+
+本 demo 的 [app.ts](app.ts) 開了 `DEBUG = true`，整段自動登入會印在兩個地方。
+
+**瀏覽器 console**（F12），標 `[sdk-custom-ui]`：
+
+| 順序 | 內容 |
+|------|------|
+| 首次換發 | 開聊天室時呼叫 `refreshIdentity()` |
+| Identity Endpoint 回應 | `GET /api/mybot/identity` 的 HTTP 狀態（未登入是 401） |
+| 取得 Identity Assertion | 遮罩過的憑證、`kid`，以及**簽出來的 claims**（`iss` / `sub` / `name` / `hyagent:profile` / `exp`） |
+| 換發成功 | SDK 已持有 HyAgent Session |
+| 目前登入者 | **`oa.me()`（`GET /api/auth/me`）回的登入者，那份就是最終身分** |
+| 登出 | `await oa.logout()` 前後各一行。登出會導頁，console 要勾 **Preserve log** 才留得住 |
+
+之後 SDK 自動續期（Session 到期前 60 秒、收到 401）時，會再看到「Identity Endpoint 回應」與
+「取得 Identity Assertion」兩行——那是 SDK 回頭呼叫 `fetchAssertion` 現取一張新的。
+
+`me()` 回的是 `{ id, name, company, department, title }`。租戶沒在後台建人員目錄時，後端就採用
+Assertion 帶來的身分（`name` + `hyagent:profile` 的 `companyName` / `deptName` / `jobPostName`）；
+若後台為該租戶建過同 id 的人員資料，則以目錄為準——所以要確認身分，看 `me()` 而不是自己解 Assertion。
+
+**跑 server.mjs 的終端機**：每次簽發印一行 `[identity] … 簽發給 測試員(507) { iss, sub, name, … }`，
+登入、登出各印一行 `[session]`。
+
+憑證本身一律遮罩（只留前 8 碼與長度）後才輸出，但 claims 裡的使用者代號與姓名會完整印出——
+那正是要看的東西。所以 `DEBUG` 是整合期工具，**正式站請改成 `false` 或拿掉**。
 
 ## 設定
 
@@ -80,11 +136,15 @@ node presale/sdk-custom-ui/server.mjs
 | `TENANT_PK` | （空，**必填**） | 租戶公開金鑰（pk 可放前端）。每台機器不同，故不給預設值——見下方說明 |
 | `TENANT_ID` | （空，**必填**） | 租戶 id，會成為 Assertion 的 `iss`；換發時也用它查 Origin 白名單 |
 | `TENANT_PRIVATE_KEY` | （留空） | 簽發用私鑰（PKCS#8 PEM）；留空時啟動當場產一組並把公鑰印在 console |
-| `DEMO_USER_ID` / `DEMO_USER_NAME` | `507` / `測試員` | 模擬的登入使用者，成為 Assertion 的 `sub` / `name` |
-| `DEMO_COMPANY_NAME` / `DEMO_DEPT_NAME` / `DEMO_JOB_POST_NAME` | `Beta Cloud` / `財務部` / `協理` | 組織欄位，包成 `hyagent:profile`（規格 §4.2.3）；留空的欄位不進 claims |
+| `DEMO_USER_ID` / `DEMO_USER_NAME` | `507` / `測試員` | 登入頁第一位，成為 Assertion 的 `sub` / `name` |
+| `DEMO_COMPANY_NAME` / `DEMO_DEPT_NAME` / `DEMO_JOB_POST_NAME` | `Beta Cloud` / `財務部` / `協理` | 第一位的組織欄位，包成 `hyagent:profile`（規格 §4.2.3）；留空的欄位不進 claims |
+| `DEMO_USER2_*` | `902` / `王小明` / `Beta Cloud` / `研發部` / `工程師` | 登入頁第二位，欄位與上面同名對應（`DEMO_USER2_ID` / `_NAME` / `_COMPANY_NAME` / `_DEPT_NAME` / `_JOB_POST_NAME`） |
 
-後三個 `DEMO_*_NAME` 是 HyAgent 採用的使用者公司／部門／職稱——與 [widge-tenant](../widge-tenant)
-帶的是同一組欄位，兩站差別只在 UI 怎麼畫。header 的「已登入」標示也由同一組值產生。
+`*_COMPANY_NAME` / `*_DEPT_NAME` / `*_JOB_POST_NAME` 是 HyAgent 採用的使用者公司／部門／職稱——與
+[widge-tenant](../widge-tenant) 帶的是同一組欄位，兩站差別只在 UI 怎麼畫。header 的「已登入」標示由目前
+登入的那一位產生，登入頁的卡片由這兩組值產生。
+
+> 既有的 `.env` 沒有 `DEMO_USER2_*` 也能跑：第二位會用上表的預設值。
 
 > `server.mjs` 在變數完全沒設時另有內建預設值（`TENANT_PK` 為一把舊的 pk），本機 dev 不能用，請一律以 `.env` 設定。
 

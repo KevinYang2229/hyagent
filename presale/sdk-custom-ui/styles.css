@@ -35,6 +35,38 @@ body {
   cursor: pointer; box-shadow: 0 4px 14px rgba(37, 99, 235, 0.3);
 }
 .chat-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(37, 99, 235, 0.4); }
+/* 登出：外觀刻意比線上客服低調 */
+.logout-form { margin: 0; }
+.logout {
+  font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap;
+  color: #475569; background: #fff; border: 1px solid #cbd5e1;
+  padding: 5px 14px; border-radius: 999px;
+}
+.logout:disabled { opacity: 0.5; cursor: progress; }
+.logout:hover:enabled { color: #b91c1c; border-color: #fca5a5; background: #fef2f2; }
+
+/* ── 登入頁（本站自家的，不是 HyAgent 的） ── */
+.login-page { max-width: 620px; margin: 0 auto; padding: 72px 24px 96px; }
+.login-page h1 { font-size: 30px; margin: 0 0 12px; }
+.login-page .sub { color: #475569; line-height: 1.8; margin: 0 0 32px; }
+.login-page .tip { color: #64748b; font-size: 14px; line-height: 1.8; margin-top: 28px; }
+.login-page code { background: #0f172a; color: #e2e8f0; padding: 2px 6px; border-radius: 6px; font-size: 13px; }
+.user-cards { display: grid; gap: 14px; }
+.user-card {
+  display: flex; align-items: center; gap: 16px; width: 100%; text-align: left;
+  font: inherit; cursor: pointer;
+  background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 18px 20px;
+}
+.user-card:hover { border-color: #2563eb; background: #f8fafc; }
+.user-card.current { border-color: #bfdbfe; background: #eff6ff; }
+.user-card .avatar {
+  flex: none; width: 46px; height: 46px; border-radius: 50%;
+  display: grid; place-items: center;
+  font-size: 19px; font-weight: 700; color: #1d4ed8; background: #dbeafe;
+}
+.user-card .who { display: flex; flex-direction: column; gap: 3px; }
+.user-card .who strong { font-size: 17px; }
+.user-card .meta { font-size: 13.5px; color: #64748b; }
 
 /* ── landing 內容 ── */
 .hero { max-width: 760px; margin: 0 auto; padding: 96px 24px 48px; text-align: center; }
