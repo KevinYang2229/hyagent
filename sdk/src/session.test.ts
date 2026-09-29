@@ -54,9 +54,13 @@ it('Session 遇 401 不嘗試 refresh——那條路徑在 SSO 上已不存在',
 function backend(opts: { issue: string[]; expiresIn: number }) {
   const calls = { exchange: 0, protected: 0, logout: 0 };
   const inits: RequestInit[] = [];
+  /** 依序記下打了哪支、帶哪個 Bearer，例如 `logout hyas_1`。用來釘「先作廢再換發」的順序。 */
+  const log: string[] = [];
   let valid = '';
   const fetch = vi.fn(async (url: string, init?: RequestInit) => {
     inits.push(init ?? {});
+    const bearer = ((init?.headers as Record<string, string>)?.authorization ?? '').replace('Bearer ', '');
+    log.push(`${url.split('/').pop()} ${bearer}`.trim());
     if (url.endsWith('/sso/exchange')) {
       valid = opts.issue[Math.min(calls.exchange, opts.issue.length - 1)];
       calls.exchange++;
@@ -72,7 +76,7 @@ function backend(opts: { issue: string[]; expiresIn: number }) {
       : new Response('{}', { status: 401 });
   });
   vi.stubGlobal('fetch', fetch);
-  return { calls, inits, revoke: () => { valid = '__revoked__'; } };
+  return { calls, inits, log, revoke: () => { valid = '__revoked__'; } };
 }
 
 it('Session 剩不到 60 秒 → 下一個請求前先重走 provider', async () => {
@@ -148,4 +152,123 @@ it('logout 通知後端作廢 Session，之後的請求會重新換發', async (
 
   await client.conversations.get('one');
   expect(calls.exchange).toBe(2);
+});
+
+it('logout 等在途的換發落地後一併作廢——否則登出會被那張換回來的 Session 蓋回去', async () => {
+  const { calls, log } = backend({ issue: ['hyas_1', 'hyas_2'], expiresIn: 3600 });
+  const client = createOAAgent({ apiBase: 'http://localhost', assertion: async () => 'assertion' });
+
+  void client.authenticate(); // 還沒換完就登出
+  await client.logout();
+
+  expect(log).toEqual(['exchange', 'logout hyas_1']);
+  await client.conversations.get('one');
+  expect(calls.exchange).toBe(2); // 登出後沒有殘留 Session，得重新換發
+});
+
+/**
+ * 換人（規格 §6.3、§5.5）：先作廢舊的再換新的。只換不作廢，前一位的 Session 會在後端活到自然過期。
+ */
+it('refreshIdentity 先作廢舊 Session 再換新的', async () => {
+  const { log } = backend({ issue: ['hyas_1', 'hyas_2'], expiresIn: 3600 });
+  const client = createOAAgent({ apiBase: 'http://localhost', assertion: () => 'assertion' });
+
+  await client.authenticate();
+  await expect(client.refreshIdentity()).resolves.toBe(true);
+  await client.conversations.get('one');
+
+  expect(log).toEqual(['exchange', 'logout hyas_1', 'exchange', 'one hyas_2']);
+});
+
+it('refreshIdentity 時 provider 回 null → 舊的照樣作廢，回 false', async () => {
+  const { calls } = backend({ issue: ['hyas_1'], expiresIn: 3600 });
+  let loggedIn = true;
+  const client = createOAAgent({ apiBase: 'http://localhost', assertion: () => (loggedIn ? 'assertion' : null) });
+
+  await client.authenticate();
+  loggedIn = false;
+  await expect(client.refreshIdentity()).resolves.toBe(false);
+
+  expect(calls.logout).toBe(1);
+});
+
+/**
+ * 內建 widget（規格 §6.3）：它的 Session 在面板網域，SDK 實例碰不到，只能轉請 `window.OAAgent`。
+ * 以 `loadWidget()` 載入時整合方最自然的寫法就是 `oa.logout()`，漏轉等於沒登出，而且看不出來。
+ */
+function stubWidget(overrides: Partial<Record<'logout' | 'refreshIdentity', () => Promise<boolean>>> = {}) {
+  const widget = {
+    logout: vi.fn(overrides.logout ?? (async () => true)),
+    refreshIdentity: vi.fn(overrides.refreshIdentity ?? (async () => true)),
+  };
+  vi.stubGlobal('window', { OAAgent: widget });
+  return widget;
+}
+
+it('widget 橋接：logout 轉請面板作廢，並等它完成才 resolve', async () => {
+  const { calls } = backend({ issue: ['hyas_1'], expiresIn: 3600 });
+  let ack!: (ok: boolean) => void;
+  const widget = stubWidget({ logout: () => new Promise<boolean>((resolve) => (ack = resolve)) });
+  const client = createOAAgent({ apiBase: 'http://localhost', key: 'pk_test', tokenUrl: '/api/mybot/identity' });
+
+  let done = false;
+  const pending = client.logout().then(() => (done = true));
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(widget.logout).toHaveBeenCalledTimes(1);
+  expect(done).toBe(false); // 面板還沒回報，導頁就得再等
+
+  ack(true);
+  await pending;
+  expect(calls.logout).toBe(0); // 本實例沒有自己的 Session，不必打後端
+});
+
+it('headless 與 widget 並存：logout 兩邊都作廢', async () => {
+  const { calls } = backend({ issue: ['hyas_1'], expiresIn: 3600 });
+  const widget = stubWidget();
+  const client = createOAAgent({ apiBase: 'http://localhost', assertion: () => 'assertion' });
+
+  await client.authenticate();
+  await client.logout();
+
+  expect(calls.logout).toBe(1);
+  expect(widget.logout).toHaveBeenCalledTimes(1);
+});
+
+it('widget 的 logout 失敗（reject 或同步丟例外）不會讓 oa.logout() reject', async () => {
+  backend({ issue: ['hyas_1'], expiresIn: 3600 });
+  stubWidget({ logout: () => Promise.reject(new Error('panel gone')) });
+  await expect(createOAAgent({ apiBase: 'http://localhost' }).logout()).resolves.toBeUndefined();
+
+  stubWidget({
+    logout: () => {
+      throw new Error('boom');
+    },
+  });
+  await expect(createOAAgent({ apiBase: 'http://localhost' }).logout()).resolves.toBeUndefined();
+});
+
+it('widget 橋接：refreshIdentity 轉給面板，回它的結果，不打換發端點', async () => {
+  const { calls } = backend({ issue: ['hyas_1'], expiresIn: 3600 });
+  const widget = stubWidget({ refreshIdentity: async () => false });
+  const client = createOAAgent({ apiBase: 'http://localhost', tokenUrl: '/api/mybot/identity' });
+
+  await expect(client.refreshIdentity()).resolves.toBe(false);
+  expect(widget.refreshIdentity).toHaveBeenCalledTimes(1);
+  expect(calls.exchange).toBe(0);
+
+  widget.refreshIdentity.mockImplementation(async () => true);
+  await expect(client.refreshIdentity()).resolves.toBe(true);
+});
+
+it('headless 與 widget 並存：refreshIdentity 兩邊都換成功才回 true', async () => {
+  const { calls } = backend({ issue: ['hyas_1', 'hyas_2'], expiresIn: 3600 });
+  stubWidget({ refreshIdentity: async () => false });
+  const client = createOAAgent({ apiBase: 'http://localhost', assertion: () => 'assertion' });
+
+  await client.authenticate();
+  await expect(client.refreshIdentity()).resolves.toBe(false); // 面板沒換到，整體就不算換成功
+
+  expect(calls.logout).toBe(1);
+  expect(calls.exchange).toBe(2); // 本實例這側照樣先作廢再換
 });
