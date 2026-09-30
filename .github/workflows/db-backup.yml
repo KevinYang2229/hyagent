@@ -2,6 +2,7 @@
 # pg_dump（custom format）→ 上傳為私有 repo 的 workflow artifact，保留 30 天。
 # 還原：下載 artifact 後 `pg_restore -d "$DB_URL" --clean --if-exists backup.dump`
 # 需要 repo secret：SUPABASE_DB_URL（session pooler 連線字串，與 server/.env 的 DATABASE_URL 同）
+# 連線字串必須是 pooler 形式：postgresql://postgres.<project-ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres
 name: DB Backup
 
 on:
@@ -13,7 +14,42 @@ on:
 jobs:
   backup:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
     steps:
+      # 連線字串壞掉時，pg_dump 只會回「password authentication failed」看不出哪裡錯。
+      # 這步先解析出 user／host（不碰密碼）並擋掉已知的錯誤形式，讓失敗訊息能自我說明。
+      - name: 檢查連線字串格式（不印密碼）
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$DB_URL" ]; then
+            echo "::error::secret SUPABASE_DB_URL 是空的"
+            exit 1
+          fi
+          case "$DB_URL" in
+            postgresql://*|postgres://*) ;;
+            *) echo "::error::SUPABASE_DB_URL 不是 postgresql:// 連線字串"; exit 1 ;;
+          esac
+          rest=${DB_URL#*://}
+          user=${rest%%:*}
+          hostport=${DB_URL##*@}
+          hostport=${hostport%%/*}
+          echo "user=$user"
+          echo "host=$hostport"
+          case "$hostport" in
+            *pooler.supabase.com*)
+              case "$user" in
+                postgres.*) ;;
+                *)
+                  echo "::error::pooler 連線的使用者必須是 postgres.<project-ref>，目前是 '$user'。請到 Supabase → Connect → Session pooler 重新複製字串更新 secret"
+                  exit 1
+                  ;;
+              esac
+              ;;
+          esac
+
       - name: pg_dump（postgres:17 對齊伺服器版本）
         env:
           DB_URL: ${{ secrets.SUPABASE_DB_URL }}
@@ -28,3 +64,27 @@ jobs:
           path: backup.dump
           retention-days: 30
           if-no-files-found: error
+
+      # 排程失敗只寄信給 repo 擁有者，實際上曾經連續失敗一個月沒人發現。
+      # 改為開 issue（同一張重複留言），讓失敗留在看得到的地方。
+      - name: 失敗時開 issue 告警
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="DB Backup 失敗：每日 Supabase 備份沒有產出"
+          existing=$(gh issue list --state open --label db-backup-failure --json number --jq '.[0].number')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "再次失敗（$(date -u '+%Y-%m-%d %H:%MZ')）：$RUN_URL"
+          else
+            gh label create db-backup-failure --color B60205 --description "每日 DB 備份失敗" 2>/dev/null || true
+            {
+              echo "每日 pg_dump 備份失敗。備份 artifact 只保留 30 天，持續失敗會導致完全沒有可還原的備份。"
+              echo
+              echo "失敗的 run：$RUN_URL"
+              echo
+              echo "排查順序：先看「檢查連線字串格式」這步的 user／host 輸出，再確認 repo secret SUPABASE_DB_URL 是否為 Supabase → Connect → Session pooler 的最新字串。"
+            } > issue-body.md
+            gh issue create --title "$title" --label db-backup-failure --body-file issue-body.md
+          fi
