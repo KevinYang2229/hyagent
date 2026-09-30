@@ -31,3 +31,7 @@ server/data/knowledge-index.*.json
 server/data/knowledge-eval.json
 server/data/knowledge-config.json
 .gstack/
+
+# Word 開啟 .docx 時產生的暫存鎖定檔
+~$*.docx
+~$*.doc
