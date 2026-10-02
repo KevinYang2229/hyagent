@@ -65,6 +65,30 @@ describe('Agent 寫入確認流程（email.send）', () => {
     expect(tr.content).toContain('"proposed":true');
   });
 
+  it('同一輪提議兩次寫入 → 第二筆被拒，第一筆確認卡片不被覆蓋', async () => {
+    const tenantId = tenantWithEmail('agent-email-double-propose');
+    const llm = scriptedLLM([
+      res({
+        toolCalls: [
+          { id: 't1', name: 'email_send', input: { to: 'first@x.com', subject: '第一封', html: '<p>1</p>' } },
+          { id: 't2', name: 'email_send', input: { to: 'second@x.com', subject: '第二封', html: '<p>2</p>' } },
+        ],
+        stopReason: 'tool_use',
+      }),
+      res({ text: '先確認第一封。' }),
+    ]);
+    const session = makeSession(tenantId);
+    const out = await agentAgentService.handleTurn(session, '寄兩封信', llm);
+
+    expect(stubSentEmails).toHaveLength(0);
+    expect((session.pendingAction?.input as { to: string }).to).toBe('first@x.com');
+    expect(out.pendingAction?.id).toBe(session.pendingAction?.id);
+    const results = session.messages.flatMap((m) => m.content).filter((b) => b.type === 'tool_result') as { content: string }[];
+    expect(results).toHaveLength(2);
+    expect(results[0].content).toContain('"proposed":true');
+    expect(JSON.parse(results[1].content)).toEqual({ ok: false, error: '一次只能提議一個寫入動作，請先讓使用者確認上一筆，再提出下一筆。' });
+  });
+
   it('提議時輸入不合法 → 回錯誤給 LLM、不建卡片', async () => {
     const tenantId = tenantWithEmail('agent-email-invalid');
     const llm = scriptedLLM([

@@ -112,6 +112,9 @@ export const agentAgentService: AgentService = {
       }
     }
 
+    // 本輪是否已提議過寫入：上一輪遺留的 pendingAction 已在上方作廢，這裡只管同一輪內的第二筆
+    let proposedThisTurn = false;
+
     await toolRegistry.prepare(ctx);
     const { llmTools, idByLlmName } = exposeTools(toolRegistry.availableFor(ctx));
 
@@ -129,6 +132,11 @@ export const agentAgentService: AgentService = {
           if (isWriteTool(tool)) {
             // 寫入只提議：先跑與 invoke 相同的權限與輸入驗證，通過才建卡片，不執行
             toolRegistry.assertInvocable(realId, input, ctx);
+            if (proposedThisTurn) {
+              // 一輪只能有一張確認卡片：後者不可悄悄覆蓋前者
+              return JSON.stringify({ ok: false, error: '一次只能提議一個寫入動作，請先讓使用者確認上一筆，再提出下一筆。' });
+            }
+            proposedThisTurn = true;
             const action = createPendingAction(tool, input);
             session.pendingAction = action;
             return JSON.stringify({

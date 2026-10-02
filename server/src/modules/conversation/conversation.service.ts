@@ -139,7 +139,8 @@ export const conversationService = {
       conversationStore.save(session);
       throw new AppError(409, 'ACTION_EXPIRED', '這個動作已逾時失效，請重新提出');
     }
-    conversationStore.save(session);
+    // 先落盤再執行：write-behind 的 save 若遇到當機/滾動重啟，會讓已執行的動作重新變回待確認而被重複確認
+    await conversationStore.saveCritical(session);
     session.messages.push({ role: 'user', content: [{ type: 'text', text: '確認' }] });
     const outcome = await runConfirmedAction(session, action);
     conversationStore.save(session);

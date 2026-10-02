@@ -68,6 +68,23 @@ describe('確認卡片端點', () => {
     expect(conversationStore.get(convId, 'default', 'kevin').pendingAction).toBeUndefined();
   });
 
+  it('確認時先以 saveCritical 落盤清除後的狀態，再執行工具', async () => {
+    const token = await loginToken();
+    const { convId, actionId } = await seedPending(token);
+    const spy = jest.spyOn(conversationStore, 'saveCritical').mockImplementation(async (session) => {
+      expect(session.pendingAction).toBeUndefined();
+      expect(calls).toHaveLength(0); // 工具尚未執行
+    });
+    try {
+      const res = await confirm(token, convId, actionId);
+      expect(res.status).toBe(200);
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(calls).toHaveLength(1);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('同時送出兩次確認 → 只執行一次，另一次 409', async () => {
     const token = await loginToken();
     const { convId, actionId } = await seedPending(token);
