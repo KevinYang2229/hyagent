@@ -67,7 +67,8 @@
         function (e) { console.log('已送出', e.detail.submission); }); //
         程式化開關 OAAgent.open(); OAAgent.close(); OAAgent.toggle(); //
         放大／還原（放大時面板置中撐大並蓋上背景遮罩） OAAgent.expand();
-        OAAgent.collapse();</code
+        OAAgent.collapse(); // 使用者登出宿主網站時（有用 data-token-url 就必做）：
+        先等面板作廢 Session 再導頁 await OAAgent.logout();</code
       >
     </div>
 

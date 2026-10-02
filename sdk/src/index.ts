@@ -7,7 +7,7 @@
  *
  * 設計上不依賴框架，型別重用 @hyagent/shared（單一來源）。
  */
-import type { Definition, SessionStatus, SubmissionInfo } from '@hyagent/shared';
+import type { Applicant, Definition, SessionStatus, SubmissionInfo } from '@hyagent/shared';
 
 /**
  * Token Provider：需要身分時現取一張 Assertion（規格 §5.2、§6.5）。
@@ -99,6 +99,8 @@ declare global {
       open?: () => void;
       close?: () => void;
       toggle?: () => void;
+      logout?: () => Promise<boolean>;
+      refreshIdentity?: () => Promise<boolean>;
       onEvent?: (data: { type: string; [k: string]: unknown }) => void;
     };
   }
@@ -113,19 +115,35 @@ export interface OAAgentClient {
    */
   authenticate(): Promise<void>;
   /**
-   * 重走 token provider 換一張新的 Session（規格 §6.3）。
+   * 換人（規格 §6.3）：**先作廢舊 Session**，再重走 token provider 換一張新的。
    *
-   * 平時不需要自己呼叫——SDK 會在到期前 60 秒與收到 `401` 時自動做同一件事。
-   * 留這支是給「貴方系統的登入者換人了」這類 SDK 看不到的時刻用。
-   * 回 `false` 代表 provider 沒給票（視同未登入），或 `assertion` 是已用掉的靜態字串。
+   * 平時不需要自己呼叫——SDK 會在到期前 60 秒與收到 `401` 時自動續期。
+   * 留這支是給「貴方系統不經登出就換了登入者」這類 SDK 看不到的時刻用。
+   *
+   * 頁面上有內建 widget（`window.OAAgent`）時一併請面板換，兩邊都換成功才回 `true`；
+   * 沒設 `assertion`（純 widget 橋接）時只看面板的結果。
+   * 回 `false` 代表沒換到新身分：provider 沒給票（視同未登入，舊的已作廢），
+   * 或 `assertion` 是已用掉的靜態字串。
    */
   refreshIdentity(): Promise<boolean>;
   /**
    * 結束 Session（規格 §6.3、§7.2）：通知後端作廢，並清掉本地憑證。
    *
+   * 頁面上有內建 widget（`window.OAAgent`）時一併請面板作廢它那份——那份在面板網域，
+   * 只有面板自己清得掉。使用者登出貴站時呼叫這一支就夠了，導頁前 `await` 它。
    * Session 是伺服器端有狀態的，只清本地等於留一張仍可用的票在後端直到過期。
+   *
+   * 從不 reject：人要登出了，任何一邊失敗都不該卡住導頁。
    */
   logout(): Promise<void>;
+  /**
+   * 目前登入者（`GET /api/auth/me`）：HyAgent 最終認定的身分。
+   *
+   * 租戶在後台建有人員目錄時以目錄為準，未必等於 Assertion 帶的 `name` / `hyagent:profile`——
+   * 要確認「到底是誰在用」、或在自建 UI 上顯示使用者名稱，看這支而不是自己解 Assertion。
+   * 還沒換發過 Session 時會先走一次 token provider。
+   */
+  me(): Promise<Applicant>;
   conversations: {
     create(input?: { formId?: string; message?: string }): Promise<TurnData>;
     sendMessage(id: string, message: string): Promise<TurnData>;
@@ -267,6 +285,46 @@ export function createOAAgent(options: OAAgentOptions = {}): OAAgentClient {
   }
 
   /**
+   * 作廢本實例的 Session：先清本地，再通知後端（規格 §7.2）。
+   *
+   * 在途的換發要先等它落地再清：它換到的 Session 若在清掉之後才寫回來，
+   * 「登出」會被覆蓋回登入狀態（規格 §6.6 對面板有同樣的要求）。
+   */
+  async function endOwnSession(): Promise<void> {
+    if (exchangeInFlight) await exchangeInFlight.catch(() => false);
+    const token = sessionToken;
+    sessionToken = null;
+    sessionExpiresAt = null;
+    tokens = null;
+    // 帳密登入的 JWT 無狀態，沒有要通知的對象；Session 則必須讓後端作廢。
+    if (!token) return;
+    await fetch(`${AUTH}/logout`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, ...(options.key ? { 'x-api-key': options.key } : {}) },
+    }).catch(() => {
+      // 網路不通時本地已清乾淨，剩下那張票會自己過期——不值得讓呼叫端收到例外
+    });
+  }
+
+  /**
+   * 頁面上的內建 widget（widget.js 掛在 `window.OAAgent`）。
+   *
+   * Node 裡沒有 window；widget.js 是非同步載入的，還沒載完時也拿不到——那時面板還不存在，
+   * 本實例也沒有別的辦法碰到面板網域的 Session，只能略過。
+   */
+  function pageWidget(): Window['OAAgent'] {
+    return typeof window === 'undefined' ? undefined : window.OAAgent;
+  }
+
+  /** 呼叫 widget 的 logout / refreshIdentity：同步丟例外或 reject 都視為沒成功，不外拋。 */
+  function callWidget(fn: () => Promise<boolean>): Promise<boolean> {
+    return Promise.resolve()
+      .then(fn)
+      .then((ok) => ok !== false)
+      .catch(() => false);
+  }
+
+  /**
    * 受保護請求：自動帶憑證；無憑證時先用 Assertion 換發 Session；遇 401 各重試一次。
    *
    * 兩條路徑的重試方式不同：JWT 走 refresh，Session 沒有 refresh（規格 §7.1），
@@ -294,23 +352,30 @@ export function createOAAgent(options: OAAgentOptions = {}): OAAgentClient {
       await exchangeIdentity();
     },
 
-    refreshIdentity(): Promise<boolean> {
-      return exchangeIdentity();
+    async refreshIdentity(): Promise<boolean> {
+      // 先作廢舊的再換新的：只換不作廢，前一位的 Session 會在後端活到自然過期。
+      // 內建 widget 那份在面板網域，本實例碰不到，一併請面板自己換（它同樣先作廢再換）。
+      const widget = pageWidget();
+      const widgetRefresh = widget?.refreshIdentity?.bind(widget);
+      const own =
+        options.assertion || !widgetRefresh
+          ? endOwnSession().then(() => exchangeIdentity())
+          : Promise.resolve(true); // 純 widget 橋接：本實例沒有自己的身分可換
+      const viaWidget = widgetRefresh ? callWidget(widgetRefresh) : Promise.resolve(true);
+      const [ownOk, widgetOk] = await Promise.all([own, viaWidget]);
+      return ownOk && widgetOk;
     },
 
     async logout(): Promise<void> {
-      const token = sessionToken;
-      sessionToken = null;
-      sessionExpiresAt = null;
-      tokens = null;
-      // 帳密登入的 JWT 無狀態，沒有要通知的對象；Session 則必須讓後端作廢。
-      if (!token) return;
-      await fetch(`${AUTH}/logout`, {
-        method: 'POST',
-        headers: { authorization: `Bearer ${token}`, ...(options.key ? { 'x-api-key': options.key } : {}) },
-      }).catch(() => {
-        // 網路不通時本地已清乾淨，剩下那張票會自己過期——不值得讓呼叫端收到例外
-      });
+      // 使用者登出貴站＝這一頁上的 HyAgent Session 都要作廢，不分 headless 或內建 widget。
+      // 兩邊並行，都不外拋（見 endOwnSession / callWidget）。
+      const widget = pageWidget();
+      const widgetLogout = widget?.logout?.bind(widget);
+      await Promise.all([endOwnSession(), widgetLogout ? callWidget(widgetLogout) : null]);
+    },
+
+    me(): Promise<Applicant> {
+      return request<Applicant>(`${AUTH}/me`);
     },
 
     conversations: {

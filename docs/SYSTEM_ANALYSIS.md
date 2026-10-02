@@ -197,15 +197,24 @@ sequenceDiagram
     participant Server as HyAgent Server
 
     User->>Host: 登入既有帳號
-    Host->>HostBE: 取得 HyAgent SSO Token
-    HostBE->>HostBE: 以自家私鑰簽署 Identity Assertion（iss=Tenant ID / sub / exp / jti）
-    HostBE-->>Host: 短效 User Token
-    Host->>Widget: 傳入 data-token-url + pk_ Key（憑證走 postMessage，不進 URL）
+    Note over Host: 載入 widget.js，帶 data-key（pk_）與 data-token-url
+    Widget->>Host: postMessage identity:request
+    Host->>HostBE: GET data-token-url（同源帶 cookie）
+    HostBE->>HostBE: 以自家私鑰簽署 Identity Assertion（iss=Tenant ID / sub / exp / jti，60 秒）
+    HostBE-->>Host: { token, expiresIn: 60 }
+    Host->>Widget: postMessage identity:response（憑證不進 URL）
     Widget->>Server: POST /api/auth/sso/exchange + Tenant Key
     Server->>Server: 以 iss 取租戶 + 以其登記公鑰驗章 + jti 防重放
     Server-->>Widget: 不透明 sessionToken（無 refresh；到期前 60 秒重走 token provider）
     Widget->>Server: Bearer Token + Tenant Key 呼叫 API
+    User->>Host: 登出宿主站台
+    Host->>Widget: OAAgent.logout() → postMessage session:logout
+    Widget->>Server: POST /api/auth/logout（作廢 Session）
+    Widget-->>Host: session:ack，宿主再導頁
 ```
+
+宿主若可不經登出直接換人，改呼叫 `OAAgent.refreshIdentity()`：面板先作廢舊 Session，再從
+`identity:request` 重走一次。規則見[自動登入規格](HyAgent客戶網站自動登入規格.md) §5.5。
 
 目前的帳號連結採「外部 `sub` 直接作為 HyAgent `userId`」的輕量模型，尚無獨立 `account_links` 資料表。這代表不同身分提供者或同一 `sub` 在不同租戶的唯一性，需依 `tenantId + userId` 組合判斷。
 
@@ -534,7 +543,8 @@ sequenceDiagram
 ### 11.1 Widget
 
 - `/sdk/widget.js` 建立 iframe 並以 `?key=pk_` 傳遞 Publishable Key。
-- 支援 Form、Locale、Theme、Position、User Token 等參數。
+- 支援 Form、Locale、Theme、Position、Token URL（`data-token-url`，指向宿主的 Identity Endpoint）等參數。
+- 提供 `OAAgent.logout()` / `refreshIdentity()`：宿主登出時必須呼叫前者，不經登出直接換人時呼叫後者。
 - Widget Config 為公開 Endpoint，但只應回外觀、服務開關與可公開建議問題。
 - 事件以命名事件回傳宿主，例如送出完成。
 - `postMessage` 接收方必須檢查精確 Origin 與 Message Shape。

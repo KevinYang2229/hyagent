@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>登入 — Beta Cloud（SDK 自訂聊天室）</title>
+    <link rel="icon" type="image/png" href="/hy_logo.png" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <!-- 這是「整合方自家網站」的登入頁，不是 HyAgent 的登入頁。
+         本頁刻意**不載入 app.js**：登入頁上沒有已登入的使用者，SDK 也取不到票。 -->
+    <header class="site-header">
+      <div class="brand"><span class="logo">B</span> Beta Cloud</div>
+    </header>
+
+    <main class="login-page">
+      <h1>登入 Beta Cloud</h1>
+      <p class="sub">
+        模擬客戶系統自家的登入頁。選一位使用者，之後 <code>/api/mybot/identity</code>
+        就以這個 Session 的身分簽 Assertion，登出之後一律回 401——
+        身分一律由後端的登入狀態決定，前端傳什麼都不算（規格 §5.2）。
+      </p>
+
+      <!-- 兩張卡由 server.mjs 依 .env 的 DEMO_USER_* / DEMO_USER2_* 產生 -->
+      <form method="post" action="/login" class="user-cards">
+        <!--USER_CARDS-->
+      </form>
+
+      <p class="tip">
+        登入後開「線上客服」，按 F12 看 console：<code>[sdk-custom-ui]</code> 那幾行會印出簽出來的
+        claims 與 HyAgent 最終認定的登入者。再按右上「登出」：頁面會先 <code>await oa.logout()</code>
+        請 HyAgent 作廢 Session，再送出本站的登出表單（整合手冊 §5.3）；換另一位登入，console 的登入者要跟著換。
+      </p>
+    </main>
+  </body>
+</html>

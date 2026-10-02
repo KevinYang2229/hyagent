@@ -129,7 +129,10 @@ POST /api/auth/logout
 Authorization: Bearer <sessionToken>
 ```
 
-回 `204`。
+回 `204`。Session 是伺服器端有狀態的，只清瀏覽器那一份等於留一張還能用的票在後端。
+
+Widget 的 `sessionToken` 在**面板網域**裡，宿主頁拿不到——使用者登出貴站時**必須**在導頁前
+`await window.OAAgent.logout()`，由面板代打這支（見下「登出與換人」）。
 
 ## 把 token 交給 widget
 
@@ -166,7 +169,7 @@ cache: no-store
 | CSRF | 同源請求瀏覽器會帶 `Sec-Fetch-Site: same-origin`，**建議**據此擋掉他站的簡單請求 |
 | 速率限制 | 建議以使用者為單位，例如 60 次/分鐘 |
 
-回應接受 `{"token":"<jwt>","expiresIn":300}`（規格格式），也相容 `{"assertion":…}`、`{"userToken":…}` 與包在 `{"data":{…}}` 裡的形狀。
+回應接受 `{"token":"<jwt>","expiresIn":60}`（規格格式），也相容 `{"assertion":…}`、`{"userToken":…}` 與包在 `{"data":{…}}` 裡的形狀。
 
 端點**必須在宿主自己的後端**（Next.js route handler、Vercel Function、既有 API 皆可）：簽章金鑰放到瀏覽器等於把它公開。純靜態站台（無任何後端）沒辦法安全地做 SSO handoff，只能讓使用者在面板內自行登入。
 
@@ -194,9 +197,12 @@ widget.js（宿主頁）與面板 iframe 之間走 `postMessage`，**憑證不�
 iframe → host   handshake          面板就緒
 iframe → host   identity:request   要求宿主頁呼叫 Token Provider
 host   → iframe identity:response  回傳憑證或錯誤
+host   → iframe session:logout     OAAgent.logout()：作廢 Session 並清面板的本地憑證
+host   → iframe identity:refresh   OAAgent.refreshIdentity()：作廢舊 Session 後重走握手
+iframe → host   session:ack        上面兩則處理完的回報（配對 requestId）
 ```
 
-訊息信封為 `{ source: "hyagent", version: 1, type, requestId?, payload? }`；兩個方向都以具體 origin 為 `targetOrigin`（不使用 `"*"`），收訊端同時檢查 `event.origin` 與 `event.source`。宿主頁不需要為此寫任何程式碼 —— widget.js 已包辦，宿主只要提供 `data-token-url` 端點。
+訊息信封為 `{ source: "hyagent", version: 1, type, requestId?, payload? }`；兩個方向都以具體 origin 為 `targetOrigin`（不使用 `"*"`），收訊端同時檢查 `event.origin` 與 `event.source`。憑證的傳遞宿主頁不需要寫任何程式碼 —— widget.js 已包辦，宿主只要提供 `data-token-url` 端點；宿主要寫的只有登出時那一段（見下「登出與換人」）。
 
 宿主頁仍可照舊接收 widget 事件（事件名與 detail 形狀未變）：
 
@@ -216,20 +222,34 @@ window.addEventListener('oa-agent:submitted', (e) => { /* e.detail.submission */
 面板會自動向 `data-token-url` 再取一張新的 Assertion，整合方不需要處理。
 （`POST /api/auth/refresh` 仍存在，但只服務 HyAgent 自己的帳密登入路徑。）
 
-實際觸發的時機有三個，你的 Identity Endpoint 只要照常回一張**當下新簽發**的票即可：
+除了面板第一次要身分，續期還會在這兩個時機再打你的 Identity Endpoint，你只要照常回一張**當下新簽發**的票即可：
 
 | 時機 | 說明 |
 | --- | --- |
 | Session 到期前 60 秒 | 面板自行重走握手，使用者無感；不需要任何互動 |
 | Session 被作廢而回 `401` | 撤銷 `kid` 或依 `sub` 作廢後，面板當場重取一張。使用者若已被停權，你的端點應回 `401`，面板隨即落回自行登入 |
-| 使用者按登出 | 面板呼叫 `POST /api/auth/logout` 讓後端作廢該 Session，不只是清掉瀏覽器那一份 |
 
 > 續期會**再打一次**你的 Identity Endpoint，所以它必須能被重複呼叫：每次現簽一張新的
 > （新的 `jti`），不可回快取的同一張——那會被 `TOKEN_REPLAYED` 拒絕。
 > 建議的速率限制（60 次/分鐘/使用者）對這個頻率綽綽有餘：一小時的 Session 正常只會續期一次。
 
 headless SDK（`@hyagent/sdk`）的對應做法是把 `assertion` 傳成函式而非字串，
-SDK 會在同樣的兩個時機自動呼叫它；另有 `refreshIdentity()` 與 `logout()` 可主動呼叫。
+SDK 會在同樣的兩個時機自動呼叫它。
+
+### 登出與換人
+
+SDK 看不到貴站的登入狀態，下面兩件只能由宿主頁通知：
+
+| 情境 | 宿主頁要做 |
+| --- | --- |
+| 使用者登出貴站（**必做**） | 導頁前 `await window.OAAgent.logout()`：面板呼叫 `POST /api/auth/logout` 讓後端作廢 Session，並清掉面板網域的本地憑證 |
+| 貴站**不經登出**直接換人（代理人、客服代操作；**貴站無此功能可忽略**） | 換完之後呼叫 `window.OAAgent.refreshIdentity()`：面板先作廢舊 Session，再向 `data-token-url` 重取一張 |
+
+一般「登出 → 以另一位重新登入」的流程由第一列涵蓋。用 headless SDK（`@hyagent/sdk`）的話改呼叫
+SDK 實例的 `logout()` / `refreshIdentity()`；頁面上有內建 Widget 時它會一併轉給面板，不必兩邊都呼叫。
+接線範例見[整合手冊](HyAgent客戶端整合手冊.md) §5.3、§5.4。
+
+### 撤銷
 
 撤銷有兩個維度，都在 HyAgent 後台操作：
 

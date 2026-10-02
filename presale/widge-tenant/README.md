@@ -66,7 +66,7 @@ header 右上角有「登出」，換人則走「登出 → 回登入頁選另�
 接線的程式碼在 [index.html](index.html) 最底下那段，約十行，可以直接照抄。
 
 > 貴站若有「**不登出直接切換身分**」的功能（職務代理人、客服代操作、管理者 impersonate），
-> 換完身分後要改呼叫 `OAAgent.refreshIdentity()`（手冊 §5.3 第二列），否則面板會留在前一位
+> 換完身分後要改呼叫 `OAAgent.refreshIdentity()`（手冊 §5.4），否則面板會留在前一位
 > 身上。一般網站沒有這種功能，本 demo 也就不示範。
 
 兩位使用者預設是 `507 測試員／財務部／協理` 與 `902 王小明／研發部／工程師`，
@@ -157,7 +157,7 @@ server 只存金鑰的 sha256，**pk 原文只在下列時機回傳一次，事�
 | demo 裡的東西 | 正式環境由誰做 |
 |---------------|----------------|
 | `/login` 選人、cookie session（記憶體 Map） | 整合方自家既有的登入機制。重點只有一個：Identity Endpoint 的身分**必須**由這個 session 決定 |
-| 登出／換人時呼叫 `OAAgent.logout()` / `refreshIdentity()` | 整合方的頁面，一行都不能少（手冊 §5.3） |
+| 登出時呼叫 `OAAgent.logout()`；不登出直接換人才另外需要 `refreshIdentity()` | 整合方的頁面，登出那段一行都不能少（手冊 §5.3、§5.4） |
 | `GET /api/mybot/identity` 簽 Assertion | 整合方後端，依自家登入 Session 簽（私鑰留後端） |
 | 注入 widget 的頁面 | 整合方的網站頁面 |
 | Assertion 公鑰 | 整合方自行產生金鑰對後把**公鑰**給你，你在後台登記 |

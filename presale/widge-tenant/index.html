@@ -17,9 +17,9 @@
         <a href="#usage">使用方式</a>
         <a href="https://www.hyweb.com.tw/">關於</a>
       </nav>
-      <!-- 已登入狀態 ＋ 換人／登出：整塊由 server.mjs 依「目前 cookie session 的使用者」置換，
+      <!-- 已登入狀態 ＋ 登出：整塊由 server.mjs 依「目前 cookie session 的使用者」置換，
            確保「網站上顯示的人」與「Assertion 簽出去的人」永遠是同一位。
-           換人／登出是整合手冊 §5.3 的必做項目，擺兩顆按鈕在這裡讓它可以當場驗。 -->
+           登出是整合手冊 §5.3 的必做項目，擺在這裡讓它可以當場驗；換人走「登出 → 回登入頁選另一位」。 -->
       <!--SESSION_BOX-->
     </header>
 
@@ -80,7 +80,7 @@
 
       <!-- ── 使用方式 ── -->
       <section id="usage" class="usage">
-        <h2>怎麼接？三步</h2>
+        <h2>怎麼接？四步</h2>
         <ol>
           <li>
             跟我們申請租戶，拿到 Tenant ID 與公開金鑰 <code>pk_…</code>；
@@ -96,6 +96,10 @@
               >&lt;script src="https://hyagent.example.com/sdk/widget.js"
               data-key="pk_…" data-token-url="/api/mybot/identity"&gt;&lt;/script&gt;</code
             >
+          </li>
+          <li>
+            使用者<strong>登出</strong>時，先 <code>await OAAgent.logout()</code> 再導頁（必做，見下方說明）。
+            貴站若可不經登出直接換人，換完改呼叫 <code>OAAgent.refreshIdentity()</code>；沒有此功能可忽略。
           </li>
         </ol>
         <p class="note">

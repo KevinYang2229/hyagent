@@ -3,21 +3,29 @@
 | 項目 | 內容 |
 | --- | --- |
 | 適用對象 | 要把 HyAgent Widget 嵌進自家網站，並讓已登入的使用者**免再登入一次**的開發團隊 |
-| 你需要動到的部分 | 後端一支 API、前端一行 `<script>`、一組金鑰對 |
+| 你需要動到的部分 | 一組金鑰對、後端一支 API、前端一行 `<script>`，以及登出時通知 Widget 的一小段程式 |
 | 預估工作量 | 半天～一天（含測試） |
 | 完整規範 | [HyAgent客戶網站自動登入規格.md](HyAgent客戶網站自動登入規格.md)。本手冊是它的操作摘要，兩者若有出入**以規格為準** |
 
 ---
 
-## 1. 你只要做三件事
+## 1. 你要做的事
 
 | # | 做什麼 | 誰做 | 頻率 |
 | --- | --- | --- | --- |
 | 1 | 產生一組金鑰對，**公鑰**交給 HyAgent 登記，**私鑰**自己留著 | 維運 / 後端 | 導入一次，之後約每年輪替 |
 | 2 | 後端開一支 **Identity Endpoint**，用私鑰簽發 60 秒短效憑證 | 後端 | 主要工作 |
 | 3 | 前端貼一行 `<script>` | 前端 | 5 分鐘 |
+| 4 | 使用者**登出**貴站時，先呼叫 `OAAgent.logout()` 再導頁 | 前端 | 照抄 §5.3，約 10 分鐘 |
+| 5 | 使用者**不經登出直接切換帳號**時，呼叫 `OAAgent.refreshIdentity()`。**貴站若無此功能可忽略** | 前端 | 見 §5.4 |
 
 驗章、建立 Session、憑證續期都由 HyAgent 與 Widget 自動處理，**你不需要寫**。
+
+第 4、5 件沒辦法自動：Widget 看不到貴站的登入狀態，使用者登出或換人只有貴站知道。漏掉第 4 件，
+使用者登出貴站之後小幫手裡仍是上一位，直到 Session 自然過期——共用電腦上那正是登出要防的情境。
+
+第 5 件指的是代理人、客服代操作這類「不登出就換成另一位」的功能。一般網站的換人是
+「登出 → 回登入頁以另一位登入」，第 4 件就已涵蓋。
 
 ---
 
@@ -280,7 +288,7 @@ curl -i -b "你的登入cookie" https://your-site.example.com/api/mybot/identity
 
 ## 5. 前端：掛上 Widget
 
-### 5.1 一行 script（宿主頁不需要寫任何 JavaScript）
+### 5.1 一行 script（載入與自動登入不需要寫 JavaScript）
 
 ```html
 <script src="https://{hyagent-host}/sdk/widget.js"
@@ -288,6 +296,8 @@ curl -i -b "你的登入cookie" https://your-site.example.com/api/mybot/identity
         data-token-url="/api/mybot/identity"
         async></script>
 ```
+
+> 這一行涵蓋載入與自動登入；使用者**登出**時還要另外通知 Widget，見 §5.3。
 
 | 屬性 | 必要 | 說明 |
 | --- | --- | --- |
@@ -323,16 +333,12 @@ window.addEventListener('oa-agent:submitted', (e) => {
 
 另有 `oa-agent:close`、`oa-agent:expand`。
 
-### 5.3 登出與切換帳號 — **這段一定要做**
+### 5.3 登出 — **這段一定要做**
 
 HyAgent Session 存在伺服器端，只清瀏覽器那份等於留一張還能用的票在後端。Widget 的那份還在
 **我們的網域**裡，貴站的程式碼碰不到，也不會因為你導到登入頁就消失——同一個分頁重整也不會。
 
-| 情境 | 必須做 |
-| --- | --- |
-| 使用者登出貴站 | `await window.OAAgent.logout()`（Widget）或 `logout()`（headless SDK），再導頁 |
-| 使用者在貴站**切換帳號** | 先換掉貴站自己的登入狀態，再呼叫 `refreshIdentity()`；否則 Widget 會維持前一位的身分直到過期 |
-| 帳號停權 / 離職 | 見 §9.3 —— 前端無從察覺，必須走後台流程 |
+使用者登出貴站時，先 `await window.OAAgent.logout()`（Widget）或 `logout()`（headless SDK），再導頁：
 
 ```html
 <!-- 登出：先讓面板作廢 Session，再送出你自己的登出表單 -->
@@ -352,13 +358,31 @@ HyAgent Session 存在伺服器端，只清瀏覽器那份等於留一張還能�
 </script>
 ```
 
-兩支都回傳 Promise。`await` 是為了「使用者從沒點開過面板」的情況——那時面板還沒載入，
+`logout()` 回傳 Promise。`await` 是為了「使用者從沒點開過面板」的情況——那時面板還沒載入，
 `widget.js` 會先把它建起來再請它清；面板那側是同步發動、帶 `keepalive` 的請求，導頁不會
 取消它。等不到回應時最多 5 秒就放行，不會把導頁卡住。
 
 可跑的完整範例：[presale/widge-tenant](../presale/widge-tenant)（可登出，並以另一位使用者重新登入）。
+headless SDK 的寫法相同，改成 `await oa.logout()`：見 [presale/sdk-custom-ui](../presale/sdk-custom-ui) 的 `app.ts`。
 
-### 5.4 自建 UI（不使用內建浮動按鈕）
+> 帳號停權 / 離職不在此列：那是伺服器端發起的變更，前端無從察覺，必須走後台流程，見 §9.3。
+
+### 5.4 切換帳號 — 貴站若無此功能可忽略
+
+這裡指**不經登出**就把目前登入者換成另一位的功能，例如代理人、客服代操作、多帳號切換。
+一般「登出 → 回登入頁以另一位登入」的流程已由 §5.3 涵蓋，不需要這段。
+
+有此功能的話，換完貴站自己的登入狀態之後呼叫 `refreshIdentity()`：
+
+```js
+await switchUser(nextUserId);                     // 貴站自己的換人流程，先完成
+const ok = await window.OAAgent.refreshIdentity(); // false＝舊的已作廢但沒換到新身分，原因查 §7
+```
+
+面板會**先作廢舊 Session**，再向 `data-token-url` 取一張新憑證換發——順序不能反過來，
+否則同一個瀏覽器上會同時有兩個人的票還活著。不呼叫的話，Widget 會維持前一位的身分直到過期。
+
+### 5.5 自建 UI（不使用內建浮動按鈕）
 
 ```ts
 import { createOAAgent } from '@hyagent/sdk';
@@ -373,10 +397,12 @@ const oa = createOAAgent({
 });
 ```
 
-可用方法：`authenticate()`、`refreshIdentity()`、`logout()`、`conversations` / `forms`、`on(event, handler)`、`open()` / `close()` / `toggle()`、`loadWidget()`。範例見 `presale/sdk-custom-ui/`。
+可用方法：`authenticate()`、`refreshIdentity()`、`logout()`、`me()`（目前登入者）、`conversations` / `forms`、`on(event, handler)`、`open()` / `close()` / `toggle()`、`loadWidget()`。範例見 `presale/sdk-custom-ui/`。
 
 Widget（浮動按鈕）那條路走 `window.OAAgent`，除了 `open()` / `close()` / `toggle()` /
-`expand()` / `collapse()` 之外，同樣有 `logout()` 與 `refreshIdentity()`（見 §5.3）。
+`expand()` / `collapse()` 之外，同樣有 `logout()` 與 `refreshIdentity()`（見 §5.3、§5.4）。
+用 SDK 的 `loadWidget()` 掛內建 Widget 時，呼叫 SDK 實例的 `logout()` / `refreshIdentity()` 即可，
+它會一併轉給面板。
 
 ---
 
@@ -474,7 +500,8 @@ context 切到面板那個 frame，或勾選 selected context only 以外的顯�
 - [ ] `sub` 是穩定且不重複配發的內部 ID（不是 email）
 - [ ] 伺服器已 NTP 校時
 - [ ] 前端用 `data-token-url`（或 headless SDK 的函式形式），**沒有**把簽好的憑證寫死在頁面上
-- [ ] 使用者登出 / 切換帳號時有呼叫 `logout()` / `refreshIdentity()`
+- [ ] 使用者登出時先呼叫 `logout()` 再導頁
+- [ ] （貴站有「不經登出切換帳號」功能才需要）切換後有呼叫 `refreshIdentity()`
 - [ ] CSP 已放行 HyAgent 網域
 - [ ] 錯誤代碼只寫進日誌，沒有直接顯示給使用者
 
