@@ -368,6 +368,53 @@ export interface SkillLibraryView {
   tenants: { id: string; name: string; disabledServices: string[] }[];
 }
 
+export interface McpToolOverride {
+  disabled?: boolean;
+  requireConfirm?: boolean;
+  cardTitle?: string;
+}
+
+export interface McpServerConfig {
+  id: string;
+  name: string;
+  url: string;
+  ownerTenantId: string | null;
+  description: string;
+  keywords: string[];
+  timeoutMs: number;
+  enabled: boolean;
+  toolOverrides: Record<string, McpToolOverride>;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface McpServerStatus {
+  state: 'idle' | 'ok' | 'unreachable' | 'auth_failed';
+  lastError?: string;
+  lastOkAt?: string;
+  toolsFetchedAt?: string;
+}
+
+export interface McpToolRow {
+  name: string;
+  title?: string;
+  llmName: string;
+  effect: 'read' | 'write';
+  disabled: boolean;
+  problem?: 'name_invalid';
+}
+
+export interface McpServerView {
+  config: McpServerConfig;
+  status: McpServerStatus;
+  tools: McpToolRow[];
+}
+
+export interface McpServerListView {
+  signingEnabled: boolean;
+  servers: McpServerView[];
+}
+
 export const api = {
   listDirectoryUsers: (id: string) => req<{ users: DirectoryUser[] }>('GET', `/admin/tenants/${encodeURIComponent(id)}/users`),
   addDirectoryUser: (id: string, user: DirectoryUser) => req<{ users: DirectoryUser[] }>('POST', `/admin/tenants/${encodeURIComponent(id)}/users`, user),
@@ -429,6 +476,13 @@ export const api = {
   deleteTenant: (id: string) => req<{ id: string }>('DELETE', `/admin/tenants/${id}`),
   listScopes: () => req<ScopeDef[]>('GET', '/admin/scopes'),
   listSkills: () => req<SkillLibraryView>('GET', '/admin/skills'),
+  listMcpServers: () => req<McpServerListView>('GET', '/admin/mcp-servers'),
+  createMcpServer: (input: Partial<McpServerConfig> & Pick<McpServerConfig, 'id' | 'name' | 'url'>) =>
+    req<McpServerView>('POST', '/admin/mcp-servers', input),
+  updateMcpServer: (id: string, patch: Partial<Omit<McpServerConfig, 'id' | 'createdAt' | 'updatedAt'>>) =>
+    req<McpServerView>('PATCH', `/admin/mcp-servers/${encodeURIComponent(id)}`, patch),
+  deleteMcpServer: (id: string) => req<void>('DELETE', `/admin/mcp-servers/${encodeURIComponent(id)}`),
+  refreshMcpServer: (id: string) => req<McpServerView>('POST', `/admin/mcp-servers/${encodeURIComponent(id)}/refresh`),
   getTenantPolicy: (id: string) => req<TenantPolicyView>('GET', `/admin/tenants/${id}/policy`),
   putTenantPolicy: (
     id: string,

@@ -1140,3 +1140,10 @@ a {
 .report-date-range > .field-hint { flex-shrink: 0; }
 .report-date-range .date-picker-trigger-btn { max-width: none; min-width: 0; }
 .report-date-range .picker-display-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---- MCP 服務頁 ---- */
+.mcp-server { border-top: 1px solid var(--border-color, #e5e7eb); padding: 1rem 0; }
+.mcp-server header { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.actions { display: flex; flex-wrap: wrap; gap: .5rem; margin: .5rem 0; }
+.form-errors { color: #b91c1c; }
+.row-error td { color: #b91c1c; }
