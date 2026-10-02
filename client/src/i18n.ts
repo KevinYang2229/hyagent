@@ -239,6 +239,15 @@ const zhHant = {
     pickFormat: "選擇要下載的格式：",
     close: "關閉",
   },
+  action: {
+    confirm: "確認執行",
+    cancel: "取消",
+    running: "執行中…",
+    done: "已完成",
+    failed: "執行失敗",
+    cancelled: "已取消",
+    expired: "已失效，請重新提出",
+  },
 };
 
 const en = {
@@ -522,6 +531,15 @@ const en = {
     dialogTitle: "Knowledge base report",
     pickFormat: "Choose a format to download:",
     close: "Close",
+  },
+  action: {
+    confirm: "Confirm",
+    cancel: "Cancel",
+    running: "Running…",
+    done: "Done",
+    failed: "Failed",
+    cancelled: "Cancelled",
+    expired: "Expired. Please ask again.",
   },
 };
 

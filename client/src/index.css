@@ -719,3 +719,22 @@
 .my-skills p { margin: 6px 0; }
 .my-skills ul { padding-left: 20px; }
 .my-skills li { margin: 10px 0; }
+
+/* 寫入動作確認卡片 */
+.confirm-card {
+  margin-top: 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: var(--card-bg);
+}
+.confirm-card-title { font-weight: 600; margin-bottom: 0.5rem; }
+.confirm-card-fields { display: grid; gap: 0.25rem; margin: 0 0 0.75rem; }
+.confirm-card-field { display: grid; grid-template-columns: minmax(4rem, max-content) 1fr; gap: 0.75rem; }
+.confirm-card-field dt { opacity: 0.7; }
+.confirm-card-field dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.confirm-card-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.confirm-card-actions button { min-height: 2.5rem; padding: 0 1rem; border-radius: 0.5rem; }
+.confirm-card-primary { background: var(--primary-color); color: white; border: none; }
+.confirm-card-status { opacity: 0.8; }
+.confirm-card-error { color: #b91c1c; margin-top: 0.25rem; }

@@ -10,6 +10,7 @@ import type {
   FieldOption,
   FieldSpec,
   LeaveBalance,
+  PendingActionView,
   ReportRef,
   SessionStatus,
   SubmissionInfo,
@@ -22,6 +23,7 @@ export type {
   FieldOption,
   FieldSpec,
   LeaveBalance,
+  PendingActionView,
   ReportRef,
   SessionStatus,
   SubmissionInfo,
@@ -37,6 +39,10 @@ export interface TurnData {
   suggestions?: string[];
   /** 本回合啟動的報告（僅報告服務會帶） */
   report?: ReportRef;
+  /** 本回合產生的待確認寫入動作（畫確認卡片） */
+  pendingAction?: PendingActionView;
+  /** 確認端點回傳：執行是否成功 */
+  actionOk?: boolean;
 }
 
 /** 一種可下載格式：format 供 API 呼叫用，filename 是後端算好的實際檔名（含中文標題），供 <a download> 用 */
@@ -464,6 +470,22 @@ export const api = {
   /** 確認送出（不經 LLM，確認畫面按「送出」用）；回傳含 submission 的 turn */
   submit(userId: string, convId: string): Promise<TurnData> {
     return request<TurnData>(`${BASE}/${convId}/submit`, {
+      method: 'POST',
+      headers: headers(userId),
+    });
+  },
+
+  /** 確認卡片「確認」：不經 LLM，後端重檢權限後執行 */
+  confirmAction(userId: string, convId: string, actionId: string): Promise<TurnData> {
+    return request<TurnData>(`${BASE}/${convId}/actions/${actionId}/confirm`, {
+      method: 'POST',
+      headers: headers(userId),
+    });
+  },
+
+  /** 確認卡片「取消」 */
+  cancelAction(userId: string, convId: string, actionId: string): Promise<TurnData> {
+    return request<TurnData>(`${BASE}/${convId}/actions/${actionId}/cancel`, {
       method: 'POST',
       headers: headers(userId),
     });

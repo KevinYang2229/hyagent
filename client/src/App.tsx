@@ -16,12 +16,14 @@ import {
   type Definition,
   type FormSummary,
   type LeaveBalance,
+  type PendingActionView,
   type SessionStatus,
   type SubmissionInfo,
   type TurnData,
 } from './api';
 import type { TenantAppearance } from '@hyagent/shared';
 import { changeLanguage } from './i18n';
+import { ConfirmActionCard } from './ConfirmActionCard';
 import { debugLog } from './debugLog';
 import { embedConfig, fetchAppearance } from './embedConfig';
 import { hostBridge, type UiStatePayload } from './hostBridge';
@@ -51,6 +53,8 @@ interface ChatMessage {
    * 一段對話可能產生多份報告，各自的進度與下載入口要跟著它所屬的那則回覆走。
    */
   reportId?: string;
+  /** 本則回覆附帶的待確認寫入動作（確認卡片） */
+  pendingAction?: PendingActionView;
 }
 
 // 氣泡下方時間：YYYY-MM-DD HH:mm:ss
@@ -495,10 +499,10 @@ export default function App() {
     };
   }, [authUser]);
 
-  function pushMsg(role: Role, text: string, suggestions?: string[], reportId?: string) {
+  function pushMsg(role: Role, text: string, suggestions?: string[], reportId?: string, pendingAction?: PendingActionView) {
     setMessages((prev) => [
       ...prev,
-      { id: nextId(), role, text, suggestions, reportId, at: Date.now() },
+      { id: nextId(), role, text, suggestions, reportId, pendingAction, at: Date.now() },
     ]);
   }
 
@@ -576,7 +580,7 @@ export default function App() {
     setSubmission(data.submission ?? null);
     // 本回合啟動了報告產生（僅報告服務會帶）：把 id 掛在這則回覆上，
     // 由該則訊息下方的膠囊按鈕負責輪詢與開啟下載彈窗
-    if (data.reply) pushMsg('agent', data.reply, data.suggestions, data.report?.id);
+    if (data.reply) pushMsg('agent', data.reply, data.suggestions, data.report?.id, data.pendingAction);
 
     // 只在「剛填寫完畢（→confirming）」或「剛送出（→submitted）」的轉變當下主動開表單；
     // 停留在同一狀態（例如 confirming 中繼續問話）不再強制彈出。
@@ -711,6 +715,21 @@ export default function App() {
   }
 
   // 取消：打後端 cancel 端點（非送對話訊息，Agent 無取消工具）
+  // 確認卡片：不經 LLM，直接打確認／取消端點；回覆另以一則訊息顯示
+  async function confirmPendingAction(action: PendingActionView): Promise<{ ok: boolean; reply: string }> {
+    if (!convId) throw new Error('no conversation');
+    const turn = await api.confirmAction(userId, convId, action.id);
+    if (turn.reply) pushMsg('agent', turn.reply);
+    return { ok: turn.actionOk === true, reply: turn.reply ?? '' };
+  }
+
+  async function cancelPendingAction(action: PendingActionView): Promise<{ reply: string }> {
+    if (!convId) throw new Error('no conversation');
+    const turn = await api.cancelAction(userId, convId, action.id);
+    if (turn.reply) pushMsg('agent', turn.reply);
+    return { reply: turn.reply ?? '' };
+  }
+
   async function handleCancel() {
     if (!convId || busy) return;
     setBusy(true);
@@ -1067,6 +1086,13 @@ export default function App() {
                       m.text
                     )}
                   </div>
+                  {m.pendingAction && (
+                    <ConfirmActionCard
+                      action={m.pendingAction}
+                      onConfirm={() => confirmPendingAction(m.pendingAction!)}
+                      onCancel={() => cancelPendingAction(m.pendingAction!)}
+                    />
+                  )}
                   {/* 送出日期時間 + 訊息動作（hover 顯示 icon：複製；使用者訊息另有編輯。tooltip/aria 保留文字語意） */}
                   <span className="msg-meta">
                     <span className="msg-time">{formatTime(m.at)}</span>
