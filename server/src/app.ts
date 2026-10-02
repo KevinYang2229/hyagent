@@ -13,6 +13,7 @@ import { tenantRateLimit } from '@/middlewares/tenant-rate-limit';
 import { tenantMonthlyQuota } from '@/middlewares/tenant-quota';
 import { tenantService } from '@/modules/tenant/tenant.service';
 import { authRouter } from '@/modules/auth/auth.routes';
+import { mcpPublicRouter } from '@/modules/mcp/mcp.routes';
 import { conversationRouter } from '@/modules/conversation/conversation.routes';
 import { formRouter } from '@/modules/form/form.routes';
 import { knowledgeMemberRouter } from '@/modules/knowledge/knowledge.member.routes';
@@ -103,6 +104,8 @@ export function createApp(): Express {
   app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(openapiSpec as object));
 
   // 公開：登入 / 換發 token
+  // MCP 呼叫 JWT 的公鑰（MCP server 驗章用；公開、不需登入）
+  app.use(mcpPublicRouter);
   app.use('/api/auth', authRouter);
 
   // 受保護：需帶有效 access token 才能操作
