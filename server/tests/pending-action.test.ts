@@ -40,6 +40,20 @@ describe('buildConfirmCard', () => {
     ]);
   });
 
+  it('原型鏈鍵名（constructor 等）不當成 schema 欄位，也不崩潰', () => {
+    // schema 沒有 constructor 屬性，input 有 → 視為未知欄位
+    expect(buildConfirmCard(tool, { constructor: 'x' }).fields).toEqual([{ label: 'constructor', value: 'x' }]);
+    // schema 有 constructor 屬性、input 沒有 → 不顯示；有則用 schema 標籤
+    const withCtor: ToolDef = { ...tool, inputSchema: { type: 'object', properties: { constructor: { type: 'string', title: '建構' } } } };
+    expect(buildConfirmCard(withCtor, {}).fields).toEqual([]);
+    expect(buildConfirmCard(withCtor, { constructor: 'y' }).fields).toEqual([{ label: '建構', value: 'y' }]);
+    expect(buildConfirmCard(tool, { toString: 'z' }).fields).toEqual([{ label: 'toString', value: 'z' }]);
+  });
+
+  it('JSON.stringify 得 undefined 的值（函式）省略', () => {
+    expect(buildConfirmCard(tool, { note: (() => 1) as never }).fields).toEqual([]);
+  });
+
   it('標題取 confirmTitle，否則取 description', () => {
     expect(buildConfirmCard(tool, {}).title).toBe('預約會議室');
     expect(buildConfirmCard({ ...tool, confirmTitle: '確認預約' }, {}).title).toBe('確認預約');

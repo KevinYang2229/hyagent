@@ -44,7 +44,9 @@ function formatValue(value: unknown, prop: PropSchema | undefined): string | und
   if (typeof value === 'string') return truncate(prop?.['x-display'] === 'html' ? stripHtml(value) : value);
   if (typeof value === 'number' || typeof value === 'boolean') return String(value);
   if (Array.isArray(value) && value.every(isPrimitive)) return truncate(value.map(String).join('、'));
-  return truncate(JSON.stringify(value));
+  // 函式 / symbol 等 JSON.stringify 會回 undefined，視為沒有可顯示的值
+  const json = JSON.stringify(value) as string | undefined;
+  return json === undefined ? undefined : truncate(json);
 }
 
 function labelOf(key: string, prop: PropSchema | undefined): string {
@@ -58,13 +60,15 @@ export function buildConfirmCard(
   input: Record<string, unknown>,
 ): ConfirmCard {
   const props = (tool.inputSchema.properties ?? {}) as Record<string, PropSchema>;
-  const known = Object.keys(props).filter((k) => k in input);
-  const extra = Object.keys(input).filter((k) => !(k in props));
+  // 用 hasOwn 而非 in：input / schema 的鍵名可能是 constructor、toString 等原型鏈上的名字
+  const known = Object.keys(props).filter((k) => Object.hasOwn(input, k));
+  const extra = Object.keys(input).filter((k) => !Object.hasOwn(props, k));
+  const propOf = (k: string): PropSchema | undefined => (Object.hasOwn(props, k) ? props[k] : undefined);
   const fields: ConfirmCardField[] = [];
   for (const key of [...known, ...extra]) {
-    const value = formatValue(input[key], props[key]);
+    const value = formatValue(input[key], propOf(key));
     if (value === undefined) continue;
-    fields.push({ label: labelOf(key, props[key]), value });
+    fields.push({ label: labelOf(key, propOf(key)), value });
   }
   return { title: tool.confirmTitle ?? tool.description, fields };
 }
