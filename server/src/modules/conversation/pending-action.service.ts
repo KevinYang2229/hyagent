@@ -18,7 +18,14 @@ const RESULT_NOTE_MAX_CHARS = 500;
 
 function resultNote(result: unknown): string {
   if (result === undefined) return '';
-  const s = typeof result === 'string' ? result : JSON.stringify(result);
+  // 絕不可丟例外：此時工具已執行成功，摘要失敗不得讓成功變成「失敗」而誘使使用者重試
+  let s: string | undefined;
+  try {
+    s = typeof result === 'string' ? result : JSON.stringify(result);
+  } catch {
+    return '';
+  }
+  if (s === undefined) return '';
   return `\n（執行結果：${s.length > RESULT_NOTE_MAX_CHARS ? `${s.slice(0, RESULT_NOTE_MAX_CHARS)}…` : s}）`;
 }
 
