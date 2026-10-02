@@ -371,3 +371,22 @@ export interface MySkillsView {
   roles: { id: string; name: string; description?: string }[];
   skills: { id: string; label: string; description: string }[];
 }
+
+/** 寫入動作確認卡片的一列（給人看的標籤與值） */
+export interface ConfirmCardField {
+  label: string;
+  value: string;
+}
+
+/** 寫入動作確認卡片 */
+export interface ConfirmCard {
+  title: string;
+  fields: ConfirmCardField[];
+}
+
+/** 前端看到的待確認動作：不含工具 id 與原始參數，確認時只帶 id 回來 */
+export interface PendingActionView {
+  id: string;
+  summary: ConfirmCard;
+  expiresAt: string;
+}
