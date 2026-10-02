@@ -20,15 +20,22 @@ export function createMcpHttpApp(opts: McpHttpAppOptions): Express {
     res.json({ ok: true });
   });
   app.post('/mcp', requireHyAgent(opts.verifier), async (req, res) => {
-    const server = new McpServer({ name: opts.name, version: opts.version });
-    opts.register(server);
-    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-    res.on('close', () => {
-      void transport.close();
-      void server.close();
-    });
-    await server.connect(transport);
-    await transport.handleRequest(req, res, req.body);
+    try {
+      const server = new McpServer({ name: opts.name, version: opts.version });
+      opts.register(server);
+      const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+      res.on('close', () => {
+        void transport.close();
+        void server.close();
+      });
+      await server.connect(transport);
+      await transport.handleRequest(req, res, req.body);
+    } catch {
+      // Express 4 不接 async 拒絕；不外洩錯誤訊息
+      if (!res.headersSent) {
+        res.status(500).json({ jsonrpc: '2.0', error: { code: -32603, message: 'Internal error' }, id: null });
+      }
+    }
   });
   return app;
 }

@@ -43,6 +43,8 @@ export interface HyAgentVerifier {
 
 const MAX_LIFETIME_SECONDS = 300;
 const JWKS_REFETCH_MIN_INTERVAL_MS = 30_000;
+/** 金鑰快取效期：超過就重抓 JWKS，被撤換的金鑰最久這麼久後失效 */
+export const JWKS_CACHE_TTL_MS = 5 * 60_000;
 const SYSTEM_SUBJECT = 'hyagent-system';
 
 async function defaultFetchJwks(url: string): Promise<JwksDocument> {
@@ -63,10 +65,12 @@ export function createHyAgentVerifier(opts: VerifierOptions): HyAgentVerifier {
   const now = opts.now ?? Date.now;
   const fetchJwks = opts.fetchJwks ?? defaultFetchJwks;
   let keys = new Map<string, KeyObject>();
-  let lastFetch = Number.NEGATIVE_INFINITY;
+  let lastSuccess = Number.NEGATIVE_INFINITY;
+  let lastAttempt = Number.NEGATIVE_INFINITY;
+  let inflight: Promise<void> | null = null;
   const seenJti = new Map<string, number>();
 
-  async function refresh(): Promise<void> {
+  async function doRefresh(): Promise<void> {
     const doc = await fetchJwks(opts.jwksUrl);
     const next = new Map<string, KeyObject>();
     for (const jwk of doc.keys) {
@@ -74,17 +78,32 @@ export function createHyAgentVerifier(opts: VerifierOptions): HyAgentVerifier {
         next.set(jwk.kid, createPublicKey({ key: jwk as never, format: 'jwk' }));
       }
     }
+    // 成功才整批換掉；失敗時保留既有快取
     keys = next;
-    lastFetch = now();
+    lastSuccess = now();
+  }
+
+  /** 併發呼叫共用同一次抓取；嘗試時間在 await 前記錄，失敗也受限頻。失敗不清快取。 */
+  async function refresh(): Promise<void> {
+    if (!inflight) {
+      lastAttempt = now();
+      inflight = doRefresh()
+        .catch(() => undefined)
+        .finally(() => {
+          inflight = null;
+        });
+    }
+    await inflight;
   }
 
   async function keyFor(kid: string): Promise<KeyObject> {
-    let key = keys.get(kid);
-    // 未知 kid 可能是 HyAgent 剛換鑰：限頻重抓一次
-    if (!key && now() - lastFetch >= JWKS_REFETCH_MIN_INTERVAL_MS) {
+    const cached = keys.get(kid);
+    const stale = now() - lastSuccess >= JWKS_CACHE_TTL_MS;
+    // 快取過期、或未知 kid（HyAgent 可能剛換鑰）：限頻重抓
+    if ((!cached || stale) && (inflight || now() - lastAttempt >= JWKS_REFETCH_MIN_INTERVAL_MS)) {
       await refresh();
-      key = keys.get(kid);
     }
+    const key = keys.get(kid);
     if (!key) throw new HyAgentAuthError('unknown_kid');
     return key;
   }
