@@ -1,15 +1,22 @@
-/** Agent 寄信確認流程（fake LLM）：propose 存草稿不寄；確認才寄；取消不寄；email.send 不可被 Agent 直呼。 */
+/** Agent 寫入確認流程（fake LLM，以 email.send 為例）：提議只建卡片不寄；確認才寄；取消、夾帶確認詞、過期皆不寄。 */
 import type { LLMProvider, LLMResult } from '@/lib/llm/types';
 import { agentAgentService } from '@/modules/conversation/agent.agent-service';
 import type { Session } from '@/modules/conversation/conversation.types';
+import { createPendingAction } from '@/modules/conversation/pending-action';
+import { makeToolContext, toolRegistry } from '@/modules/tools';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 import { stubSentEmails } from '@/lib/email/stub.connector';
 
 const usage = { inputTokens: 1, outputTokens: 1 };
+function res(partial: Partial<LLMResult>): LLMResult {
+  return { text: '', toolCalls: [], stopReason: 'end_turn', usage, model: 'test-model', keySource: 'platform', ...partial };
+}
 function scriptedLLM(results: LLMResult[]): LLMProvider {
   let i = 0;
   return { name: 'fake', createMessage: async () => results[Math.min(i++, results.length - 1)] };
 }
+const noLLM: LLMProvider = { name: 'fake', createMessage: async () => { throw new Error('不該進 LLM'); } };
+
 function makeSession(tenantId: string, partial: Partial<Session> = {}): Session {
   return {
     id: 's-email',
@@ -25,149 +32,119 @@ function makeSession(tenantId: string, partial: Partial<Session> = {}): Session 
   };
 }
 
-describe('Agent 寄信確認流程', () => {
+function tenantWithEmail(name: string): string {
+  const t = tenantStore.createTenant(name);
+  tenantStore.updateTenant(t.id, { grantedScopes: ['service:agent', 'email:write'] });
+  return t.id;
+}
+
+function makePendingEmail(tenantId: string, now = Date.now()) {
+  const tool = toolRegistry.resolve('email.send', makeToolContext({ tenantId, userId: 'kevin' }));
+  return createPendingAction(tool, { to: 'boss@x.com', subject: '會議改期', html: '<p>x</p>' }, now);
+}
+
+describe('Agent 寫入確認流程（email.send）', () => {
   beforeEach(() => {
     stubSentEmails.length = 0;
   });
 
-  it('LLM 呼 email.propose → 存草稿、不寄', async () => {
-    const t = tenantStore.createTenant('agent-email-propose');
-    tenantStore.updateTenant(t.id, { grantedScopes: ['service:agent', 'email:write'] });
+  it('LLM 呼叫 email_send → 只建確認卡片、不寄，回傳 pendingAction 視圖', async () => {
+    const tenantId = tenantWithEmail('agent-email-propose');
     const llm = scriptedLLM([
-      { text: '', toolCalls: [{ id: 't1', name: 'email_propose', input: { to: 'boss@x.com', subject: '會議改期', html: '<p>...</p>' } }], stopReason: 'tool_use', usage, model: 'test-model', keySource: 'platform' },
-      { text: '我已擬好給 boss@x.com 的信，主旨「會議改期」，確認寄出嗎？', toolCalls: [], stopReason: 'end_turn', usage, model: 'test-model', keySource: 'platform' },
+      res({ toolCalls: [{ id: 't1', name: 'email_send', input: { to: 'boss@x.com', subject: '會議改期', html: '<p>...</p>' } }], stopReason: 'tool_use' }),
+      res({ text: '我已擬好給 boss@x.com 的信，請確認。' }),
     ]);
-    const session = makeSession(t.id);
-    await agentAgentService.handleTurn(session, '幫我寄信給王經理', llm);
+    const session = makeSession(tenantId);
+    const out = await agentAgentService.handleTurn(session, '幫我寄信給王經理', llm);
 
-    expect(stubSentEmails).toHaveLength(0); // 尚未寄
-    expect(session.pendingEmail?.to).toBe('boss@x.com'); // 草稿已存
+    expect(stubSentEmails).toHaveLength(0);
+    expect(session.pendingAction?.toolId).toBe('email.send');
+    expect(out.pendingAction?.id).toBe(session.pendingAction?.id);
+    expect(out.pendingAction?.summary.fields.map((f) => f.label)).toEqual(['收件人', '主旨', '內文']);
+    const tr = session.messages.flatMap((m) => m.content).find((b) => b.type === 'tool_result') as { content: string };
+    expect(tr.content).toContain('"proposed":true');
   });
 
-  it('有 pendingEmail + 使用者確認 → 伺服器端寄出、清草稿（LLM 不參與）', async () => {
-    const t = tenantStore.createTenant('agent-email-confirm');
-    tenantStore.updateTenant(t.id, { grantedScopes: ['service:agent', 'email:write'] });
-    // fake LLM 不該被呼叫到（確認走快速路徑）；給一個會 throw 的以確保沒進 loop
-    const llm: LLMProvider = { name: 'fake', createMessage: async () => { throw new Error('不該進 LLM'); } };
-    const session = makeSession(t.id, { pendingEmail: { to: 'boss@x.com', subject: '會議改期', html: '<p>x</p>' } });
-    const res = await agentAgentService.handleTurn(session, '確認', llm);
+  it('提議時輸入不合法 → 回錯誤給 LLM、不建卡片', async () => {
+    const tenantId = tenantWithEmail('agent-email-invalid');
+    const llm = scriptedLLM([
+      res({ toolCalls: [{ id: 't1', name: 'email_send', input: { to: 'boss@x.com' } }], stopReason: 'tool_use' }),
+      res({ text: '請提供主旨與內容。' }),
+    ]);
+    const session = makeSession(tenantId);
+    await agentAgentService.handleTurn(session, '寄信', llm);
+    expect(session.pendingAction).toBeUndefined();
+  });
+
+  it.each(['確認', 'OK', '好，寄出', '幫我寄', '好的，寄出'])('有待確認動作 + 「%s」→ 伺服器端寄出（LLM 不參與）', async (text) => {
+    const tenantId = tenantWithEmail(`agent-email-confirm-${text}`);
+    const session = makeSession(tenantId, { pendingAction: makePendingEmail(tenantId) });
+    const out = await agentAgentService.handleTurn(session, text, noLLM);
 
     expect(stubSentEmails).toHaveLength(1);
     expect(stubSentEmails[0].to).toBe('boss@x.com');
-    expect(session.pendingEmail).toBeUndefined();
-    expect(res.reply).toContain('已寄出');
+    expect(session.pendingAction).toBeUndefined();
+    expect(out.reply).toContain('已完成');
   });
 
-  it('有 pendingEmail + 使用者取消 → 不寄、清草稿', async () => {
-    const t = tenantStore.createTenant('agent-email-cancel');
-    tenantStore.updateTenant(t.id, { grantedScopes: ['service:agent', 'email:write'] });
-    const llm = scriptedLLM([{ text: '好的，已取消。', toolCalls: [], stopReason: 'end_turn', usage, model: 'test-model', keySource: 'platform' }]);
-    const session = makeSession(t.id, { pendingEmail: { to: 'boss@x.com', subject: 's', html: '<p>x</p>' } });
-    await agentAgentService.handleTurn(session, '不要，取消', llm);
+  it.each(['不要，取消', 'OK 謝謝先這樣', '確認一下我的假還有幾天'])('有待確認動作 + 「%s」→ 不寄、動作失效', async (text) => {
+    const tenantId = tenantWithEmail(`agent-email-noconfirm-${text}`);
+    const llm = scriptedLLM([res({ text: '好的。' })]);
+    const session = makeSession(tenantId, { pendingAction: makePendingEmail(tenantId) });
+    await agentAgentService.handleTurn(session, text, llm);
 
     expect(stubSentEmails).toHaveLength(0);
-    expect(session.pendingEmail).toBeUndefined();
+    expect(session.pendingAction).toBeUndefined();
   });
 
-  it('有 pendingEmail + 「OK 謝謝先這樣」（夾帶確認詞但非確認）→ 不寄、清草稿', async () => {
-    const t = tenantStore.createTenant('agent-email-substr1');
-    tenantStore.updateTenant(t.id, { grantedScopes: ['service:agent', 'email:write'] });
-    const llm = scriptedLLM([{ text: '好的，有其他需要再說。', toolCalls: [], stopReason: 'end_turn', usage, model: 'test-model', keySource: 'platform' }]);
-    const session = makeSession(t.id, { pendingEmail: { to: 'boss@x.com', subject: 's', html: '<p>x</p>' } });
-    await agentAgentService.handleTurn(session, 'OK 謝謝先這樣', llm);
+  it('待確認動作已過期 + 「確認」→ 不寄，告知已失效', async () => {
+    const tenantId = tenantWithEmail('agent-email-expired');
+    const session = makeSession(tenantId, { pendingAction: makePendingEmail(tenantId, Date.now() - 11 * 60 * 1000) });
+    const out = await agentAgentService.handleTurn(session, '確認', noLLM);
 
     expect(stubSentEmails).toHaveLength(0);
-    expect(session.pendingEmail).toBeUndefined();
+    expect(session.pendingAction).toBeUndefined();
+    expect(out.reply).toContain('失效');
   });
 
-  it('有 pendingEmail + 「確認一下我的假還有幾天」（夾帶確認詞但非確認）→ 不寄、清草稿', async () => {
-    const t = tenantStore.createTenant('agent-email-substr2');
-    tenantStore.updateTenant(t.id, { grantedScopes: ['service:agent', 'email:write'] });
-    const llm = scriptedLLM([{ text: '你目前剩餘特休 5 天。', toolCalls: [], stopReason: 'end_turn', usage, model: 'test-model', keySource: 'platform' }]);
-    const session = makeSession(t.id, { pendingEmail: { to: 'boss@x.com', subject: 's', html: '<p>x</p>' } });
-    await agentAgentService.handleTurn(session, '確認一下我的假還有幾天', llm);
+  it('確認時權限已被撤銷 → 不寄，回覆權限不足', async () => {
+    const tenantId = tenantWithEmail('agent-email-revoked');
+    const session = makeSession(tenantId, { pendingAction: makePendingEmail(tenantId) });
+    tenantStore.updateTenant(tenantId, { grantedScopes: ['service:agent'] });
+    const out = await agentAgentService.handleTurn(session, '確認', noLLM);
 
     expect(stubSentEmails).toHaveLength(0);
-    expect(session.pendingEmail).toBeUndefined();
+    expect(out.reply).toContain('權限');
   });
 
-  it('有 pendingEmail + 「OK」單獨一句 → 伺服器端寄出（LLM 不參與）', async () => {
-    const t = tenantStore.createTenant('agent-email-ok');
-    tenantStore.updateTenant(t.id, { grantedScopes: ['service:agent', 'email:write'] });
-    const llm: LLMProvider = { name: 'fake', createMessage: async () => { throw new Error('不該進 LLM'); } };
-    const session = makeSession(t.id, { pendingEmail: { to: 'boss@x.com', subject: 's', html: '<p>x</p>' } });
-    const res = await agentAgentService.handleTurn(session, 'OK', llm);
-
-    expect(stubSentEmails).toHaveLength(1);
-    expect(stubSentEmails[0].to).toBe('boss@x.com');
-    expect(session.pendingEmail).toBeUndefined();
-    expect(res.reply).toContain('已寄出');
-  });
-
-  it('有 pendingEmail + 「好，寄出」→ 伺服器端寄出（LLM 不參與）', async () => {
-    const t = tenantStore.createTenant('agent-email-confirm2');
-    tenantStore.updateTenant(t.id, { grantedScopes: ['service:agent', 'email:write'] });
-    const llm: LLMProvider = { name: 'fake', createMessage: async () => { throw new Error('不該進 LLM'); } };
-    const session = makeSession(t.id, { pendingEmail: { to: 'boss@x.com', subject: 's', html: '<p>x</p>' } });
-    const res = await agentAgentService.handleTurn(session, '好，寄出', llm);
-
-    expect(stubSentEmails).toHaveLength(1);
-    expect(stubSentEmails[0].to).toBe('boss@x.com');
-    expect(session.pendingEmail).toBeUndefined();
-    expect(res.reply).toContain('已寄出');
-  });
-
-  it('有 pendingEmail + 「幫我寄」→ 伺服器端寄出（放寬用語，仍錨定整句）', async () => {
-    const t = tenantStore.createTenant('agent-email-confirm3');
-    tenantStore.updateTenant(t.id, { grantedScopes: ['service:agent', 'email:write'] });
-    const llm: LLMProvider = { name: 'fake', createMessage: async () => { throw new Error('不該進 LLM'); } };
-    const session = makeSession(t.id, { pendingEmail: { to: 'boss@x.com', subject: 's', html: '<p>x</p>' } });
-    const res = await agentAgentService.handleTurn(session, '幫我寄', llm);
-    expect(stubSentEmails).toHaveLength(1);
-    expect(res.reply).toContain('已寄出');
-  });
-
-  it('有 pendingEmail + 「好的，寄出」→ 伺服器端寄出（放寬用語）', async () => {
-    const t = tenantStore.createTenant('agent-email-confirm4');
-    tenantStore.updateTenant(t.id, { grantedScopes: ['service:agent', 'email:write'] });
-    const llm: LLMProvider = { name: 'fake', createMessage: async () => { throw new Error('不該進 LLM'); } };
-    const session = makeSession(t.id, { pendingEmail: { to: 'boss@x.com', subject: 's', html: '<p>x</p>' } });
-    const res = await agentAgentService.handleTurn(session, '好的，寄出', llm);
-    expect(stubSentEmails).toHaveLength(1);
-    expect(res.reply).toContain('已寄出');
-  });
-
-  it('Agent 傳給 LLM 的工具名符合 Anthropic 規則（^[a-zA-Z0-9_-]{1,128}$；registry 點命名已轉底線）', async () => {
-    const t = tenantStore.createTenant('agent-toolname');
-    tenantStore.updateTenant(t.id, { grantedScopes: ['service:agent', 'email:write'] });
+  it('Agent 傳給 LLM 的工具名符合 ^[a-zA-Z0-9_-]{1,64}$，且 email.send 以 email_send 暴露', async () => {
+    const tenantId = tenantWithEmail('agent-toolname');
     let captured: { name: string }[] = [];
     const llm: LLMProvider = {
       name: 'fake',
       createMessage: async (p) => {
         captured = (p.tools ?? []) as { name: string }[];
-        return { text: 'ok', toolCalls: [], stopReason: 'end_turn', usage, model: 'test-model', keySource: 'platform' };
+        return res({ text: 'ok' });
       },
     };
-    const session = makeSession(t.id);
-    await agentAgentService.handleTurn(session, 'hi', llm);
+    await agentAgentService.handleTurn(makeSession(tenantId), 'hi', llm);
     expect(captured.length).toBeGreaterThan(0);
-    for (const tool of captured) {
-      expect(tool.name).toMatch(/^[a-zA-Z0-9_-]{1,128}$/); // 不允許點
-    }
-    expect(captured.map((c) => c.name)).toContain('email_propose'); // email.propose → email_propose
+    for (const tool of captured) expect(tool.name).toMatch(/^[a-zA-Z0-9_-]{1,64}$/);
+    expect(captured.map((c) => c.name)).toContain('email_send');
+    expect(captured.map((c) => c.name).filter((n) => n.startsWith('email_'))).toEqual(['email_send']);
   });
 
-  it('LLM 幻想直呼 email.send 被擋（不在 availableFor / allowlist）', async () => {
-    const t = tenantStore.createTenant('agent-email-nosend');
-    tenantStore.updateTenant(t.id, { grantedScopes: ['service:agent', 'email:write'] });
+  it('LLM 幻想不存在的工具名被擋', async () => {
+    const tenantId = tenantWithEmail('agent-email-hallucinate');
     const llm = scriptedLLM([
-      { text: '', toolCalls: [{ id: 't1', name: 'email.send', input: { to: 'x@x.com', subject: 's', html: '<p>x</p>' } }], stopReason: 'tool_use', usage, model: 'test-model', keySource: 'platform' },
-      { text: '抱歉，我無法直接寄出。', toolCalls: [], stopReason: 'end_turn', usage, model: 'test-model', keySource: 'platform' },
+      res({ toolCalls: [{ id: 't1', name: 'email.send', input: { to: 'x@x.com', subject: 's', html: '<p>x</p>' } }], stopReason: 'tool_use' }),
+      res({ text: '抱歉。' }),
     ]);
-    const session = makeSession(t.id);
+    const session = makeSession(tenantId);
     await agentAgentService.handleTurn(session, '直接幫我寄', llm);
     expect(stubSentEmails).toHaveLength(0);
-    const tr = session.messages.flatMap((m) => m.content).find((b) => b.type === 'tool_result') as { content: string } | undefined;
-    expect(tr?.content).toContain('工具不可用');
+    expect(session.pendingAction).toBeUndefined();
+    const tr = session.messages.flatMap((m) => m.content).find((b) => b.type === 'tool_result') as { content: string };
+    expect(tr.content).toContain('工具不可用');
   });
 });

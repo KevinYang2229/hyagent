@@ -1,4 +1,4 @@
-/** email.send 工具：需 email:write；未授予 → 403；授予 → 走 stub 寄出。不暴露給 Agent。 */
+/** email.send 工具：需 email:write；未授予 → 403；授予 → 走 stub 寄出。暴露給 Agent 但標為寫入（須確認）。 */
 import { toolRegistry, makeToolContext } from '@/modules/tools';
 import { scopePolicy } from '@/modules/authz/scope-policy';
 import { tenantStore } from '@/modules/tenant/tenant.store';
@@ -10,10 +10,13 @@ describe('email.send 工具', () => {
   });
   afterEach(() => scopePolicy.clear());
 
-  it('已註冊且未暴露給 Agent', () => {
+  it('已註冊、標為寫入且暴露給 Agent（Agent 只能提議，執行需確認）', () => {
     expect(toolRegistry.has('email.send')).toBe(true);
-    const ctx = makeToolContext({ tenantId: 'default', userId: 'kevin' });
-    expect(toolRegistry.availableFor(ctx).map((t) => t.name)).not.toContain('email.send');
+    expect(toolRegistry.get('email.send').effect).toBe('write');
+    const t = tenantStore.createTenant('email-tool-exposed');
+    tenantStore.updateTenant(t.id, { grantedScopes: ['email:write'] });
+    const ctx = makeToolContext({ tenantId: t.id, userId: 'kevin' });
+    expect(toolRegistry.availableFor(ctx).map((x) => x.name)).toContain('email.send');
   });
 
   it('未授予 email:write → 403', async () => {

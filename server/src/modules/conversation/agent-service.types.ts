@@ -5,7 +5,7 @@
  * 由 intent-router 每輪判斷該把對話指派給哪個服務。分派到單一服務可讓該次 LLM
  * 呼叫只帶「該服務的 tools」，比單一大 loop 更省 token。
  */
-import type { ReportRef } from '@hyagent/shared';
+import type { PendingActionView, ReportRef } from '@hyagent/shared';
 import type { LLMProvider } from '@/lib/llm/types';
 import type { Session } from './conversation.types';
 
@@ -26,6 +26,8 @@ export interface AgentTurnResult {
    * 命名不做泛化的 artifact——目前只有這一種產出物，泛化會憑空多一層而沒有第二個使用者。
    */
   report?: ReportRef;
+  /** 本回合產生的待確認寫入動作（僅 agent 服務會帶） */
+  pendingAction?: PendingActionView;
 }
 
 export interface AgentService {

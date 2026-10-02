@@ -90,7 +90,7 @@ export async function runTurn(session: Session, userText: string): Promise<TurnR
   // 路由：判斷本輪指派哪個服務（填表點黏、知識可旁路插入）
   const route = await intentRouter.route(session, userText);
   const service = serviceRegistry.get(route.serviceId);
-  const { reply, report } = await service.handleTurn(session, userText, llm);
+  const { reply, report, pendingAction } = await service.handleTurn(session, userText, llm);
 
   // 只有點黏服務（form）成為 activeService；旁路服務（knowledge）不奪走流程擁有權
   if (service.sticky) session.activeServiceId = service.id;
@@ -109,5 +109,6 @@ export async function runTurn(session: Session, userText: string): Promise<TurnR
     submission: session.submission,
     suggestions,
     ...(report ? { report } : {}),
+    ...(pendingAction ? { pendingAction } : {}),
   };
 }
