@@ -137,6 +137,9 @@ Zeabur 連上 GitHub repo 後，會 watch 指定分支；**每次 `git push` 到
 
 > 產生隨機 secret 可用：`node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
 
+> **多副本注意（含 `DATA_BACKEND=db`）：** server 仍須維持單一 replica，或在前面啟用 sticky sessions。對話 session 與寫入動作的一次性確認（pendingAction）都放在單一程序的記憶體裡，請求若被分到不同副本，會出現找不到 session 或確認失效。
+> 另外，在後台「MCP 服務」異動註冊資料（新增、修改、停用）後，其他副本不會即時同步，需重啟才看得到；單一副本則即時生效。
+
 ### client 服務
 
 | 變數                     | 必填   | 說明                                                                                  |
