@@ -5,6 +5,12 @@
 import './oa.tools';
 import './email.tools';
 
-export { registerTool, toolRegistry } from './tool.registry';
+export {
+  isWriteTool,
+  registerTool,
+  registerToolSource,
+  toolRegistry,
+  unregisterToolSource,
+} from './tool.registry';
 export { makeToolContext } from './tool.context';
-export type { ToolContext, ToolDef } from './tool.types';
+export type { ToolContext, ToolDef, ToolEffect, ToolSource } from './tool.types';
