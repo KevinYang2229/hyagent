@@ -80,6 +80,12 @@ describe('MCP 端到端', () => {
     const out = await agentAgentService.handleTurn(s, '幫我訂明天的 A 會議室', llm);
 
     expect(fixture.bookings).toHaveLength(0);
+    const results = toolResults(s);
+    expect(results).toHaveLength(1);
+    const feedback = JSON.parse(results[0]);
+    expect(feedback.ok).toBe(true);
+    expect(feedback.proposed).toBe(true);
+    expect(feedback.card.title).toBe('預約會議室');
     expect(out.pendingAction?.summary).toEqual({
       title: '預約會議室',
       fields: [{ label: '會議室', value: 'A' }, { label: '日期', value: '2026-10-04' }],
@@ -106,7 +112,7 @@ describe('MCP 端到端', () => {
 
     const out = await agentAgentService.handleTurn(s, '明天 A 會議室有空嗎', llm);
     expect(out.reply).toBe('會議室系統暫時無法使用。');
-    expect(toolResults(s)[0]).toContain('"ok":false');
+    expect(JSON.parse(toolResults(s)[0]).ok).toBe(false);
     fixture = await startMcpFixture('rooms-e2e');
   });
 });
