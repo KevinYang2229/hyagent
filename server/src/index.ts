@@ -15,6 +15,7 @@ import { initTenantStore } from '@/modules/tenant/tenant.store';
 import { startExpirySweeper } from '@/lib/expiry-sweeper';
 import { initUsageStore } from '@/modules/usage/usage.store';
 import { initWebhookStore } from '@/modules/webhook/webhook.store';
+import { initMcpStore } from '@/modules/mcp/mcp.store';
 import { initSubmissionStore } from '@/modules/workflow/submission.store';
 
 async function main(): Promise<void> {
@@ -28,6 +29,7 @@ async function main(): Promise<void> {
     initFormStore(),
     initScopePolicy(),
     initWebhookStore(),
+    initMcpStore(),
     initKnowledgeStore(),
   ]);
 
