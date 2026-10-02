@@ -172,7 +172,7 @@ export default function McpServersPage() {
                             />
                           )}
                         </td>
-                        <td>{t.problem === 'name_invalid' ? '名稱不合法或過長，不會給 AI 使用' : ''}</td>
+                        <td>{t.problem === 'name_invalid' ? '名稱不合法或過長，不會給 AI 使用' : t.problem === 'schema_invalid' ? '輸入 schema 無效，不會給 AI 使用' : ''}</td>
                       </tr>
                     ))}
                   </tbody>

@@ -1,6 +1,6 @@
 import '@testing-library/jest-dom/vitest';
 import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import './i18n';
 import { ConfirmActionCard } from './ConfirmActionCard';
 import { ApiError } from './api';
@@ -33,6 +33,21 @@ describe('ConfirmActionCard', () => {
     await waitFor(() => expect(card()).toHaveAttribute('data-phase', 'done'));
     expect(onConfirm).toHaveBeenCalledTimes(1);
     expect(screen.queryByTestId('action-confirm')).not.toBeInTheDocument();
+  });
+
+  it('同一個 tick 內連按確認與取消 → 只送出第一個（不靠重新渲染後的 disabled）', async () => {
+    const onConfirm = vi.fn().mockResolvedValue({ ok: true, reply: '已完成' });
+    const onCancel = vi.fn().mockResolvedValue({ reply: '已取消' });
+    render(<ConfirmActionCard action={action} onConfirm={onConfirm} onCancel={onCancel} />);
+    const confirmBtn = screen.getByTestId('action-confirm');
+    const cancelBtn = screen.getByTestId('action-cancel');
+    await act(async () => {
+      confirmBtn.click();
+      cancelBtn.click();
+    });
+    await waitFor(() => expect(card()).toHaveAttribute('data-phase', 'done'));
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    expect(onCancel).not.toHaveBeenCalled();
   });
 
   it('確認但執行失敗（ok=false）→ failed', async () => {

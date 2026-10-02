@@ -401,7 +401,7 @@ export interface McpToolRow {
   llmName: string;
   effect: 'read' | 'write';
   disabled: boolean;
-  problem?: 'name_invalid';
+  problem?: 'name_invalid' | 'schema_invalid';
 }
 
 export interface McpServerView {

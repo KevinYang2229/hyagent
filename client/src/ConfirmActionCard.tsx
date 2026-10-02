@@ -2,7 +2,7 @@
  * 寫入動作確認卡片：AI 提議的寫入（寄信、預約…）在這裡由使用者確認後才執行。
  * 一次性：按下後立刻鎖住，不論成功失敗都不再顯示按鈕（避免雙擊重送）。
  */
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { PendingActionView } from '@hyagent/shared';
 import { ApiError } from './api';
@@ -19,9 +19,12 @@ export function ConfirmActionCard({ action, onConfirm, onCancel }: ConfirmAction
   const { t } = useTranslation();
   const [phase, setPhase] = useState<Phase>(() => (Date.parse(action.expiresAt) <= Date.now() ? 'expired' : 'ready'));
   const [error, setError] = useState<string | null>(null);
+  // 同步旗標：setPhase('busy') 要等重新渲染才生效，兩次點擊落在同一個 tick 時 phase 仍是 ready
+  const inFlight = useRef(false);
 
   async function run(kind: 'confirm' | 'cancel') {
-    if (phase !== 'ready') return;
+    if (phase !== 'ready' || inFlight.current) return;
+    inFlight.current = true;
     setPhase('busy');
     try {
       if (kind === 'confirm') {

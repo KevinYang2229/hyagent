@@ -48,7 +48,7 @@ export const JWKS_CACHE_TTL_MS = 5 * 60_000;
 const SYSTEM_SUBJECT = 'hyagent-system';
 
 async function defaultFetchJwks(url: string): Promise<JwksDocument> {
-  const res = await fetch(url);
+  const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
   if (!res.ok) throw new Error(`JWKS 取得失敗：HTTP ${res.status}`);
   return (await res.json()) as JwksDocument;
 }
