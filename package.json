@@ -7,6 +7,7 @@
     "shared",
     "ui",
     "sdk",
+    "mcp/kit",
     "server",
     "client",
     "admin"
@@ -17,9 +18,9 @@
     "dev:client": "npm run dev -w client",
     "dev:admin": "npm run dev -w admin",
     "build": "npm run build -w server && npm run build -w client && npm run build -w admin",
-    "typecheck": "npm run typecheck -w ui && npm run typecheck -w sdk && npm run typecheck -w server && npm run typecheck -w client && npm run typecheck -w admin",
+    "typecheck": "npm run typecheck -w ui && npm run typecheck -w sdk && npm run typecheck -w server && npm run typecheck -w client && npm run typecheck -w admin && npm run typecheck -w mcp/kit",
     "smoke": "npm run smoke -w server",
-    "test": "npm run test -w server && npm run test -w admin && npm run test -w client && npm run test -w sdk",
+    "test": "npm run test -w server && npm run test -w admin && npm run test -w client && npm run test -w sdk && npm run test -w mcp/kit",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix"
   },
