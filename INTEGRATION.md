@@ -110,3 +110,30 @@ npm run dev:admin    # 後台 5174
   - **用量** — 對話 / 訊息 / 送出計數（唯讀）。
 
 > `ADMIN_PASSWORD` 留空＝停用後台登入（回 403）。與機器對機器用的 `ADMIN_API_KEY` 分開，避免主控金鑰外洩到瀏覽器。
+
+---
+
+## 自建 MCP 服務（讓 AI 呼叫外部系統）
+
+HyAgent 的智慧代理可以呼叫我們自建的 MCP server。整體流程：
+
+1. **寫 MCP server**：用 [`mcp/kit`](mcp/kit/README.md)（`createMcpHttpApp` + `createHyAgentVerifier`），照 README 的規範寫工具（欄位要有描述、唯讀工具標 `readOnlyHint`）。範例在 `mcp/kit/examples/rooms/`。
+2. **部署**：MCP server 要能連到 HyAgent 後端的 `GET /.well-known/hyagent-mcp-jwks.json`（驗章用），HyAgent 後端要能連到 MCP server 的 `/mcp`。
+3. **登記**：後台「MCP 服務」→ 新增，填 `serverId`、URL、擁有租戶（共用或某租戶專屬）、能力描述與路由關鍵字，按「測試連線」確認工具清單與讀寫判定。
+4. **授權**：在租戶的權限分頁，把 `mcp:<serverId>` 授予要使用的部門或帳號（也需要 `service:agent`）。
+
+### 身分與安全
+
+- HyAgent 每個請求都簽一張 60 秒的 ES256 JWT：`aud` 為 `serverId`、`sub` 為使用者、`tenant` 為租戶、`scopes` 只含 `mcp:<serverId>` 相關項。MCP server 用 `callerFrom(extra)` 取得，可自行做二次權限檢查與稽審。
+- 唯讀工具（`readOnlyHint: true`）AI 會直接呼叫；**其餘一律視為寫入**：AI 只能提議，使用者在確認卡片按「確認」後才由後端執行。後台可對單一工具強制確認或停用。
+- MCP server 端的 kit 會快取 JWKS 公鑰 5 分鐘，換鑰後最慢 5 分鐘生效；遇到未知 kid 會提前重抓，但最多每 30 秒一次。
+- 後端未設 `MCP_SIGNING_KEY` 時，MCP 功能整體停用。
+
+### 前台整合（自製 UI）
+
+對話 API 的回應若帶 `pendingAction`（`{ id, summary: { title, fields[] }, expiresAt }`），請畫成確認卡片：
+
+- 確認：`POST /api/conversations/:id/actions/:actionId/confirm` → `data.reply`、`data.actionOk`
+- 取消：`POST /api/conversations/:id/actions/:actionId/cancel`
+- `409 ACTION_EXPIRED`：已逾時（10 分鐘），請使用者重新提出；`409 ACTION_NOT_FOUND`：已處理過；`403`：權限已撤銷。
+- 沒有畫卡片的舊前台，使用者打「確認」也能執行（打字備援）。
