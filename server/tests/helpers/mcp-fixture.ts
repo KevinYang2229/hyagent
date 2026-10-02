@@ -12,6 +12,8 @@ export interface McpFixture {
   url: string;
   calls: { tool: string; args: unknown; caller: HyAgentCaller }[];
   bookings: { room: string; caller: HyAgentCaller }[];
+  /** 每個通過驗證的請求所帶的呼叫者（含 listTools 等系統呼叫） */
+  requests: HyAgentCaller[];
   close(): Promise<void>;
 }
 
@@ -21,12 +23,20 @@ export async function startMcpFixture(
 ): Promise<McpFixture> {
   const calls: McpFixture['calls'] = [];
   const bookings: McpFixture['bookings'] = [];
-  const verifier = createHyAgentVerifier({
+  const requests: HyAgentCaller[] = [];
+  const inner = createHyAgentVerifier({
     jwksUrl: 'http://unused.invalid/jwks',
     audience: serverId,
     fetchJwks: async () => (opts.jwks ?? mcpJwks)(),
     rejectReplay: true,
   });
+  const verifier = {
+    async verify(token: string) {
+      const caller = await inner.verify(token);
+      requests.push(caller);
+      return caller;
+    },
+  };
   const app = createMcpHttpApp({
     name: `fixture-${serverId}`,
     version: '0.0.1',
@@ -84,6 +94,7 @@ export async function startMcpFixture(
     url: `http://127.0.0.1:${port}/mcp`,
     calls,
     bookings,
+    requests,
     close: () =>
       new Promise((resolve) => {
         http.closeAllConnections();

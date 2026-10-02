@@ -1,6 +1,7 @@
 /** MCP 連線：listTools 快取、身分傳遞、結果正規化、逾時不視為斷線、斷線退避、驗證失敗狀態。 */
+import net from 'node:net';
 import { generateHyAgentKeyPair } from '@/lib/assertion/keygen';
-import { McpConnection, McpToolCallError, normalizeToolResult, MCP_RESULT_MAX_CHARS } from '@/modules/mcp/mcp.connection';
+import { McpConnection, McpToolCallError, isAuthFailure, isConnectionFailure, normalizeToolResult, MCP_RESULT_MAX_CHARS } from '@/modules/mcp/mcp.connection';
 import { configureMcpSigningKey, mcpJwks } from '@/modules/mcp/mcp.identity';
 import type { McpServerConfig } from '@/modules/mcp/mcp.types';
 import { startMcpFixture, type McpFixture } from './helpers/mcp-fixture';
@@ -85,7 +86,70 @@ describe('McpConnection', () => {
   });
 });
 
+describe('McpConnection 身分與錯誤分類', () => {
+  it('同一條連線同時兩位呼叫者：各自的身分各自送達', async () => {
+    conn = new McpConnection(config(fixture.url));
+    const c1 = { tenantId: 't1', userId: 'alice', scopes: ['mcp:rooms'] };
+    const c2 = { tenantId: 't2', userId: 'bob', scopes: ['mcp:rooms'] };
+    await Promise.all([
+      conn.callTool('rooms_availability', { date: 'd1', room: 'A' }, c1),
+      conn.callTool('rooms_availability', { date: 'd2', room: 'B' }, c2),
+    ]);
+    const byRoom = (room: string) => fixture.calls.find((c) => (c.args as { room: string }).room === room)!;
+    expect(byRoom('A').caller).toMatchObject({ tenantId: 't1', userId: 'alice', system: false });
+    expect(byRoom('B').caller).toMatchObject({ tenantId: 't2', userId: 'bob', system: false });
+  });
+
+  it('listTools 以系統身分送出，工具呼叫不是系統身分', async () => {
+    conn = new McpConnection(config(fixture.url));
+    await conn.listTools();
+    expect(fixture.requests.some((r) => r.system)).toBe(true);
+    await conn.callTool('rooms_availability', { date: 'd', room: 'A' }, caller);
+    expect(fixture.calls.every((c) => !c.caller.system)).toBe(true);
+    expect(fixture.calls).toHaveLength(1);
+  });
+
+  it('工具層 McpError（參數不合）不把 server 標成斷線，後續呼叫仍成功', async () => {
+    conn = new McpConnection(config(fixture.url));
+    await expect(conn.callTool('rooms_availability', { date: 'd' }, caller)).rejects.toBeInstanceOf(McpToolCallError);
+    expect(conn.status().state).toBe('ok');
+    expect(conn.status().retryAt).toBeUndefined();
+    await expect(conn.callTool('rooms_availability', { date: 'd', room: 'A' }, caller)).resolves.toMatchObject({ room: 'A' });
+  });
+
+  it('連線階段逾時（對方收了連線卻不回應）→ unreachable 並設定 retryAt', async () => {
+    const sockets: net.Socket[] = [];
+    const black = net.createServer((s) => sockets.push(s));
+    await new Promise<void>((r) => black.listen(0, '127.0.0.1', r));
+    const { port } = black.address() as net.AddressInfo;
+    conn = new McpConnection(config(`http://127.0.0.1:${port}/mcp`), Date.now, 200);
+    await expect(conn.callTool('rooms_availability', { date: 'd', room: 'A' }, caller)).rejects.toBeInstanceOf(McpToolCallError);
+    expect(conn.status().state).toBe('unreachable');
+    expect(conn.status().retryAt).toBeTruthy();
+    sockets.forEach((s) => s.destroy());
+    await new Promise((r) => black.close(r));
+  });
+
+  it('錯誤分類：只看結構，工具文字裡的 403 不會變 auth_failed', () => {
+    const { McpError, ErrorCode } = jest.requireActual('@modelcontextprotocol/sdk/types.js');
+    const { StreamableHTTPError } = jest.requireActual('@modelcontextprotocol/sdk/client/streamableHttp.js');
+    expect(isConnectionFailure(new McpError(ErrorCode.InvalidParams, 'bad'))).toBe(false);
+    expect(isConnectionFailure(new McpError(ErrorCode.ConnectionClosed, 'closed'))).toBe(true);
+    expect(isConnectionFailure(new StreamableHTTPError(503, 'down'))).toBe(true);
+    expect(isConnectionFailure(new TypeError('fetch failed'))).toBe(true);
+    expect(isAuthFailure(new StreamableHTTPError(401, 'x'))).toBe(true);
+    expect(isAuthFailure(new McpError(ErrorCode.InvalidParams, 'room 403 not found'))).toBe(false);
+    expect(isAuthFailure(new Error('room 403'))).toBe(false);
+  });
+});
+
 describe('normalizeToolResult', () => {
+  it('超大 structuredContent 轉為截斷字串', () => {
+    const out = normalizeToolResult({ structuredContent: { big: 'y'.repeat(MCP_RESULT_MAX_CHARS) } });
+    expect(typeof out).toBe('string');
+    expect(out as string).toContain('已截斷');
+  });
+
   it('優先 structuredContent，否則串接 text', () => {
     expect(normalizeToolResult({ structuredContent: { a: 1 }, content: [] })).toEqual({ a: 1 });
     expect(normalizeToolResult({ content: [{ type: 'text', text: 'a' }, { type: 'image', data: 'x' }, { type: 'text', text: 'b' }] })).toBe('a\nb');

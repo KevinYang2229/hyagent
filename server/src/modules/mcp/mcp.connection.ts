@@ -8,8 +8,8 @@
  */
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import { ErrorCode } from '@modelcontextprotocol/sdk/types.js';
+import { StreamableHTTPClientTransport, StreamableHTTPError } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
 import { logger } from '@/lib/logger';
 import { signMcpToken, type McpCaller } from './mcp.identity';
 import type { McpServerConfig } from './mcp.types';
@@ -71,10 +71,19 @@ function isTimeout(err: unknown): boolean {
   return (err as { code?: unknown }).code === ErrorCode.RequestTimeout;
 }
 
-function isAuthFailure(err: unknown): boolean {
-  const code = (err as { code?: unknown }).code;
-  const e = err as Error;
-  return code === 401 || code === 403 || e?.name === 'UnauthorizedError' || /\b(401|403)\b/.test(String(e?.message));
+/** 驗證失敗：只看結構（HTTP 狀態碼或 UnauthorizedError），不比對訊息文字。 */
+export function isAuthFailure(err: unknown): boolean {
+  if (err instanceof StreamableHTTPError) return err.code === 401 || err.code === 403;
+  return (err as Error)?.name === 'UnauthorizedError';
+}
+
+/**
+ * 連線層失敗（網路錯誤、HTTP 錯誤含 5xx／401／403、連線被關閉）才算 server 斷線；
+ * 其餘 JSON-RPC McpError（參數不合、輸出不符 schema 等）屬單一呼叫的應用層錯誤，不影響連線狀態。
+ */
+export function isConnectionFailure(err: unknown): boolean {
+  if (err instanceof McpError) return err.code === ErrorCode.ConnectionClosed;
+  return true;
 }
 
 export class McpConnection {
@@ -88,6 +97,8 @@ export class McpConnection {
   constructor(
     public config: McpServerConfig,
     private readonly now: () => number = Date.now,
+    /** 測試用縫隙：正式環境固定為 MCP_LIST_TIMEOUT_MS */
+    private readonly connectTimeoutMs: number = MCP_LIST_TIMEOUT_MS,
   ) {}
 
   status(): McpServerStatus {
@@ -126,9 +137,16 @@ export class McpConnection {
 
   async callTool(name: string, args: Record<string, unknown>, caller: McpCaller): Promise<unknown> {
     this.assertNotBackingOff();
+    let client: Client;
+    try {
+      client = await this.ensureClient();
+    } catch (err) {
+      // 連線階段的任何錯誤（含逾時）都代表連不上
+      await this.markFailed(err);
+      throw new McpToolCallError(`${this.config.name} 暫時無法使用：${(err as Error).message}`);
+    }
     let res: { isError?: boolean; structuredContent?: unknown; content?: unknown };
     try {
-      const client = await this.ensureClient();
       // SDK 回傳型別含舊版相容的 { toolResult } 分支，這裡只取現行欄位
       res = (await callerStore.run(caller, () =>
         client.callTool({ name, arguments: args }, undefined, { timeout: this.config.timeoutMs }),
@@ -136,6 +154,7 @@ export class McpConnection {
       this.markOk();
     } catch (err) {
       if (isTimeout(err)) throw new McpToolCallError(`${this.config.name} 回應逾時，請稍後再試`);
+      if (!isConnectionFailure(err)) throw new McpToolCallError(`${this.config.name} 呼叫失敗：${(err as Error).message}`);
       await this.markFailed(err);
       throw new McpToolCallError(`${this.config.name} 暫時無法使用：${(err as Error).message}`);
     }
@@ -157,7 +176,9 @@ export class McpConnection {
 
   private readonly signedFetch = (url: string | URL, init?: RequestInit): Promise<Response> => {
     const headers = new Headers(init?.headers);
-    headers.set('Authorization', `Bearer ${signMcpToken(this.config.id, callerStore.getStore() ?? 'system')}`);
+    const who = callerStore.getStore();
+    if (!who) throw new Error('MCP 請求缺少呼叫者身分（fail closed）');
+    headers.set('Authorization', `Bearer ${signMcpToken(this.config.id, who)}`);
     return fetch(url, { ...init, headers });
   };
 
@@ -167,7 +188,7 @@ export class McpConnection {
       this.connecting = (async () => {
         const client = new Client({ name: 'hyagent', version: '1.2.0' });
         const transport = new StreamableHTTPClientTransport(new URL(this.config.url), { fetch: this.signedFetch });
-        await callerStore.run('system', () => client.connect(transport, { timeout: MCP_LIST_TIMEOUT_MS }));
+        await callerStore.run('system', () => client.connect(transport, { timeout: this.connectTimeoutMs }));
         this.client = client;
         return client;
       })().finally(() => {
