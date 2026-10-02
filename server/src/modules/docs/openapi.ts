@@ -266,6 +266,35 @@ export const openapiSpec = {
         },
       },
     },
+    "/api/conversations/{id}/actions/{actionId}/confirm": {
+      post: {
+        tags: ["conversations"],
+        summary: "確認執行待確認的寫入動作（不經 LLM）",
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "string" } },
+          { name: "actionId", in: "path", required: true, schema: { type: "string" } },
+        ],
+        responses: {
+          "200": { description: "已執行（data.actionOk 表示成功與否）" },
+          "403": { description: "權限已撤銷" },
+          "409": { description: "ACTION_NOT_FOUND 或 ACTION_EXPIRED" },
+        },
+      },
+    },
+    "/api/conversations/{id}/actions/{actionId}/cancel": {
+      post: {
+        tags: ["conversations"],
+        summary: "取消待確認的寫入動作",
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "string" } },
+          { name: "actionId", in: "path", required: true, schema: { type: "string" } },
+        ],
+        responses: {
+          "200": { description: "已取消" },
+          "409": { description: "ACTION_NOT_FOUND" },
+        },
+      },
+    },
     "/api/forms": {
       get: {
         tags: ["forms"],

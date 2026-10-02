@@ -5,6 +5,7 @@ import { asyncHandler } from '@/utils/async-handler';
 import { conversationController } from './conversation.controller';
 import {
   attachmentParamSchema,
+  actionParamSchema,
   idParamSchema,
   messageSchema,
   startSchema,
@@ -46,6 +47,19 @@ router.post(
   '/:id/cancel',
   validate({ params: idParamSchema }),
   asyncHandler(conversationController.cancel),
+);
+
+// 寫入動作確認卡片（不經 LLM）：確認才由後端執行；取消即作廢
+router.post(
+  '/:id/actions/:actionId/confirm',
+  validate({ params: actionParamSchema }),
+  asyncHandler(conversationController.confirmAction),
+);
+
+router.post(
+  '/:id/actions/:actionId/cancel',
+  validate({ params: actionParamSchema }),
+  asyncHandler(conversationController.cancelAction),
 );
 
 // 附件：上傳（multipart，欄位名 file）／刪除

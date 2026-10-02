@@ -18,6 +18,10 @@ export const idParamSchema = z.object({
   id: z.string().uuid(),
 });
 
+export const actionParamSchema = idParamSchema.extend({
+  actionId: z.string().uuid(),
+});
+
 // 刪除附件：對話 id + 附件 id（附件 id 亦為 uuid）
 export const attachmentParamSchema = z.object({
   id: z.string().uuid(),

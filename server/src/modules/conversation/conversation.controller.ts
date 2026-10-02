@@ -64,6 +64,28 @@ export const conversationController = {
     res.status(200).json({ data: turn });
   },
 
+  /** 確認卡片「確認」（不經 LLM） */
+  async confirmAction(req: Request, res: Response): Promise<void> {
+    const turn = await conversationService.confirmAction(
+      resolveTenantId(req),
+      resolveUserId(req),
+      String(req.params.id),
+      String(req.params.actionId),
+    );
+    res.status(200).json({ data: turn });
+  },
+
+  /** 確認卡片「取消」 */
+  async cancelAction(req: Request, res: Response): Promise<void> {
+    const turn = conversationService.cancelAction(
+      resolveTenantId(req),
+      resolveUserId(req),
+      String(req.params.id),
+      String(req.params.actionId),
+    );
+    res.status(200).json({ data: turn });
+  },
+
   async updateFields(req: Request, res: Response): Promise<void> {
     const tenantId = resolveTenantId(req);
     const userId = resolveUserId(req);

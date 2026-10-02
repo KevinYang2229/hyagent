@@ -15,6 +15,8 @@ import { assertMutable, submitSession } from './submit-session';
 import { conversationStore } from './conversation.store';
 import type { Session, TurnResult } from './conversation.types';
 import { pickFormId } from './intent-router';
+import { isPendingActionExpired } from './pending-action';
+import { cancelPendingAction, runConfirmedAction } from './pending-action.service';
 
 /** 申請人欄位值格式：姓名(工號)，與真實 OA 畫面一致 */
 function formatApplicant(userId: string, tenantId: string): string {
@@ -25,6 +27,11 @@ function formatApplicant(userId: string, tenantId: string): string {
 export interface UpdateFieldsResult extends TurnResult {
   applied: string[];
   rejected: FieldIssue[];
+}
+
+export interface ActionTurnResult extends TurnResult {
+  /** 確認後的執行結果是否成功（失敗時 reply 帶原因） */
+  actionOk: boolean;
 }
 
 export const conversationService = {
@@ -115,6 +122,48 @@ export const conversationService = {
       submission: session.submission,
       suggestions: [],
     };
+  },
+
+  /**
+   * 確認卡片按「確認」（不經 LLM）：比對動作 id 與效期，先清除再執行（一次性，擋雙擊與重送），
+   * 執行時重新解析權限；權限已撤銷回 403。
+   */
+  async confirmAction(tenantId: string, userId: string, id: string, actionId: string): Promise<ActionTurnResult> {
+    const session = conversationStore.get(id, tenantId, userId);
+    const action = session.pendingAction;
+    if (!action || action.id !== actionId) {
+      throw new AppError(409, 'ACTION_NOT_FOUND', '這個動作已不存在或已處理過');
+    }
+    session.pendingAction = undefined;
+    if (isPendingActionExpired(action)) {
+      conversationStore.save(session);
+      throw new AppError(409, 'ACTION_EXPIRED', '這個動作已逾時失效，請重新提出');
+    }
+    conversationStore.save(session);
+    session.messages.push({ role: 'user', content: [{ type: 'text', text: '確認' }] });
+    const outcome = await runConfirmedAction(session, action);
+    conversationStore.save(session);
+    if (!outcome.ok && outcome.code === 'FORBIDDEN') throw AppError.forbidden(outcome.reply);
+    return {
+      reply: outcome.reply,
+      status: session.status,
+      values: session.values,
+      submission: session.submission,
+      suggestions: [],
+      actionOk: outcome.ok,
+    };
+  },
+
+  /** 確認卡片按「取消」：清除待確認動作，不執行。 */
+  cancelAction(tenantId: string, userId: string, id: string, actionId: string): TurnResult {
+    const session = conversationStore.get(id, tenantId, userId);
+    if (!session.pendingAction || session.pendingAction.id !== actionId) {
+      throw new AppError(409, 'ACTION_NOT_FOUND', '這個動作已不存在或已處理過');
+    }
+    session.messages.push({ role: 'user', content: [{ type: 'text', text: '取消' }] });
+    const reply = cancelPendingAction(session);
+    conversationStore.save(session);
+    return { reply, status: session.status, values: session.values, submission: session.submission, suggestions: [] };
   },
 
   /**
