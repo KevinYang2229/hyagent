@@ -5,6 +5,7 @@
  */
 import { AppError } from '@/utils/app-error';
 import { listDefinitions } from '@/modules/form/form.registry';
+import { mcpStore } from '@/modules/mcp/mcp.store';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 
 export interface ScopeDef {
@@ -68,8 +69,9 @@ export function assertGrantableScopes(ids: string[], tenantId?: string): void {
   const validLabelIds = tenantId
     ? new Set((tenantStore.getTenant(tenantId)?.knowledgeLabels ?? []).map((l) => kbScopeId(l.id)))
     : new Set<string>();
+  const validMcpIds = tenantId ? tenantMcpScopeIds(tenantId) : new Set<string>();
   const ok = (id: string): boolean =>
-    GRANTABLE_SCOPE_IDS.has(id) || validFormIds.has(id) || validLabelIds.has(id);
+    GRANTABLE_SCOPE_IDS.has(id) || validFormIds.has(id) || validLabelIds.has(id) || validMcpIds.has(id);
   const bad = ids.filter((id) => !ok(id));
   if (bad.length > 0) throw AppError.badRequest(`不可授予的 scope：${bad.join('、')}`);
 }
@@ -106,6 +108,16 @@ export function formScopeId(formId: string): string {
   return `form:${formId}`;
 }
 
+/** MCP server scope：mcp:<serverId>。 */
+export function mcpServerScopeId(serverId: string): string {
+  return `mcp:${serverId}`;
+}
+
+/** 此租戶可授予的 MCP scope：共用 server 與該租戶專屬 server（不看啟用狀態，停用時仍可預先授權）。 */
+function tenantMcpScopeIds(tenantId: string): Set<string> {
+  return new Set(mcpStore.list().filter((s) => mcpStore.belongsTo(s, tenantId)).map((s) => mcpServerScopeId(s.id)));
+}
+
 /** 某租戶可授予的能力：靜態 grantable + 該租戶各表單的 form:<id>（label 用表單標題）。 */
 export function tenantGrantableScopes(tenantId: string): ScopeDef[] {
   const forms: ScopeDef[] = listDefinitions(tenantId).map((d) => ({
@@ -120,5 +132,14 @@ export function tenantGrantableScopes(tenantId: string): ScopeDef[] {
     description: `檢索「${l.label}」分類的知識庫內容`,
     base: false,
   }));
-  return [...GRANTABLE_SCOPES, ...forms, ...labels];
+  const mcp: ScopeDef[] = mcpStore
+    .list()
+    .filter((s) => mcpStore.belongsTo(s, tenantId))
+    .map((s) => ({
+      id: mcpServerScopeId(s.id),
+      label: s.name,
+      description: s.description || `使用外部服務「${s.name}」`,
+      base: false,
+    }));
+  return [...GRANTABLE_SCOPES, ...forms, ...labels, ...mcp];
 }

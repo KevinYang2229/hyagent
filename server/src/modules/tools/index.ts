@@ -4,6 +4,7 @@
  */
 import './oa.tools';
 import './email.tools';
+import '@/modules/mcp/register';
 
 export {
   isWriteTool,

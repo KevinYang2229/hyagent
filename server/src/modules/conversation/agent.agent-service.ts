@@ -13,6 +13,7 @@
 import type { LLMProvider, LLMTool } from '@/lib/llm/types';
 import { languageDirective } from '@/lib/locale';
 import { logger } from '@/lib/logger';
+import { mcpIntentsFor, mcpPromptLines } from '@/modules/mcp/mcp.intents';
 import { isWriteTool, makeToolContext, toolRegistry } from '@/modules/tools';
 import type { AgentService, AgentTurnResult, IntentDescriptor } from './agent-service.types';
 import type { Session } from './conversation.types';
@@ -69,7 +70,7 @@ export const agentAgentService: AgentService = {
   sticky: true,
   serviceScope: 'service:agent',
 
-  intents(): IntentDescriptor[] {
+  intents(session: Session): IntentDescriptor[] {
     return [
       {
         id: 'agent.task',
@@ -83,6 +84,7 @@ export const agentAgentService: AgentService = {
         description:
           '需要操作公司系統/工具的任務：查詢並彙整資料、查自己申請的簽核進度、代擬並（經確認後）寄送通知信/催辦信 Email。',
       },
+      ...mcpIntentsFor(session.tenantId, session.userId),
     ];
   },
 
@@ -114,7 +116,7 @@ export const agentAgentService: AgentService = {
     const { llmTools, idByLlmName } = exposeTools(toolRegistry.availableFor(ctx));
 
     const reply = await runToolLoop(llm, session, {
-      system: buildSystemPrompt(session.userId, session.locale),
+      system: buildSystemPrompt(session.userId, session.locale, mcpPromptLines(session.tenantId, session.userId)),
       tools: llmTools,
       dispatchTool: async (name, input) => {
         // 安全邊界：只放行 availableFor 清單內的工具（映回真實 id），LLM 幻想出別的名字一律擋下
