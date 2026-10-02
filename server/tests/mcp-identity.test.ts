@@ -3,7 +3,8 @@ import { createPublicKey, verify } from 'node:crypto';
 import request from 'supertest';
 import { createApp } from '@/app';
 import { generateHyAgentKeyPair } from '@/lib/assertion/keygen';
-import { configureMcpSigningKey, isMcpSigningEnabled, mcpJwks, signMcpToken } from '@/modules/mcp/mcp.identity';
+import { env } from '@/config/env';
+import { assertMcpSigningKeyValid, configureMcpSigningKey, isMcpSigningEnabled, mcpJwks, signMcpToken } from '@/modules/mcp/mcp.identity';
 
 function decode(part: string): Record<string, unknown> {
   return JSON.parse(Buffer.from(part, 'base64url').toString('utf8')) as Record<string, unknown>;
@@ -68,5 +69,40 @@ describe('MCP 呼叫身分', () => {
     expect(res.status).toBe(200);
     expect(res.body.keys[0]).toMatchObject({ kty: 'EC', crv: 'P-256', alg: 'ES256', use: 'sig' });
     expect(res.body.keys[0].d).toBeUndefined();
+  });
+
+  describe('環境變數金鑰格式不對', () => {
+    const original = env.MCP_SIGNING_KEY;
+    beforeEach(() => {
+      env.MCP_SIGNING_KEY = '-----BEGIN PRIVATE KEY-----\nnot-a-real-key\n-----END PRIVATE KEY-----';
+      configureMcpSigningKey(null);
+    });
+    afterEach(() => {
+      env.MCP_SIGNING_KEY = original;
+      configureMcpSigningKey(null);
+    });
+
+    it('assertMcpSigningKeyValid 開機檢查丟錯，訊息指出 MCP_SIGNING_KEY 且不含金鑰內容', () => {
+      expect(() => assertMcpSigningKeyValid()).toThrow('MCP_SIGNING_KEY');
+      expect(() => assertMcpSigningKeyValid()).not.toThrow('not-a-real-key');
+    });
+
+    it('執行期 isMcpSigningEnabled 不丟錯、回 false；JWKS 空', () => {
+      expect(() => isMcpSigningEnabled()).not.toThrow();
+      expect(isMcpSigningEnabled()).toBe(false);
+      expect(mcpJwks().keys).toEqual([]);
+    });
+  });
+
+  it('assertMcpSigningKeyValid：未設定或合法金鑰都通過', () => {
+    const original = env.MCP_SIGNING_KEY;
+    try {
+      env.MCP_SIGNING_KEY = '';
+      expect(() => assertMcpSigningKeyValid()).not.toThrow();
+      env.MCP_SIGNING_KEY = generateHyAgentKeyPair('ES256').privateKeyPem;
+      expect(() => assertMcpSigningKeyValid()).not.toThrow();
+    } finally {
+      env.MCP_SIGNING_KEY = original;
+    }
   });
 });

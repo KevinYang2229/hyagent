@@ -6,6 +6,7 @@
  */
 import { createPrivateKey, createPublicKey, randomUUID, sign, type KeyObject } from 'node:crypto';
 import { env } from '@/config/env';
+import { logger } from '@/lib/logger';
 import { ALGORITHMS, encodeJson, keyArg } from '@/lib/assertion/jose';
 import { computeKid, detectAlgorithm, exportPublicJwk } from '@/lib/assertion/keygen';
 
@@ -47,8 +48,27 @@ function load(pem: string, previousPublicPem: string): SigningKey | null {
 }
 
 function signingKey(): SigningKey | null {
-  if (loaded === undefined) loaded = load(env.MCP_SIGNING_KEY, env.MCP_PREVIOUS_PUBLIC_KEY);
+  if (loaded === undefined) {
+    try {
+      loaded = load(env.MCP_SIGNING_KEY, env.MCP_PREVIOUS_PUBLIC_KEY);
+    } catch (err) {
+      // 執行期保險：金鑰壞掉就當 MCP 停用並快取結果，只記一次錯誤（絕不記金鑰內容），
+      // 避免 isMcpSigningEnabled() 在每個 agent turn 丟例外。正常情況已由開機的 assertMcpSigningKeyValid 擋下。
+      loaded = null;
+      logger.error({ reason: err instanceof Error ? err.message : 'invalid key' }, 'MCP_SIGNING_KEY 無法載入，MCP 已停用');
+    }
+  }
   return loaded;
+}
+
+/** 開機 fail-fast：環境變數的金鑰（及前一把公鑰）若格式不對就丟錯，讓程序直接退出而不是帶病上線。 */
+export function assertMcpSigningKeyValid(): void {
+  try {
+    load(env.MCP_SIGNING_KEY, env.MCP_PREVIOUS_PUBLIC_KEY);
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : '無法解析';
+    throw new Error(`MCP_SIGNING_KEY / MCP_PREVIOUS_PUBLIC_KEY 無效：${reason}`);
+  }
 }
 
 /** 測試用：注入私鑰；null 改回讀環境變數。 */

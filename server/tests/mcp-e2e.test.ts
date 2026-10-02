@@ -12,6 +12,7 @@ import { runConfirmedAction } from '@/modules/conversation/pending-action.servic
 import { mcpConnections } from '@/modules/mcp/mcp.connection';
 import { configureMcpSigningKey } from '@/modules/mcp/mcp.identity';
 import { mcpStore } from '@/modules/mcp/mcp.store';
+import { scopePolicy } from '@/modules/authz/scope-policy';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 import { startMcpFixture, type McpFixture } from './helpers/mcp-fixture';
 
@@ -44,7 +45,8 @@ beforeEach(async () => {
   fixture = await startMcpFixture('rooms-e2e');
   const t = tenantStore.createTenant(`mcp-e2e-${Date.now()}`);
   tenantId = t.id;
-  tenantStore.updateTenant(tenantId, { grantedScopes: ['service:agent', 'mcp:rooms-e2e'] });
+  tenantStore.updateTenant(tenantId, { grantedScopes: ['service:agent'] });
+  scopePolicy.setPolicy(tenantId, { groups: {}, accounts: { kevin: ['mcp:rooms-e2e'] } });
   mcpStore.create({ id: 'rooms-e2e', name: '會議室', url: fixture.url, ownerTenantId: tenantId, description: '查詢與預約會議室' });
 });
 
@@ -52,6 +54,7 @@ afterEach(async () => {
   await mcpConnections.closeAll();
   await fixture.close();
   mcpStore.clear();
+  scopePolicy.clear();
   configureMcpSigningKey(null);
 });
 

@@ -7,6 +7,7 @@ import { mcpConnections, type McpConnection, type McpRemoteTool } from '@/module
 import { configureMcpSigningKey } from '@/modules/mcp/mcp.identity';
 import { mcpStore } from '@/modules/mcp/mcp.store';
 import { describeServerTools, effectForTool, mcpToolSource, toToolDef } from '@/modules/mcp/mcp.tool-source';
+import { scopePolicy } from '@/modules/authz/scope-policy';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 import { toolRegistry } from '@/modules/tools';
 
@@ -24,6 +25,7 @@ function stubConnection(tools: McpRemoteTool[]): McpConnection {
 
 beforeEach(() => configureMcpSigningKey(generateHyAgentKeyPair('ES256').privateKeyPem));
 afterEach(() => {
+  scopePolicy.clear();
   mcpStore.clear();
   configureMcpSigningKey(null);
   jest.restoreAllMocks();
@@ -105,7 +107,8 @@ describe('registry 整合與 agent 意圖', () => {
 
   it('agent intents 帶入使用者有權限的 MCP server 描述與關鍵字', () => {
     const t = tenantStore.createTenant('mcp-intents');
-    tenantStore.updateTenant(t.id, { grantedScopes: ['service:agent', 'mcp:rooms'] });
+    tenantStore.updateTenant(t.id, { grantedScopes: ['service:agent'] });
+    scopePolicy.setPolicy(t.id, { groups: {}, accounts: { kevin: ['mcp:rooms'] } });
     mcpStore.create({ id: 'rooms', name: '會議室', url: 'http://r/mcp', description: '查詢與預約會議室', keywords: ['會議室', '預約'] });
     mcpStore.create({ id: 'erp', name: 'ERP', url: 'http://e/mcp', description: '查庫存', keywords: ['庫存'] });
     const session = { tenantId: t.id, userId: 'kevin' } as Session;

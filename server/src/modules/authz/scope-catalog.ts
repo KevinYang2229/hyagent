@@ -49,6 +49,12 @@ export function isKbScope(id: string): boolean {
   return id.startsWith(KB_SCOPE_PREFIX);
 }
 
+export const MCP_SCOPE_PREFIX = 'mcp:';
+
+export function isMcpScope(id: string): boolean {
+  return id.startsWith(MCP_SCOPE_PREFIX);
+}
+
 /**
  * labelId 限 [a-z0-9-]+。scope id 以冒號分段，label 內含冒號會讓 kb: 前綴的比對
  * 出現歧義——而該比對正是 assertTenantGrantable 這道安全檢查所依賴的。
@@ -92,6 +98,12 @@ export function assertTenantGrantable(ids: string[], tenantId?: string): void {
   if (kb.length > 0) {
     throw AppError.badRequest(
       `租戶層不可授予知識庫標籤（會併給所有人含訪客）：${kb.join('、')}。請改於部門或帳號層指派。`,
+    );
+  }
+  const mcp = ids.filter(isMcpScope);
+  if (mcp.length > 0) {
+    throw AppError.badRequest(
+      `租戶層不可授予 MCP 服務權限（會併給所有人含訪客）：${mcp.join('、')}。請改於部門或帳號層指派。`,
     );
   }
   assertGrantableScopes(ids, tenantId);

@@ -15,6 +15,7 @@ import { initTenantStore } from '@/modules/tenant/tenant.store';
 import { startExpirySweeper } from '@/lib/expiry-sweeper';
 import { initUsageStore } from '@/modules/usage/usage.store';
 import { initWebhookStore } from '@/modules/webhook/webhook.store';
+import { assertMcpSigningKeyValid } from '@/modules/mcp/mcp.identity';
 import { initMcpStore } from '@/modules/mcp/mcp.store';
 import { initSubmissionStore } from '@/modules/workflow/submission.store';
 
@@ -32,6 +33,9 @@ async function main(): Promise<void> {
     initMcpStore(),
     initKnowledgeStore(),
   ]);
+
+  // MCP 簽章金鑰格式不對就開機失敗，避免上線後每個 agent turn 出事
+  assertMcpSigningKeyValid();
 
   const app = createApp();
 
