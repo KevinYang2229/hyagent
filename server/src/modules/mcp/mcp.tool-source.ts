@@ -3,6 +3,8 @@
  * 讀寫判定：覆寫 requireConfirm → write；readOnlyHint=true → read；其餘一律 write（安全預設）。
  * ToolDef 依（server 設定版本, 工具清單抓取時間）快取，避免每次 invoke 重編 Ajv。
  */
+import Ajv from 'ajv';
+import addFormats from 'ajv-formats';
 import { logger } from '@/lib/logger';
 import type { ToolContext, ToolDef, ToolEffect, ToolSource } from '@/modules/tools/tool.types';
 import { mcpConnections, type McpConnection, type McpRemoteTool } from './mcp.connection';
@@ -31,10 +33,20 @@ export function effectForTool(remote: McpRemoteTool, override?: McpToolOverride)
   return remote.annotations?.readOnlyHint === true ? 'read' : 'write';
 }
 
-export type McpToolProblem = 'name_invalid';
+export type McpToolProblem = 'name_invalid' | 'schema_invalid';
+
+const schemaAjv = new Ajv({ allErrors: true, strict: false });
+addFormats(schemaAjv);
 
 export function toolProblem(serverId: string, remote: McpRemoteTool): McpToolProblem | undefined {
-  return TOOL_NAME_RE.test(remote.name) && LLM_TOOL_NAME_RE.test(mcpLlmName(serverId, remote.name)) ? undefined : 'name_invalid';
+  if (!TOOL_NAME_RE.test(remote.name) || !LLM_TOOL_NAME_RE.test(mcpLlmName(serverId, remote.name))) return 'name_invalid';
+  // 遠端 schema 不可信：先編譯一次，無效就不暴露，免得到 invoke 時才在驗證層炸開
+  try {
+    schemaAjv.compile(normalizeSchema(remote.inputSchema));
+  } catch {
+    return 'schema_invalid';
+  }
+  return undefined;
 }
 
 /** 移除 $schema / $id：避免 Ajv 因 meta-schema 版本或 id 重複而編譯失敗。 */
@@ -52,11 +64,15 @@ export function toToolDef(
 ): ToolDef | undefined {
   const override = config.toolOverrides[remote.name];
   if (override?.disabled) return undefined;
-  if (toolProblem(config.id, remote)) {
-    const key = `${config.id}/${remote.name}`;
+  const problem = toolProblem(config.id, remote);
+  if (problem) {
+    const key = `${config.id}/${remote.name}/${problem}`;
     if (!warned.has(key)) {
       warned.add(key);
-      logger.warn({ serverId: config.id, tool: remote.name }, 'mcp tool name invalid for LLM; not exposed');
+      logger.warn(
+        { serverId: config.id, tool: remote.name, problem },
+        problem === 'schema_invalid' ? 'mcp tool input schema invalid; not exposed' : 'mcp tool name invalid for LLM; not exposed',
+      );
     }
     return undefined;
   }

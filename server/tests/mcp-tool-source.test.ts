@@ -59,6 +59,15 @@ describe('讀寫判定與轉換', () => {
     expect(rows[1].problem).toBe('name_invalid');
   });
 
+  it('輸入 schema 無法編譯 → 不暴露，describeServerTools 標 schema_invalid', () => {
+    const config = mcpStore.create({ id: 'rooms', name: '會議室', url: 'http://x/mcp' });
+    const badSchema: McpRemoteTool = { name: 'broken', inputSchema: { type: 'object', properties: { a: { type: 'nope' } } } };
+    expect(toToolDef(config, badSchema, stubConnection([]))).toBeUndefined();
+    const rows = describeServerTools(config, [read, badSchema]);
+    expect(rows[0].problem).toBeUndefined();
+    expect(rows[1].problem).toBe('schema_invalid');
+  });
+
   it('handler 帶呼叫者身分呼叫 connection', async () => {
     const config = mcpStore.create({ id: 'rooms', name: '會議室', url: 'http://x/mcp' });
     const conn = stubConnection([]);

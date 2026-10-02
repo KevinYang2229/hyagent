@@ -136,6 +136,10 @@ describe('McpConnection 身分與錯誤分類', () => {
     expect(isConnectionFailure(new McpError(ErrorCode.InvalidParams, 'bad'))).toBe(false);
     expect(isConnectionFailure(new McpError(ErrorCode.ConnectionClosed, 'closed'))).toBe(true);
     expect(isConnectionFailure(new StreamableHTTPError(503, 'down'))).toBe(true);
+    expect(isConnectionFailure(new StreamableHTTPError(401, 'x'))).toBe(true);
+    expect(isConnectionFailure(new StreamableHTTPError(403, 'x'))).toBe(true);
+    expect(isConnectionFailure(new StreamableHTTPError(undefined, 'x'))).toBe(true);
+    for (const code of [400, 404, 413]) expect(isConnectionFailure(new StreamableHTTPError(code, 'x'))).toBe(false);
     expect(isConnectionFailure(new TypeError('fetch failed'))).toBe(true);
     expect(isAuthFailure(new StreamableHTTPError(401, 'x'))).toBe(true);
     expect(isAuthFailure(new McpError(ErrorCode.InvalidParams, 'room 403 not found'))).toBe(false);

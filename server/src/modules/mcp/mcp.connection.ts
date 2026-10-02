@@ -78,10 +78,15 @@ export function isAuthFailure(err: unknown): boolean {
 }
 
 /**
- * 連線層失敗（網路錯誤、HTTP 錯誤含 5xx／401／403、連線被關閉）才算 server 斷線；
+ * 連線層失敗（網路錯誤、HTTP 5xx／401／403、連線被關閉）才算 server 斷線；
  * 其餘 JSON-RPC McpError（參數不合、輸出不符 schema 等）屬單一呼叫的應用層錯誤，不影響連線狀態。
  */
 export function isConnectionFailure(err: unknown): boolean {
+  // HTTP 4xx（400／404／413…）是這一次請求的問題，不代表 server 斷線；只有 5xx 與驗證失敗（401／403）才算
+  if (err instanceof StreamableHTTPError) {
+    const code = err.code;
+    return code === undefined || code >= 500 || code === 401 || code === 403;
+  }
   if (err instanceof McpError) return err.code === ErrorCode.ConnectionClosed;
   return true;
 }
