@@ -124,7 +124,7 @@ HyAgent 的智慧代理可以呼叫我們自建的 MCP server。整體流程：
 
 ### 身分與安全
 
-- HyAgent 每個請求都簽一張 60 秒的 ES256 JWT：`aud` 為 `serverId`、`sub` 為使用者、`tenant` 為租戶、`scopes` 只含 `mcp:<serverId>` 相關項。MCP server 用 `callerFrom(extra)` 取得，可自行做二次權限檢查與稽審。
+- HyAgent 每個請求都簽一張 60 秒的 ES256 JWT：`aud` 為 `serverId`、`sub` 為使用者、`tenant` 為租戶、`scopes` 只含 `mcp:<serverId>` 相關項。MCP server 用 `callerFrom(extra)` 取得，可自行做二次權限檢查與稽核。
 - 唯讀工具（`readOnlyHint: true`）AI 會直接呼叫；**其餘一律視為寫入**：AI 只能提議，使用者在確認卡片按「確認」後才由後端執行。後台可對單一工具強制確認或停用。
 - MCP server 端的 kit 會快取 JWKS 公鑰 5 分鐘，換鑰後最慢 5 分鐘生效；遇到未知 kid 會提前重抓，但最多每 30 秒一次。
 - 後端未設 `MCP_SIGNING_KEY` 時，MCP 功能整體停用。
