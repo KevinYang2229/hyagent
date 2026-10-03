@@ -108,7 +108,7 @@ describe('validateEditedInput：鎖定鍵（圖片來源、唯讀陣列）', () 
   const imgOrig = { items: [{ productId: 'P1', name: '飯糰', imageUrl: 'a.png', photo: 'x', quantity: 1 }] };
 
   it('改圖片來源鍵 → 不通過', () => {
-    const r = validateEditedInput(imgSchema, imgOrig, { items: [{ ...imgOrig.items[0], photo: 'evil' }] });
+    const r = validateEditedInput(imgSchema, imgOrig, { items: [{ ...imgOrig.items[0], imageUrl: 'evil.png' }] });
     expect(r.ok).toBe(false);
   });
 
