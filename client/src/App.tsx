@@ -21,9 +21,10 @@ import {
   type SubmissionInfo,
   type TurnData,
 } from './api';
-import type { TenantAppearance } from '@hyagent/shared';
+import type { DisplayBlock, TenantAppearance } from '@hyagent/shared';
 import { changeLanguage } from './i18n';
 import { ConfirmActionCard } from './ConfirmActionCard';
+import { DisplayBlockView } from './DisplayBlockView';
 import { debugLog } from './debugLog';
 import { embedConfig, fetchAppearance } from './embedConfig';
 import { hostBridge, type UiStatePayload } from './hostBridge';
@@ -55,6 +56,8 @@ interface ChatMessage {
   reportId?: string;
   /** 本則回覆附帶的待確認寫入動作（確認卡片） */
   pendingAction?: PendingActionView;
+  /** 本則回覆的畫面區塊 */
+  blocks?: DisplayBlock[];
 }
 
 // 氣泡下方時間：YYYY-MM-DD HH:mm:ss
@@ -499,10 +502,10 @@ export default function App() {
     };
   }, [authUser]);
 
-  function pushMsg(role: Role, text: string, suggestions?: string[], reportId?: string, pendingAction?: PendingActionView) {
+  function pushMsg(role: Role, text: string, suggestions?: string[], reportId?: string, pendingAction?: PendingActionView, blocks?: DisplayBlock[]) {
     setMessages((prev) => [
       ...prev,
-      { id: nextId(), role, text, suggestions, reportId, pendingAction, at: Date.now() },
+      { id: nextId(), role, text, suggestions, reportId, pendingAction, blocks, at: Date.now() },
     ]);
   }
 
@@ -580,7 +583,7 @@ export default function App() {
     setSubmission(data.submission ?? null);
     // 本回合啟動了報告產生（僅報告服務會帶）：把 id 掛在這則回覆上，
     // 由該則訊息下方的膠囊按鈕負責輪詢與開啟下載彈窗
-    if (data.reply) pushMsg('agent', data.reply, data.suggestions, data.report?.id, data.pendingAction);
+    if (data.reply) pushMsg('agent', data.reply, data.suggestions, data.report?.id, data.pendingAction, data.blocks);
 
     // 只在「剛填寫完畢（→confirming）」或「剛送出（→submitted）」的轉變當下主動開表單；
     // 停留在同一狀態（例如 confirming 中繼續問話）不再強制彈出。
@@ -716,9 +719,9 @@ export default function App() {
 
   // 取消：打後端 cancel 端點（非送對話訊息，Agent 無取消工具）
   // 確認卡片：不經 LLM，直接打確認／取消端點；回覆另以一則訊息顯示
-  async function confirmPendingAction(action: PendingActionView): Promise<{ ok: boolean; reply: string }> {
+  async function confirmPendingAction(action: PendingActionView, input?: Record<string, unknown>): Promise<{ ok: boolean; reply: string }> {
     if (!convId) throw new Error('no conversation');
-    const turn = await api.confirmAction(userId, convId, action.id);
+    const turn = await api.confirmAction(userId, convId, action.id, input);
     if (turn.reply) pushMsg('agent', turn.reply);
     return { ok: turn.actionOk === true, reply: turn.reply ?? '' };
   }
@@ -1086,10 +1089,11 @@ export default function App() {
                       m.text
                     )}
                   </div>
+                  {m.blocks?.map((b, i) => <DisplayBlockView key={i} block={b} />)}
                   {m.pendingAction && (
                     <ConfirmActionCard
                       action={m.pendingAction}
-                      onConfirm={() => confirmPendingAction(m.pendingAction!)}
+                      onConfirm={(input) => confirmPendingAction(m.pendingAction!, input)}
                       onCancel={() => cancelPendingAction(m.pendingAction!)}
                     />
                   )}

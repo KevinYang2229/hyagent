@@ -84,3 +84,66 @@ describe('ConfirmActionCard', () => {
     expect(screen.queryByTestId('action-confirm')).not.toBeInTheDocument();
   });
 });
+
+describe('ConfirmActionCard — 可編輯表單', () => {
+  const editable: PendingActionView = {
+    id: 'a2',
+    summary: { title: '確認建立補貨單', fields: [] },
+    expiresAt: new Date(Date.now() + 600_000).toISOString(),
+    form: {
+      title: '確認建立補貨單',
+      fields: [
+        {
+          kind: 'table', key: 'items', label: '補貨品項', selectable: true,
+          columns: [
+            { key: 'name', label: '商品名稱', kind: 'text', editable: false },
+            { key: 'quantity', label: '數量', kind: 'number', editable: true, min: 1, max: 200, unit: '個' },
+          ],
+          rows: [
+            { productId: 'P1', name: '鮭魚御飯糰', quantity: 24 },
+            { productId: 'P2', name: '三明治', quantity: 20 },
+          ],
+        },
+        { kind: 'date', key: 'arrivalDate', label: '預計到貨日期', value: '2026-10-05', editable: true },
+      ],
+    },
+  };
+
+  it('改數量、取消勾選一列、改日期 → onConfirm 收到修改後的完整參數', async () => {
+    const onConfirm = vi.fn().mockResolvedValue({ ok: true, reply: '已完成' });
+    render(<ConfirmActionCard action={editable} onConfirm={onConfirm} onCancel={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('鮭魚御飯糰 數量'), { target: { value: '30' } });
+    fireEvent.click(screen.getByLabelText('選取 三明治'));
+    fireEvent.change(screen.getByLabelText('預計到貨日期'), { target: { value: '2026-10-06' } });
+    fireEvent.click(screen.getByTestId('action-confirm'));
+    await waitFor(() => expect(onConfirm).toHaveBeenCalledTimes(1));
+    expect(onConfirm).toHaveBeenCalledWith({
+      items: [{ productId: 'P1', name: '鮭魚御飯糰', quantity: 30 }],
+      arrivalDate: '2026-10-06',
+    });
+  });
+
+  it('沒有修改 → onConfirm 不帶參數', async () => {
+    const onConfirm = vi.fn().mockResolvedValue({ ok: true, reply: '已完成' });
+    render(<ConfirmActionCard action={editable} onConfirm={onConfirm} onCancel={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('action-confirm'));
+    await waitFor(() => expect(onConfirm).toHaveBeenCalledWith(undefined));
+  });
+
+  it('422 ACTION_INPUT_INVALID → 顯示原因、回到可再送出', async () => {
+    const onConfirm = vi.fn().mockRejectedValue(new ApiError('補貨品項：不可新增列', 422, 'ACTION_INPUT_INVALID'));
+    render(<ConfirmActionCard action={editable} onConfirm={onConfirm} onCancel={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('鮭魚御飯糰 數量'), { target: { value: '30' } });
+    fireEvent.click(screen.getByTestId('action-confirm'));
+    await waitFor(() => expect(screen.getByText('補貨品項：不可新增列')).toBeInTheDocument());
+    expect(card()).toHaveAttribute('data-phase', 'ready');
+    expect(screen.getByTestId('action-confirm')).toBeEnabled();
+  });
+
+  it('全部取消勾選 → 確認鈕停用', () => {
+    render(<ConfirmActionCard action={editable} onConfirm={vi.fn()} onCancel={vi.fn()} />);
+    fireEvent.click(screen.getByLabelText('選取 鮭魚御飯糰'));
+    fireEvent.click(screen.getByLabelText('選取 三明治'));
+    expect(screen.getByTestId('action-confirm')).toBeDisabled();
+  });
+});

@@ -7,6 +7,7 @@ import type {
   Applicant,
   Attachment,
   Definition,
+  DisplayBlock,
   FieldOption,
   FieldSpec,
   LeaveBalance,
@@ -20,6 +21,7 @@ export type {
   Applicant,
   Attachment,
   Definition,
+  DisplayBlock,
   FieldOption,
   FieldSpec,
   LeaveBalance,
@@ -41,6 +43,8 @@ export interface TurnData {
   report?: ReportRef;
   /** 本回合產生的待確認寫入動作（畫確認卡片） */
   pendingAction?: PendingActionView;
+  /** 本回合的畫面區塊（表格等） */
+  blocks?: DisplayBlock[];
   /** 確認端點回傳：執行是否成功 */
   actionOk?: boolean;
 }
@@ -475,11 +479,12 @@ export const api = {
     });
   },
 
-  /** 確認卡片「確認」：不經 LLM，後端重檢權限後執行 */
-  confirmAction(userId: string, convId: string, actionId: string): Promise<TurnData> {
+  /** 確認卡片「確認」：不經 LLM；input 為使用者修改後的參數（省略＝照原參數） */
+  confirmAction(userId: string, convId: string, actionId: string, input?: Record<string, unknown>): Promise<TurnData> {
     return request<TurnData>(`${BASE}/${convId}/actions/${actionId}/confirm`, {
       method: 'POST',
       headers: headers(userId),
+      body: JSON.stringify(input ? { input } : {}),
     });
   },
 
