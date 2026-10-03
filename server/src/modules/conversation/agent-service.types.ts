@@ -5,7 +5,7 @@
  * 由 intent-router 每輪判斷該把對話指派給哪個服務。分派到單一服務可讓該次 LLM
  * 呼叫只帶「該服務的 tools」，比單一大 loop 更省 token。
  */
-import type { PendingActionView, ReportRef } from '@hyagent/shared';
+import type { DisplayBlock, PendingActionView, ReportRef } from '@hyagent/shared';
 import type { LLMProvider } from '@/lib/llm/types';
 import type { Session } from './conversation.types';
 
@@ -28,6 +28,8 @@ export interface AgentTurnResult {
   report?: ReportRef;
   /** 本回合產生的待確認寫入動作（僅 agent 服務會帶） */
   pendingAction?: PendingActionView;
+  /** 本回合工具結果產生的畫面區塊（依序接在回覆文字之後呈現） */
+  blocks?: DisplayBlock[];
 }
 
 export interface AgentService {

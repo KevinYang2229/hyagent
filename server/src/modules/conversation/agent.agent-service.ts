@@ -10,11 +10,13 @@
  *  - 工具錯誤回傳為 tool_result，讓 LLM 自行修正而非中斷整輪。
  * sticky=true：Agent 常是多輪任務，需點黏才不會在蒐集資訊途中被沖回 form。
  */
+import type { DisplayBlock } from '@hyagent/shared';
 import type { LLMProvider, LLMTool } from '@/lib/llm/types';
 import { languageDirective } from '@/lib/locale';
 import { logger } from '@/lib/logger';
+import { buildDisplayBlock, TABLE_SHOWN_NOTE } from '@/modules/display/display-block';
 import { mcpIntentsFor, mcpPromptLines } from '@/modules/mcp/mcp.intents';
-import { isWriteTool, makeToolContext, toolRegistry } from '@/modules/tools';
+import { isWriteTool, makeToolContext, toolRegistry, unwrapToolOutput } from '@/modules/tools';
 import type { AgentService, AgentTurnResult, IntentDescriptor } from './agent-service.types';
 import type { Session } from './conversation.types';
 import {
@@ -114,6 +116,7 @@ export const agentAgentService: AgentService = {
 
     // 本輪是否已提議過寫入：上一輪遺留的 pendingAction 已在上方作廢，這裡只管同一輪內的第二筆
     let proposedThisTurn = false;
+    const blocks: DisplayBlock[] = [];
 
     await toolRegistry.prepare(ctx);
     const { llmTools, idByLlmName } = exposeTools(toolRegistry.availableFor(ctx));
@@ -146,8 +149,18 @@ export const agentAgentService: AgentService = {
               note: '已建立確認卡片，尚未執行。請向使用者簡述將執行的內容並請他確認；切勿宣稱已完成。',
             });
           }
-          const result = await toolRegistry.invoke(realId, input, ctx);
-          return JSON.stringify({ ok: true, result });
+          const { data, display } = unwrapToolOutput(await toolRegistry.invoke(realId, input, ctx));
+          let shown = false;
+          if (display !== undefined) {
+            const block = buildDisplayBlock(display, data);
+            if (block) {
+              blocks.push(block);
+              shown = true;
+            } else {
+              logger.warn({ toolId: realId }, 'invalid display hint ignored');
+            }
+          }
+          return JSON.stringify({ ok: true, result: data, ...(shown ? { note: TABLE_SHOWN_NOTE } : {}) });
         } catch (err) {
           // 工具錯誤（權限/驗證/連接器/MCP）回傳給 LLM 自行修正，不中斷整輪
           return JSON.stringify({ ok: false, error: (err as Error).message });
@@ -159,6 +172,7 @@ export const agentAgentService: AgentService = {
     return {
       reply,
       ...(session.pendingAction ? { pendingAction: toPendingActionView(session.pendingAction) } : {}),
+      ...(blocks.length > 0 ? { blocks } : {}),
     };
   },
 };

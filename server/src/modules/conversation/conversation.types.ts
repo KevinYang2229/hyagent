@@ -1,4 +1,4 @@
-import type { PendingActionView, ReportRef, SessionStatus, SubmissionInfo } from '@hyagent/shared';
+import type { DisplayBlock, PendingActionView, ReportRef, SessionStatus, SubmissionInfo } from '@hyagent/shared';
 import type { LLMMessage } from '@/lib/llm/types';
 import type { FormValues } from '@/modules/form/form.types';
 import type { PendingAction } from './pending-action';
@@ -37,4 +37,6 @@ export interface TurnResult {
   report?: ReportRef;
   /** 本回合產生的待確認寫入動作（前端畫確認卡片） */
   pendingAction?: PendingActionView;
+  /** 本回合的畫面區塊（表格等）；不寫入對話歷史 */
+  blocks?: DisplayBlock[];
 }

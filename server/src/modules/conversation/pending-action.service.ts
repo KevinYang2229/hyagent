@@ -5,7 +5,7 @@
  * 呼叫端必須在呼叫前清除 session.pendingAction（確認是一次性的，雙擊或重送不得執行第二次）。
  */
 import { logger } from '@/lib/logger';
-import { makeToolContext, toolRegistry } from '@/modules/tools';
+import { makeToolContext, toolRegistry, unwrapToolOutput } from '@/modules/tools';
 import { AppError } from '@/utils/app-error';
 import type { Session } from './conversation.types';
 import type { PendingAction } from './pending-action';
@@ -37,7 +37,7 @@ export async function runConfirmedAction(session: Session, action: PendingAction
   try {
     // 動態來源（MCP）的工具要先備妥快取，否則 resolve 不到
     await toolRegistry.prepare(ctx);
-    const result = await toolRegistry.invoke(action.toolId, action.input, ctx);
+    const { data: result } = unwrapToolOutput(await toolRegistry.invoke(action.toolId, action.input, ctx));
     outcome = { ok: true, reply: `已完成「${title}」。`, result };
     // 逐字稿附上結果摘要，讓後續對話（如「剛才的預約編號是多少」）有上下文；使用者看到的回覆維持簡潔
     transcript = outcome.reply + resultNote(result);
