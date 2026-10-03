@@ -22,17 +22,19 @@ const products: Record<string, { productId: string; name: string; stock: number;
   沙拉: { productId: 'P007', name: '沙拉－和風雞肉', stock: 5, suggested: 18, expiryDate: '2026-10-04', expiring: true },
 };
 
+const lookupCalls: string[][] = [];
+let inventoryBroken = false;
 registerTool({
   id: 'mcp.store-demo.product_lookup', description: 'x', scopes: [], effect: 'read',
-  inputSchema: { type: 'object', properties: { names: { type: 'array', items: { type: 'string' } } } },
+  inputSchema: { type: 'object', properties: { names: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 30 } } },
   handler: async (input) => ({
-    matches: (input as { names: string[] }).names.map((q) => (products[q] ? { query: q, productId: products[q].productId, name: products[q].name, score: 1 } : { query: q, score: 0.1 })),
+    matches: (lookupCalls.push((input as { names: string[] }).names), (input as { names: string[] }).names).map((q) => (products[q] ? { query: q, productId: products[q].productId, name: products[q].name, score: 1 } : { query: q, score: 0.1 })),
   }),
 });
 registerTool({
   id: 'mcp.store-demo.inventory_query', description: 'x', scopes: [], effect: 'read',
   inputSchema: { type: 'object', properties: { productIds: { type: 'array', items: { type: 'string' } } } },
-  handler: async (input) => toolOutput({
+  handler: async (input) => inventoryBroken ? { items: 'oops' } : toolOutput({
     items: Object.values(products).filter((p) => (input as { productIds: string[] }).productIds.includes(p.productId)),
   }, { type: 'table', rows: 'items', columns: [{ key: 'name', label: '商品' }] }),
 });
@@ -64,6 +66,8 @@ function analyze(t: string, mode: string, file: Buffer = PNG, mime = 'image/png'
 
 beforeEach(() => {
   llmCreate.mockReset();
+  lookupCalls.length = 0;
+  inventoryBroken = false;
   tenantStore.updateTenant('default', { grantedScopes: ['service:agent'] });
 });
 
@@ -94,6 +98,49 @@ describe('POST /api/vision/analyze — shelf', () => {
     const sent = llmCreate.mock.calls[0][0];
     expect(sent.toolChoice).toEqual({ name: 'report_shelf' });
     expect(sent.messages[0].content[0]).toMatchObject({ type: 'image', mediaType: 'image/png' });
+  });
+
+  it('35 筆辨識結果 → product_lookup 分 30 + 5 兩批，已知商品都對得上', async () => {
+    const box = { x: 0.1, y: 0.1, w: 0.1, h: 0.1 };
+    const items = Array.from({ length: 33 }, (_, i) => ({ name: `未知${i}`, status: 'ok', box }));
+    items.splice(10, 0, { name: '鮭魚御飯糰', status: 'out_of_stock', box });
+    items.push({ name: '沙拉', status: 'ok', box });
+    llmCreate.mockResolvedValue(reportCall('report_shelf', { items }));
+    const res = await analyze(await token(), 'shelf');
+    expect(res.status).toBe(200);
+    expect(lookupCalls.map((c) => c.length)).toEqual([30, 5]);
+    const f = res.body.data.findings as { name: string; productId?: string }[];
+    expect(f).toHaveLength(35);
+    expect(f.find((x) => x.name === '鮭魚御飯糰')?.productId).toBe('P001');
+    expect(f.find((x) => x.productId === 'P007')).toBeDefined();
+    expect(res.body.data.warnings).toBeUndefined();
+  });
+
+  it('空辨識結果 → 200、不查門市、無 warnings', async () => {
+    llmCreate.mockResolvedValue(reportCall('report_shelf', { items: [] }));
+    const res = await analyze(await token(), 'shelf');
+    expect(res.status).toBe(200);
+    expect(res.body.data.findings).toEqual([]);
+    expect(res.body.data.warnings).toBeUndefined();
+    expect(lookupCalls).toHaveLength(0);
+  });
+
+  it('60 筆辨識結果 → 只取前 50 筆', async () => {
+    const items = Array.from({ length: 60 }, (_, i) => ({ name: `未知${i}`, status: 'ok', box: { x: 0, y: 0, w: 0.1, h: 0.1 } }));
+    llmCreate.mockResolvedValue(reportCall('report_shelf', { items }));
+    const res = await analyze(await token(), 'shelf');
+    expect(res.status).toBe(200);
+    expect(res.body.data.findings).toHaveLength(50);
+    expect(lookupCalls.map((c) => c.length)).toEqual([30, 20]);
+  });
+
+  it('inventory_query 回傳格式異常 → 200 附 warning，不 500', async () => {
+    inventoryBroken = true;
+    llmCreate.mockResolvedValue(reportCall('report_shelf', { items: [{ name: '鮭魚御飯糰', status: 'out_of_stock', box: { x: 0.1, y: 0.1, w: 0.1, h: 0.1 } }] }));
+    const res = await analyze(await token(), 'shelf');
+    expect(res.status).toBe(200);
+    expect(res.body.data.findings[0].productId).toBe('P001');
+    expect(res.body.data.warnings).toEqual(['門市資料格式異常（inventory_query）']);
   });
 
   it('LLM 沒有呼叫回報工具 → 502 VISION_FAILED', async () => {

@@ -24,6 +24,12 @@ interface ImageInput {
 }
 
 const DEFAULT_REPLENISH_QTY = 10;
+/** 門市 product_lookup 單次最多 30 個名稱（maxItems），超過要分批 */
+export const PRODUCT_LOOKUP_BATCH = 30;
+/** 單張照片最多採用幾筆辨識結果；LLM 回得更多時截斷而非失敗 */
+export const MAX_SHELF_ITEMS = 50;
+/** 門市 replenishment_create 單張單最多 30 項 */
+const MAX_REPLENISH_ITEMS = 30;
 
 const shelfReportSchema = z.object({
   items: z.array(
@@ -110,42 +116,67 @@ function tomorrow(): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** 以門市資料補齊商品編號、庫存、到期日；任何一步失敗或格式異常都只加 warning */
+async function enrichFromStore(ctx: ToolContext, findings: ShelfFinding[], warnings: string[]): Promise<void> {
+  const names = findings.map((f) => f.name);
+  const byQuery = new Map<string, string>();
+  const byIndex: (string | undefined)[] = [];
+  for (let start = 0; start < names.length; start += PRODUCT_LOOKUP_BATCH) {
+    const out = await callStore(ctx, 'product_lookup', { names: names.slice(start, start + PRODUCT_LOOKUP_BATCH) }, warnings);
+    if (!out) continue;
+    const matches = (out.data as { matches?: unknown } | undefined)?.matches;
+    if (!Array.isArray(matches)) {
+      warnings.push('門市資料格式異常（product_lookup）');
+      continue;
+    }
+    matches.forEach((m: { query?: string; productId?: string } | null, i) => {
+      if (!m?.productId) return;
+      if (typeof m.query === 'string') byQuery.set(m.query, m.productId);
+      byIndex[start + i] = m.productId;
+    });
+  }
+  findings.forEach((f, i) => {
+    const id = byQuery.get(f.name) ?? byIndex[i];
+    if (id) f.productId = id;
+  });
+
+  const ids = [...new Set(findings.map((f) => f.productId).filter((x): x is string => !!x))];
+  if (ids.length === 0) return;
+  const inv = await callStore(ctx, 'inventory_query', { productIds: ids }, warnings);
+  if (!inv) return;
+  const items = (inv.data as { items?: unknown } | undefined)?.items;
+  if (!Array.isArray(items)) {
+    warnings.push('門市資料格式異常（inventory_query）');
+    return;
+  }
+  const byId = new Map((items as Record<string, unknown>[]).map((it) => [it.productId as string, it]));
+  for (const f of findings) {
+    const it = f.productId ? byId.get(f.productId) : undefined;
+    if (!it) continue;
+    if (typeof it.name === 'string') f.name = it.name;
+    if (typeof it.stock === 'number') f.stock = it.stock;
+    if (typeof it.suggested === 'number') f.suggestedQty = it.suggested;
+    if (typeof it.expiryDate === 'string') f.expiryDate = it.expiryDate;
+    // 即期判斷來自門市資料，不靠照片
+    if (it.expiring === true && f.status === 'ok') f.status = 'expiring';
+  }
+}
+
 export async function analyzeShelf(principal: Principal, image: ImageInput): Promise<ShelfResult> {
   const reported = await report(principal, SHELF_SYSTEM, REPORT_SHELF_TOOL, image, '請分析這張貨架照片。', shelfReportSchema);
   const ctx = makeToolContext(principal);
   await toolRegistry.prepare(ctx);
   const warnings: string[] = [];
 
-  const findings: ShelfFinding[] = reported.items.map((i) => ({
+  // 不因 LLM 回太多項而整個失敗：只取前 MAX_SHELF_ITEMS 筆
+  const findings: ShelfFinding[] = reported.items.slice(0, MAX_SHELF_ITEMS).map((i) => ({
     name: i.name,
     status: i.status,
     box: clampBox(i.box),
     ...(i.note ? { note: i.note } : {}),
   }));
 
-  const lookup = await callStore(ctx, 'product_lookup', { names: findings.map((f) => f.name) }, warnings);
-  const matches = (lookup?.data as { matches?: { query: string; productId?: string; name?: string }[] } | undefined)?.matches ?? [];
-  findings.forEach((f, i) => {
-    const m = matches[i];
-    if (m?.productId) f.productId = m.productId;
-  });
-
-  const ids = [...new Set(findings.map((f) => f.productId).filter((x): x is string => !!x))];
-  if (ids.length > 0) {
-    const inv = await callStore(ctx, 'inventory_query', { productIds: ids }, warnings);
-    const items = (inv?.data as { items?: Record<string, unknown>[] } | undefined)?.items ?? [];
-    const byId = new Map(items.map((it) => [it.productId as string, it]));
-    for (const f of findings) {
-      const it = f.productId ? byId.get(f.productId) : undefined;
-      if (!it) continue;
-      if (typeof it.name === 'string') f.name = it.name;
-      if (typeof it.stock === 'number') f.stock = it.stock;
-      if (typeof it.suggested === 'number') f.suggestedQty = it.suggested;
-      if (typeof it.expiryDate === 'string') f.expiryDate = it.expiryDate;
-      // 即期判斷來自門市資料，不靠照片
-      if (it.expiring === true && f.status === 'ok') f.status = 'expiring';
-    }
-  }
+  if (findings.length > 0) await enrichFromStore(ctx, findings, warnings);
 
   const counts = {
     outOfStock: findings.filter((f) => f.status === 'out_of_stock').length,
@@ -156,6 +187,7 @@ export async function analyzeShelf(principal: Principal, image: ImageInput): Pro
   const seen = new Set<string>();
   const replItems = findings
     .filter((f) => f.status === 'out_of_stock' && f.productId && typeof f.stock === 'number' && !seen.has(f.productId) && seen.add(f.productId))
+    .slice(0, MAX_REPLENISH_ITEMS)
     .map((f) => ({
       productId: f.productId!,
       name: f.name,
