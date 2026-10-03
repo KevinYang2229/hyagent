@@ -101,7 +101,7 @@ describe('createPendingAction / 效期 / 視圖', () => {
 
   it('對外視圖不含工具 id 與原始參數', () => {
     const view = toPendingActionView(createPendingAction(tool, { room: 'A' }));
-    expect(Object.keys(view).sort()).toEqual(['expiresAt', 'id', 'summary']);
+    expect(Object.keys(view).sort()).toEqual(['expiresAt', 'form', 'id', 'summary']);
   });
 });
 

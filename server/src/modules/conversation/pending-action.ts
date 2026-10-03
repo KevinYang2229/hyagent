@@ -6,8 +6,9 @@
  * 讓自建 MCP 只要把 schema 寫好，卡片就能讀。
  */
 import { randomUUID } from 'node:crypto';
-import type { ConfirmCard, ConfirmCardField, PendingActionView } from '@hyagent/shared';
+import type { ConfirmCard, ConfirmCardField, ConfirmForm, PendingActionView } from '@hyagent/shared';
 import type { ToolDef } from '@/modules/tools/tool.types';
+import { buildConfirmForm } from './confirm-form';
 
 export const PENDING_ACTION_TTL_MS = 10 * 60 * 1000;
 export const CARD_VALUE_MAX_CHARS = 500;
@@ -18,6 +19,7 @@ export interface PendingAction {
   /** 已通過 Ajv 的參數；確認後原封不動執行 */
   input: Record<string, unknown>;
   summary: ConfirmCard;
+  form: ConfirmForm;
   expiresAt: string;
 }
 
@@ -79,6 +81,7 @@ export function createPendingAction(tool: ToolDef, input: Record<string, unknown
     toolId: tool.id,
     input,
     summary: buildConfirmCard(tool, input),
+    form: buildConfirmForm(tool, input),
     expiresAt: new Date(now + PENDING_ACTION_TTL_MS).toISOString(),
   };
 }
@@ -88,7 +91,7 @@ export function isPendingActionExpired(action: PendingAction, now = Date.now()):
 }
 
 export function toPendingActionView(action: PendingAction): PendingActionView {
-  return { id: action.id, summary: action.summary, expiresAt: action.expiresAt };
+  return { id: action.id, summary: action.summary, form: action.form, expiresAt: action.expiresAt };
 }
 
 // 確認/取消語意判斷：取消優先於確認（例如「確認」被「不要，先不要確認」蓋過時，先擋取消詞）。
