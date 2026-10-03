@@ -12,6 +12,7 @@
 3. **回傳直接回答問題**：例如回「某時段是否有空」，不要丟整張表讓模型推論（模型會讀錯）。
 4. **失敗回 `isError: true`** 並在文字裡說明原因，HyAgent 會讓 AI 如實轉述。
 5. **用 `callerFrom(extra)` 做二次權限檢查與稽核**：知道是誰、替哪個租戶操作。
+6. **需要表格顯示或可編輯確認卡片**：用 `_meta["hyagent/display"]` 宣告表格；寫入工具的 schema 用 `readOnly`、`x-unit` 等關鍵字（見 INTEGRATION.md）。`McpServer.registerTool` 的 zod 寫法表達不了這些關鍵字時，可改用低階 Server API 提供原始 JSON Schema，範例見 `mcp/store-demo/src/app.ts`。
 
 ## 範例
 

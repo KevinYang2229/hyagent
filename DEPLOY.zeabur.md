@@ -127,6 +127,7 @@ Zeabur 連上 GitHub repo 後，會 watch 指定分支；**每次 `git push` 到
 | `JWT_REFRESH_SECRET` | ✅       | ≥32 字元隨機字串（與上者不同）                                                                                                                                                                             |
 | `MCP_SIGNING_KEY`    | 視需要   | 要讓 AI 呼叫自建 MCP 服務時必填：ES256 私鑰（PKCS#8 PEM，換行寫成 `\n`）。未設＝MCP 功能停用。產生方式見 `server/.env.example` |
 | `MCP_PREVIOUS_PUBLIC_KEY` | 選填 | 換鑰過渡期填上一把的公鑰（SPKI PEM），過渡結束後移除 |
+| `VISION_STORE_SERVER_ID` | 選填 | 影像辨識查詢門市資料的 MCP serverId，預設 `store-demo` |
 | `CORS_ORIGIN`        | 建議     | client 與 admin 的 Domain，**逗號分隔**：`https://hyagent.zeabur.app,https://hyagent-admin.zeabur.app`。**結尾不要加 `/`**（瀏覽器送的 Origin 不帶斜線，多打會比對不到而擋掉；程式已做容錯，但仍建議別加） |
 | `ADMIN_PASSWORD`     | 後台必填 | admin 後台登入密碼；**留空＝後台登入回 403**（停用）。與 `ADMIN_API_KEY` 分開                                                                                                                              |
 | `AUTH_DEV_PASSWORD`  | 視需要   | 帳密登入共用密碼，預設 `oa1234`；`AUTH_PASSWORD_LOGIN=on` 的正式環境必須改（否則 boot fail-fast）                                                                                                          |
@@ -139,6 +140,8 @@ Zeabur 連上 GitHub repo 後，會 watch 指定分支；**每次 `git push` 到
 
 > **多副本注意（含 `DATA_BACKEND=db`）：** server 仍須維持單一 replica，或在前面啟用 sticky sessions。對話 session 與寫入動作的一次性確認（pendingAction）都放在單一程序的記憶體裡，請求若被分到不同副本，會出現找不到 session 或確認失效。
 > 另外，在後台「MCP 服務」異動註冊資料（新增、修改、停用）後，其他副本不會即時同步，需重啟才看得到；單一副本則即時生效。
+
+> **門市 Demo MCP 服務：** `mcp/store-demo` 需另外部署為一個服務，環境變數 `HYAGENT_JWKS_URL`、`MCP_SERVER_ID`、`PUBLIC_BASE_URL`、`PORT`，啟動指令 `npm start -w mcp/store-demo`。部署後到後台「MCP 服務」登記（serverId 與 `VISION_STORE_SERVER_ID` 一致）。
 
 ### client 服務
 

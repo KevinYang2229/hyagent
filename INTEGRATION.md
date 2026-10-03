@@ -137,3 +137,51 @@ HyAgent 的智慧代理可以呼叫我們自建的 MCP server。整體流程：
 - 取消：`POST /api/conversations/:id/actions/:actionId/cancel`
 - `409 ACTION_EXPIRED`：已逾時（10 分鐘），請使用者重新提出；`409 ACTION_NOT_FOUND`：已處理過；`403`：權限已撤銷。
 - 沒有畫卡片的舊前台，使用者打「確認」也能執行（打字備援）。
+
+### 回傳表格（顯示提示）
+
+工具可在結果的 `_meta["hyagent/display"]` 宣告表格，HyAgent 會把資料原樣畫成表格（不經 AI 轉述），
+AI 只負責說明重點：
+
+```jsonc
+{ "type": "table", "title": "商品庫存", "rows": "items",
+  "columns": [
+    { "key": "name", "label": "商品名稱", "image": "image" },
+    { "key": "stock", "label": "目前庫存", "unit": "個" },
+    { "key": "suggested", "label": "建議補貨", "unit": "個", "format": "delta" },
+    { "key": "status", "label": "狀態", "badge": { "庫存偏低": "danger", "正常": "success" } } ] }
+```
+
+限制：最多 50 列、12 欄；儲存格只接受字串或數字；色調只有 success／warning／danger／neutral；圖片須為 http(s) 網址。
+對話 API 的回應會在 `blocks` 帶出這些表格。
+
+### 可編輯的確認卡片
+
+寫入工具的確認卡片由輸入 schema 自動產生：`readOnly` 不可改、數字帶 `minimum`／`maximum`、
+`format: "date"` 為日期（後端會驗證日期格式）、`enum` 為下拉（`x-enumLabels` 顯示文字）、
+物件陣列為可勾選表格（項目需有唯讀欄位辨識列）；延伸關鍵字 `x-unit`、`x-image`、`x-hidden`、`x-display: "html"`。
+
+前端確認時可帶修改後的完整參數：`POST /api/conversations/:id/actions/:actionId/confirm`，body `{ input }`。
+後端的處理規則：
+
+- 修改後的 `input` 不可新增原始參數沒有的鍵；前端沒帶的鍵，會先以原始參數補齊再驗證。
+- `readOnly`、`x-hidden`、`x-display: "html"`、`x-image-source` 欄位必須與原始值相同（陣列可刪列，不可新增列或改唯讀值）。
+- 其餘欄位依 schema 驗證；不合法回 `422 ACTION_INPUT_INVALID`，動作保留，可修正後重送。
+- 帶修改確認時若工具暫時無法使用，回 `503 TOOL_UNAVAILABLE`，動作同樣保留，可稍後重試。
+
+不經 AI 直接提議：`POST /api/conversations/:id/actions/propose`，body `{ toolId, input }`：
+
+- 只接受對 AI 開放（`agentExposed`）的寫入工具，否則 `404 TOOL_NOT_FOUND`。
+- 該工具不是寫入工具回 `422 NOT_A_WRITE_TOOL`。
+
+### 影像辨識
+
+`POST /api/vision/analyze`（multipart：`image` 為 jpeg／png／webp ≤ 5MB、`mode` 為 `shelf` 或 `coupon`）：
+
+- `shelf`：回傳 `findings`（名稱、商品編號、狀態、庫存、到期日、框選座標）、`counts`，
+  以及可直接送到 `propose` 的 `replenishment`。框選座標為 0–1 的相對值，超出範圍會被夾回。
+  商品資料每 30 筆為一批查詢；每張照片最多保留 50 筆辨識結果，補貨提議最多 30 項。
+- `coupon`：讀出券號後查券，回傳 `extracted`、`result` 與表格 `block`；讀不到券號時 `message` 提示改用掃條碼。
+
+查詢門市資料用的 MCP serverId 由 `VISION_STORE_SERVER_ID` 指定（預設 `store-demo`）。
+Demo 前可用 `server/scripts/vision-eval.ts` 以實際照片檢視辨識效果（會呼叫真實 LLM，產生費用）。
