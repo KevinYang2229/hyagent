@@ -1,0 +1,7 @@
+[
+  { "id": "PR01", "title": "御飯糰第二件 6 折", "description": "任選御飯糰兩件，第二件 6 折（價低者折扣）", "category": "御飯糰", "validFromDays": -3, "validToDays": 4 },
+  { "id": "PR02", "title": "中杯咖啡第二杯半價", "description": "美式、拿鐵中杯任選，第二杯半價", "category": "咖啡", "validFromDays": -10, "validToDays": 20 },
+  { "id": "PR03", "title": "沙拉＋飲料 79 元", "description": "指定沙拉搭配 600ml 茶飲，優惠價 79 元", "category": "沙拉", "validFromDays": -1, "validToDays": 6 },
+  { "id": "PR04", "title": "便當加 10 元多一顆茶葉蛋", "description": "購買任一便當，加 10 元可換購茶葉蛋一顆", "category": "便當", "validFromDays": 0, "validToDays": 2 },
+  { "id": "PR05", "title": "布丁買二送一", "description": "布丁任選三件，價低者免費（已結束）", "category": "甜點", "validFromDays": -20, "validToDays": -5 }
+]

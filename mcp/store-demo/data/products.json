@@ -1,0 +1,22 @@
+[
+  { "id": "P001", "name": "鮭魚御飯糰", "category": "御飯糰", "aliases": ["鮭魚飯糰", "鮭魚三角飯糰"], "stock": 6, "safetyStock": 30, "expiryInDays": 2 },
+  { "id": "P002", "name": "鮪魚御飯糰", "category": "御飯糰", "aliases": ["鮪魚飯糰", "三角飯糰-鮪魚"], "stock": 12, "safetyStock": 12, "expiryInDays": 2 },
+  { "id": "P003", "name": "明太子御飯糰", "category": "御飯糰", "aliases": ["明太子飯糰"], "stock": 3, "safetyStock": 27, "expiryInDays": 2 },
+  { "id": "P004", "name": "雞肉御飯糰", "category": "御飯糰", "aliases": ["雞肉飯糰"], "stock": 18, "safetyStock": 18, "expiryInDays": 3 },
+  { "id": "P005", "name": "三明治－火腿蛋", "category": "三明治", "aliases": ["火腿蛋三明治", "火腿三明治"], "stock": 4, "safetyStock": 24, "expiryInDays": 2 },
+  { "id": "P006", "name": "三明治－鮪魚", "category": "三明治", "aliases": ["鮪魚三明治"], "stock": 10, "safetyStock": 12, "expiryInDays": 2 },
+  { "id": "P007", "name": "沙拉－和風雞肉", "category": "沙拉", "aliases": ["和風雞肉沙拉", "雞肉沙拉"], "stock": 5, "safetyStock": 23, "expiryInDays": 1 },
+  { "id": "P008", "name": "沙拉－凱薩", "category": "沙拉", "aliases": ["凱薩沙拉"], "stock": 8, "safetyStock": 8, "expiryInDays": 3 },
+  { "id": "P009", "name": "便當－雞腿飯", "category": "便當", "aliases": ["雞腿便當", "雞腿飯"], "stock": 7, "safetyStock": 10, "expiryInDays": 1 },
+  { "id": "P010", "name": "便當－排骨飯", "category": "便當", "aliases": ["排骨便當", "排骨飯"], "stock": 9, "safetyStock": 10, "expiryInDays": 2 },
+  { "id": "P011", "name": "關東煮－蘿蔔", "category": "關東煮", "aliases": ["蘿蔔", "關東煮蘿蔔"], "stock": 20, "safetyStock": 15, "expiryInDays": 1 },
+  { "id": "P012", "name": "關東煮－黑輪", "category": "關東煮", "aliases": ["黑輪"], "stock": 25, "safetyStock": 15, "expiryInDays": 2 },
+  { "id": "P013", "name": "茶葉蛋", "category": "熟食", "aliases": ["茶葉蛋"], "stock": 30, "safetyStock": 20, "expiryInDays": 2 },
+  { "id": "P014", "name": "鮮奶 290ml", "category": "飲料", "aliases": ["鮮奶", "牛奶"], "stock": 14, "safetyStock": 20, "expiryInDays": 4 },
+  { "id": "P015", "name": "無糖綠茶 600ml", "category": "飲料", "aliases": ["綠茶", "無糖綠茶"], "stock": 40, "safetyStock": 30, "expiryInDays": 180 },
+  { "id": "P016", "name": "美式咖啡（中）", "category": "咖啡", "aliases": ["美式咖啡", "黑咖啡"], "stock": 99, "safetyStock": 0, "expiryInDays": 365 },
+  { "id": "P017", "name": "拿鐵咖啡（中）", "category": "咖啡", "aliases": ["拿鐵", "拿鐵咖啡"], "stock": 99, "safetyStock": 0, "expiryInDays": 365 },
+  { "id": "P018", "name": "布丁", "category": "甜點", "aliases": ["雞蛋布丁"], "stock": 2, "safetyStock": 12, "expiryInDays": 5 },
+  { "id": "P019", "name": "麵包－菠蘿", "category": "麵包", "aliases": ["菠蘿麵包"], "stock": 6, "safetyStock": 6, "expiryInDays": 1 },
+  { "id": "P020", "name": "優格", "category": "乳品", "aliases": ["原味優格"], "stock": 11, "safetyStock": 10, "expiryInDays": 6 }
+]
