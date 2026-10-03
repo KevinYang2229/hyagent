@@ -100,129 +100,194 @@ export default function McpServersPage() {
     }
   }
 
-  const tenantName = (id: string | null) => (id ? (tenants.find((t) => t.id === id)?.name ?? id) : '共用');
+  const tenantName = (id: string | null) => (id ? `${tenants.find((t) => t.id === id)?.name ?? id}（專屬）` : '共用');
+  const setField = (patch: Partial<McpServerFormValues>) => editing && setEditing({ ...editing, values: { ...editing.values, ...patch } });
 
   return (
     <AppLayout crumb="平台" title="MCP 服務">
-      {err && <div className="card"><div className="empty">{err}</div></div>}
-      {view && !view.signingEnabled && (
-        <div className="card"><div className="empty">尚未設定 MCP_SIGNING_KEY：MCP 功能停用中，AI 不會呼叫任何 MCP 工具。</div></div>
-      )}
-      {!view && !err && <div className="card"><div className="empty">載入中…</div></div>}
+      <div className="mcp-page">
+        {err && !editing && <div className="card"><div className="card-body form-errors">{err}</div></div>}
+        {view && !view.signingEnabled && (
+          <div className="card"><div className="card-body muted">尚未設定 MCP_SIGNING_KEY：MCP 功能停用中，AI 不會呼叫任何 MCP 工具。</div></div>
+        )}
+        {!view && !err && <div className="card"><div className="empty">載入中…</div></div>}
 
-      {view && (
-        <div className="card">
-          <div className="card-head">
-            <h3>已登記的服務</h3>
-            <button type="button" className="btn primary" onClick={() => { setFormErrors([]); setEditing({ isNew: true, values: emptyMcpForm() }); }}>
-              新增 MCP 服務
-            </button>
-          </div>
-          {view.servers.length === 0 && <div className="empty">尚未登記任何 MCP 服務</div>}
-          {view.servers.map((s) => (
-            <section key={s.config.id} className="mcp-server">
-              <header>
-                <strong>{s.config.name}</strong> <code>{s.config.id}</code>
-                <span className="tag">{tenantName(s.config.ownerTenantId)}</span>
-                <span className="tag">{s.config.enabled ? '啟用' : '停用'}</span>
-                <span className="tag" title={s.status.lastError}>{statusLabel(s.status.state)}</span>
-              </header>
-              <div className="muted">{s.config.url}</div>
-              {s.status.lastError && <div className="muted">最後錯誤：{s.status.lastError}</div>}
-              <div className="actions">
-                <button type="button" className="btn" disabled={busyId === s.config.id} onClick={() => void refresh(s.config.id)}>
-                  {busyId === s.config.id ? '連線中…' : '測試連線／重新整理'}
-                </button>
-                <button type="button" className="btn" onClick={() => { setFormErrors([]); setEditing({ isNew: false, values: toFormValues(s.config) }); }}>編輯</button>
-                <button type="button" className="btn danger" onClick={() => void remove(s.config.id)}>刪除</button>
-              </div>
-              {s.tools.length > 0 && (
-                <table className="table">
-                  <thead>
-                    <tr><th>工具</th><th>判定</th><th>停用</th><th>強制確認</th><th>卡片標題</th><th>問題</th></tr>
-                  </thead>
-                  <tbody>
-                    {s.tools.map((t) => (
-                      <tr key={t.name} className={t.problem ? 'row-error' : undefined}>
-                        <td>{t.title ?? t.name}<div className="muted"><code>{t.name}</code></div></td>
-                        <td>{t.effect === 'read' ? '唯讀' : '寫入（需確認）'}</td>
-                        <td>
-                          <input type="checkbox" checked={t.disabled} onChange={(e) => void setOverride(s, t.name, { disabled: e.target.checked })} />
-                        </td>
-                        <td>
-                          <input
-                            type="checkbox"
-                            checked={s.config.toolOverrides[t.name]?.requireConfirm === true}
-                            onChange={(e) => void setOverride(s, t.name, { requireConfirm: e.target.checked })}
-                          />
-                        </td>
-                        <td>
-                          {t.effect === 'write' && (
-                            <input
-                              key={`${s.config.id}/${t.name}/${s.config.toolOverrides[t.name]?.cardTitle ?? ''}`}
-                              defaultValue={s.config.toolOverrides[t.name]?.cardTitle ?? ''}
-                              placeholder={t.title ?? t.name}
-                              maxLength={60}
-                              onBlur={(e) => {
-                                const next = e.target.value.trim();
-                                if (next !== (s.config.toolOverrides[t.name]?.cardTitle ?? '')) {
-                                  void setOverride(s, t.name, { cardTitle: next || undefined });
-                                }
-                              }}
-                            />
-                          )}
-                        </td>
-                        <td>{t.problem === 'name_invalid' ? '名稱不合法或過長，不會給 AI 使用' : t.problem === 'schema_invalid' ? '輸入 schema 無效，不會給 AI 使用' : ''}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+        {/* 表單放在清單上方：開啟時就在眼前，錯誤訊息也直接顯示在表單裡 */}
+        {editing && (
+          <div className="card">
+            <div className="card-head">
+              <div className="card-title">{editing.isNew ? '新增 MCP 服務' : `編輯：${editing.values.id}`}</div>
+            </div>
+            <div className="card-body">
+              {(formErrors.length > 0 || err) && (
+                <ul className="form-errors">
+                  {formErrors.map((e) => <li key={e}>{e}</li>)}
+                  {err && <li>{err}</li>}
+                </ul>
               )}
-            </section>
-          ))}
-        </div>
-      )}
+              <div className="form-grid">
+                <div className="field">
+                  <label className="field-label" htmlFor="mcp-id">serverId</label>
+                  <input id="mcp-id" className="input" value={editing.values.id} disabled={!editing.isNew} placeholder="rooms" onChange={(e) => setField({ id: e.target.value })} />
+                  <div className="field-hint">小寫英數與連字號，建立後不可修改；授權用 scope 為 mcp:serverId</div>
+                </div>
+                <div className="field">
+                  <label className="field-label" htmlFor="mcp-name">名稱</label>
+                  <input id="mcp-name" className="input" value={editing.values.name} maxLength={60} onChange={(e) => setField({ name: e.target.value })} />
+                </div>
+                <div className="field">
+                  <label className="field-label" htmlFor="mcp-url">URL（Streamable HTTP）</label>
+                  <input id="mcp-url" className="input" value={editing.values.url} placeholder="https://rooms.example.com/mcp" onChange={(e) => setField({ url: e.target.value })} />
+                </div>
+                <div className="field">
+                  <label className="field-label" htmlFor="mcp-owner">擁有租戶</label>
+                  <select id="mcp-owner" className="select" value={editing.values.ownerTenantId} onChange={(e) => setField({ ownerTenantId: e.target.value })}>
+                    <option value="">共用（所有租戶皆可被授權）</option>
+                    {tenants.map((t) => <option key={t.id} value={t.id}>{t.name}（專屬）</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="field">
+                <label className="field-label" htmlFor="mcp-desc">能力描述</label>
+                <textarea id="mcp-desc" className="textarea" value={editing.values.description} maxLength={500} onChange={(e) => setField({ description: e.target.value })} />
+                <div className="field-hint">AI 路由與提示詞會用到，寫清楚這個服務能做什麼</div>
+              </div>
+              <div className="form-grid">
+                <div className="field">
+                  <label className="field-label" htmlFor="mcp-kw">路由關鍵字</label>
+                  <input id="mcp-kw" className="input" value={editing.values.keywords} placeholder="會議室、預約、空檔" onChange={(e) => setField({ keywords: e.target.value })} />
+                  <div className="field-hint">以逗號或頓號分隔</div>
+                </div>
+                <div className="field">
+                  <label className="field-label" htmlFor="mcp-timeout">逾時（秒）</label>
+                  <input id="mcp-timeout" className="input" inputMode="numeric" value={editing.values.timeoutSeconds} onChange={(e) => setField({ timeoutSeconds: e.target.value })} />
+                </div>
+              </div>
+              <label className="mcp-check">
+                <input type="checkbox" checked={editing.values.enabled} onChange={(e) => setField({ enabled: e.target.checked })} />
+                啟用
+              </label>
+              <div className="form-actions">
+                <button type="button" className="btn btn-primary" onClick={() => void save()}>儲存</button>
+                <button type="button" className="btn btn-ghost" onClick={() => { setEditing(null); setErr(null); }}>取消</button>
+              </div>
+            </div>
+          </div>
+        )}
 
-      {editing && (
-        <div className="card">
-          <h3>{editing.isNew ? '新增 MCP 服務' : `編輯：${editing.values.id}`}</h3>
-          {formErrors.length > 0 && <ul className="form-errors">{formErrors.map((e) => <li key={e}>{e}</li>)}</ul>}
-          <div className="form-grid">
-            <label>serverId
-              <input value={editing.values.id} disabled={!editing.isNew} onChange={(e) => setEditing({ ...editing, values: { ...editing.values, id: e.target.value } })} />
-            </label>
-            <label>名稱
-              <input value={editing.values.name} onChange={(e) => setEditing({ ...editing, values: { ...editing.values, name: e.target.value } })} />
-            </label>
-            <label>URL（Streamable HTTP）
-              <input value={editing.values.url} placeholder="https://rooms.example.com/mcp" onChange={(e) => setEditing({ ...editing, values: { ...editing.values, url: e.target.value } })} />
-            </label>
-            <label>擁有租戶
-              <select value={editing.values.ownerTenantId} onChange={(e) => setEditing({ ...editing, values: { ...editing.values, ownerTenantId: e.target.value } })}>
-                <option value="">共用（所有租戶皆可被授權）</option>
-                {tenants.map((t) => <option key={t.id} value={t.id}>{t.name}（專屬）</option>)}
-              </select>
-            </label>
-            <label>能力描述（AI 路由與提示詞會用到）
-              <textarea value={editing.values.description} onChange={(e) => setEditing({ ...editing, values: { ...editing.values, description: e.target.value } })} />
-            </label>
-            <label>路由關鍵字（逗號或頓號分隔）
-              <input value={editing.values.keywords} onChange={(e) => setEditing({ ...editing, values: { ...editing.values, keywords: e.target.value } })} />
-            </label>
-            <label>逾時（秒）
-              <input value={editing.values.timeoutSeconds} onChange={(e) => setEditing({ ...editing, values: { ...editing.values, timeoutSeconds: e.target.value } })} />
-            </label>
-            <label className="checkbox">
-              <input type="checkbox" checked={editing.values.enabled} onChange={(e) => setEditing({ ...editing, values: { ...editing.values, enabled: e.target.checked } })} />
-              啟用
-            </label>
+        {view && (
+          <div className="card">
+            <div className="card-head">
+              <div>
+                <div className="card-title">已登記的服務</div>
+                <div className="card-desc">授權請到各租戶的權限分頁，把 mcp:serverId 授予部門或帳號</div>
+              </div>
+              <button type="button" className="btn btn-primary" onClick={() => { setFormErrors([]); setErr(null); setEditing({ isNew: true, values: emptyMcpForm() }); }}>
+                新增 MCP 服務
+              </button>
+            </div>
+            {view.servers.length === 0 && <div className="empty">尚未登記任何 MCP 服務</div>}
+            {view.servers.map((s) => (
+              <section key={s.config.id} className="mcp-server">
+                <div className="mcp-server-head">
+                  <div className="row-main">
+                    <div className="row-title">
+                      {s.config.name}
+                      <span className={`badge ${STATUS_BADGE[s.status.state]}`} title={s.status.lastError}>{statusLabel(s.status.state)}</span>
+                      <span className={`badge ${s.config.enabled ? 'badge-on' : 'badge-off'}`}>{s.config.enabled ? '啟用' : '停用'}</span>
+                      <span className="badge badge-off">{tenantName(s.config.ownerTenantId)}</span>
+                    </div>
+                    <div className="row-sub">{s.config.id} · {s.config.url}</div>
+                    {s.status.lastError && <div className="mcp-error">最後錯誤：{s.status.lastError}</div>}
+                  </div>
+                  <div className="row-actions">
+                    <button type="button" className="btn btn-sm" disabled={busyId === s.config.id} onClick={() => void refresh(s.config.id)}>
+                      {busyId === s.config.id ? '連線中…' : '測試連線'}
+                    </button>
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setFormErrors([]); setErr(null); setEditing({ isNew: false, values: toFormValues(s.config) }); }}>編輯</button>
+                    <button type="button" className="btn btn-danger btn-sm" onClick={() => void remove(s.config.id)}>刪除</button>
+                  </div>
+                </div>
+                {s.tools.length > 0 ? (
+                  <div className="mcp-tools-wrap">
+                    <table className="mcp-tools">
+                      <thead>
+                        <tr><th>工具</th><th>判定</th><th className="center">停用</th><th className="center">強制確認</th><th>卡片標題</th></tr>
+                      </thead>
+                      <tbody>
+                        {s.tools.map((t) => (
+                          <tr key={t.name} className={t.problem ? 'row-error' : undefined}>
+                            <td>
+                              <div className="mcp-tool-name">{t.title ?? t.name}</div>
+                              <div className="row-sub">{t.name}</div>
+                              {t.problem && (
+                                <div className="mcp-error">
+                                  {t.problem === 'name_invalid' ? '名稱不合法或過長，不會給 AI 使用' : '輸入 schema 無效，不會給 AI 使用'}
+                                </div>
+                              )}
+                            </td>
+                            <td>
+                              <span className={`badge ${t.effect === 'read' ? 'badge-on' : 'badge-warn'}`}>{t.effect === 'read' ? '唯讀' : '寫入・需確認'}</span>
+                            </td>
+                            <td className="center">
+                              <input type="checkbox" aria-label={`停用 ${t.name}`} checked={t.disabled} onChange={(e) => void setOverride(s, t.name, { disabled: e.target.checked })} />
+                            </td>
+                            <td className="center">
+                              <input
+                                type="checkbox"
+                                aria-label={`強制確認 ${t.name}`}
+                                checked={s.config.toolOverrides[t.name]?.requireConfirm === true}
+                                onChange={(e) => void setOverride(s, t.name, { requireConfirm: e.target.checked })}
+                              />
+                            </td>
+                            <td>
+                              {t.effect === 'write' ? (
+                                <input
+                                  key={`${s.config.id}/${t.name}/${s.config.toolOverrides[t.name]?.cardTitle ?? ''}`}
+                                  className="input"
+                                  aria-label={`卡片標題 ${t.name}`}
+                                  defaultValue={s.config.toolOverrides[t.name]?.cardTitle ?? ''}
+                                  placeholder={t.title ?? t.name}
+                                  maxLength={60}
+                                  onBlur={(e) => {
+                                    const next = e.target.value.trim();
+                                    if (next !== (s.config.toolOverrides[t.name]?.cardTitle ?? '')) {
+                                      void setOverride(s, t.name, { cardTitle: next || undefined });
+                                    }
+                                  }}
+                                />
+                              ) : (
+                                <span className="muted">—</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="mcp-hint muted">{EMPTY_TOOLS_HINT[s.status.state]}</div>
+                )}
+              </section>
+            ))}
           </div>
-          <div className="actions">
-            <button type="button" className="btn primary" onClick={() => void save()}>儲存</button>
-            <button type="button" className="btn" onClick={() => setEditing(null)}>取消</button>
-          </div>
-        </div>
-      )}
+        )}
+      </div>
     </AppLayout>
   );
 }
+
+const STATUS_BADGE: Record<McpServerView['status']['state'], string> = {
+  ok: 'badge-on',
+  unreachable: 'badge-warn',
+  auth_failed: 'badge-warn',
+  idle: 'badge-off',
+};
+
+/** 沒有工具清單時的提示：依連線狀態說明原因，避免把「連線失敗」誤讀成「還沒連過」。 */
+const EMPTY_TOOLS_HINT: Record<McpServerView['status']['state'], string> = {
+  idle: '尚未取得工具清單，按「測試連線」連線並列出工具。',
+  ok: '這個服務目前沒有提供任何工具。',
+  unreachable: '連線失敗，工具暫不提供給 AI 使用。確認服務已啟動、URL 正確後再按「測試連線」。',
+  auth_failed: '身分驗證失敗，工具暫不提供給 AI 使用。請確認 MCP 服務的 JWKS URL 指向本平台，且 serverId 一致。',
+};
