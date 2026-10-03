@@ -9,17 +9,17 @@ import { mcpStore } from '@/modules/mcp/mcp.store';
 import { describeServerTools, effectForTool, mcpToolSource, toToolDef } from '@/modules/mcp/mcp.tool-source';
 import { scopePolicy } from '@/modules/authz/scope-policy';
 import { tenantStore } from '@/modules/tenant/tenant.store';
-import { toolRegistry } from '@/modules/tools';
+import { isToolOutput, toolRegistry, unwrapToolOutput } from '@/modules/tools';
 
 const read: McpRemoteTool = { name: 'rooms_availability', title: '查空檔', inputSchema: { $schema: 'http://json-schema.org/draft-07/schema#', type: 'object', properties: { date: { type: 'string' } } }, annotations: { readOnlyHint: true } };
 const write: McpRemoteTool = { name: 'rooms_book', title: '預約會議室', inputSchema: { type: 'object', properties: { room: { type: 'string' } } } };
 
-function stubConnection(tools: McpRemoteTool[]): McpConnection {
+function stubConnection(tools: McpRemoteTool[], meta?: Record<string, unknown>): McpConnection {
   return {
     cachedTools: () => tools,
     status: () => ({ state: 'ok', toolsFetchedAt: 'fixed' }),
     listTools: async () => tools,
-    callTool: jest.fn(async () => ({ ok: true })),
+    callToolWithMeta: jest.fn(async () => ({ data: { ok: true }, meta })),
   } as unknown as McpConnection;
 }
 
@@ -68,11 +68,20 @@ describe('讀寫判定與轉換', () => {
     expect(rows[1].problem).toBe('schema_invalid');
   });
 
-  it('handler 帶呼叫者身分呼叫 connection', async () => {
+  it('handler 帶呼叫者身分呼叫 connection；無顯示提示時回資料本身', async () => {
     const config = mcpStore.create({ id: 'rooms', name: '會議室', url: 'http://x/mcp' });
     const conn = stubConnection([]);
-    await toToolDef(config, read, conn)!.handler({ date: 'd' }, { tenantId: 't', userId: 'u', scopes: ['mcp:rooms'] });
-    expect(conn.callTool).toHaveBeenCalledWith('rooms_availability', { date: 'd' }, { tenantId: 't', userId: 'u', scopes: ['mcp:rooms'] });
+    const out = await toToolDef(config, read, conn)!.handler({ date: 'd' }, { tenantId: 't', userId: 'u', scopes: ['mcp:rooms'] });
+    expect(conn.callToolWithMeta).toHaveBeenCalledWith('rooms_availability', { date: 'd' }, { tenantId: 't', userId: 'u', scopes: ['mcp:rooms'] });
+    expect(isToolOutput(out)).toBe(false);
+    expect(out).toEqual({ ok: true });
+  });
+
+  it('結果帶顯示提示 → handler 回 ToolOutput', async () => {
+    const config = mcpStore.create({ id: 'rooms', name: '會議室', url: 'http://x/mcp' });
+    const display = { type: 'table', rows: 'items', columns: [] };
+    const out = await toToolDef(config, read, stubConnection([], { 'hyagent/display': display }))!.handler({}, { tenantId: 't', userId: 'u', scopes: [] });
+    expect(unwrapToolOutput(out)).toEqual({ data: { ok: true }, display });
   });
 });
 

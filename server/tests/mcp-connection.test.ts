@@ -34,7 +34,7 @@ describe('McpConnection', () => {
   it('listTools：回工具與標註，狀態 ok，第二次走快取', async () => {
     conn = new McpConnection(config(fixture.url));
     const tools = await conn.listTools();
-    expect(tools.map((t) => t.name).sort()).toEqual(['broken_tool', 'rooms_availability', 'rooms_book', 'slow_tool']);
+    expect(tools.map((t) => t.name).sort()).toEqual(['broken_tool', 'rooms_availability', 'rooms_book', 'slow_tool', 'stock_table']);
     expect(tools.find((t) => t.name === 'rooms_availability')?.annotations?.readOnlyHint).toBe(true);
     expect(conn.status().state).toBe('ok');
     expect(conn.cachedTools()).toBe(tools);
@@ -98,6 +98,14 @@ describe('McpConnection 身分與錯誤分類', () => {
     const byRoom = (room: string) => fixture.calls.find((c) => (c.args as { room: string }).room === room)!;
     expect(byRoom('A').caller).toMatchObject({ tenantId: 't1', userId: 'alice', system: false });
     expect(byRoom('B').caller).toMatchObject({ tenantId: 't2', userId: 'bob', system: false });
+  });
+
+  it('callToolWithMeta：帶回 _meta；callTool 只回資料', async () => {
+    conn = new McpConnection(config(fixture.url));
+    const withMeta = await conn.callToolWithMeta('stock_table', {}, caller);
+    expect(withMeta.data).toEqual({ items: [{ name: '鮭魚御飯糰', stock: 6 }] });
+    expect((withMeta.meta?.['hyagent/display'] as { type: string }).type).toBe('table');
+    expect(await conn.callTool('stock_table', {}, caller)).toEqual({ items: [{ name: '鮭魚御飯糰', stock: 6 }] });
   });
 
   it('listTools 以系統身分送出，工具呼叫不是系統身分', async () => {

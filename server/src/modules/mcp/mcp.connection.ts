@@ -141,6 +141,15 @@ export class McpConnection {
   }
 
   async callTool(name: string, args: Record<string, unknown>, caller: McpCaller): Promise<unknown> {
+    return (await this.callToolWithMeta(name, args, caller)).data;
+  }
+
+  /** 同 callTool，另帶回結果的 _meta（如顯示提示）。 */
+  async callToolWithMeta(
+    name: string,
+    args: Record<string, unknown>,
+    caller: McpCaller,
+  ): Promise<{ data: unknown; meta?: Record<string, unknown> }> {
     this.assertNotBackingOff();
     let client: Client;
     try {
@@ -150,7 +159,7 @@ export class McpConnection {
       await this.markFailed(err);
       throw new McpToolCallError(`${this.config.name} 暫時無法使用：${(err as Error).message}`);
     }
-    let res: { isError?: boolean; structuredContent?: unknown; content?: unknown };
+    let res: { isError?: boolean; structuredContent?: unknown; content?: unknown; _meta?: Record<string, unknown> };
     try {
       // SDK 回傳型別含舊版相容的 { toolResult } 分支，這裡只取現行欄位
       res = (await callerStore.run(caller, () =>
@@ -164,7 +173,8 @@ export class McpConnection {
       throw new McpToolCallError(`${this.config.name} 暫時無法使用：${(err as Error).message}`);
     }
     if (res.isError) throw new McpToolCallError(textOf(res.content) || `${this.config.name} 回傳錯誤`);
-    return normalizeToolResult(res);
+    const meta = res._meta && typeof res._meta === 'object' ? res._meta : undefined;
+    return meta ? { data: normalizeToolResult(res), meta } : { data: normalizeToolResult(res) };
   }
 
   async close(): Promise<void> {

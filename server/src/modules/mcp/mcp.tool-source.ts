@@ -6,6 +6,8 @@
 import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
 import { logger } from '@/lib/logger';
+import { DISPLAY_META_KEY } from '@/modules/display/display-block';
+import { toolOutput } from '@/modules/tools/tool-output';
 import type { ToolContext, ToolDef, ToolEffect, ToolSource } from '@/modules/tools/tool.types';
 import { mcpConnections, type McpConnection, type McpRemoteTool } from './mcp.connection';
 import { isMcpSigningEnabled } from './mcp.identity';
@@ -60,7 +62,7 @@ const warned = new Set<string>();
 export function toToolDef(
   config: McpServerConfig,
   remote: McpRemoteTool,
-  conn: Pick<McpConnection, 'callTool'>,
+  conn: Pick<McpConnection, 'callToolWithMeta'>,
 ): ToolDef | undefined {
   const override = config.toolOverrides[remote.name];
   if (override?.disabled) return undefined;
@@ -86,12 +88,16 @@ export function toToolDef(
     effect: effectForTool(remote, override),
     audit: true,
     auditSummary: () => `${config.name}｜${remote.title ?? remote.name}`,
-    handler: (input, ctx) =>
-      conn.callTool(remote.name, input as Record<string, unknown>, {
+    handler: async (input, ctx) => {
+      const { data, meta } = await conn.callToolWithMeta(remote.name, input as Record<string, unknown>, {
         tenantId: ctx.tenantId,
         userId: ctx.userId,
         scopes: ctx.scopes,
-      }),
+      });
+      const display = meta && Object.hasOwn(meta, DISPLAY_META_KEY) ? meta[DISPLAY_META_KEY] : undefined;
+      // 有顯示提示才包裝：資料給 LLM、提示給前端（由 agent 拆開）
+      return display === undefined ? data : toolOutput(data, display);
+    },
   };
 }
 

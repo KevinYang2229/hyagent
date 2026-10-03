@@ -84,6 +84,20 @@ export async function startMcpFixture(
         { description: '一定失敗', inputSchema: {}, annotations: { readOnlyHint: true } },
         async () => ({ isError: true, content: [{ type: 'text', text: '下游系統錯誤' }] }),
       );
+      server.registerTool(
+        'stock_table',
+        { description: '回傳帶表格顯示提示的庫存', inputSchema: {}, annotations: { readOnlyHint: true } },
+        async () => {
+          const data = { items: [{ name: '鮭魚御飯糰', stock: 6 }] };
+          return {
+            content: [{ type: 'text', text: JSON.stringify(data) }],
+            structuredContent: data,
+            _meta: {
+              'hyagent/display': { type: 'table', rows: 'items', columns: [{ key: 'name', label: '商品' }, { key: 'stock', label: '庫存' }] },
+            },
+          };
+        },
+      );
     },
   });
   const http: Server = await new Promise((resolve) => {
