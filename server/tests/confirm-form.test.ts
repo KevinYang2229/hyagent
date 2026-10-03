@@ -1,4 +1,4 @@
-import { buildConfirmForm } from '@/modules/conversation/confirm-form';
+import { buildConfirmForm, lockedKeysOf, schemaProps } from '@/modules/conversation/confirm-form';
 import { createPendingAction, toPendingActionView } from '@/modules/conversation/pending-action';
 import type { ToolDef } from '@/modules/tools';
 import { makeToolContext, toolRegistry } from '@/modules/tools';
@@ -103,4 +103,43 @@ it('email.send：收件人與主旨可編輯、內文唯讀', () => {
   expect(f.fields.map((x) => [x.key, x.kind === 'table' ? null : x.editable])).toEqual([
     ['to', true], ['subject', true], ['html', false],
   ]);
+});
+
+describe('鎖定規則', () => {
+  it('唯讀陣列 → 不可勾選、欄位全不可編輯', () => {
+    const tool: ToolDef = {
+      ...replenish,
+      inputSchema: {
+        type: 'object',
+        properties: {
+          items: { type: 'array', readOnly: true, items: { type: 'object', properties: { id: { type: 'string', readOnly: true }, q: { type: 'integer' } } } },
+        },
+      },
+    };
+    const t = buildConfirmForm(tool, { items: [{ id: 'a', q: 1 }, { id: 'b', q: 2 }] }).fields[0];
+    if (t.kind !== 'table') throw new Error('not table');
+    expect(t.selectable).toBe(false);
+    expect(t.columns.every((c) => !c.editable)).toBe(true);
+  });
+
+  it('x-image 來源鍵即使沒 readOnly 也算鎖定，且不成欄', () => {
+    const itemProps = schemaProps((replenish.inputSchema.properties as any).items.items);
+    const props = { ...itemProps, image: { type: 'string' } };
+    expect(lockedKeysOf(props).has('image')).toBe(true);
+    const tool: ToolDef = {
+      ...replenish,
+      inputSchema: { type: 'object', properties: { rows: { type: 'array', items: { type: 'object', properties: { image: { type: 'string' }, name: { type: 'string', 'x-image': 'image' } } } } } },
+    };
+    const t = buildConfirmForm(tool, { rows: [{ image: 'u', name: 'n' }] }).fields[0];
+    if (t.kind !== 'table') throw new Error('not table');
+    expect(t.columns.map((c) => c.key)).toEqual(['name']);
+  });
+
+  it('lockedKeysOf 單元', () => {
+    const keys = lockedKeysOf({
+      a: { readOnly: true }, b: { 'x-hidden': true }, c: { 'x-display': 'html' },
+      src: { type: 'string' }, pic: { 'x-image': 'src' }, free: { type: 'string' },
+    });
+    expect([...keys].sort()).toEqual(['a', 'b', 'c', 'src']);
+  });
 });

@@ -55,6 +55,13 @@ export function imageKeysOf(props: Record<string, JsonSchemaLike>): Set<string> 
   return keys;
 }
 
+/** 使用者不可修改的鍵：鎖定屬性，加上被 x-image 指為圖片來源的鍵（它們隱藏但仍須原樣保留）。 */
+export function lockedKeysOf(props: Record<string, JsonSchemaLike>): Set<string> {
+  const keys = imageKeysOf(props);
+  for (const [k, p] of Object.entries(props)) if (isLockedProp(p)) keys.add(k);
+  return keys;
+}
+
 export function labelOf(key: string, s: JsonSchemaLike | undefined): string {
   if (typeof s?.title === 'string' && s.title) return s.title;
   if (typeof s?.description === 'string' && s.description) return s.description;
@@ -97,21 +104,24 @@ function tableField(key: string, s: JsonSchemaLike, rows: unknown[]): ConfirmFie
   if (!isRecord(s.items)) return undefined;
   const itemProps = schemaProps(s.items);
   const hidden = imageKeysOf(itemProps);
+  const locked = lockedKeysOf(itemProps);
+  const tableLocked = isLockedProp(s);
   const columns: ConfirmTableColumn[] = [];
   for (const [k, p] of Object.entries(itemProps)) {
     if (p['x-hidden'] === true || hidden.has(k)) continue;
-    const col: ConfirmTableColumn = { key: k, label: labelOf(k, p), kind: kindOf(p), editable: !isLockedProp(p), ...extras(p) };
+    const col: ConfirmTableColumn = { key: k, label: labelOf(k, p), kind: kindOf(p), editable: !tableLocked && !locked.has(k), ...extras(p) };
     if (typeof p['x-image'] === 'string') col.image = p['x-image'];
     columns.push(col);
   }
   const objectRows = rows.filter(isRecord).map((r) => ({ ...r }));
+  // 識別列只看 readOnly／x-hidden；圖片來源鍵雖被鎖定，單獨存在不構成識別
   const hasIdentity = Object.values(itemProps).some((p) => p.readOnly === true || p['x-hidden'] === true);
   const minItems = typeof s.minItems === 'number' ? s.minItems : 0;
   return {
     kind: 'table',
     key,
     label: labelOf(key, s),
-    selectable: hasIdentity && objectRows.length > minItems,
+    selectable: !tableLocked && hasIdentity && objectRows.length > minItems,
     columns,
     rows: objectRows,
   };
@@ -123,6 +133,7 @@ export function buildConfirmForm(
 ): ConfirmForm {
   const props = schemaProps(tool.inputSchema);
   const hiddenImages = imageKeysOf(props);
+  const locked = lockedKeysOf(props);
   const fields: ConfirmField[] = [];
   for (const [key, s] of Object.entries(props)) {
     if (!Object.hasOwn(input, key) || s['x-hidden'] === true || hiddenImages.has(key)) continue;
@@ -138,7 +149,7 @@ export function buildConfirmForm(
       key,
       label: labelOf(key, s),
       value: s['x-display'] === 'html' ? stripHtml(value) : value,
-      editable: !isLockedProp(s),
+      editable: !locked.has(key),
       ...extras(s),
     });
   }
