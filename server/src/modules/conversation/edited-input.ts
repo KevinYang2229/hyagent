@@ -77,6 +77,7 @@ export function validateEditedInput(schema: unknown, original: Record<string, un
 
   for (const k of Object.keys(edited)) {
     if (!Object.hasOwn(props, k)) errors.push(`不允許的欄位：${k}`);
+    else if (!Object.hasOwn(original, k)) errors.push(`不允許新增欄位：${k}`);
   }
 
   for (const [key, s] of Object.entries(props)) {

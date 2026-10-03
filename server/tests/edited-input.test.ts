@@ -133,3 +133,54 @@ describe('validateEditedInput：鎖定鍵（圖片來源、唯讀陣列）', () 
     expect(validateEditedInput(roSchema, roOrig, { rows: [{ q: 1 }] }).ok).toBe(false);
   });
 });
+
+describe('validateEditedInput：注入與格式錯誤', () => {
+  it('原本沒有表格鍵，修改後新增 → 不通過', () => {
+    const o = { arrivalDate: '2026-10-05', storeId: 'S01' };
+    const e = { ...o, items: [{ productId: 'P9', name: 'x', stock: 999, quantity: 5 }] };
+    expect(validateEditedInput(schema, o, e).ok).toBe(false);
+  });
+
+  it('原本沒有選填純量，修改後新增 → 不通過', () => {
+    const s = { type: 'object', properties: { a: { type: 'string' }, note: { type: 'string' } } };
+    expect(validateEditedInput(s, { a: '1' }, { a: '1', note: 'x' }).ok).toBe(false);
+  });
+
+  it('表格值不是陣列 → 不通過', () => {
+    const e = { ...clone(), items: {} };
+    expect(validateEditedInput(schema, original, e).ok).toBe(false);
+  });
+
+  it('列不是物件 → 不通過', () => {
+    const e = { ...clone(), items: [null] };
+    expect(validateEditedInput(schema, original, e).ok).toBe(false);
+  });
+
+  const lockSchema = {
+    type: 'object',
+    properties: {
+      items: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            productId: { type: 'string', readOnly: true },
+            imageUrl: { type: 'string' },
+            photo: { type: 'string', 'x-image': 'imageUrl' },
+            quantity: { type: 'integer' },
+          },
+        },
+      },
+    },
+  };
+
+  it('刪掉列內鎖定的非識別鍵 → 不通過', () => {
+    const o = { items: [{ productId: 'P1', imageUrl: 'a.png', quantity: 1 }] };
+    expect(validateEditedInput(lockSchema, o, { items: [{ productId: 'P1', quantity: 1 }] }).ok).toBe(false);
+  });
+
+  it('原列沒有的鎖定非識別鍵被注入 → 不通過', () => {
+    const o = { items: [{ productId: 'P1', quantity: 1 }] };
+    expect(validateEditedInput(lockSchema, o, { items: [{ productId: 'P1', imageUrl: 'evil.png', quantity: 1 }] }).ok).toBe(false);
+  });
+});
