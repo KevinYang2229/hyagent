@@ -8,6 +8,7 @@
  * 同 id 時靜態優先，動態來源不得冒名頂替既有工具。
  */
 import Ajv, { type ValidateFunction } from 'ajv';
+import addFormats from 'ajv-formats';
 import type { LLMTool } from '@/lib/llm/types';
 import { logger } from '@/lib/logger';
 import { AppError } from '@/utils/app-error';
@@ -15,6 +16,7 @@ import { auditStore } from '@/modules/audit/audit.store';
 import type { ToolContext, ToolDef, ToolSource } from './tool.types';
 
 const ajv = new Ajv({ allErrors: true, strict: false });
+addFormats(ajv);
 
 /** 註冊表內部紀錄：ToolDef 連同編譯好的 Ajv validator，避免每次 invoke 重編譯。 */
 interface Entry {

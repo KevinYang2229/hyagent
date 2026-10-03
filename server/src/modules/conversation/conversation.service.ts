@@ -162,26 +162,26 @@ export const conversationService = {
         try {
           schema = toolRegistry.resolve(action.toolId, ctx).inputSchema;
         } catch {
-          schema = undefined; // 工具已不可用：交給 runConfirmedAction 回報「服務無法使用」
+          // 工具已不可用：不能拿使用者剛改的值去跑原參數，保留動作並回 503
+          restore();
+          throw new AppError(503, 'TOOL_UNAVAILABLE', '相關服務暫時無法使用，請稍後再試');
         }
-        if (schema !== undefined) {
-          const structural = validateEditedInput(schema, action.input, editedInput);
-          if (!structural.ok) {
+        const structural = validateEditedInput(schema, action.input, editedInput);
+        if (!structural.ok) {
+          restore();
+          throw new AppError(422, 'ACTION_INPUT_INVALID', structural.errors.join('；'));
+        }
+        try {
+          toolRegistry.assertInvocable(action.toolId, editedInput, ctx);
+        } catch (err) {
+          if (err instanceof AppError && err.statusCode === 422) {
             restore();
-            throw new AppError(422, 'ACTION_INPUT_INVALID', structural.errors.join('；'));
+            throw new AppError(422, 'ACTION_INPUT_INVALID', err.message, err.details);
           }
-          try {
-            toolRegistry.assertInvocable(action.toolId, editedInput, ctx);
-          } catch (err) {
-            if (err instanceof AppError && err.statusCode === 422) {
-              restore();
-              throw new AppError(422, 'ACTION_INPUT_INVALID', err.message, err.details);
-            }
-            throw err;
-          }
-          edits = describeEdits(schema, action.input, editedInput);
-          finalAction = { ...action, input: editedInput };
+          throw err;
         }
+        edits = describeEdits(schema, action.input, editedInput);
+        finalAction = { ...action, input: editedInput };
       } catch (err) {
         // 非預期錯誤（含 403）也不能讓動作憑空消失
         restore();
@@ -226,6 +226,8 @@ export const conversationService = {
     } catch {
       throw new AppError(404, 'TOOL_NOT_FOUND', `找不到工具：${toolId}`);
     }
+    // agentExposed 邊界：未開放給 agent 的寫入工具（如 oa.submitForm）不得由此提議，視同不存在
+    if (!tool.agentExposed) throw new AppError(404, 'TOOL_NOT_FOUND', `找不到工具：${toolId}`);
     if (!isWriteTool(tool)) throw new AppError(422, 'NOT_A_WRITE_TOOL', '只能提議寫入類動作');
     toolRegistry.assertInvocable(toolId, input, ctx);
     const action = createPendingAction(tool, input);

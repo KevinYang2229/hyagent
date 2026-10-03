@@ -3,7 +3,7 @@ import request from 'supertest';
 import { createApp } from '@/app';
 import { env } from '@/config/env';
 import { conversationStore } from '@/modules/conversation/conversation.store';
-import { registerTool } from '@/modules/tools';
+import { registerTool, registerToolSource, unregisterToolSource } from '@/modules/tools';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 
 const app = createApp();
@@ -50,6 +50,19 @@ registerTool({
   agentExposed: true,
   effect: 'read',
   handler: async () => ({}),
+});
+
+registerTool({
+  id: 'test.hiddenWrite',
+  description: '未開放給 agent 的寫入（測試）',
+  inputSchema: { type: 'object', properties: {} },
+  scopes: [],
+  agentExposed: false,
+  effect: 'write',
+  handler: async (input) => {
+    calls.push(input);
+    return {};
+  },
 });
 
 const input = {
@@ -101,6 +114,17 @@ describe('propose', () => {
     expect(unknown.status).toBe(404);
     expect(unknown.body.error.code).toBe('TOOL_NOT_FOUND');
     expect((await propose(t, conv, { toolId: 'test.replenish', input: { items: [] } })).status).toBe(422);
+  });
+
+  it('未開放給 agent 的寫入工具（含 oa.submitForm）→ 404 TOOL_NOT_FOUND，不執行', async () => {
+    const t = await token();
+    const conv = await startConv(t);
+    for (const toolId of ['test.hiddenWrite', 'oa.submitForm']) {
+      const res = await propose(t, conv, { toolId, input: {} });
+      expect(res.status).toBe(404);
+      expect(res.body.error.code).toBe('TOOL_NOT_FOUND');
+    }
+    expect(calls).toHaveLength(0);
   });
 });
 
@@ -157,5 +181,45 @@ describe('confirm 帶修改', () => {
     const conv = await startConv(t);
     const actionId = (await propose(t, conv, { toolId: 'test.replenish', input })).body.data.pendingAction.id as string;
     expect((await confirm(t, conv, actionId, { inputs: input })).status).toBe(422);
+  });
+
+  it('日期格式不合法 → 422 ACTION_INPUT_INVALID，動作保留', async () => {
+    const t = await token();
+    const conv = await startConv(t);
+    const actionId = (await propose(t, conv, { toolId: 'test.replenish', input })).body.data.pendingAction.id as string;
+    const res = await confirm(t, conv, actionId, { input: { ...input, arrivalDate: 'not-a-date' } });
+    expect(res.status).toBe(422);
+    expect(res.body.error.code).toBe('ACTION_INPUT_INVALID');
+    expect(calls).toHaveLength(0);
+    expect(conversationStore.get(conv, 'default', 'kevin').pendingAction?.id).toBe(actionId);
+  });
+
+  it('帶修改但工具已不可用 → 503 TOOL_UNAVAILABLE，不執行，動作保留', async () => {
+    const t = await token();
+    const conv = await startConv(t);
+    const tool = {
+      id: 'test.sourced',
+      description: '來源工具（測試）',
+      inputSchema: { type: 'object', properties: { n: { type: 'integer' } }, required: ['n'] },
+      scopes: [],
+      agentExposed: true,
+      effect: 'write' as const,
+      handler: async (i: unknown) => {
+        calls.push(i);
+        return {};
+      },
+    };
+    registerToolSource({ id: 'test-edit-src', toolsFor: () => [tool] });
+    let actionId: string;
+    try {
+      actionId = (await propose(t, conv, { toolId: 'test.sourced', input: { n: 1 } })).body.data.pendingAction.id as string;
+    } finally {
+      unregisterToolSource('test-edit-src');
+    }
+    const res = await confirm(t, conv, actionId, { input: { n: 2 } });
+    expect(res.status).toBe(503);
+    expect(res.body.error.code).toBe('TOOL_UNAVAILABLE');
+    expect(calls).toHaveLength(0);
+    expect(conversationStore.get(conv, 'default', 'kevin').pendingAction?.id).toBe(actionId);
   });
 });
