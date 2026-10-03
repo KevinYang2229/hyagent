@@ -153,7 +153,7 @@ export function ConfirmActionCard({ action, onConfirm, onCancel }: ConfirmAction
                         )}
                         {f.columns.map((c) => (
                           <td key={c.key}>
-                            {c.image && typeof row[c.image] === 'string' && <img src={row[c.image] as string} alt="" className="display-thumb" />}
+                            {c.image && typeof row[c.image] === 'string' && /^https?:\/\//i.test(row[c.image] as string) && <img src={row[c.image] as string} alt="" className="display-thumb" />}
                             {c.editable ? (
                               <input
                                 aria-label={`${label} ${c.label}`}

@@ -152,6 +152,12 @@ export const conversationService = {
     let finalAction = action;
     let edits: string[] = [];
     if (editedInput) {
+      // 表單只帶得出可顯示的欄位；隱藏／圖片來源／巢狀等原參數鍵前端送不回來，
+      // 先以原參數補齊，新增鍵與唯讀欄位的改動仍由 validateEditedInput 擋下
+      const merged: Record<string, unknown> = { ...editedInput };
+      for (const k of Object.keys(action.input)) {
+        if (!Object.hasOwn(merged, k)) merged[k] = action.input[k];
+      }
       const ctx = makeToolContext({ tenantId, userId, locale: session.locale });
       const restore = (): void => {
         if (!session.pendingAction) session.pendingAction = action;
@@ -166,13 +172,13 @@ export const conversationService = {
           restore();
           throw new AppError(503, 'TOOL_UNAVAILABLE', '相關服務暫時無法使用，請稍後再試');
         }
-        const structural = validateEditedInput(schema, action.input, editedInput);
+        const structural = validateEditedInput(schema, action.input, merged);
         if (!structural.ok) {
           restore();
           throw new AppError(422, 'ACTION_INPUT_INVALID', structural.errors.join('；'));
         }
         try {
-          toolRegistry.assertInvocable(action.toolId, editedInput, ctx);
+          toolRegistry.assertInvocable(action.toolId, merged, ctx);
         } catch (err) {
           if (err instanceof AppError && err.statusCode === 422) {
             restore();
@@ -180,8 +186,8 @@ export const conversationService = {
           }
           throw err;
         }
-        edits = describeEdits(schema, action.input, editedInput);
-        finalAction = { ...action, input: editedInput };
+        edits = describeEdits(schema, action.input, merged);
+        finalAction = { ...action, input: merged };
       } catch (err) {
         // 非預期錯誤（含 403）也不能讓動作憑空消失
         restore();

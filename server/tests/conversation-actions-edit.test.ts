@@ -43,6 +43,26 @@ registerTool({
   },
 });
 registerTool({
+  id: 'test.hiddenKey',
+  description: '含隱藏唯讀鍵的寫入（測試）',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      storeId: { type: 'string', readOnly: true, 'x-hidden': true },
+      quantity: { type: 'integer', title: '數量', minimum: 1, maximum: 200 },
+    },
+    required: ['storeId', 'quantity'],
+    additionalProperties: false,
+  },
+  scopes: [],
+  agentExposed: true,
+  effect: 'write',
+  handler: async (input) => {
+    calls.push(input);
+    return {};
+  },
+});
+registerTool({
   id: 'test.readonlyTool',
   description: '唯讀（測試）',
   inputSchema: { type: 'object', properties: {} },
@@ -221,5 +241,21 @@ describe('confirm 帶修改', () => {
     expect(res.body.error.code).toBe('TOOL_UNAVAILABLE');
     expect(calls).toHaveLength(0);
     expect(conversationStore.get(conv, 'default', 'kevin').pendingAction?.id).toBe(actionId);
+  });
+});
+
+describe('確認帶修改：表單送不回來的隱藏鍵', () => {
+  it('省略隱藏唯讀鍵 → 以原參數補齊後執行；改動該鍵仍 422', async () => {
+    const t = await token();
+    const conv = await startConv(t);
+    const p1 = await propose(t, conv, { toolId: 'test.hiddenKey', input: { storeId: 'S01', quantity: 1 } });
+    const ok = await confirm(t, conv, p1.body.data.pendingAction.id, { input: { quantity: 2 } });
+    expect(ok.status).toBe(200);
+    expect(calls).toEqual([{ storeId: 'S01', quantity: 2 }]);
+
+    const p2 = await propose(t, conv, { toolId: 'test.hiddenKey', input: { storeId: 'S01', quantity: 1 } });
+    const bad = await confirm(t, conv, p2.body.data.pendingAction.id, { input: { storeId: 'S99', quantity: 2 } });
+    expect(bad.status).toBe(422);
+    expect(bad.body.error.code).toBe('ACTION_INPUT_INVALID');
   });
 });
