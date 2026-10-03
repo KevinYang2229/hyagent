@@ -16,6 +16,7 @@ module.exports = {
     '^@/(.*)$': '<rootDir>/src/$1',
     '^@hyagent/shared$': '<rootDir>/../shared/src/index.ts',
     '^@hyagent/mcp-kit$': '<rootDir>/../mcp/kit/src/index.ts',
+    '^@hyagent/store-demo$': '<rootDir>/../mcp/store-demo/src/index.ts',
   },
   setupFiles: ['<rootDir>/tests/setup-env.ts'],
   transform: {
