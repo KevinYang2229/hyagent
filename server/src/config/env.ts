@@ -149,6 +149,8 @@ export const envSchema = z.object({
   MCP_SIGNING_KEY: z.string().default(''),
   // 換鑰過渡：上一把公鑰（SPKI PEM），仍列在 JWKS 讓 MCP server 驗得過換鑰前簽的 token
   MCP_PREVIOUS_PUBLIC_KEY: z.string().default(''),
+  // 影像辨識查詢門市資料用的 MCP serverId（product_lookup／inventory_query／coupon_check 所在服務）
+  VISION_STORE_SERVER_ID: z.string().regex(/^[a-z0-9-]{1,32}$/).default('store-demo'),
 }).superRefine((val, ctx) => {
   // production 不得沿用 dev 預設密鑰/密碼，boot 時 fail-fast（避免帶著佔位密鑰上線）
   if (val.NODE_ENV === 'production') {

@@ -51,3 +51,29 @@ export function singleFileUpload(field = 'file'): RequestHandler {
     });
   };
 }
+
+/** 影像辨識專用：只收 jpeg／png／webp，單檔 5MB（app 上傳前已縮圖） */
+export const MAX_IMAGE_SIZE_MB = 5;
+const IMAGE_MIME = new Set(['image/jpeg', 'image/png', 'image/webp']);
+
+const imageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_IMAGE_SIZE_MB * 1024 * 1024, files: 1 },
+  fileFilter(_req, file, cb) {
+    if (IMAGE_MIME.has(file.mimetype)) cb(null, true);
+    else cb(AppError.unprocessable(`只接受 JPEG、PNG、WebP 圖片：${file.mimetype}`));
+  },
+});
+
+export function singleImageUpload(field = 'image'): RequestHandler {
+  const handler = imageUpload.single(field);
+  return (req: Request, res: Response, next: NextFunction): void => {
+    handler(req, res, (err: unknown) => {
+      if (err instanceof MulterError) {
+        next(AppError.unprocessable(err.code === 'LIMIT_FILE_SIZE' ? `圖片超過上限 ${MAX_IMAGE_SIZE_MB}MB` : `上傳失敗：${err.message}`));
+        return;
+      }
+      next(err);
+    });
+  };
+}

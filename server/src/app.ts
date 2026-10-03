@@ -15,6 +15,7 @@ import { tenantService } from '@/modules/tenant/tenant.service';
 import { authRouter } from '@/modules/auth/auth.routes';
 import { mcpPublicRouter } from '@/modules/mcp/mcp.routes';
 import { conversationRouter } from '@/modules/conversation/conversation.routes';
+import { visionRouter } from '@/modules/vision/vision.routes';
 import { formRouter } from '@/modules/form/form.routes';
 import { knowledgeMemberRouter } from '@/modules/knowledge/knowledge.member.routes';
 import { notificationsRouter } from '@/modules/notifications/notifications.routes';
@@ -113,6 +114,8 @@ export function createApp(): Express {
   // requireAuth 驗證使用者身分後 tenantRateLimit 依「租戶＋使用者」限流；
   // conversations 會觸發 LLM 計費，再加 tenantMonthlyQuota 月配額守門
   app.use('/api/conversations', resolveTenant, requireAuth, tenantRateLimit, tenantMonthlyQuota, conversationRouter);
+  // 影像辨識（貨架／優惠券）：呼叫 LLM 計費，與對話同樣套月配額
+  app.use('/api/vision', resolveTenant, requireAuth, tenantRateLimit, tenantMonthlyQuota, visionRouter);
   app.use('/api/forms', resolveTenant, requireAuth, tenantRateLimit, formRouter);
 
   // 報告：狀態查詢與下載。不掛 tenantMonthlyQuota——那是對話輪次額度，

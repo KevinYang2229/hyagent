@@ -54,3 +54,4 @@ process.env.LLM_BASE_URL ??= 'http://localhost:8000/v1';
 // MCP 簽章固定關閉：本機 .env 可能有 MCP_SIGNING_KEY；需要的測試以 configureMcpSigningKey 注入
 process.env.MCP_SIGNING_KEY ??= '';
 process.env.MCP_PREVIOUS_PUBLIC_KEY ??= '';
+process.env.VISION_STORE_SERVER_ID ??= 'store-demo';
