@@ -41,6 +41,8 @@ function toContentParam(block: LLMContentBlock): unknown {
         content: block.content,
         is_error: block.isError,
       };
+    case 'image':
+      return { type: 'image', source: { type: 'base64', media_type: block.mediaType, data: block.data } };
   }
 }
 
@@ -89,6 +91,7 @@ export function createAnthropicProvider(settings: ResolvedLLMSettings): LLMProvi
           // 未指定就整個欄位不帶，沿用 provider 預設（見 LLMCreateParams.temperature）
           ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
           tools: tools.length > 0 ? tools : undefined,
+          ...(params.toolChoice ? { tool_choice: { type: 'tool', name: params.toolChoice.name } } : {}),
           messages: toMessageParams(params.messages),
         });
       } catch (err) {
