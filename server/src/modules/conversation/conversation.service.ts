@@ -1,4 +1,4 @@
-import type { Attachment } from '@hyagent/shared';
+import type { Attachment, PendingActionView } from '@hyagent/shared';
 import { refreshApprovals } from '@/modules/form/approvals';
 import { computeStatus, setField } from '@/modules/form/form.engine';
 import { getDefinition } from '@/modules/form/form.registry';
@@ -7,15 +7,17 @@ import { getApplicant } from '@/modules/user/user.directory';
 import { normalizeLocale } from '@/lib/locale';
 import { usageStore } from '@/modules/usage/usage.store';
 import { webhookDispatcher } from '@/modules/webhook/webhook.dispatcher';
+import { isWriteTool, makeToolContext, toolRegistry } from '@/modules/tools';
 import { AppError } from '@/utils/app-error';
 import { attachmentStore } from './attachment.store';
 import { runTurn } from './conversation.agent';
+import { describeEdits, validateEditedInput } from './edited-input';
 import { assertFormAccess } from './form-access';
 import { assertMutable, submitSession } from './submit-session';
 import { conversationStore } from './conversation.store';
 import type { Session, TurnResult } from './conversation.types';
 import { pickFormId } from './intent-router';
-import { isPendingActionExpired } from './pending-action';
+import { createPendingAction, isPendingActionExpired, toPendingActionView } from './pending-action';
 import { cancelPendingAction, runConfirmedAction } from './pending-action.service';
 
 /** 申請人欄位值格式：姓名(工號)，與真實 OA 畫面一致 */
@@ -125,24 +127,73 @@ export const conversationService = {
   },
 
   /**
-   * 確認卡片按「確認」（不經 LLM）：比對動作 id 與效期，先清除再執行（一次性，擋雙擊與重送），
-   * 執行時重新解析權限；權限已撤銷回 403。
+   * 確認卡片按「確認」（不經 LLM）：比對動作 id 與效期後立即清除（一次性，擋雙擊與並行重送），
+   * 再驗證使用者修改後的參數；驗證失敗還原動作並回 422。執行時重新解析權限；權限已撤銷回 403。
    */
-  async confirmAction(tenantId: string, userId: string, id: string, actionId: string): Promise<ActionTurnResult> {
+  async confirmAction(
+    tenantId: string,
+    userId: string,
+    id: string,
+    actionId: string,
+    editedInput?: Record<string, unknown>,
+  ): Promise<ActionTurnResult> {
     const session = conversationStore.get(id, tenantId, userId);
     const action = session.pendingAction;
     if (!action || action.id !== actionId) {
       throw new AppError(409, 'ACTION_NOT_FOUND', '這個動作已不存在或已處理過');
     }
+    // 同步領取：之後任何 await 期間，並行的第二個請求都會看到沒有待確認動作而回 409
     session.pendingAction = undefined;
     if (isPendingActionExpired(action)) {
       conversationStore.save(session);
       throw new AppError(409, 'ACTION_EXPIRED', '這個動作已逾時失效，請重新提出');
     }
+
+    let finalAction = action;
+    let edits: string[] = [];
+    if (editedInput) {
+      const ctx = makeToolContext({ tenantId, userId, locale: session.locale });
+      const restore = (): void => {
+        if (!session.pendingAction) session.pendingAction = action;
+      };
+      try {
+        await toolRegistry.prepare(ctx);
+        let schema: unknown;
+        try {
+          schema = toolRegistry.resolve(action.toolId, ctx).inputSchema;
+        } catch {
+          schema = undefined; // 工具已不可用：交給 runConfirmedAction 回報「服務無法使用」
+        }
+        if (schema !== undefined) {
+          const structural = validateEditedInput(schema, action.input, editedInput);
+          if (!structural.ok) {
+            restore();
+            throw new AppError(422, 'ACTION_INPUT_INVALID', structural.errors.join('；'));
+          }
+          try {
+            toolRegistry.assertInvocable(action.toolId, editedInput, ctx);
+          } catch (err) {
+            if (err instanceof AppError && err.statusCode === 422) {
+              restore();
+              throw new AppError(422, 'ACTION_INPUT_INVALID', err.message, err.details);
+            }
+            throw err;
+          }
+          edits = describeEdits(schema, action.input, editedInput);
+          finalAction = { ...action, input: editedInput };
+        }
+      } catch (err) {
+        // 非預期錯誤（含 403）也不能讓動作憑空消失
+        restore();
+        throw err;
+      }
+    }
+
     // 先落盤再執行：write-behind 的 save 若遇到當機/滾動重啟，會讓已執行的動作重新變回待確認而被重複確認
     await conversationStore.saveCritical(session);
-    session.messages.push({ role: 'user', content: [{ type: 'text', text: '確認' }] });
-    const outcome = await runConfirmedAction(session, action);
+    const confirmText = edits.length > 0 ? `確認（已修改：${edits.join('；')}）` : '確認';
+    session.messages.push({ role: 'user', content: [{ type: 'text', text: confirmText }] });
+    const outcome = await runConfirmedAction(session, finalAction);
     conversationStore.save(session);
     if (!outcome.ok && outcome.code === 'FORBIDDEN') throw AppError.forbidden(outcome.reply);
     return {
@@ -153,6 +204,34 @@ export const conversationService = {
       suggestions: [],
       actionOk: outcome.ok,
     };
+  },
+
+  /**
+   * 不經 AI 直接提議寫入動作（如 app 的「建立補貨單」按鈕）：與 AI 提議相同的權限與輸入驗證，
+   * 只建立待確認動作（取代既有的那筆），仍需使用者確認才會執行。
+   */
+  async proposeAction(
+    tenantId: string,
+    userId: string,
+    id: string,
+    toolId: string,
+    input: Record<string, unknown>,
+  ): Promise<{ pendingAction: PendingActionView }> {
+    const session = conversationStore.get(id, tenantId, userId);
+    const ctx = makeToolContext({ tenantId, userId, locale: session.locale });
+    await toolRegistry.prepare(ctx);
+    let tool;
+    try {
+      tool = toolRegistry.resolve(toolId, ctx);
+    } catch {
+      throw new AppError(404, 'TOOL_NOT_FOUND', `找不到工具：${toolId}`);
+    }
+    if (!isWriteTool(tool)) throw new AppError(422, 'NOT_A_WRITE_TOOL', '只能提議寫入類動作');
+    toolRegistry.assertInvocable(toolId, input, ctx);
+    const action = createPendingAction(tool, input);
+    session.pendingAction = action;
+    conversationStore.save(session);
+    return { pendingAction: toPendingActionView(action) };
   },
 
   /** 確認卡片按「取消」：清除待確認動作，不執行。 */

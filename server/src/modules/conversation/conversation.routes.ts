@@ -6,8 +6,10 @@ import { conversationController } from './conversation.controller';
 import {
   attachmentParamSchema,
   actionParamSchema,
+  confirmBodySchema,
   idParamSchema,
   messageSchema,
+  proposeBodySchema,
   startSchema,
   updateFieldsSchema,
 } from './conversation.schema';
@@ -50,9 +52,16 @@ router.post(
 );
 
 // 寫入動作確認卡片（不經 LLM）：確認才由後端執行；取消即作廢
+// 不經 AI 直接提議寫入動作（app「建立補貨單」等按鈕用）；仍需確認才執行
+router.post(
+  '/:id/actions/propose',
+  validate({ params: idParamSchema, body: proposeBodySchema }),
+  asyncHandler(conversationController.proposeAction),
+);
+
 router.post(
   '/:id/actions/:actionId/confirm',
-  validate({ params: actionParamSchema }),
+  validate({ params: actionParamSchema, body: confirmBodySchema }),
   asyncHandler(conversationController.confirmAction),
 );
 

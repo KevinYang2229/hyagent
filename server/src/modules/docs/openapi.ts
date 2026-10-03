@@ -274,10 +274,32 @@ export const openapiSpec = {
           { name: "id", in: "path", required: true, schema: { type: "string" } },
           { name: "actionId", in: "path", required: true, schema: { type: "string" } },
         ],
+        requestBody: {
+          required: false,
+          content: { "application/json": { schema: { type: "object", properties: { input: { type: "object", additionalProperties: true } } } } },
+        },
         responses: {
           "200": { description: "已執行（data.actionOk 表示成功與否）" },
           "403": { description: "權限已撤銷" },
           "409": { description: "ACTION_NOT_FOUND 或 ACTION_EXPIRED" },
+          "422": { description: "ACTION_INPUT_INVALID：修改後的參數不合法（動作保留）" },
+        },
+      },
+    },
+    "/api/conversations/{id}/actions/propose": {
+      post: {
+        tags: ["conversations"],
+        summary: "不經 AI 直接提議寫入動作（仍需確認）",
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { type: "object", required: ["toolId", "input"], properties: { toolId: { type: "string" }, input: { type: "object", additionalProperties: true } } } } },
+        },
+        responses: {
+          "200": { description: "data.pendingAction" },
+          "403": { description: "沒有權限" },
+          "404": { description: "TOOL_NOT_FOUND" },
+          "422": { description: "NOT_A_WRITE_TOOL 或輸入不合法" },
         },
       },
     },

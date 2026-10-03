@@ -22,6 +22,20 @@ export const actionParamSchema = idParamSchema.extend({
   actionId: z.string().uuid(),
 });
 
+export const confirmBodySchema = z
+  .object({
+    /** 使用者在確認卡片上修改後的完整參數；省略＝照原參數執行 */
+    input: z.record(z.unknown()).optional(),
+  })
+  .strict();
+
+export const proposeBodySchema = z
+  .object({
+    toolId: z.string().trim().min(1),
+    input: z.record(z.unknown()),
+  })
+  .strict();
+
 // 刪除附件：對話 id + 附件 id（附件 id 亦為 uuid）
 export const attachmentParamSchema = z.object({
   id: z.string().uuid(),
@@ -38,3 +52,5 @@ export const updateFieldsSchema = z.object({
 export type StartInput = z.infer<typeof startSchema>;
 export type MessageInput = z.infer<typeof messageSchema>;
 export type UpdateFieldsInput = z.infer<typeof updateFieldsSchema>;
+export type ConfirmBody = z.infer<typeof confirmBodySchema>;
+export type ProposeBody = z.infer<typeof proposeBodySchema>;
