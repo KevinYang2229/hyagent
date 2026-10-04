@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { ConfirmField, ConfirmScalarField, ConfirmTableField, PendingActionView } from '@hyagent/shared';
+import { errorMessage } from '@/api/errors';
 import { Mascot } from '@/brand/Mascot';
 import type { ConfirmOutcome } from '@/chat/ChatProvider';
 import { colors, font, radius, shadow, space } from '@/theme/tokens';
@@ -54,12 +55,18 @@ function ConfirmCard({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inFlight = useRef(false);
-  const expired = isExpired(action, now ?? Date.now());
+  const [expiredNow, setExpiredNow] = useState(false);
+  const expired = expiredNow || isExpired(action, now ?? Date.now());
   const empty = hasEmptyTable(fields, values, removed);
   const canConfirm = !busy && !expired && !empty;
 
   async function confirm() {
     if (!canConfirm || inFlight.current) return;
+    // 彈窗開著時才逾時：送出前再檢查一次
+    if (isExpired(action, now ?? Date.now())) {
+      setExpiredNow(true);
+      return;
+    }
     const local = validateLocal(fields, values, removed);
     if (local) {
       setError(local);
@@ -68,20 +75,32 @@ function ConfirmCard({
     inFlight.current = true;
     setBusy(true);
     setError(null);
-    const outcome = await onConfirm(isChanged(fields, values, removed) ? buildInput(fields, values, removed) : undefined);
-    if (outcome.kind === 'invalid' || outcome.kind === 'unavailable') {
-      setError(outcome.message);
+    try {
+      const outcome = await onConfirm(isChanged(fields, values, removed) ? buildInput(fields, values, removed) : undefined);
+      if (outcome.kind === 'invalid' || outcome.kind === 'unavailable') {
+        setError(outcome.message);
+        inFlight.current = false;
+        setBusy(false);
+      }
+      // done／gone：待確認動作已清除，彈窗會隨之關閉
+    } catch (e) {
+      setError(errorMessage(e));
       inFlight.current = false;
       setBusy(false);
     }
-    // done／gone：待確認動作已清除，彈窗會隨之關閉
   }
 
   async function cancel() {
     if (inFlight.current) return;
     inFlight.current = true;
     setBusy(true);
-    await onCancel();
+    try {
+      await onCancel();
+    } catch (e) {
+      setError(errorMessage(e));
+      inFlight.current = false;
+      setBusy(false);
+    }
   }
 
   function setCell(key: string, index: number, col: string, value: unknown) {
@@ -140,6 +159,7 @@ function ConfirmCard({
           <Pressable
             style={[styles.btn, styles.ok, !canConfirm && { opacity: 0.5 }]}
             onPress={confirm}
+            disabled={!canConfirm}
             accessibilityLabel={`確認${title}`}
             accessibilityRole="button"
             accessibilityState={{ disabled: !canConfirm }}

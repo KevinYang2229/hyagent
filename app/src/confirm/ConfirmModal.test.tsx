@@ -36,15 +36,11 @@ describe('ConfirmModal', () => {
     let release!: (v: unknown) => void;
     const onConfirm = jest.fn(() => new Promise((r) => { release = r; }));
     await render(<ConfirmModal action={action} onConfirm={onConfirm as never} onCancel={jest.fn()} now={NOW} />);
-    // 兩次按下都在 onConfirm 尚未 resolve 時發生；放行後才 await（否則 fireEvent 會等 handler 而卡住）
+    // 直接觸發 Pressable 的 onPress（fireEvent 會等 handler 的 promise，而 onConfirm 此時刻意未 resolve）
+    const press = () => screen.getByLabelText('確認建立補貨單').props.onClick({});
     await act(async () => {
-      const presses = Promise.all([
-        fireEvent.press(screen.getByLabelText('確認建立補貨單')),
-        fireEvent.press(screen.getByLabelText('確認建立補貨單')),
-      ]);
-      await Promise.resolve();
-      release({ kind: 'done', ok: true });
-      await presses;
+      press();
+      press();
     });
     expect(onConfirm).toHaveBeenCalledTimes(1);
   });
@@ -56,6 +52,27 @@ describe('ConfirmModal', () => {
     expect(screen.getByText('數量超出範圍')).toBeTruthy();
     await act(async () => { await fireEvent.press(screen.getByLabelText('確認建立補貨單')); });
     expect(onConfirm).toHaveBeenCalledTimes(2);
+  });
+
+  it('onConfirm 丟出例外 → 顯示錯誤、彈窗恢復可再送', async () => {
+    const onConfirm = jest.fn().mockRejectedValueOnce(new Error('網路中斷')).mockResolvedValueOnce({ kind: 'done', ok: true });
+    await render(<ConfirmModal action={action} onConfirm={onConfirm} onCancel={jest.fn()} now={NOW} />);
+    await act(async () => { await fireEvent.press(screen.getByLabelText('確認建立補貨單')); });
+    expect(screen.getByText('網路中斷')).toBeTruthy();
+    await act(async () => { await fireEvent.press(screen.getByLabelText('確認建立補貨單')); });
+    expect(onConfirm).toHaveBeenCalledTimes(2);
+  });
+
+  it('開著彈窗時逾時 → 按確認顯示逾時、不呼叫 API', async () => {
+    const onConfirm = jest.fn();
+    const spy = jest.spyOn(Date, 'now').mockReturnValue(NOW);
+    await render(<ConfirmModal action={action} onConfirm={onConfirm} onCancel={jest.fn()} />);
+    expect(screen.queryByText('這個動作已逾時，請重新提出。')).toBeNull();
+    spy.mockReturnValue(Date.parse('2026-10-04T04:00:00.000Z'));
+    await act(async () => { await fireEvent.press(screen.getByLabelText('確認建立補貨單')); });
+    spy.mockRestore();
+    expect(screen.getByText('這個動作已逾時，請重新提出。')).toBeTruthy();
+    expect(onConfirm).not.toHaveBeenCalled();
   });
 
   it('本地檢查不通過 → 顯示原因、不呼叫 API', async () => {
