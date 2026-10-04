@@ -2,6 +2,7 @@
  * 補貨確認彈窗（稿 1）：依 ConfirmForm 產生——表格可勾選列、改數字，日期用下拉，其餘欄位依型別。
  * 一次性：送出中鎖住；422／服務不可用顯示原因並允許再送；逾時不能確認。
  */
+import { productImageSource } from '@/brand/productImages';
 import { Ionicons } from '@expo/vector-icons';
 import { useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
@@ -223,7 +224,7 @@ function TableField({
             {field.selectable ? <Check on={!off} label={`選取 ${name}`} onPress={() => onToggle(i)} disabled={disabled} /> : null}
             {field.columns.map((c, ci) => {
               const v = row[c.key];
-              const img = c.image && typeof row[c.image] === 'string' && /^https?:\/\//i.test(row[c.image] as string) ? (row[c.image] as string) : null;
+              const img = c.image ? productImageSource({ productId: row.productId, name: row[c.key], image: row[c.image] }) : undefined;
               if (c.editable && (c.kind === 'number' || c.kind === 'text')) {
                 return (
                   <View key={c.key} style={[styles.td, styles.editCell]}>
@@ -241,7 +242,7 @@ function TableField({
               }
               return (
                 <View key={c.key} style={[styles.td, ci === 0 && styles.firstCol, styles.cellRow]}>
-                  {img ? <Image source={{ uri: img }} style={styles.thumb} /> : null}
+                  {img ? <Image source={img} style={styles.thumb} resizeMode="contain" /> : null}
                   <Text style={styles.cellText}>{v === undefined || v === null || v === '' ? '–' : `${v}${c.unit ? ` ${c.unit}` : ''}`}</Text>
                 </View>
               );

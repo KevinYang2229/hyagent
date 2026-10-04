@@ -2,6 +2,7 @@
 import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { DisplayBlock } from '@hyagent/shared';
 import { colors, font, radius, space, toneColors } from '@/theme/tokens';
+import { productImageSource } from '@/brand/productImages';
 import { cellTone, formatCell, imageUri } from './tableFormat';
 
 const MIN_COL = 96;
@@ -22,11 +23,11 @@ export function TableBlockView({ block }: { block: DisplayBlock }) {
               {block.columns.map((c, i) => {
                 const v = row[c.key];
                 const tone = cellTone(c, v);
-                const uri = imageUri(row, c);
+                const image = c.image ? productImageSource({ productId: row.productId, name: row[c.key], image: imageUri(row, c) }) : undefined;
                 const text = c.badge && v !== null && v !== undefined ? String(v) : formatCell(c, v);
                 return (
                   <View key={c.key} style={[styles.cell, styles.cellRow, i === 0 && styles.first]}>
-                    {uri ? <Image source={{ uri }} style={styles.thumb} /> : null}
+                    {image ? <Image source={image} style={styles.thumb} resizeMode="contain" /> : null}
                     {tone ? (
                       <Text style={[styles.pill, { color: toneColors[tone].fg, backgroundColor: toneColors[tone].bg }]}>{text}</Text>
                     ) : (

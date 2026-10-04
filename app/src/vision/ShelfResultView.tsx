@@ -3,6 +3,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRef, useState } from 'react';
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { ShelfResult } from '@/api/types';
+import { productImageSource } from '@/brand/productImages';
 import { Mascot } from '@/brand/Mascot';
 import { colors, font, radius, space } from '@/theme/tokens';
 import { ISSUE_ORDER, STATUS_META, boxRect, boxTagText, findingDetail, fitContain, groupFindings, issueCount, replenishmentCount, type Frame } from './shelf';
@@ -76,15 +77,18 @@ export function ShelfResultView({
               <Text style={[styles.group, { color: STATUS_META[status].color, backgroundColor: STATUS_META[status].soft }]}>
                 {`${STATUS_META[status].label}（${groups[status].length}）`}
               </Text>
-              {groups[status].map((f, i) => (
-                <View key={i} style={styles.item}>
-                  {f.image ? <Image source={{ uri: f.image }} style={styles.thumb} /> : <View style={styles.thumb} />}
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.itemName}>{f.name}</Text>
-                    <Text style={styles.itemDetail}>{findingDetail(f, today)}</Text>
+              {groups[status].map((f, i) => {
+                const image = productImageSource(f);
+                return (
+                  <View key={i} style={styles.item}>
+                    {image ? <Image source={image} style={styles.thumb} resizeMode="contain" /> : <View style={styles.thumb} />}
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.itemName}>{f.name}</Text>
+                      <Text style={styles.itemDetail}>{findingDetail(f, today)}</Text>
+                    </View>
                   </View>
-                </View>
-              ))}
+                );
+              })}
             </View>
           ) : null,
         )}
