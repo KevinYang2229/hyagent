@@ -7,6 +7,7 @@ import { ChatProvider } from '@/chat/ChatProvider';
 import { SplashView } from '@/chrome/SplashView';
 import { SettingsProvider } from '@/settings/SettingsProvider';
 import { TaskBadgeProvider } from '@/tasks/TaskBadge';
+import { VisionResultProvider } from '@/vision/VisionResultStore';
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 30_000 } } });
 
@@ -33,9 +34,11 @@ export default function RootLayout() {
         <AuthProvider>
           <TaskBadgeProvider>
             <StatusBar style="dark" />
-            <ChatProvider>
-              <RootStack />
-            </ChatProvider>
+            <VisionResultProvider>
+              <ChatProvider>
+                <RootStack />
+              </ChatProvider>
+            </VisionResultProvider>
           </TaskBadgeProvider>
         </AuthProvider>
       </SettingsProvider>
