@@ -45,7 +45,7 @@ describe('greeting / formatMonthDay / SCENARIOS', () => {
     expect(formatMonthDay(new Date(2026, 9, 4))).toBe('10/4（日）');
   });
 
-  it('六個常用情境與帶入的問題', () => {
+  it('七個常用情境與帶入的問題', () => {
     expect(SCENARIOS.map((s) => [s.label, s.q])).toEqual([
       ['查詢庫存', '幫我查庫存'],
       ['建立補貨單', '哪些商品需要補貨？'],
@@ -53,6 +53,7 @@ describe('greeting / formatMonthDay / SCENARIOS', () => {
       ['設備故障排除', '設備故障怎麼排除？'],
       ['促銷活動查詢', '現在有什麼活動？'],
       ['會員活動', '現在有什麼會員活動？'],
+      ['門市報表', '幫我查詢今日門市營運報表'],
     ]);
   });
 });

@@ -1,6 +1,7 @@
 /** 我的：店員資訊、朗讀開關、伺服器位址（變更後需重新登入）、登出。 */
+import { APP_IMAGES } from '@/brand/assets';
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import type { Applicant } from '@hyagent/shared';
 import { normalizeServerUrl } from '@/api/config';
 import { colors, font, radius, shadow, space } from '@/theme/tokens';
@@ -22,7 +23,7 @@ export function MeView({
     <ScrollView contentContainerStyle={styles.page}>
       <View style={styles.card}>
         <View style={styles.avatar}>
-          <Text style={styles.avatarText}>{(user?.name ?? '?').slice(0, 1)}</Text>
+          <Image source={APP_IMAGES.staffAvatar} style={{ width: 64, height: 64 }} accessibilityLabel="店員頭像" />
         </View>
         <View>
           <Text style={styles.name}>{user?.name ?? ''}</Text>

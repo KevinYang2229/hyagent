@@ -33,7 +33,7 @@
 
 ## 品牌素材
 
-`assets/brand/` 目前是灰底占位圖，拿到正式的 Open醬與標誌後用同檔名覆蓋，見該資料夾的 README。
+`assets/` 已加入門市與對話背景、7-ELEVEN logo、三種 Open醬姿勢、店員頭像、App 圖示、貨架示範照片與 20 個商品縮圖。已接入对应畫面，已知商品可直接讀取本機圖片；完整對應與用法見 `assets/README.md`。
 
 ## 測試
 
@@ -42,3 +42,17 @@
     npx tsc --noEmit
 
 根目錄的 `npm run typecheck` 也會一併執行 App 的型別檢查。
+
+## 首頁視覺預覽
+
+`src/home/HomeView.tsx`、`src/chrome/TopBar.tsx` 與 `StoreTabBar.tsx` 共用正式 App 的版面；`scripts/preview-home.tsx` 使用固定範例資料，不需要登入。
+
+在 `app/` 執行：
+
+```sh
+mkdir -p public
+cp scripts/preview-home.html public/_home-preview.html
+npx expo start --web
+```
+
+開啟 Metro 網址的 `/_home-preview.html`。完成後移除 `public/_home-preview.html`，避免納入網頁匯出。最新平板、手機比較圖放在 `docs/home-tablet-preview.png` 與 `docs/home-phone-preview.png`。比較圖使用設計稿範例日期與資料；正式 App 使用即時日期及後端數量。

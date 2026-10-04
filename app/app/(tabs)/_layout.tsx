@@ -1,7 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Tabs } from 'expo-router';
-import { View, type ColorValue } from 'react-native';
+import { Tabs, usePathname } from 'expo-router';
+import type { ColorValue } from 'react-native';
 import { ConfirmModalHost } from '@/confirm/ConfirmModalHost';
+import { HomeBackdrop } from '@/chrome/HomeBackdrop';
+import { NavigationTabBar } from '@/chrome/StoreTabBar';
 import { TopBar } from '@/chrome/TopBar';
 import { useTaskBadge } from '@/tasks/TaskBadge';
 import { colors } from '@/theme/tokens';
@@ -11,12 +13,15 @@ const icon = (name: IconName) => ({ color, size }: { color: ColorValue; size: nu
 
 export default function TabsLayout() {
   const { count } = useTaskBadge();
+  const home = usePathname() === "/";
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <TopBar />
+    <HomeBackdrop fade={home}>
+      <TopBar home={home} />
       <Tabs
+        tabBar={(props) => <NavigationTabBar {...props} badge={count} />}
         screenOptions={{
           headerShown: false,
+          sceneStyle: { backgroundColor: "transparent" },
           tabBarActiveTintColor: colors.primaryDark,
           tabBarInactiveTintColor: colors.textMuted,
           tabBarStyle: { height: 64, paddingTop: 6, backgroundColor: colors.surface },
@@ -29,6 +34,6 @@ export default function TabsLayout() {
         <Tabs.Screen name="me" options={{ title: '我的', tabBarIcon: icon('person-outline') }} />
       </Tabs>
       <ConfirmModalHost />
-    </View>
+    </HomeBackdrop>
   );
 }
