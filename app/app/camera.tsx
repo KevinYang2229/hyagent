@@ -136,7 +136,9 @@ export default function Camera() {
       />
       <SafeAreaView style={StyleSheet.absoluteFill} pointerEvents="box-none">
         <View style={styles.top}>
-          <View style={{ width: 30 }} />
+          <Pressable onPress={() => router.back()} accessibilityLabel="關閉" accessibilityRole="button" hitSlop={8} style={styles.close}>
+            <Ionicons name="close" size={30} color="#fff" />
+          </Pressable>
           <View style={styles.modes}>
             {MODES.map((m) => (
               <Pressable
@@ -151,7 +153,7 @@ export default function Camera() {
               </Pressable>
             ))}
           </View>
-          <View style={{ width: 30 }} />
+          <View style={{ width: 48 }} />
         </View>
         <View style={styles.frameWrap} pointerEvents="none">
           <View style={[styles.frame, mode === 'barcode' && styles.frameBarcode]}>
@@ -180,22 +182,16 @@ export default function Camera() {
           <Text style={styles.busyText}>Open醬看看…</Text>
         </View>
       ) : null}
-      <SafeAreaView style={styles.closeWrap} pointerEvents="box-none">
-        <Pressable onPress={() => router.back()} accessibilityLabel="關閉" accessibilityRole="button" hitSlop={12} style={styles.close}>
-          <Ionicons name="close" size={30} color="#fff" />
-        </Pressable>
-      </SafeAreaView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  closeWrap: { position: 'absolute', top: 0, left: 0, right: 0 },
-  close: { paddingHorizontal: space.lg, paddingTop: space.sm, alignSelf: 'flex-start' },
+  close: { width: 48, height: 48, flexShrink: 0, alignItems: 'center', justifyContent: 'center', borderRadius: 24, backgroundColor: 'rgba(0,0,0,0.65)' },
   black: { flex: 1, backgroundColor: '#000' },
-  top: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: space.lg, paddingTop: space.sm },
-  modes: { flexDirection: 'row', gap: 4, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: radius.pill, padding: 4 },
-  mode: { paddingHorizontal: space.lg, paddingVertical: 8, borderRadius: radius.pill },
+  top: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: space.md, paddingTop: space.sm, gap: 8, zIndex: 10, elevation: 10 },
+  modes: { flexDirection: 'row', flexShrink: 1, minWidth: 0, gap: 4, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: radius.pill, padding: 4 },
+  mode: { flexShrink: 1, paddingHorizontal: space.md, paddingVertical: 8, borderRadius: radius.pill },
   modeOn: { backgroundColor: '#fff' },
   modeText: { color: '#fff', fontSize: font.md, fontWeight: '600' },
   modeTextOn: { color: colors.primaryDark },
