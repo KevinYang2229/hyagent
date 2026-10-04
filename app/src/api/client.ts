@@ -71,18 +71,30 @@ export function createApiClient(deps: ApiClientDeps): ApiClient {
     }
   }
 
+  /**
+   * 換發 token。只有 refresh token 被明確拒絕（401／403）或本機沒有 token 才算失敗並登出；
+   * 網路、逾時、5xx 等暫時性錯誤保留 token 並丟 ApiError，讓呼叫端可重試。
+   * 清 token 與通知登出都在這裡（單一共用的換發結果）做一次，同時等待的請求不會重複觸發。
+   */
   async function doRefresh(): Promise<boolean> {
     const tokens = await deps.tokens.get();
     if (!tokens) return false;
-    try {
-      const res = await send('/auth/refresh', { method: 'POST', json: { refreshToken: tokens.refreshToken }, auth: false });
-      if (!res.ok) return false;
-      const body = (await res.json()) as { data: Tokens };
-      await deps.tokens.set({ accessToken: body.data.accessToken, refreshToken: body.data.refreshToken });
-      return true;
-    } catch {
+    const res = await send('/auth/refresh', { method: 'POST', json: { refreshToken: tokens.refreshToken }, auth: false });
+    if (res.status === 401 || res.status === 403) {
+      await deps.tokens.clear();
+      deps.onAuthLost?.();
       return false;
     }
+    if (!res.ok) {
+      const body = (await res.json().catch(() => null)) as { error?: { code?: string; message?: string; details?: unknown } } | null;
+      throw new ApiError(body?.error?.message ?? `伺服器錯誤（${res.status}）`, res.status, body?.error?.code, body?.error?.details);
+    }
+    const body = (await res.json().catch(() => null)) as { data?: Tokens } | null;
+    if (!body?.data?.accessToken || !body.data.refreshToken) {
+      throw new ApiError('換發回應格式不正確', res.status, 'BAD_REFRESH_RESPONSE');
+    }
+    await deps.tokens.set({ accessToken: body.data.accessToken, refreshToken: body.data.refreshToken });
+    return true;
   }
 
   function refreshOnce(): Promise<boolean> {
@@ -112,9 +124,6 @@ export function createApiClient(deps: ApiClientDeps): ApiClient {
         if (ok) {
           const next = await deps.tokens.get();
           res = await send(path, opts, next?.accessToken);
-        } else {
-          await deps.tokens.clear();
-          deps.onAuthLost?.();
         }
       }
       return parse<T>(res);

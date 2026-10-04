@@ -102,10 +102,64 @@ describe('createApiClient', () => {
   it('換發失敗 → 清掉 token、通知登出、丟 401', async () => {
     const tokens = memoryTokens();
     const onAuthLost = jest.fn();
-    const f = fakeFetch((url) => (url.endsWith('/auth/refresh') ? { status: 401 } : { status: 401 }));
+    const f = fakeFetch(() => ({ status: 401 }));
     const api = createApiClient({ baseUrl: () => 'http://h', tokens, fetchFn: f.fn, onAuthLost });
     await expect(api.request('/x')).rejects.toMatchObject({ status: 401 });
     expect(tokens.value).toBeNull();
     expect(onAuthLost).toHaveBeenCalledTimes(1);
+  });
+
+  it('換發遇到網路錯誤 → 保留 token、不登出、丟 NETWORK', async () => {
+    const tokens = memoryTokens();
+    const onAuthLost = jest.fn();
+    const fn = jest.fn(async (url: string) => {
+      if (url.endsWith('/auth/refresh')) throw new TypeError('Network request failed');
+      return { status: 401, ok: false, json: async () => null } as unknown as Response;
+    }) as unknown as typeof fetch;
+    const api = createApiClient({ baseUrl: () => 'http://h', tokens, fetchFn: fn, onAuthLost });
+    await expect(api.request('/x')).rejects.toMatchObject({ status: 0, code: 'NETWORK' });
+    expect(tokens.value).toEqual({ accessToken: 'a1', refreshToken: 'r1' });
+    expect(onAuthLost).not.toHaveBeenCalled();
+  });
+
+  it('換發回 500 → 保留 token、不登出、丟 500', async () => {
+    const tokens = memoryTokens();
+    const onAuthLost = jest.fn();
+    const f = fakeFetch((url) => (url.endsWith('/auth/refresh') ? { status: 500 } : { status: 401 }));
+    const api = createApiClient({ baseUrl: () => 'http://h', tokens, fetchFn: f.fn, onAuthLost });
+    await expect(api.request('/x')).rejects.toMatchObject({ status: 500 });
+    expect(tokens.value).toEqual({ accessToken: 'a1', refreshToken: 'r1' });
+    expect(onAuthLost).not.toHaveBeenCalled();
+  });
+
+  it('兩個請求同時 401 且換發被拒 → 只登出一次，兩個都丟 401', async () => {
+    const tokens = memoryTokens();
+    const onAuthLost = jest.fn();
+    const f = fakeFetch(async (url) => {
+      if (url.endsWith('/auth/refresh')) await new Promise((r) => setTimeout(r, 5));
+      return { status: 401 };
+    });
+    const api = createApiClient({ baseUrl: () => 'http://h', tokens, fetchFn: f.fn, onAuthLost });
+    const results = await Promise.allSettled([api.request('/a'), api.request('/b')]);
+    expect(results.map((r) => r.status === 'rejected' && (r.reason as ApiError).status)).toEqual([401, 401]);
+    expect(onAuthLost).toHaveBeenCalledTimes(1);
+    expect(tokens.value).toBeNull();
+  });
+
+  it('401 回來時 token 已被別的請求換發 → 直接用新 token 重送，不再換發', async () => {
+    const tokens = memoryTokens();
+    let refreshes = 0;
+    const f = fakeFetch(async (url, init) => {
+      if (url.endsWith('/auth/refresh')) { refreshes++; return { status: 200, body: { data: { accessToken: 'a2', refreshToken: 'r2' } } }; }
+      if (url.endsWith('/slow')) {
+        await new Promise((r) => setTimeout(r, 20));
+        return auth(init) === 'Bearer a2' ? { status: 200, body: { data: 'slow-ok' } } : { status: 401 };
+      }
+      return auth(init) === 'Bearer a2' ? { status: 200, body: { data: 'fast-ok' } } : { status: 401 };
+    });
+    const api = createApiClient({ baseUrl: () => 'http://h', tokens, fetchFn: f.fn });
+    const [slow, fast] = await Promise.all([api.request('/slow'), api.request('/fast')]);
+    expect([slow, fast]).toEqual(['slow-ok', 'fast-ok']);
+    expect(refreshes).toBe(1);
   });
 });
