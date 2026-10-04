@@ -1,8 +1,9 @@
-/** AI 對話（稿 3）：寬版左助理面板、右對話；窄版助理橫條在上。語音在 Task 10 接上。 */
+/** AI 對話（稿 3）：寬版左助理面板、右對話；窄版助理橫條在上。 */
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { FlatList, KeyboardAvoidingView, Linking, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useApi } from '@/auth/AuthProvider';
 import { AssistantPanel } from '@/chat/AssistantPanel';
 import { ChatInput } from '@/chat/ChatInput';
 import { useChat } from '@/chat/ChatProvider';
@@ -12,6 +13,11 @@ import { useAutoAsk } from '@/chat/useAutoAsk';
 import { useIsWide } from '@/layout/useIsWide';
 import { useSettings } from '@/settings/SettingsProvider';
 import { colors, font, radius, shadow, space } from '@/theme/tokens';
+import { useExpoRecorder } from '@/voice/expoRecorder';
+import { stopSpeaking } from '@/voice/speech';
+import { useSpeakReplies } from '@/voice/useSpeakReplies';
+import { useVoiceInput } from '@/voice/useVoiceInput';
+import { PERMISSION_HINT } from '@/voice/voiceMachine';
 
 export const GREETING = '嗨！我是 Open醬，可以幫你查庫存、建補貨單、查活動和優惠券，也能回答門市作業問題。';
 
@@ -19,7 +25,7 @@ export default function ChatScreen() {
   const wide = useIsWide();
   const chat = useChat();
   const { speakEnabled, setSpeakEnabled } = useSettings();
-  const params = useLocalSearchParams<{ q?: string; nonce?: string; focus?: string }>();
+  const params = useLocalSearchParams<{ q?: string; nonce?: string; focus?: string; voice?: string }>();
   const inputRef = useRef<TextInput>(null);
   const listRef = useRef<FlatList>(null);
   const { messages, sending } = chat.state;
@@ -37,6 +43,27 @@ export default function ChatScreen() {
 
   useAutoAsk(params.q, params.nonce, chat.send);
 
+  const api = useApi();
+  const recorder = useExpoRecorder();
+  const voice = useVoiceInput({ recorder, transcribe: api.transcribe, onText: (t) => void chat.send(t) });
+  const startVoice = () => {
+    stopSpeaking();
+    void voice.start();
+  };
+  useSpeakReplies(messages, speakEnabled);
+
+  // 從首頁大麥克風進來（voice=1）：每個 nonce 只自動開始一次
+  const voiceNonce = useRef<string | null>(null);
+  useEffect(() => {
+    if (params.voice === '1' && params.nonce && voiceNonce.current !== params.nonce) {
+      voiceNonce.current = params.nonce;
+      startVoice();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.voice, params.nonce]);
+
+  const hint = voice.state.mode === 'idle' ? voice.state.hint : null;
+
   useEffect(() => {
     if (params.focus === '1') setTimeout(() => inputRef.current?.focus(), 300);
   }, [params.focus, params.nonce]);
@@ -44,15 +71,23 @@ export default function ChatScreen() {
   const openCamera = () => router.push({ pathname: '/camera', params: { mode: 'shelf' } });
 
   const panel = (
-    <AssistantPanel
-      mode="idle"
-      compact={!wide}
-      micAvailable={false}
-      onMicPress={() => undefined}
-      onStopPress={() => undefined}
-      onKeyboard={() => inputRef.current?.focus()}
-      onCamera={openCamera}
-    />
+    <View style={{ flex: wide ? 1 : undefined }}>
+      <AssistantPanel
+        mode={voice.state.mode}
+        hint={hint}
+        compact={!wide}
+        micAvailable={voice.available}
+        onMicPress={startVoice}
+        onStopPress={() => void voice.stop()}
+        onKeyboard={() => inputRef.current?.focus()}
+        onCamera={openCamera}
+      />
+      {hint === PERMISSION_HINT ? (
+        <Pressable onPress={() => void Linking.openSettings()} accessibilityRole="button" style={{ alignSelf: 'center', padding: space.sm }}>
+          <Text style={{ color: colors.primaryDark, fontSize: font.sm }}>前往設定</Text>
+        </Pressable>
+      ) : null}
+    </View>
   );
 
   const conversation = (
@@ -91,7 +126,13 @@ export default function ChatScreen() {
         }}
       />
       <View style={{ padding: space.md }}>
-        <ChatInput onSend={chat.send} micAvailable={false} disabled={sending} inputRef={inputRef} />
+        <ChatInput
+          onSend={chat.send}
+          micAvailable={voice.available && voice.state.mode === 'idle'}
+          onMicPress={startVoice}
+          disabled={sending}
+          inputRef={inputRef}
+        />
       </View>
     </View>
   );
