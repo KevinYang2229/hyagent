@@ -5,6 +5,9 @@ coverage/
 .env.local
 .env.*.local
 
+# 私鑰（如 MCP 呼叫簽章用的 server/.mcp-demo-key.pem）：一律不進版控，正式環境只放平台設定
+*.pem
+
 logs/
 *.log
 npm-debug.log*
