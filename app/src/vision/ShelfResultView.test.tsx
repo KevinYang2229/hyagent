@@ -39,4 +39,22 @@ describe('ShelfResultView', () => {
     await render(<ShelfResultView photo={photo} result={{ ...result, findings: [result.findings[3]], replenishment: undefined }} today="2026-10-04" wide creating={false} error={null} onRetake={jest.fn()} onCreate={jest.fn()} />);
     expect(screen.getByText('這排貨架看起來都沒問題！')).toBeTruthy();
   });
+
+  it('同一個 tick 連按兩次建立補貨單，只呼叫一次 onCreate', async () => {
+    let finish: () => void = () => {};
+    const onCreate = jest.fn(() => new Promise<void>((resolve) => { finish = resolve; }));
+    await render(<ShelfResultView photo={photo} result={result} today="2026-10-04" wide creating={false} error={null} onRetake={jest.fn()} onCreate={onCreate} />);
+    const btn = screen.getByLabelText('建立補貨單（1 項）');
+    await act(async () => {
+      // 直接在同一個 tick 內觸發兩次 onPress（fireEvent 在 v14 各自包 act，不能重疊）
+      const onPress = btn.props.onClick ?? btn.props.onPress;
+      onPress({ nativeEvent: {}, stopPropagation() {}, preventDefault() {} });
+      onPress({ nativeEvent: {}, stopPropagation() {}, preventDefault() {} });
+    });
+    expect(onCreate).toHaveBeenCalledTimes(1);
+    await act(async () => { finish(); });
+    await act(async () => { fireEvent.press(btn); });
+    expect(onCreate).toHaveBeenCalledTimes(2);
+    await act(async () => { finish(); });
+  });
 });

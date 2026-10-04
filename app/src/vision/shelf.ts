@@ -48,7 +48,8 @@ export interface Frame {
 }
 
 /** 圖片以 contain 方式放進容器時實際占的區域 */
-export function fitContain(imgW: number, imgH: number, boxW: number, boxH: number): Frame {
+export function fitContain(imgW: number, imgH: number, boxW: number, boxH: number): Frame | null {
+  if (!(imgW > 0 && imgH > 0 && boxW > 0 && boxH > 0)) return null;
   const scale = Math.min(boxW / imgW, boxH / imgH);
   const width = imgW * scale;
   const height = imgH * scale;
@@ -67,4 +68,11 @@ export function boxRect(box: ShelfFinding['box'], frame: Frame): Frame {
 export function replenishmentCount(result: ShelfResult): number {
   const items = result.replenishment?.input.items;
   return Array.isArray(items) ? items.length : 0;
+}
+
+/** 框選上的標籤文字：即期品附上期限（MM/DD） */
+export function boxTagText(f: ShelfFinding): string {
+  const label = STATUS_META[f.status].label;
+  if (f.status === 'expiring' && f.expiryDate) return `${label} ${f.expiryDate.slice(5).replace('-', '/')}`;
+  return label;
 }
