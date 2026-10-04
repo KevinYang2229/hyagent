@@ -26,11 +26,14 @@ export function useVoiceInput({
   const [available, setAvailable] = useState(true);
   const ref = useRef<VoiceState>(initialVoice);
   const availableRef = useRef(true);
+  const mounted = useRef(true);
+  const starting = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const deps = useRef({ recorder, transcribe, onText, now });
   deps.current = { recorder, transcribe, onText, now };
 
   const apply = useCallback((e: VoiceEvent) => {
+    if (!mounted.current) return;
     ref.current = voiceReducer(ref.current, e);
     setState(ref.current);
   }, []);
@@ -49,12 +52,14 @@ export function useVoiceInput({
       apply({ type: 'failed', hint: '錄音失敗，請再試一次。' });
       return;
     }
+    if (!mounted.current) return;
     if (!rec || d.now() - cur.startedAt < MIN_RECORDING_MS) {
       apply({ type: 'failed', hint: NOT_HEARD });
       return;
     }
     try {
       const { text } = await d.transcribe({ uri: rec.uri, name: 'speech.m4a', type: 'audio/m4a' });
+      if (!mounted.current) return;
       const t = text.trim();
       if (!t) {
         apply({ type: 'failed', hint: NOT_HEARD });
@@ -74,28 +79,49 @@ export function useVoiceInput({
   }, [apply]);
 
   const start = useCallback(async () => {
-    if (!availableRef.current || ref.current.mode !== 'idle') return;
-    const d = deps.current;
-    if (!(await d.recorder.requestPermission())) {
-      apply({ type: 'failed', hint: PERMISSION_HINT });
-      return;
-    }
+    // starting 同步旗標：await 權限／開始錄音期間 mode 仍是 idle，避免連點或自動開始＋手點重複進入
+    if (!availableRef.current || ref.current.mode !== 'idle' || starting.current) return;
+    starting.current = true;
     try {
-      await d.recorder.start();
-    } catch {
-      apply({ type: 'failed', hint: '無法開始錄音，請再試一次。' });
-      return;
+      const d = deps.current;
+      let granted = false;
+      try {
+        granted = await d.recorder.requestPermission();
+      } catch {
+        granted = false;
+      }
+      if (!granted) {
+        apply({ type: 'failed', hint: PERMISSION_HINT });
+        return;
+      }
+      try {
+        await d.recorder.start();
+      } catch {
+        apply({ type: 'failed', hint: '無法開始錄音，請再試一次。' });
+        return;
+      }
+      if (!mounted.current) {
+        void d.recorder.stop().catch(() => undefined);
+        return;
+      }
+      apply({ type: 'start', at: d.now() });
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = setTimeout(() => void stop(), MAX_RECORDING_MS);
+    } finally {
+      starting.current = false;
     }
-    apply({ type: 'start', at: d.now() });
-    timer.current = setTimeout(() => void stop(), MAX_RECORDING_MS);
   }, [apply, stop]);
 
-  useEffect(
-    () => () => {
+  // 卸載：停止計時；若還在錄音就停掉錄音器（還原音訊模式），之後不再更新狀態或呼叫 onText
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
       if (timer.current) clearTimeout(timer.current);
-    },
-    [],
-  );
+      timer.current = null;
+      if (ref.current.mode === 'recording') void deps.current.recorder.stop().catch(() => undefined);
+    };
+  }, []);
 
   return { state, available, start, stop };
 }

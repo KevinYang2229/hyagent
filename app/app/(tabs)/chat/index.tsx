@@ -50,7 +50,8 @@ export default function ChatScreen() {
     stopSpeaking();
     void voice.start();
   };
-  useSpeakReplies(messages, speakEnabled);
+  // 錄音中不朗讀：視同關閉（會停止朗讀，且錄音期間到的回覆不補唸）
+  useSpeakReplies(messages, speakEnabled && voice.state.mode !== 'recording');
 
   // 從首頁大麥克風進來（voice=1）：每個 nonce 只自動開始一次
   const voiceNonce = useRef<string | null>(null);

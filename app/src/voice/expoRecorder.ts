@@ -13,12 +13,20 @@ export function useExpoRecorder(): Recorder {
       },
       async start() {
         await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
-        await rec.prepareToRecordAsync();
-        rec.record();
+        try {
+          await rec.prepareToRecordAsync();
+          rec.record();
+        } catch (e) {
+          await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true }).catch(() => undefined);
+          throw e;
+        }
       },
       async stop() {
-        await rec.stop();
-        await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
+        try {
+          await rec.stop();
+        } finally {
+          await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true }).catch(() => undefined);
+        }
         return rec.uri ? { uri: rec.uri } : null;
       },
     }),

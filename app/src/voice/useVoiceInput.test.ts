@@ -102,4 +102,42 @@ describe('useVoiceInput', () => {
     await act(async () => { await result.current.stop(); });
     expect(result.current.state).toEqual({ mode: 'idle', hint: '無法連線到伺服器，請檢查網路' });
   });
+
+  it('錄音中卸載 → 停止錄音器', async () => {
+    const recorder = fakeRecorder();
+    const { result, unmount } = await setup(recorder, jest.fn(), { t: 0 });
+    await act(async () => { await result.current.start(); });
+    await unmount();
+    expect(recorder.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it('卸載後才轉完文字 → 不呼叫 onText', async () => {
+    const clock = { t: 0 };
+    let resolve: (v: { text: string }) => void = () => undefined;
+    const transcribe = jest.fn(() => new Promise<{ text: string }>((r) => { resolve = r; }));
+    const { result, onText, unmount } = await setup(fakeRecorder(), transcribe, clock);
+    await act(async () => { await result.current.start(); });
+    clock.t = 2000;
+    let pending: Promise<void> = Promise.resolve();
+    await act(async () => { pending = result.current.stop(); await Promise.resolve(); });
+    await unmount();
+    resolve({ text: '查庫存' });
+    await pending;
+    expect(onText).not.toHaveBeenCalled();
+  });
+
+  it('同一時間連按兩次 start → 只開始錄音一次', async () => {
+    const recorder = fakeRecorder();
+    const { result } = await setup(recorder, jest.fn(), { t: 0 });
+    await act(async () => { await Promise.all([result.current.start(), result.current.start()]); });
+    expect(recorder.start).toHaveBeenCalledTimes(1);
+    expect(result.current.state.mode).toBe('recording');
+  });
+
+  it('requestPermission 丟例外 → 回 idle 並提示權限，不產生未處理的拒絕', async () => {
+    const recorder = fakeRecorder({ requestPermission: jest.fn(async () => { throw new Error('boom'); }) });
+    const { result } = await setup(recorder, jest.fn(), { t: 0 });
+    await act(async () => { await result.current.start(); });
+    expect(result.current.state).toEqual({ mode: 'idle', hint: PERMISSION_HINT });
+  });
 });
