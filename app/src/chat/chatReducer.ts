@@ -7,6 +7,7 @@ export type ChatAction =
   | { type: 'reset' }
   | { type: 'userSent'; text: string }
   | { type: 'turnReceived'; conversationId?: string; turn: TurnData }
+  | { type: 'conversationStarted'; conversationId: string }
   | { type: 'sendFailed'; message: string }
   | { type: 'conversationLost' }
   | { type: 'actionProposed'; conversationId: string; action: PendingActionView }
@@ -33,6 +34,9 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       // 後端在新回合會作廢上一輪未確認的動作：沒帶就清掉
       return { ...state, sending: false, conversationId: action.conversationId ?? state.conversationId, messages, pending: t.pendingAction ?? null };
     }
+    case 'conversationStarted':
+      // 只記對話 id，不動 sending（可能有另一個送出正在進行）
+      return { ...state, conversationId: action.conversationId };
     case 'sendFailed':
       return { ...state, sending: false, messages: [...state.messages, system(action.message, 'error')] };
     case 'conversationLost':

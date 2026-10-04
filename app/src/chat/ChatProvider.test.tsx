@@ -5,7 +5,21 @@ import type { PendingActionView } from '@hyagent/shared';
 import type { Endpoints } from '@/api/endpoints';
 import { ApiError } from '@/api/errors';
 import { TaskBadgeProvider, useTaskBadge } from '@/tasks/TaskBadge';
+import { useAuth } from '@/auth/AuthProvider';
 import { ChatProvider, useChat } from './ChatProvider';
+
+// 測試用：不掛真的 AuthProvider，由 mockAuthStatus 控制登入狀態；預設（undefined）等同沒有 AuthProvider
+jest.mock('@/auth/AuthProvider', () => ({ useAuth: jest.fn(), useApi: jest.fn() }));
+let mockAuthStatus: string | undefined;
+beforeEach(() => {
+  mockAuthStatus = undefined;
+  (useAuth as jest.Mock).mockImplementation(() => {
+    if (mockAuthStatus === undefined) throw new Error('no AuthProvider');
+    return { status: mockAuthStatus };
+  });
+  const { useApi } = jest.requireMock('@/auth/AuthProvider');
+  useApi.mockImplementation(() => { throw new Error('no AuthProvider'); });
+});
 
 const pending: PendingActionView = { id: 'a1', summary: { title: '建立補貨單', fields: [] }, expiresAt: '2099-01-01T00:00:00.000Z' };
 
@@ -132,5 +146,61 @@ describe('ChatProvider', () => {
     await act(async () => { result.current.chat.newConversation(); });
     expect(result.current.chat.state.conversationId).toBeNull();
     expect(result.current.chat.state.messages).toEqual([]);
+  });
+
+  it('登入狀態離開 signedIn → 清掉訊息、對話 id、待確認動作', async () => {
+    mockAuthStatus = 'signedIn';
+    const { result, rerender } = await setup(fakeApi());
+    await act(async () => { await result.current.chat.send('一'); });
+    await act(async () => { await result.current.chat.propose('t', {}); });
+    expect(result.current.chat.state.pending).not.toBeNull();
+    mockAuthStatus = 'signedOut';
+    await rerender({});
+    expect(result.current.chat.state).toMatchObject({ conversationId: null, messages: [], pending: null, sending: false });
+  });
+
+  it('第一句送出中 propose → 只建立一次對話、沿用該 id、sending 維持到送出結束', async () => {
+    let release!: () => void;
+    const api = fakeApi({
+      startConversation: jest.fn(() => new Promise((r) => { release = () => r({ id: 'c1', status: 'collecting', reply: 'ok' }); })) as never,
+    });
+    const { result } = await setup(api);
+    let sendP!: Promise<boolean>;
+    let proposeP!: Promise<void>;
+    await act(async () => {
+      sendP = result.current.chat.send('一');
+      proposeP = result.current.chat.propose('t', {});
+    });
+    expect(result.current.chat.state.sending).toBe(true);
+    await act(async () => { release(); await sendP; await proposeP; });
+    expect(api.startConversation).toHaveBeenCalledTimes(1);
+    expect(api.proposeAction).toHaveBeenCalledWith('c1', 't', {});
+    expect(result.current.chat.state.sending).toBe(false);
+    expect(result.current.chat.state.pending).toEqual(pending);
+  });
+
+  it('propose 遇到失效的對話 id（404）→ 重開對話並重試成功', async () => {
+    const proposeAction = jest.fn()
+      .mockRejectedValueOnce(new ApiError('not found', 404, 'NOT_FOUND'))
+      .mockResolvedValue({ pendingAction: pending });
+    let n = 0;
+    const startConversation = jest.fn(async (m?: string) => ({ id: `c${++n}`, status: 'collecting', reply: m ? 'r' : null }));
+    const api = fakeApi({ proposeAction: proposeAction as never, startConversation: startConversation as never });
+    const { result } = await setup(api);
+    await act(async () => { await result.current.chat.propose('t', {}); });
+    expect(startConversation).toHaveBeenCalledTimes(2);
+    expect(proposeAction).toHaveBeenLastCalledWith('c2', 't', {});
+    expect(result.current.chat.state).toMatchObject({ conversationId: 'c2', pending });
+  });
+
+  it('confirm 404 → gone，待確認動作清掉', async () => {
+    const api = fakeApi({ confirmAction: jest.fn(async () => { throw new ApiError('nf', 404, 'NOT_FOUND'); }) as never });
+    const { result } = await setup(api);
+    await act(async () => { await result.current.chat.propose('t', {}); });
+    let outcome: unknown;
+    await act(async () => { outcome = await result.current.chat.confirm(); });
+    expect(outcome).toEqual({ kind: 'gone' });
+    expect(result.current.chat.state.pending).toBeNull();
+    expect(result.current.chat.state.messages.at(-1)).toMatchObject({ role: 'system', tone: 'info' });
   });
 });
