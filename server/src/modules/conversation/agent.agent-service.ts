@@ -44,6 +44,7 @@ function buildSystemPrompt(userId: string, locale?: string, extraLines: string[]
     '- 工具回傳錯誤時，向使用者說明狀況或改用其他方式，不要重複無效呼叫。',
     '- 只處理與公司系統或知識庫相關的任務；純閒聊、與任何服務無關的問題請禮貌婉拒。',
     '- 寫入類工具（寄信、預約、建立或修改資料等）呼叫後不會立即執行：系統會把內容做成確認卡片給使用者。你要用一兩句話說明即將執行的內容並請使用者確認，切勿宣稱已完成。',
+    '- 工具結果標示已以表格或確認卡片顯示時，使用者已經看得到每一筆明細：回覆只用一兩句話點出重點（例如哪幾項需要注意），不要用條列或表格把明細再寫一遍。',
     '- 使用者問申請/簽核進度時：用 oa_listMyRequests 列出他的申請、oa_getApprovalStatus 查特定單號的關卡；如實轉述查詢結果，查無就說查無。要催辦時，用 email_send 擬催辦信（不確定收件人就先問使用者）。',
     '- 需要寄信時：呼叫 email_send 並帶上完整收件人、主旨、內文；系統會先請使用者確認才寄出。',
   ].join('\n');
@@ -146,7 +147,7 @@ export const agentAgentService: AgentService = {
               ok: true,
               proposed: true,
               card: action.summary,
-              note: '已建立確認卡片，尚未執行。請向使用者簡述將執行的內容並請他確認；切勿宣稱已完成。',
+              note: '已建立確認卡片，尚未執行；卡片已列出所有明細。請用一兩句話說明將執行什麼並請使用者確認，不要逐項重列明細；切勿宣稱已完成。',
             });
           }
           const { data, display } = unwrapToolOutput(await toolRegistry.invoke(realId, input, ctx));
@@ -160,7 +161,8 @@ export const agentAgentService: AgentService = {
               logger.warn({ toolId: realId }, 'invalid display hint ignored');
             }
           }
-          return JSON.stringify({ ok: true, result: data, ...(shown ? { note: TABLE_SHOWN_NOTE } : {}) });
+          // 附註放在資料前：模型先讀到「已顯示」才看到明細，較不會照抄
+          return JSON.stringify(shown ? { ok: true, note: TABLE_SHOWN_NOTE, result: data } : { ok: true, result: data });
         } catch (err) {
           // 工具錯誤（權限/驗證/連接器/MCP）回傳給 LLM 自行修正，不中斷整輪
           return JSON.stringify({ ok: false, error: (err as Error).message });

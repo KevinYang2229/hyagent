@@ -10,7 +10,7 @@ import type { DisplayBlock, DisplayTone, TableBlock, TableColumn } from '@hyagen
 export const DISPLAY_META_KEY = 'hyagent/display';
 export const MAX_TABLE_ROWS = 50;
 export const MAX_TABLE_COLUMNS = 12;
-export const TABLE_SHOWN_NOTE = '結果已以表格顯示給使用者，請簡述重點，不要逐列重複數字。';
+export const TABLE_SHOWN_NOTE = '結果已以表格完整顯示給使用者，使用者看得到每一筆明細。請只用一兩句話點出重點（如需注意的項目），不要用條列或表格把明細重寫一遍。';
 
 const TONES = new Set<DisplayTone>(['success', 'warning', 'danger', 'neutral']);
 const FORMATS = new Set(['text', 'delta', 'date']);

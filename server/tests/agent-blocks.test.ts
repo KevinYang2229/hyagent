@@ -3,6 +3,7 @@ import type { LLMProvider, LLMResult } from '@/lib/llm/types';
 import { agentAgentService } from '@/modules/conversation/agent.agent-service';
 import type { Session } from '@/modules/conversation/conversation.types';
 import { registerTool, toolOutput } from '@/modules/tools';
+import { TABLE_SHOWN_NOTE } from '@/modules/display/display-block';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 
 const usage = { inputTokens: 1, outputTokens: 1 };
@@ -62,7 +63,7 @@ describe('Agent 表格區塊', () => {
     expect(out.blocks![0]).toMatchObject({ type: 'table', title: '庫存', rows: [{ name: '鮭魚御飯糰', stock: 6 }, { name: '鮪魚御飯糰', stock: 12 }] });
     const tr = toolResult(s);
     expect(tr.result).toEqual({ items });
-    expect(tr.note).toBe('結果已以表格顯示給使用者，請簡述重點，不要逐列重複數字。');
+    expect(tr.note).toBe(TABLE_SHOWN_NOTE);
     expect(JSON.stringify(tr)).not.toContain('columns');
   });
 
