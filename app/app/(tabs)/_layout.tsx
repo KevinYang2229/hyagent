@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import { View, type ColorValue } from 'react-native';
+import { ConfirmModalHost } from '@/confirm/ConfirmModalHost';
 import { TopBar } from '@/chrome/TopBar';
 import { useTaskBadge } from '@/tasks/TaskBadge';
 import { colors } from '@/theme/tokens';
@@ -27,6 +28,7 @@ export default function TabsLayout() {
         <Tabs.Screen name="tasks" options={{ title: '任務', tabBarIcon: icon('clipboard-outline'), tabBarBadge: count > 0 ? count : undefined }} />
         <Tabs.Screen name="me" options={{ title: '我的', tabBarIcon: icon('person-outline') }} />
       </Tabs>
+      <ConfirmModalHost />
     </View>
   );
 }
