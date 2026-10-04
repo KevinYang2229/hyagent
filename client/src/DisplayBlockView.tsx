@@ -4,7 +4,8 @@ import type { DisplayBlock, TableColumn } from '@hyagent/shared';
 function renderCell(col: TableColumn, row: Record<string, string | number | null>) {
   const v = row[col.key];
   if (col.badge && v !== null && v !== undefined) {
-    const tone = col.badge[String(v)] ?? 'neutral';
+    const key = String(v);
+    const tone = Object.prototype.hasOwnProperty.call(col.badge, key) ? col.badge[key] : 'neutral';
     return <span className="block-badge" data-tone={tone}>{String(v)}</span>;
   }
   if (col.format === 'delta') {

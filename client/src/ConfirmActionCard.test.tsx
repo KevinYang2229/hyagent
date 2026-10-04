@@ -147,3 +147,59 @@ describe('ConfirmActionCard — 可編輯表單', () => {
     expect(screen.getByTestId('action-confirm')).toBeDisabled();
   });
 });
+
+describe('ConfirmActionCard — 只送可編輯欄位', () => {
+  const mk = (fields: PendingActionView['form'] extends infer F ? (F extends { fields: infer X } ? X : never) : never): PendingActionView => ({
+    id: 'a3',
+    summary: { title: 't', fields: [] },
+    expiresAt: new Date(Date.now() + 600_000).toISOString(),
+    form: { title: 't', fields },
+  });
+
+  it('email 類：改主旨 → 只送 { to, subject }，不含不可編輯的 html', async () => {
+    const onConfirm = vi.fn().mockResolvedValue({ ok: true, reply: 'ok' });
+    render(
+      <ConfirmActionCard
+        action={mk([
+          { kind: 'text', key: 'to', label: '收件人', value: 'a@x.com', editable: true },
+          { kind: 'text', key: 'subject', label: '主旨', value: '舊', editable: true },
+          { kind: 'text', key: 'html', label: '內文', value: 'Hi there', editable: false },
+        ])}
+        onConfirm={onConfirm}
+        onCancel={vi.fn()}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText('主旨'), { target: { value: 'new' } });
+    fireEvent.click(screen.getByTestId('action-confirm'));
+    await waitFor(() => expect(onConfirm).toHaveBeenCalledTimes(1));
+    expect(onConfirm).toHaveBeenCalledWith({ to: 'a@x.com', subject: 'new' });
+  });
+
+  it('原本就沒有列的表格不停用確認；非空表格全部取消勾選仍停用', () => {
+    const col = [{ key: 'name', label: '名稱', kind: 'text' as const, editable: false }];
+    const { unmount } = render(
+      <ConfirmActionCard action={mk([{ kind: 'table', key: 'items', label: '品項', selectable: true, columns: col, rows: [] }])} onConfirm={vi.fn()} onCancel={vi.fn()} />,
+    );
+    expect(screen.getByTestId('action-confirm')).toBeEnabled();
+    unmount();
+    render(
+      <ConfirmActionCard action={mk([{ kind: 'table', key: 'items', label: '品項', selectable: true, columns: col, rows: [{ name: 'A' }] }])} onConfirm={vi.fn()} onCancel={vi.fn()} />,
+    );
+    fireEvent.click(screen.getByLabelText('選取 A'));
+    expect(screen.getByTestId('action-confirm')).toBeDisabled();
+  });
+
+  it('數字 enum 下拉改選 → onConfirm 收到數字而非字串', async () => {
+    const onConfirm = vi.fn().mockResolvedValue({ ok: true, reply: 'ok' });
+    render(
+      <ConfirmActionCard
+        action={mk([{ kind: 'select', key: 'level', label: '等級', value: 1, editable: true, options: [{ value: '1', label: '一', raw: 1 }, { value: '2', label: '二', raw: 2 }] }])}
+        onConfirm={onConfirm}
+        onCancel={vi.fn()}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText('等級'), { target: { value: '2' } });
+    fireEvent.click(screen.getByTestId('action-confirm'));
+    await waitFor(() => expect(onConfirm).toHaveBeenCalledWith({ level: 2 }));
+  });
+});

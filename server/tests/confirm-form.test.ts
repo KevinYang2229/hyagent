@@ -69,7 +69,7 @@ describe('buildConfirmForm', () => {
     expect(byKey.arrivalDate).toEqual({ kind: 'date', key: 'arrivalDate', label: '預計到貨日期', value: '2026-10-05', editable: true });
     expect(byKey.priority).toEqual({
       kind: 'select', key: 'priority', label: '優先度', value: 'urgent', editable: true,
-      options: [{ value: 'normal', label: '一般' }, { value: 'urgent', label: '急件' }],
+      options: [{ value: 'normal', label: '一般', raw: 'normal' }, { value: 'urgent', label: '急件', raw: 'urgent' }],
     });
     expect(byKey.note).toMatchObject({ kind: 'text', value: '早班', editable: true });
     expect(byKey.body).toMatchObject({ kind: 'text', value: 'hi', editable: false });
@@ -141,5 +141,31 @@ describe('鎖定規則', () => {
       src: { type: 'string' }, pic: { 'x-image': 'src' }, free: { type: 'string' },
     });
     expect([...keys].sort()).toEqual(['a', 'b', 'c', 'src']);
+  });
+});
+
+describe('buildConfirmForm — 基本型別陣列', () => {
+  it('string[] 不產生表格欄位（零欄表格會讓確認鈕停用），其他欄位照常', () => {
+    const form = buildConfirmForm(
+      {
+        description: '標籤',
+        inputSchema: {
+          type: 'object',
+          properties: { tags: { type: 'array', items: { type: 'string' } }, note: { type: 'string', title: '備註' } },
+        },
+      },
+      { tags: ['a', 'b'], note: 'x' },
+    );
+    expect(form.fields.map((f) => f.key)).toEqual(['note']);
+  });
+});
+
+describe('buildConfirmForm — 選項保留原始型別', () => {
+  it('數字 enum 的選項帶 raw（數字）', () => {
+    const form = buildConfirmForm(
+      { description: 'x', inputSchema: { type: 'object', properties: { level: { type: 'integer', enum: [1, 2], title: '等級' } } } },
+      { level: 1 },
+    );
+    expect(form.fields[0]).toMatchObject({ options: [{ value: '1', label: '1', raw: 1 }, { value: '2', label: '2', raw: 2 }] });
   });
 });

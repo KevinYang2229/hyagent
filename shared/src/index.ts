@@ -429,7 +429,8 @@ export interface ConfirmScalarField {
   min?: number;
   max?: number;
   unit?: string;
-  options?: { value: string; label: string }[];
+  /** raw 為 schema enum 的原始值（保留數字、布林型別） */
+  options?: { value: string; label: string; raw?: string | number | boolean }[];
 }
 
 export interface ConfirmTableColumn {
@@ -442,7 +443,8 @@ export interface ConfirmTableColumn {
   max?: number;
   /** 同列中存放圖片網址的欄位名稱 */
   image?: string;
-  options?: { value: string; label: string }[];
+  /** raw 為 schema enum 的原始值（保留數字、布林型別） */
+  options?: { value: string; label: string; raw?: string | number | boolean }[];
 }
 
 export interface ConfirmTableField {

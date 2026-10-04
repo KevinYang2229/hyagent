@@ -63,6 +63,27 @@ registerTool({
   },
 });
 registerTool({
+  id: 'test.emailLike',
+  description: '寄信（測試，schema 同 email.send）',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      to: { type: 'string', title: '收件人' },
+      subject: { type: 'string', title: '主旨' },
+      html: { type: 'string', title: '內文', 'x-display': 'html' },
+    },
+    required: ['to', 'subject', 'html'],
+    additionalProperties: false,
+  },
+  scopes: [],
+  agentExposed: true,
+  effect: 'write',
+  handler: async (input) => {
+    calls.push(input);
+    return {};
+  },
+});
+registerTool({
   id: 'test.readonlyTool',
   description: '唯讀（測試）',
   inputSchema: { type: 'object', properties: {} },
@@ -161,6 +182,16 @@ describe('confirm 帶修改', () => {
     const transcript = JSON.stringify(conversationStore.get(conv, 'default', 'kevin').messages);
     expect(transcript).toContain('鮭魚御飯糰 補貨數量 24→30');
     expect(transcript).toContain('移除 三明治');
+  });
+
+  it('email 類：只改收件人與主旨（不帶 html）→ 200，handler 收到原 html 與新主旨', async () => {
+    const t = await token();
+    const conv = await startConv(t);
+    const original = { to: 'a@x.com', subject: '舊主旨', html: '<p>Hi <b>there</b></p>' };
+    const actionId = (await propose(t, conv, { toolId: 'test.emailLike', input: original })).body.data.pendingAction.id as string;
+    const res = await confirm(t, conv, actionId, { input: { to: 'a@x.com', subject: 'new' } });
+    expect(res.status).toBe(200);
+    expect(calls).toEqual([{ ...original, subject: 'new' }]);
   });
 
   it('改唯讀欄位 → 422 ACTION_INPUT_INVALID，動作保留，可改正後再送', async () => {

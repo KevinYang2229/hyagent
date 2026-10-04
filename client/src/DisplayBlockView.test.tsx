@@ -31,4 +31,10 @@ describe('DisplayBlockView', () => {
     // alt="" 的圖片在無障礙樹是 presentation，不是 img 角色，改用 class 查
     expect(container.querySelectorAll('img.display-thumb')).toHaveLength(1);
   });
+
+  it('徽章值是 Object.prototype 上的名稱（如 constructor）→ 中性色調，不會取到原型函式', () => {
+    const b: DisplayBlock = { type: 'table', columns: [{ key: 's', label: '狀態', badge: { 正常: 'success' } }], rows: [{ s: 'constructor' }] };
+    render(<DisplayBlockView block={b} />);
+    expect(screen.getByText('constructor')).toHaveAttribute('data-tone', 'neutral');
+  });
 });

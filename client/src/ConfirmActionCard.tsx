@@ -34,6 +34,12 @@ function coerce(kind: string, raw: string): unknown {
   return raw.trim() === '' || Number.isNaN(n) ? raw : n;
 }
 
+/** 下拉選到的字串還原成選項原本的型別（數字 enum 要送回數字） */
+function rawOf(options: { value: string; raw?: string | number | boolean }[] | undefined, value: string): unknown {
+  const o = options?.find((x) => x.value === value);
+  return o ? (o.raw ?? o.value) : value;
+}
+
 export function ConfirmActionCard({ action, onConfirm, onCancel }: ConfirmActionCardProps) {
   const { t } = useTranslation();
   const [phase, setPhase] = useState<Phase>(() => (Date.parse(action.expiresAt) <= Date.now() ? 'expired' : 'ready'));
@@ -52,16 +58,21 @@ export function ConfirmActionCard({ action, onConfirm, onCancel }: ConfirmAction
       if (f.kind === 'table') {
         const gone = removed[f.key] ?? new Set<number>();
         out[f.key] = (values[f.key] as Record<string, unknown>[]).filter((_, i) => !gone.has(i));
-      } else {
+      } else if (f.editable) {
         out[f.key] = values[f.key];
       }
+      // 不可編輯的純量欄位（如 html 內文的顯示值是去標籤後的字串）不送，後端會以原始參數補齊
     }
     return out;
   }
 
   const input = buildInput();
-  const changed = JSON.stringify(input) !== JSON.stringify(original);
-  const emptyTable = fields.some((f) => f.kind === 'table' && (input[f.key] as unknown[]).length === 0);
+  // 只比對有送出的鍵
+  const changed = Object.keys(input).some((k) => JSON.stringify(input[k]) !== JSON.stringify(original[k]));
+  // 只有原本有列、被使用者全部移除才停用；原本就沒有列的表格不擋確認
+  const emptyTable = fields.some(
+    (f) => f.kind === 'table' && f.rows.length > 0 && (input[f.key] as unknown[]).length === 0,
+  );
 
   async function run(kind: 'confirm' | 'cancel') {
     if (phase !== 'ready' || inFlight.current) return;
@@ -181,7 +192,7 @@ export function ConfirmActionCard({ action, onConfirm, onCancel }: ConfirmAction
                 <span>{f.label}</span>
                 {f.editable ? (
                   f.kind === 'select' ? (
-                    <select aria-label={f.label} value={String(values[f.key] ?? '')} disabled={!editable} onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}>
+                    <select aria-label={f.label} value={String(values[f.key] ?? '')} disabled={!editable} onChange={(e) => setValues((v) => ({ ...v, [f.key]: rawOf(f.options, e.target.value) }))}>
                       {f.options?.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </select>
                   ) : (

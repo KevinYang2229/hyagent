@@ -75,13 +75,17 @@ function kindOf(s: JsonSchemaLike): ConfirmFieldKind {
   return 'text';
 }
 
-function optionsOf(s: JsonSchemaLike): { value: string; label: string }[] | undefined {
+type FormOption = NonNullable<ConfirmTableColumn['options']>[number];
+
+function optionsOf(s: JsonSchemaLike): FormOption[] | undefined {
   if (!Array.isArray(s.enum)) return undefined;
   const labels = isRecord(s['x-enumLabels']) ? s['x-enumLabels'] : {};
   return s.enum.map((v) => {
     const value = String(v);
     const label = Object.hasOwn(labels, value) && typeof labels[value] === 'string' ? (labels[value] as string) : value;
-    return { value, label };
+    const opt: FormOption = { value, label };
+    if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') opt.raw = v;
+    return opt;
   });
 }
 
@@ -103,6 +107,8 @@ function stripHtml(v: unknown): unknown {
 function tableField(key: string, s: JsonSchemaLike, rows: unknown[]): ConfirmField | undefined {
   if (!isRecord(s.items)) return undefined;
   const itemProps = schemaProps(s.items);
+  // 基本型別陣列（如 string[]）沒有欄位可編輯：略過，摘要仍會顯示，確認時由後端以原值補回
+  if (Object.keys(itemProps).length === 0) return undefined;
   const hidden = imageKeysOf(itemProps);
   const locked = lockedKeysOf(itemProps);
   const tableLocked = isLockedProp(s);
