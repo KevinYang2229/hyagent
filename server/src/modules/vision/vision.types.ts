@@ -10,6 +10,8 @@ export interface ShelfFinding {
   /** 0–1 相對座標（左上角 x,y 與寬高） */
   box: { x: number; y: number; w: number; h: number };
   stock?: number;
+  /** 門市商品圖片網址（僅 http(s)），供確認卡片顯示縮圖 */
+  image?: string;
   suggestedQty?: number;
   expiryDate?: string;
   note?: string;

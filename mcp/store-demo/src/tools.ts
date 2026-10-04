@@ -162,9 +162,17 @@ export const STORE_TOOLS: StoreTool[] = [
     },
     run(args, ctx) {
       if (ctx.caller.system) return fail('系統身分不可建立補貨單');
-      const items = args.items as { productId: string; quantity: number }[];
+      const items = args.items as { productId: string; name: string; stock: number; quantity: number }[];
       const unknown = items.filter((i) => !products.some((p) => p.id === i.productId)).map((i) => i.productId);
       if (unknown.length > 0) return fail(`找不到商品：${unknown.join('、')}`);
+      // productId 是使用者看不到的隱藏欄位：顯示的名稱、庫存必須與門市現值一致，不能只信任顯示值
+      const mismatched = items
+        .filter((i) => {
+          const p = products.find((x) => x.id === i.productId)!;
+          return i.name !== p.name || i.stock !== p.stock;
+        })
+        .map((i) => i.productId);
+      if (mismatched.length > 0) return fail(`品項資料不一致：${mismatched.join('、')}`);
       const id = `R-${String(ctx.state.replenishments.length + 1).padStart(4, '0')}`;
       ctx.state.replenishments.push({ id, items, arrivalDate: args.arrivalDate as string, by: ctx.caller.userId, tenantId: ctx.caller.tenantId });
       return { structuredContent: { orderId: id, itemCount: items.length, arrivalDate: args.arrivalDate } };

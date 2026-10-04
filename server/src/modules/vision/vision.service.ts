@@ -154,6 +154,7 @@ async function enrichFromStore(ctx: ToolContext, findings: ShelfFinding[], warni
     const it = f.productId ? byId.get(f.productId) : undefined;
     if (!it) continue;
     if (typeof it.name === 'string') f.name = it.name;
+    if (typeof it.image === 'string' && /^https?:\/\//i.test(it.image)) f.image = it.image;
     if (typeof it.stock === 'number') f.stock = it.stock;
     if (typeof it.suggested === 'number') f.suggestedQty = it.suggested;
     if (typeof it.expiryDate === 'string') f.expiryDate = it.expiryDate;
@@ -192,6 +193,7 @@ export async function analyzeShelf(principal: Principal, image: ImageInput): Pro
       productId: f.productId!,
       name: f.name,
       stock: f.stock!,
+      ...(f.image ? { image: f.image } : {}),
       quantity: f.suggestedQty && f.suggestedQty > 0 ? Math.min(f.suggestedQty, 200) : DEFAULT_REPLENISH_QTY,
     }));
 

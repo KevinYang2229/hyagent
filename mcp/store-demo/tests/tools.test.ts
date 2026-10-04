@@ -61,6 +61,16 @@ describe('replenishment_create', () => {
     expect(bad.isError).toBe(true);
   });
 
+  it('隱藏的 productId 必須與顯示的名稱、庫存一致', () => {
+    const call = (name: string, stock: number) =>
+      callStoreTool('replenishment_create', { items: [{ productId: 'P001', name, stock, quantity: 5 }], arrivalDate: '2026-10-04' }, ctx());
+    const badName = call('三明治', 6);
+    expect(badName.isError).toBe(true);
+    expect(badName.text).toBe('品項資料不一致：P001');
+    expect(call('鮭魚御飯糰', 99).isError).toBe(true);
+    expect(call('鮭魚御飯糰', 6).isError).toBeFalsy();
+  });
+
   it('輸入不符 schema（數量超過上限）→ isError', () => {
     const r = callStoreTool('replenishment_create', { items: [{ productId: 'P001', name: 'x', stock: 1, quantity: 999 }], arrivalDate: '2026-10-04' }, ctx());
     expect(r.isError).toBe(true);

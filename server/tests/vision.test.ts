@@ -17,7 +17,7 @@ const app = createApp();
 const PNG = Buffer.from('89504e470d0a1a0a', 'hex');
 const usage = { inputTokens: 1, outputTokens: 1 };
 
-const products: Record<string, { productId: string; name: string; stock: number; suggested: number; expiryDate: string; expiring: boolean }> = {
+const products: Record<string, { image?: string; productId: string; name: string; stock: number; suggested: number; expiryDate: string; expiring: boolean }> = {
   鮭魚御飯糰: { productId: 'P001', name: '鮭魚御飯糰', stock: 0, suggested: 30, expiryDate: '2026-10-05', expiring: false },
   沙拉: { productId: 'P007', name: '沙拉－和風雞肉', stock: 5, suggested: 18, expiryDate: '2026-10-04', expiring: true },
 };
@@ -72,6 +72,27 @@ beforeEach(() => {
 });
 
 describe('POST /api/vision/analyze — shelf', () => {
+  it('商品有 http(s) 圖片 → 補貨提議品項帶 image；非 http 的不帶', async () => {
+    products['鮭魚御飯糰'].image = 'https://store.example.com/assets/P001.png';
+    products['沙拉'].image = 'javascript:alert(1)';
+    try {
+      llmCreate.mockResolvedValue(reportCall('report_shelf', {
+        items: [
+          { name: '鮭魚御飯糰', status: 'out_of_stock', box: { x: 0.1, y: 0.2, w: 0.1, h: 0.1 } },
+          { name: '沙拉', status: 'out_of_stock', box: { x: 0.3, y: 0.2, w: 0.1, h: 0.1 } },
+        ],
+      }));
+      const res = await analyze(await token(), 'shelf');
+      expect(res.status).toBe(200);
+      const items = res.body.data.replenishment.input.items;
+      expect(items[0]).toMatchObject({ productId: 'P001', image: 'https://store.example.com/assets/P001.png' });
+      expect(items[1]).not.toHaveProperty('image');
+    } finally {
+      delete products['鮭魚御飯糰'].image;
+      delete products['沙拉'].image;
+    }
+  });
+
   it('辨識 → 補齊商品與庫存 → 即期判斷 → 補貨提議；座標夾回 0–1', async () => {
     llmCreate.mockResolvedValue(reportCall('report_shelf', {
       items: [
