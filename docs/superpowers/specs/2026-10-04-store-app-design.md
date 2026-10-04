@@ -91,10 +91,12 @@ Open醬與 7-ELEVEN 標誌由使用者提供去背 PNG。需要的姿勢：打�
 
 ### 4.1 專案結構
 
-- **新 workspace `app/`**：使用 Expo SDK 最新穩定版、Expo Router、TypeScript。
-- **共用型別**：從 `@hyagent/shared` import，包括 `PendingActionView`、`ConfirmForm`、`DisplayBlock`、`TableColumn`、`ConfirmTableColumn` 等。
-- **Metro 設定**：`watchFolders` 加入 monorepo 根目錄，`nodeModulesPaths` 同時指向 `app/node_modules` 與根目錄的 `node_modules`。
-- **根目錄 `package.json`**：`typecheck`、`test` 加入 `app`。
+- **`app/` 是 monorepo 內的獨立 npm 專案，不加入 npm workspaces**：使用 Expo SDK 57、Expo Router、TypeScript，在 `app/` 內自己 `npm install`。
+  - 原因：`client/`、`admin/`、`ui/` 用 React 18，Expo SDK 57 需要 React 19。若加入 workspaces，`react-native` 會被提升到根目錄的 `node_modules`，抓到 React 18 而壞掉。
+- **共用型別**：`shared/` 沒有任何依賴，用路徑別名直接引用 `../shared/src/index.ts`，在 App 內仍寫 `import … from '@hyagent/shared'`。
+  - 引用的型別包括 `PendingActionView`、`ConfirmForm`、`DisplayBlock`、`TableColumn`、`ConfirmTableColumn` 等。
+  - TypeScript 用 `paths`，Metro 用 `extraNodeModules` 加 `watchFolders`，Jest 用 `moduleNameMapper`。
+- **根目錄 `package.json`**：`typecheck`、`test` 以 `npm --prefix app run …` 呼叫 App；`eslint.config.js` 忽略 `app/`，由 App 自己的設定處理。
 
 ```
 app/
@@ -164,8 +166,7 @@ Expo Go 都能執行：
 
 | 狀況 | 回應 |
 |---|---|
-| 沒有檔案或格式不支援 | 400 `INVALID_AUDIO` |
-| 超過大小上限 | 413 |
+| 沒有檔案、格式不支援或超過大小上限 | 422（沿用影像上傳的寫法） |
 | 未設定 `OPENAI_API_KEY` | 503 `SPEECH_UNAVAILABLE` |
 | 上游失敗 | 502 `SPEECH_FAILED` |
 
@@ -182,7 +183,7 @@ Expo Go 都能執行：
 | 不存在或未開放給 agent | 404 `TOOL_NOT_FOUND` |
 | 寫入工具（含未標示 effect 的工具） | 422 `NOT_A_READ_TOOL` |
 | 權限不足 | 403 |
-| 輸入驗證失敗 | 400 |
+| 輸入驗證失敗 | 422（沿用工具註冊中心的檢查） |
 | MCP 服務無法連線 | 503 `TOOL_UNAVAILABLE` |
 
 - 權限、輸入驗證、稽核都沿用工具註冊中心的 `invoke`。
@@ -281,7 +282,7 @@ Expo Go 都能執行：
 ## 8. 測試
 
 - **後端（Jest）**：
-  - `/speech/transcribe`：格式錯誤、超過大小、未設定 key、上游失敗、成功。
+  - `/speech/transcribe`：格式錯誤、未設定 key、上游失敗、沒有權限、成功。
   - `/tools/:toolId/invoke`：唯讀成功並附表格、寫入工具被擋、未開放的工具、沒權限、輸入錯誤。
 - **門市服務（Vitest）**：
   - `store_today_summary`：計數與名稱，今日補貨單只算呼叫者自己的。
