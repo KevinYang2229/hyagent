@@ -1,0 +1,53 @@
+/**
+ * 直接呼叫唯讀工具（不經 AI）：給 App 的首頁摘要、列表、掃條碼查券等用。
+ * 只放行 agent 可用的唯讀工具；寫入動作一律走確認流程（propose → confirm）。
+ */
+import type { Request, Response } from 'express';
+import { z } from 'zod';
+import { resolveScopes } from '@/modules/authz/resolve-scopes';
+import { buildDisplayBlock } from '@/modules/display/display-block';
+import { McpToolCallError } from '@/modules/mcp/mcp.connection';
+import { isWriteTool, makeToolContext, toolRegistry, unwrapToolOutput, type ToolDef } from '@/modules/tools';
+import { AppError } from '@/utils/app-error';
+
+export const invokeParamSchema = z.object({ toolId: z.string().trim().min(1).max(200) });
+export const invokeBodySchema = z.object({ input: z.record(z.unknown()).default({}) }).strict();
+
+function notFound(toolId: string): AppError {
+  return new AppError(404, 'TOOL_NOT_FOUND', `找不到工具：${toolId}`);
+}
+
+export const toolInvokeController = {
+  async invoke(req: Request, res: Response): Promise<void> {
+    const tenantId = req.tenant?.id ?? 'default';
+    const userId = req.user?.sub ?? '';
+    if (!resolveScopes({ tenantId, userId }).includes('service:agent')) {
+      throw AppError.forbidden('沒有使用智慧代理的權限');
+    }
+    const toolId = String(req.params.toolId);
+    const { input } = req.body as z.infer<typeof invokeBodySchema>;
+    const ctx = makeToolContext({ tenantId, userId });
+    await toolRegistry.prepare(ctx);
+
+    let tool: ToolDef;
+    try {
+      tool = toolRegistry.resolve(toolId, ctx);
+    } catch {
+      throw notFound(toolId);
+    }
+    // agentExposed 邊界與 propose 相同：未開放給 agent 的工具視同不存在
+    if (!tool.agentExposed) throw notFound(toolId);
+    if (isWriteTool(tool)) throw new AppError(422, 'NOT_A_READ_TOOL', '只能直接呼叫唯讀工具；寫入動作請走確認流程');
+
+    let out: unknown;
+    try {
+      out = await toolRegistry.invoke(toolId, input, ctx);
+    } catch (err) {
+      if (err instanceof McpToolCallError) throw new AppError(503, 'TOOL_UNAVAILABLE', err.message);
+      throw err;
+    }
+    const { data, display } = unwrapToolOutput(out);
+    const block = display !== undefined ? buildDisplayBlock(display, data) : undefined;
+    res.status(200).json({ data: { result: data, ...(block ? { block } : {}) } });
+  },
+};
