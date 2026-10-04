@@ -11,8 +11,10 @@ import { storeTool } from '@/api/storeTools';
 import { useApi } from '@/auth/AuthProvider';
 import { Mascot } from '@/brand/Mascot';
 import { colors, font, radius, space } from '@/theme/tokens';
+import { canInteract } from '@/vision/cameraGuard';
 import { fromCouponCheck, fromVision, type CouponCheck } from '@/vision/coupon';
 import { prepareImage } from '@/vision/prepareImage';
+
 import { createScanGate } from '@/vision/scanGate';
 import type { Photo } from '@/vision/types';
 import { visionErrorHint } from '@/vision/visionErrors';
@@ -67,6 +69,7 @@ export default function Camera() {
   }
 
   function shoot() {
+    if (!canInteract(busy)) return;
     void capture(async () => {
       const pic = await cam.current?.takePictureAsync({ quality: 0.8 });
       return pic ? { uri: pic.uri, width: pic.width, height: pic.height } : null;
@@ -74,6 +77,7 @@ export default function Camera() {
   }
 
   function pick() {
+    if (!canInteract(busy)) return;
     void capture(async () => {
       const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8 });
       const a = !r.canceled ? r.assets[0] : undefined;
@@ -137,7 +141,8 @@ export default function Camera() {
             {MODES.map((m) => (
               <Pressable
                 key={m.key}
-                onPress={() => { setMode(m.key); setError(null); gate.release(); }}
+                onPress={() => { if (!canInteract(busy)) return; setMode(m.key); setError(null); gate.release(); }}
+                disabled={busy}
                 style={[styles.mode, mode === m.key && styles.modeOn]}
                 accessibilityRole="button"
                 accessibilityState={{ selected: mode === m.key }}
@@ -159,7 +164,7 @@ export default function Camera() {
             <Ionicons name="images-outline" size={26} color={mode === 'barcode' ? 'rgba(255,255,255,0.3)' : '#fff'} />
           </Pressable>
           {mode !== 'barcode' ? (
-            <Pressable onPress={shoot} style={styles.shutter} accessibilityLabel="拍照" accessibilityRole="button">
+            <Pressable onPress={shoot} disabled={busy} style={styles.shutter} accessibilityLabel="拍照" accessibilityRole="button">
               <View style={styles.shutterInner} />
             </Pressable>
           ) : (
