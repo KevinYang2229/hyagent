@@ -20,4 +20,24 @@ describe('ChatInput', () => {
     await fireEvent.press(screen.getByLabelText('開始說話'));
     expect(onMicPress).toHaveBeenCalled();
   });
+
+  it('送出中仍可編輯但不會送出；onSend 拒絕時保留文字', async () => {
+    const onSend = jest.fn();
+    await render(<ChatInput onSend={onSend} micAvailable={false} disabled />);
+    const input = screen.getByPlaceholderText('請說出或輸入你的需求…');
+    expect(input.props.editable).not.toBe(false);
+    await fireEvent.changeText(input, '查庫存');
+    await act(async () => { await fireEvent.press(screen.getByLabelText('送出')); });
+    expect(onSend).not.toHaveBeenCalled();
+    expect(screen.getByDisplayValue('查庫存')).toBeTruthy();
+  });
+
+  it('onSend 拒絕時視為失敗並保留文字', async () => {
+    const onSend = jest.fn().mockRejectedValue(new Error('boom'));
+    await render(<ChatInput onSend={onSend} micAvailable={false} />);
+    await fireEvent.changeText(screen.getByPlaceholderText('請說出或輸入你的需求…'), '查庫存');
+    await act(async () => { await fireEvent.press(screen.getByLabelText('送出')); });
+    expect(onSend).toHaveBeenCalledTimes(1);
+    expect(screen.getByDisplayValue('查庫存')).toBeTruthy();
+  });
 });

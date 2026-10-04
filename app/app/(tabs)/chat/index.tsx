@@ -1,12 +1,13 @@
 /** AI 對話（稿 3）：寬版左助理面板、右對話；窄版助理橫條在上。語音在 Task 10 接上。 */
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { AssistantPanel } from '@/chat/AssistantPanel';
 import { ChatInput } from '@/chat/ChatInput';
 import { useChat } from '@/chat/ChatProvider';
 import { MessageBubble } from '@/chat/MessageBubble';
+import { isNearBottom, shouldAutoScroll } from '@/chat/autoScroll';
 import { useAutoAsk } from '@/chat/useAutoAsk';
 import { useIsWide } from '@/layout/useIsWide';
 import { useSettings } from '@/settings/SettingsProvider';
@@ -23,6 +24,16 @@ export default function ChatScreen() {
   const listRef = useRef<FlatList>(null);
   const { messages, sending } = chat.state;
   const lastAgentId = [...messages].reverse().find((m) => m.role === 'agent')?.id;
+
+  const nearBottom = useRef(true);
+  const prev = useRef({ count: 0, sending: false });
+  const kavRef = useRef<View>(null);
+  const [kavOffset, setKavOffset] = useState(0);
+
+  // 量對話欄在視窗中的實際頂端位置，當作鍵盤避讓偏移（Android 靠 adjustResize，不使用 behavior）
+  const measureKav = useCallback(() => {
+    kavRef.current?.measureInWindow((_x, y) => setKavOffset(Math.max(0, y)));
+  }, []);
 
   useAutoAsk(params.q, params.nonce, chat.send);
 
@@ -66,7 +77,18 @@ export default function ChatScreen() {
         ListHeaderComponent={<Text style={styles.greeting}>{GREETING}</Text>}
         ListFooterComponent={sending ? <Text style={styles.typing}>Open醬思考中…</Text> : null}
         renderItem={({ item }) => <MessageBubble message={item} showSuggestions={item.id === lastAgentId && !sending} onSuggestion={chat.send} />}
-        onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
+        keyboardShouldPersistTaps="handled"
+        scrollEventThrottle={64}
+        onScroll={(e) => {
+          const { layoutMeasurement, contentSize, contentOffset } = e.nativeEvent;
+          nearBottom.current = isNearBottom(layoutMeasurement.height, contentSize.height, contentOffset.y);
+        }}
+        onContentSizeChange={() => {
+          const count = messages.length;
+          const go = shouldAutoScroll({ prevCount: prev.current.count, count, prevSending: prev.current.sending, sending, nearBottom: nearBottom.current });
+          prev.current = { count, sending };
+          if (go) listRef.current?.scrollToEnd({ animated: true });
+        }}
       />
       <View style={{ padding: space.md }}>
         <ChatInput onSend={chat.send} micAvailable={false} disabled={sending} inputRef={inputRef} />
@@ -74,20 +96,28 @@ export default function ChatScreen() {
     </View>
   );
 
+  const column = (style: object) => (
+    <View ref={kavRef} style={style} onLayout={measureKav} collapsable={false}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={kavOffset}>
+        {conversation}
+      </KeyboardAvoidingView>
+    </View>
+  );
+
   return (
-    <KeyboardAvoidingView style={styles.page} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={80}>
+    <View style={styles.page}>
       {wide ? (
         <View style={styles.row}>
           <View style={{ width: '38%' }}>{panel}</View>
-          <View style={{ flex: 1, padding: space.md }}>{conversation}</View>
+          {column({ flex: 1, padding: space.md })}
         </View>
       ) : (
         <View style={{ flex: 1 }}>
           {panel}
-          {conversation}
+          {column({ flex: 1 })}
         </View>
       )}
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 

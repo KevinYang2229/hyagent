@@ -21,7 +21,12 @@ export function ChatInput({
 
   async function submit() {
     if (disabled || !text.trim()) return;
-    const ok = await onSend(text);
+    let ok = false;
+    try {
+      ok = await onSend(text);
+    } catch {
+      ok = false; // 失敗保留文字
+    }
     if (ok) setText('');
   }
 
@@ -41,7 +46,6 @@ export function ChatInput({
         onChangeText={setText}
         onSubmitEditing={submit}
         returnKeyType="send"
-        editable={!disabled}
       />
       <Pressable style={[styles.send, (!text.trim() || disabled) && { opacity: 0.4 }]} onPress={submit} accessibilityLabel="送出" accessibilityRole="button">
         <Ionicons name="send" size={20} color={colors.primaryDark} />
