@@ -4,10 +4,9 @@
  */
 import { Ionicons } from '@expo/vector-icons';
 import { useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import type { ConfirmField, ConfirmScalarField, ConfirmTableField, PendingActionView } from '@hyagent/shared';
 import { errorMessage } from '@/api/errors';
-import { Mascot } from '@/brand/Mascot';
 import type { ConfirmOutcome } from '@/chat/ChatProvider';
 import { colors, font, radius, shadow, space } from '@/theme/tokens';
 import {
@@ -50,6 +49,10 @@ function ConfirmCard({
 }) {
   const fields = useMemo(() => action.form?.fields ?? [], [action.form]);
   const title = action.form?.title ?? action.summary.title;
+  const { width, height } = useWindowDimensions();
+  const showCompanion = width >= 768 && title.includes('補貨');
+  const cardWidth = Math.min(560, width * 0.54);
+  const companionSize = Math.min(220, height * 0.36, (width - cardWidth) / 2 - 32);
   const [values, setValues] = useState<Values>(() => initialValues(fields));
   const [removed, setRemoved] = useState<Removed>({});
   const [busy, setBusy] = useState(false);
@@ -122,9 +125,10 @@ function ConfirmCard({
 
   return (
     <View style={styles.overlay}>
+      <View style={[styles.dialog, showCompanion && { width: cardWidth }]}>
       <View style={styles.card}>
         <View style={styles.header}>
-          <Mascot pose="wave" size={72} />
+          <Image source={require('../../assets/brand/mascot-home.png')} style={{ width: showCompanion ? 112 : 72, height: showCompanion ? 96 : 72 }} resizeMode="contain" accessibilityLabel="Open醬" />
           <View style={{ flex: 1 }}>
             <Text style={styles.brand}>Open醬</Text>
             <Text style={styles.title}>{`我已準備好${title}！`}</Text>
@@ -168,6 +172,16 @@ function ConfirmCard({
             <Text style={styles.okText}>{`確認${title}`}</Text>
           </Pressable>
         </View>
+      </View>
+      {showCompanion ? (
+        <View style={[styles.companion, { width: companionSize }]} pointerEvents="none">
+          <View style={styles.companionBubble}>
+            <Text style={styles.companionText}>確認後我就幫你{ '\n' }送出補貨單囉！</Text>
+            <View style={styles.companionTail} />
+          </View>
+          <Image source={require('../../assets/brand/mascot-confirm.png')} style={{ width: companionSize, height: companionSize * 1.18 }} resizeMode="contain" accessibilityLabel="Open醬揮手確認補貨" />
+        </View>
+      ) : null}
       </View>
     </View>
   );
@@ -295,7 +309,13 @@ function ScalarField({ field, value, disabled, onChange }: { field: ConfirmScala
 
 const styles = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: colors.overlay, alignItems: 'center', justifyContent: 'center', padding: space.lg },
-  card: { width: '100%', maxWidth: 720, backgroundColor: colors.surface, borderRadius: radius.xl, padding: space.xl, gap: space.md, ...shadow.card },
+  dialog: { width: '100%', maxWidth: 720, maxHeight: '100%', alignItems: 'center' },
+  // 角色不佔卡片的置中寬度，白色卡片的中心始終對齊螢幕中心。
+  companion: { position: 'absolute', left: '100%', marginLeft: 16, bottom: -24, alignItems: 'center', paddingBottom: space.sm },
+  companionBubble: { width: '100%', position: 'relative', backgroundColor: colors.primary, borderRadius: radius.lg, paddingHorizontal: space.md, paddingVertical: space.md, marginBottom: 24 },
+  companionText: { color: '#fff', fontSize: font.lg, fontWeight: '700', textAlign: 'center', lineHeight: 26 },
+  companionTail: { position: 'absolute', bottom: -15, left: 32, borderTopWidth: 16, borderTopColor: colors.primary, borderRightWidth: 16, borderRightColor: 'transparent' },
+  card: { width: '100%', maxWidth: 720, maxHeight: '100%', backgroundColor: colors.surface, borderRadius: radius.xl, padding: space.xl, gap: space.md, ...shadow.card },
   header: { flexDirection: 'row', alignItems: 'center', gap: space.md },
   brand: { color: colors.primary, fontWeight: '700', fontSize: font.sm },
   title: { fontSize: font.xl, fontWeight: '800', color: colors.text },
