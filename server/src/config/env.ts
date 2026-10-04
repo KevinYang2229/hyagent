@@ -106,6 +106,8 @@ export const envSchema = z.object({
   LLM_MAX_TOKENS: z.coerce.number().int().positive().default(1024),
   ANTHROPIC_API_KEY: z.string().default(''),
   OPENAI_API_KEY: z.string().default(''),
+  // 語音轉文字（App 語音對話）；用 OPENAI_API_KEY，未設定時語音 API 回 503
+  SPEECH_MODEL: z.string().default('gpt-4o-transcribe'),
   // ---- 地端 LLM（provider=local；OpenAI 相容端點，如 vLLM / Ollama）----
   // 地端 chat 端點根路徑（含 /v1）；LLM_PROVIDER=local 時必填（見 superRefine）
   LLM_BASE_URL: z.string().optional(),

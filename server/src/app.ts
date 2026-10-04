@@ -27,6 +27,7 @@ import { adminRouter } from '@/modules/admin/admin.routes';
 import { widgetRouter } from '@/modules/widget/widget.routes';
 import { tenantSelfRouter } from '@/modules/tenant/tenant.routes';
 import { toolInvokeRouter } from '@/modules/tools/tool-invoke.routes';
+import { speechRouter } from '@/modules/speech/speech.routes';
 
 /**
  * MVP app：只掛對話與表單路由，不連 DB / Redis / Socket。
@@ -118,6 +119,7 @@ export function createApp(): Express {
   // 影像辨識（貨架／優惠券）：呼叫 LLM 計費，與對話同樣套月配額
   app.use('/api/vision', resolveTenant, requireAuth, tenantRateLimit, tenantMonthlyQuota, visionRouter);
   app.use('/api/tools', resolveTenant, requireAuth, tenantRateLimit, toolInvokeRouter);
+  app.use('/api/speech', resolveTenant, requireAuth, tenantRateLimit, tenantMonthlyQuota, speechRouter);
   app.use('/api/forms', resolveTenant, requireAuth, tenantRateLimit, formRouter);
 
   // 報告：狀態查詢與下載。不掛 tenantMonthlyQuota——那是對話輪次額度，

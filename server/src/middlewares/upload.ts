@@ -77,3 +77,29 @@ export function singleImageUpload(field = 'image'): RequestHandler {
     });
   };
 }
+
+/** 語音轉文字專用：只收常見錄音格式，單檔 10MB（App 錄音上限 60 秒） */
+export const MAX_AUDIO_SIZE_MB = 10;
+const AUDIO_MIME = new Set(['audio/m4a', 'audio/x-m4a', 'audio/mp4', 'audio/aac', 'audio/webm', 'audio/wav', 'audio/x-wav']);
+
+const audioUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_AUDIO_SIZE_MB * 1024 * 1024, files: 1 },
+  fileFilter(_req, file, cb) {
+    if (AUDIO_MIME.has(file.mimetype)) cb(null, true);
+    else cb(AppError.unprocessable(`不支援的錄音格式：${file.mimetype}`));
+  },
+});
+
+export function singleAudioUpload(field = 'audio'): RequestHandler {
+  const handler = audioUpload.single(field);
+  return (req: Request, res: Response, next: NextFunction): void => {
+    handler(req, res, (err: unknown) => {
+      if (err instanceof MulterError) {
+        next(AppError.unprocessable(err.code === 'LIMIT_FILE_SIZE' ? `錄音超過上限 ${MAX_AUDIO_SIZE_MB}MB` : `上傳失敗：${err.message}`));
+        return;
+      }
+      next(err);
+    });
+  };
+}
