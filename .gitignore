@@ -38,3 +38,8 @@ server/data/knowledge-config.json
 # Word 開啟 .docx 時產生的暫存鎖定檔
 ~$*.docx
 ~$*.doc
+
+# Expo App 產物
+app/.expo/
+app/dist/
+app/expo-env.d.ts
