@@ -8,6 +8,7 @@ export interface Coupon {
   code: string; title: string; description: string; categories: string[]; productIds?: string[];
   validFromDays: number; validToDays: number; used: boolean; conditions: string;
 }
+export interface Equipment { id: string; name: string; status: 'ok' | 'alert'; issue: string }
 
 const DATA_DIR = path.join(__dirname, '..', 'data');
 export const ASSETS_DIR = path.join(__dirname, '..', 'assets');
@@ -19,6 +20,7 @@ function load<T>(file: string): T {
 export const products: Product[] = load<Product[]>('products.json');
 export const promotions: Promotion[] = load<Promotion[]>('promotions.json');
 export const coupons: Coupon[] = load<Coupon[]>('coupons.json');
+export const equipment: Equipment[] = load<Equipment[]>('equipment.json');
 
 const TZ = 'Asia/Taipei';
 

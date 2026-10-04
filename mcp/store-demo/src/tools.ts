@@ -5,11 +5,13 @@
 import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
 import type { HyAgentCaller } from '@hyagent/mcp-kit';
-import { coupons, dateAfter, products, promotions, type Product } from './data';
+import { coupons, dateAfter, equipment, products, promotions, type Product } from './data';
 import { matchProduct } from './match';
 
+export interface ReplenishmentItem { productId: string; image?: string; name: string; stock: number; quantity: number }
+
 export interface StoreState {
-  replenishments: { id: string; items: unknown[]; arrivalDate: string; by: string; tenantId: string }[];
+  replenishments: { id: string; items: ReplenishmentItem[]; arrivalDate: string; by: string; tenantId: string; createdAt: string }[];
 }
 
 export function createStoreState(): StoreState {
@@ -46,6 +48,16 @@ function imageUrl(p: Product, ctx: StoreToolContext): string | undefined {
   return file ? `${ctx.publicBaseUrl.replace(/\/+$/, '')}/assets/${file}` : undefined;
 }
 
+/** 庫存低於安全庫存一半＝庫存偏低（表格狀態與今日重點共用） */
+function isLowStock(p: Product): boolean {
+  return p.stock < p.safetyStock * 0.5;
+}
+
+/** 到期日 ≤ 明天＝即期 */
+function isExpiring(p: Product): boolean {
+  return p.expiryInDays <= 1;
+}
+
 function inventoryRow(p: Product, ctx: StoreToolContext): Record<string, unknown> {
   const suggested = Math.max(0, p.safetyStock - p.stock);
   const image = imageUrl(p, ctx);
@@ -57,9 +69,9 @@ function inventoryRow(p: Product, ctx: StoreToolContext): Record<string, unknown
     stock: p.stock,
     safetyStock: p.safetyStock,
     suggested,
-    status: p.stock < p.safetyStock * 0.5 ? '庫存偏低' : '正常',
+    status: isLowStock(p) ? '庫存偏低' : '正常',
     expiryDate: dateAfter(ctx.now(), p.expiryInDays),
-    expiring: p.expiryInDays <= 1,
+    expiring: isExpiring(p),
   };
 }
 
@@ -162,7 +174,7 @@ export const STORE_TOOLS: StoreTool[] = [
     },
     run(args, ctx) {
       if (ctx.caller.system) return fail('系統身分不可建立補貨單');
-      const items = args.items as { productId: string; image?: string; name: string; stock: number; quantity: number }[];
+      const items = args.items as ReplenishmentItem[];
       const unknown = items.filter((i) => !products.some((p) => p.id === i.productId)).map((i) => i.productId);
       if (unknown.length > 0) return fail(`找不到商品：${unknown.join('、')}`);
       // productId 是使用者看不到的隱藏欄位：顯示的名稱、庫存必須與門市現值一致，不能只信任顯示值
@@ -175,14 +187,17 @@ export const STORE_TOOLS: StoreTool[] = [
         .map((i) => i.productId);
       if (mismatched.length > 0) return fail(`品項資料不一致：${mismatched.join('、')}`);
       const id = `R-${String(ctx.state.replenishments.length + 1).padStart(4, '0')}`;
-      ctx.state.replenishments.push({ id, items, arrivalDate: args.arrivalDate as string, by: ctx.caller.userId, tenantId: ctx.caller.tenantId });
+      ctx.state.replenishments.push({
+        id, items, arrivalDate: args.arrivalDate as string, by: ctx.caller.userId, tenantId: ctx.caller.tenantId,
+        createdAt: ctx.now().toISOString(),
+      });
       return { structuredContent: { orderId: id, itemCount: items.length, arrivalDate: args.arrivalDate } };
     },
   },
   {
     name: 'promotion_list',
     title: '查詢促銷活動',
-    description: '列出目前進行中的促銷活動；可依關鍵字或類別篩選，date 可指定查詢日期（YYYY-MM-DD，預設今天）。',
+    description: '列出目前進行中的促銷活動；可依關鍵字或類別篩選（類別可填商品類別，或「會員」查會員活動），date 可指定查詢日期（YYYY-MM-DD，預設今天）。',
     readOnly: true,
     inputSchema: {
       type: 'object',
@@ -252,6 +267,77 @@ export const STORE_TOOLS: StoreTool[] = [
             { key: 'applicableTo', label: '適用' },
             { key: 'validPeriod', label: '期限' },
             { key: 'conditions', label: '條件' },
+          ],
+        },
+      };
+    },
+  },
+  {
+    name: 'store_today_summary',
+    title: '今日重點',
+    description: '門市今日重點：庫存偏低、即期品、設備異常的項數與名稱，以及你今天建立的補貨單張數。',
+    readOnly: true,
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    run(_args, ctx) {
+      const low = products.filter(isLowStock).map((p) => p.name);
+      const exp = products.filter(isExpiring).map((p) => p.name);
+      const alerts = equipment.filter((e) => e.status === 'alert').map((e) => ({ name: e.name, issue: e.issue }));
+      const today = dateAfter(ctx.now(), 0);
+      const mine = ctx.caller.system
+        ? []
+        : ctx.state.replenishments.filter(
+            (r) => r.by === ctx.caller.userId && r.tenantId === ctx.caller.tenantId && dateAfter(new Date(r.createdAt), 0) === today,
+          );
+      return {
+        structuredContent: {
+          lowStock: { count: low.length, names: low },
+          expiring: { count: exp.length, names: exp },
+          equipmentAlerts: { count: alerts.length, items: alerts },
+          replenishmentsToday: { count: mine.length },
+        },
+      };
+    },
+  },
+  {
+    name: 'replenishment_list',
+    title: '查詢補貨單',
+    description: '列出你建立的補貨單（新的在前），含品項與數量。',
+    readOnly: true,
+    inputSchema: {
+      type: 'object',
+      properties: { limit: { type: 'integer', title: '筆數', minimum: 1, maximum: 50 } },
+      additionalProperties: false,
+    },
+    run(args, ctx) {
+      const limit = typeof args.limit === 'number' ? args.limit : 20;
+      const orders = ctx.caller.system
+        ? []
+        : ctx.state.replenishments
+            .filter((r) => r.by === ctx.caller.userId && r.tenantId === ctx.caller.tenantId)
+            .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+            .slice(0, limit)
+            .map((r) => {
+              const names = r.items.map((i) => i.name);
+              return {
+                id: r.id,
+                createdAt: r.createdAt,
+                arrivalDate: r.arrivalDate,
+                itemCount: r.items.length,
+                summary: names.length > 2 ? `${names.slice(0, 2).join('、')}…` : names.join('、'),
+                items: r.items.map((i) => ({ productId: i.productId, name: i.name, quantity: i.quantity })),
+              };
+            });
+      return {
+        structuredContent: { orders },
+        display: {
+          type: 'table',
+          title: '我的補貨單',
+          rows: 'orders',
+          columns: [
+            { key: 'id', label: '單號' },
+            { key: 'summary', label: '品項' },
+            { key: 'itemCount', label: '品項數' },
+            { key: 'arrivalDate', label: '到貨日', format: 'date' },
           ],
         },
       };

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { callStoreTool, createStoreState } from '../src';
+import { products } from '../src/data';
 
 const NOW = new Date('2026-10-03T10:00:00+08:00');
 const ctx = (extra: Partial<Parameters<typeof callStoreTool>[2]> = {}) => ({
@@ -91,11 +92,17 @@ describe('replenishment_create', () => {
 });
 
 describe('promotion_list 與 coupon_check', () => {
-  it('只列出進行中的活動', () => {
+  it('只列出進行中的活動（含會員活動）', () => {
     const r = callStoreTool('promotion_list', {}, ctx());
     const ids = (r.structuredContent as { promotions: { id: string }[] }).promotions.map((p) => p.id);
-    expect(ids).toEqual(['PR01', 'PR02', 'PR03', 'PR04']);
+    expect(ids).toEqual(['PR01', 'PR02', 'PR03', 'PR04', 'PR06', 'PR07']);
     expect(r.display).toMatchObject({ type: 'table', rows: 'promotions' });
+  });
+
+  it('category「會員」只列會員活動', () => {
+    const r = callStoreTool('promotion_list', { category: '會員' }, ctx());
+    const ids = (r.structuredContent as { promotions: { id: string }[] }).promotions.map((p) => p.id);
+    expect(ids).toEqual(['PR06', 'PR07']);
   });
 
   it.each([
@@ -114,6 +121,88 @@ import { generateKeyPairSync, randomUUID, sign } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 import { createHyAgentVerifier } from '@hyagent/mcp-kit';
 import { createStoreDemoApp } from '../src';
+
+describe('補貨單記錄建立時間', () => {
+  it('replenishment_create 記下 createdAt（ISO）', () => {
+    const state = createStoreState();
+    callStoreTool('replenishment_create', {
+      items: [{ productId: 'P001', name: '鮭魚御飯糰', stock: 6, quantity: 24 }],
+      arrivalDate: '2026-10-04',
+    }, ctx({ state }));
+    expect(state.replenishments[0].createdAt).toBe(NOW.toISOString());
+  });
+});
+
+describe('store_today_summary', () => {
+  it('庫存偏低、即期品、設備異常依資料計算', () => {
+    const r = callStoreTool('store_today_summary', {}, ctx());
+    const s = r.structuredContent as {
+      lowStock: { count: number; names: string[] };
+      expiring: { count: number; names: string[] };
+      equipmentAlerts: { count: number; items: { name: string; issue: string }[] };
+    };
+    const low = products.filter((p) => p.stock < p.safetyStock * 0.5).map((p) => p.name);
+    const exp = products.filter((p) => p.expiryInDays <= 1).map((p) => p.name);
+    expect(s.lowStock).toEqual({ count: low.length, names: low });
+    expect(s.expiring).toEqual({ count: exp.length, names: exp });
+    expect(s.equipmentAlerts.count).toBeGreaterThanOrEqual(1);
+    expect(s.equipmentAlerts.items).toContainEqual({ name: '咖啡機', issue: '紅燈閃爍' });
+    expect(r.display).toBeUndefined();
+  });
+
+  it('今日補貨單只算呼叫者本人、同租戶、台北時區今天建立的', () => {
+    const state = createStoreState();
+    const base = { items: [], arrivalDate: '2026-10-04' };
+    state.replenishments.push(
+      { ...base, id: 'R-0001', by: 'kevin', tenantId: 't1', createdAt: '2026-10-03T01:00:00.000Z' },
+      { ...base, id: 'R-0002', by: 'kevin', tenantId: 't1', createdAt: '2026-10-03T09:00:00.000Z' },
+      { ...base, id: 'R-0003', by: 'amy', tenantId: 't1', createdAt: '2026-10-03T09:00:00.000Z' },
+      { ...base, id: 'R-0004', by: 'kevin', tenantId: 't2', createdAt: '2026-10-03T09:00:00.000Z' },
+      // 台北時間 10/02 23:30（UTC 15:30）＝昨天
+      { ...base, id: 'R-0005', by: 'kevin', tenantId: 't1', createdAt: '2026-10-02T15:30:00.000Z' },
+    );
+    const r = callStoreTool('store_today_summary', {}, ctx({ state }));
+    expect((r.structuredContent as { replenishmentsToday: { count: number } }).replenishmentsToday).toEqual({ count: 2 });
+  });
+});
+
+describe('replenishment_list', () => {
+  it('只列呼叫者本人、同租戶的補貨單，新的在前，帶明細與摘要', () => {
+    const state = createStoreState();
+    const item = (productId: string, name: string, quantity: number) => ({ productId, name, stock: 1, quantity });
+    state.replenishments.push(
+      { id: 'R-0001', items: [item('P001', '鮭魚御飯糰', 24)], arrivalDate: '2026-10-04', by: 'kevin', tenantId: 't1', createdAt: '2026-10-03T01:00:00.000Z' },
+      { id: 'R-0002', items: [item('P003', '明太子御飯糰', 24), item('P005', '三明治－火腿蛋', 20), item('P007', '沙拉－和風雞肉', 18)], arrivalDate: '2026-10-05', by: 'kevin', tenantId: 't1', createdAt: '2026-10-03T02:00:00.000Z' },
+      { id: 'R-0003', items: [item('P001', '鮭魚御飯糰', 1)], arrivalDate: '2026-10-05', by: 'amy', tenantId: 't1', createdAt: '2026-10-03T03:00:00.000Z' },
+      { id: 'R-0004', items: [item('P001', '鮭魚御飯糰', 1)], arrivalDate: '2026-10-05', by: 'kevin', tenantId: 't2', createdAt: '2026-10-03T03:00:00.000Z' },
+    );
+    const r = callStoreTool('replenishment_list', {}, ctx({ state }));
+    const orders = (r.structuredContent as { orders: { id: string; itemCount: number; summary: string; items: unknown[] }[] }).orders;
+    expect(orders.map((o) => o.id)).toEqual(['R-0002', 'R-0001']);
+    expect(orders[0]).toMatchObject({
+      itemCount: 3,
+      summary: '明太子御飯糰、三明治－火腿蛋…',
+      items: [
+        { productId: 'P003', name: '明太子御飯糰', quantity: 24 },
+        { productId: 'P005', name: '三明治－火腿蛋', quantity: 20 },
+        { productId: 'P007', name: '沙拉－和風雞肉', quantity: 18 },
+      ],
+    });
+    expect(orders[1].summary).toBe('鮭魚御飯糰');
+    expect(r.display).toMatchObject({ type: 'table', rows: 'orders' });
+  });
+
+  it('limit 限制筆數；系統身分回空清單', () => {
+    const state = createStoreState();
+    for (let i = 1; i <= 3; i++) {
+      state.replenishments.push({ id: `R-000${i}`, items: [], arrivalDate: '2026-10-04', by: 'kevin', tenantId: 't1', createdAt: `2026-10-03T0${i}:00:00.000Z` });
+    }
+    const r = callStoreTool('replenishment_list', { limit: 2 }, ctx({ state }));
+    expect((r.structuredContent as { orders: unknown[] }).orders).toHaveLength(2);
+    const sys = callStoreTool('replenishment_list', {}, ctx({ state, caller: { tenantId: '', userId: '', scopes: [], jti: 'j', system: true } }));
+    expect((sys.structuredContent as { orders: unknown[] }).orders).toEqual([]);
+  });
+});
 
 describe('MCP 協定', () => {
   it('tools/list 回原始 schema（含 readOnly）；tools/call 回 structuredContent 與顯示提示', async () => {

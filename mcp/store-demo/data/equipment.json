@@ -1,0 +1,5 @@
+[
+  { "id": "E01", "name": "咖啡機", "status": "alert", "issue": "紅燈閃爍" },
+  { "id": "E02", "name": "冷藏櫃", "status": "ok", "issue": "" },
+  { "id": "E03", "name": "關東煮機", "status": "ok", "issue": "" }
+]
