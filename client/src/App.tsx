@@ -37,6 +37,7 @@ import LoginView from './LoginView';
 import AuthErrorView from './AuthErrorView';
 import SettingsMenu, { FONT_MAX, FONT_MIN } from './SettingsMenu';
 import { ReportStatus } from './ReportStatus';
+import { useImeSubmit } from './useImeSubmit';
 
 type Role = 'user' | 'agent' | 'sys';
 interface ChatMessage {
@@ -180,6 +181,7 @@ export default function App() {
     { id: nextId(), role: 'agent', text: greetingText, greeting: true, at: Date.now() },
   ]);
   const [input, setInput] = useState('');
+  const imeSubmit = useImeSubmit(submitForm);
   const [busy, setBusy] = useState(false);
   const [conn, setConn] = useState<Conn>('checking');
   const [formDef, setFormDef] = useState<Definition | null>(null);
@@ -1260,10 +1262,7 @@ export default function App() {
 
           <form
             className="composer"
-            onSubmit={(e) => {
-              e.preventDefault();
-              submitForm();
-            }}
+            onSubmit={imeSubmit.onSubmit}
           >
             <span className="min-w-0 flex-1">
               <Input
@@ -1271,13 +1270,10 @@ export default function App() {
                 placeholder={t('app.inputPlaceholder')}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  // 輸入法組字中的 Enter 是「選字」，不可當送出（否則中文會殘留在框內）
-                  if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-                    e.preventDefault();
-                    submitForm();
-                  }
-                }}
+                onCompositionStart={imeSubmit.onCompositionStart}
+                onCompositionEnd={imeSubmit.onCompositionEnd}
+                onKeyDown={imeSubmit.onKeyDown}
+                onKeyUp={imeSubmit.onKeyUp}
               />
             </span>
             <Button variant="confirm" size="md" type="submit" disabled={busy}>
