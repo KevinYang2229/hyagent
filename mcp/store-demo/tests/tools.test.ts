@@ -71,6 +71,19 @@ describe('replenishment_create', () => {
     expect(call('鮭魚御飯糰', 6).isError).toBeFalsy();
   });
 
+  it('帶圖片時必須是門市的商品圖網址；不帶也可以', () => {
+    const call = (image?: string) =>
+      callStoreTool('replenishment_create', {
+        items: [{ productId: 'P001', ...(image !== undefined ? { image } : {}), name: '鮭魚御飯糰', stock: 6, quantity: 5 }],
+        arrivalDate: '2026-10-04',
+      }, ctx());
+    expect(call('https://store.example.com/assets/P001.png').isError).toBeFalsy();
+    expect(call().isError).toBeFalsy();
+    const bad = call('https://evil.example.com/x.png');
+    expect(bad.isError).toBe(true);
+    expect(bad.text).toBe('品項資料不一致：P001');
+  });
+
   it('輸入不符 schema（數量超過上限）→ isError', () => {
     const r = callStoreTool('replenishment_create', { items: [{ productId: 'P001', name: 'x', stock: 1, quantity: 999 }], arrivalDate: '2026-10-04' }, ctx());
     expect(r.isError).toBe(true);

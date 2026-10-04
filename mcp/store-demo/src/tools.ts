@@ -132,7 +132,7 @@ export const STORE_TOOLS: StoreTool[] = [
   {
     name: 'replenishment_create',
     title: '建立補貨單',
-    description: '建立補貨單（寫入）。items 為要補貨的商品與數量，arrivalDate 為預計到貨日期。',
+    description: '建立補貨單（寫入）。items 為要補貨的商品與數量，arrivalDate 為預計到貨日期。每個品項的 productId、image、name、stock 請照抄 inventory_query 的結果。',
     readOnly: false,
     inputSchema: {
       type: 'object',
@@ -146,7 +146,7 @@ export const STORE_TOOLS: StoreTool[] = [
             type: 'object',
             properties: {
               productId: { type: 'string', title: '商品編號', readOnly: true, 'x-hidden': true },
-              image: { type: 'string', readOnly: true },
+              image: { type: 'string', readOnly: true, description: '商品圖片網址：照抄 inventory_query 結果的 image，沒有就省略' },
               name: { type: 'string', title: '商品名稱', readOnly: true, 'x-image': 'image' },
               stock: { type: 'integer', title: '目前庫存', readOnly: true, 'x-unit': '個' },
               quantity: { type: 'integer', title: '建議補貨數量', minimum: 1, maximum: 200, 'x-unit': '個' },
@@ -162,14 +162,15 @@ export const STORE_TOOLS: StoreTool[] = [
     },
     run(args, ctx) {
       if (ctx.caller.system) return fail('系統身分不可建立補貨單');
-      const items = args.items as { productId: string; name: string; stock: number; quantity: number }[];
+      const items = args.items as { productId: string; image?: string; name: string; stock: number; quantity: number }[];
       const unknown = items.filter((i) => !products.some((p) => p.id === i.productId)).map((i) => i.productId);
       if (unknown.length > 0) return fail(`找不到商品：${unknown.join('、')}`);
       // productId 是使用者看不到的隱藏欄位：顯示的名稱、庫存必須與門市現值一致，不能只信任顯示值
       const mismatched = items
         .filter((i) => {
           const p = products.find((x) => x.id === i.productId)!;
-          return i.name !== p.name || i.stock !== p.stock;
+          // 圖片會顯示在確認卡片上：只接受門市自己的商品圖，避免帶入任意網址
+          return i.name !== p.name || i.stock !== p.stock || (i.image !== undefined && i.image !== imageUrl(p, ctx));
         })
         .map((i) => i.productId);
       if (mismatched.length > 0) return fail(`品項資料不一致：${mismatched.join('、')}`);
