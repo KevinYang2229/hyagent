@@ -23,7 +23,7 @@ export default function Login() {
     setError(null);
     try {
       if (server !== serverUrl) await setServerUrl(server);
-      await login(username.trim(), password);
+      await login(username.trim(), password, server);
     } catch (e) {
       setError(errorMessage(e));
       setBusy(false);

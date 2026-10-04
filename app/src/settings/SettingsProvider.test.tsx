@@ -37,4 +37,12 @@ describe('SettingsProvider', () => {
     expect(result.current.serverUrl).toBe('http://192.168.1.9:3000');
     expect(store.data).toEqual({ 'settings.serverUrl': 'http://192.168.1.9:3000', 'settings.speakEnabled': 'true' });
   });
+
+  it('儲存區讀取失敗 → 仍 ready，使用預設值', async () => {
+    const bad: KeyValueStore = { async getItem() { throw new Error('boom'); }, async setItem() {} };
+    const { result } = await setup(bad, 'http://d/');
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    expect(result.current.serverUrl).toBe('http://d');
+    expect(result.current.speakEnabled).toBe(true);
+  });
 });

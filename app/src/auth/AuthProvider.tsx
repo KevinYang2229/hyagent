@@ -7,6 +7,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { Applicant } from '@hyagent/shared';
 import { createApiClient, type TokenStore } from '@/api/client';
 import { createEndpoints, type Endpoints } from '@/api/endpoints';
+import { normalizeServerUrl } from '@/api/config';
 import { ApiError } from '@/api/errors';
 import { secureTokenStore } from '@/api/secureTokens';
 import { useSettings } from '@/settings/SettingsProvider';
@@ -17,7 +18,7 @@ interface AuthContextValue {
   status: AuthStatus;
   user: Applicant | null;
   api: Endpoints;
-  login(username: string, password: string): Promise<void>;
+  login(username: string, password: string, serverUrl?: string): Promise<void>;
   logout(): Promise<void>;
 }
 
@@ -47,19 +48,26 @@ export function AuthProvider({
           tokens: tokenStore,
           fetchFn,
           onAuthLost: () => {
+            queryClient.clear();
             setUser(null);
             setStatus('signedOut');
           },
         }),
       ),
-    [tokenStore, fetchFn],
+    [tokenStore, fetchFn, queryClient],
   );
 
   useEffect(() => {
     if (!ready) return;
     let alive = true;
     void (async () => {
-      const tokens = await tokenStore.get();
+      let tokens;
+      try {
+        tokens = await tokenStore.get();
+      } catch {
+        if (alive) setStatus('signedOut');
+        return;
+      }
       if (!tokens || !urlRef.current) {
         if (alive) setStatus('signedOut');
         return;
@@ -81,7 +89,9 @@ export function AuthProvider({
   }, [ready, api, tokenStore]);
 
   const login = useCallback(
-    async (username: string, password: string) => {
+    async (username: string, password: string, serverUrl?: string) => {
+      // 剛改完伺服器位址時，state 尚未重繪，直接同步寫入 ref 以免請求打到舊位址
+      if (serverUrl !== undefined) urlRef.current = normalizeServerUrl(serverUrl);
       const res = await api.login(username, password);
       await tokenStore.set({ accessToken: res.accessToken, refreshToken: res.refreshToken });
       setUser(res.user);

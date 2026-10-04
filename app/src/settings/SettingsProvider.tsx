@@ -36,7 +36,13 @@ export function SettingsProvider({
   useEffect(() => {
     let alive = true;
     void (async () => {
-      const [s, sp] = await Promise.all([store.getItem(KEYS.server), store.getItem(KEYS.speak)]);
+      let s: string | null = null;
+      let sp: string | null = null;
+      try {
+        [s, sp] = await Promise.all([store.getItem(KEYS.server), store.getItem(KEYS.speak)]);
+      } catch {
+        // 儲存區讀取失敗：退回預設值，避免啟動畫面卡住
+      }
       if (!alive) return;
       setServer(normalizeServerUrl(s ?? defaultServerUrl));
       setSpeak(sp === null ? true : sp === 'true');

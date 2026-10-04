@@ -26,8 +26,7 @@ function fetchFrom(handler: (url: string, init: RequestInit) => { status: number
   }) as unknown as typeof fetch;
 }
 
-async function setup(tokens: TokenStore, fetchFn: typeof fetch) {
-  const qc = new QueryClient();
+async function setup(tokens: TokenStore, fetchFn: typeof fetch, qc = new QueryClient()) {
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={qc}>
       <SettingsProvider store={kv} defaultServerUrl="http://h">
@@ -81,5 +80,31 @@ describe('AuthProvider', () => {
     await waitFor(() => expect(result.current.status).toBe('signedOut'));
     await expect(result.current.login('kevin', 'bad')).rejects.toMatchObject({ message: '帳號或密碼錯誤' });
     expect(result.current.status).toBe('signedOut');
+  });
+
+  it('tokenStore.get 丟錯 → signedOut', async () => {
+    const tokens = { ...memoryTokens(null), async get(): Promise<Tokens | null> { throw new Error('keychain'); } };
+    const { result } = await setup(tokens, fetchFrom(() => ({ status: 404 })));
+    await waitFor(() => expect(result.current.status).toBe('signedOut'));
+  });
+
+  it('強制登出（換發 401）也清空 React Query 快取', async () => {
+    const qc = new QueryClient();
+    qc.setQueryData(['notifications'], { unreadCount: 3 });
+    const tokens = memoryTokens({ accessToken: 'a', refreshToken: 'r' });
+    const { result } = await setup(tokens, fetchFrom(() => ({ status: 401 })), qc);
+    await waitFor(() => expect(result.current.status).toBe('signedOut'));
+    expect(qc.getQueryData(['notifications'])).toBeUndefined();
+  });
+
+  it('改完伺服器位址後立即登入，請求打到新位址', async () => {
+    const fetchFn = fetchFrom((url) =>
+      url.endsWith('/auth/login') ? { status: 200, body: { data: { accessToken: 'a', refreshToken: 'r', user: USER } } } : { status: 404 },
+    );
+    const { result } = await setup(memoryTokens(null), fetchFn);
+    await waitFor(() => expect(result.current.status).toBe('signedOut'));
+    await act(() => result.current.login('kevin', 'pw', '192.168.1.9:3000/'));
+    const url = (fetchFn as unknown as jest.Mock).mock.calls[0][0] as string;
+    expect(url.startsWith('http://192.168.1.9:3000/')).toBe(true);
   });
 });
