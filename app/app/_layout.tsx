@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { AuthProvider, useAuth } from '@/auth/AuthProvider';
+import { ChatProvider } from '@/chat/ChatProvider';
 import { SplashView } from '@/chrome/SplashView';
 import { SettingsProvider } from '@/settings/SettingsProvider';
 import { TaskBadgeProvider } from '@/tasks/TaskBadge';
@@ -32,7 +33,9 @@ export default function RootLayout() {
         <AuthProvider>
           <TaskBadgeProvider>
             <StatusBar style="dark" />
-            <RootStack />
+            <ChatProvider>
+              <RootStack />
+            </ChatProvider>
           </TaskBadgeProvider>
         </AuthProvider>
       </SettingsProvider>
