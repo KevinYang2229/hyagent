@@ -19,6 +19,7 @@ const TITLE: Record<AssistantMode, string> = {
 
 export function AssistantPanel({
   mode,
+  metering,
   hint,
   compact,
   micAvailable,
@@ -28,6 +29,7 @@ export function AssistantPanel({
   onCamera,
 }: {
   mode: AssistantMode;
+  metering?: number;
   hint?: string | null;
   compact: boolean;
   micAvailable: boolean;
@@ -39,7 +41,7 @@ export function AssistantPanel({
   const title = micAvailable ? TITLE[mode] : '用打字或拍照問我';
   const center =
     mode === 'recording' ? (
-      <RoundButton label="結束對話" color={colors.danger} icon="stop" onPress={onStopPress} />
+      <RoundButton label="停止並送出" color={colors.danger} icon="stop" onPress={onStopPress} />
     ) : mode === 'transcribing' ? (
       <View style={[styles.round, { backgroundColor: colors.primarySoft }]}>
         <ActivityIndicator color={colors.primary} />
@@ -54,6 +56,8 @@ export function AssistantPanel({
         <Mascot pose={mode === 'recording' ? 'mic' : 'idle'} size={44} />
         <View style={{ flex: 1 }}>
           <Text style={styles.compactTitle}>{title}</Text>
+          {mode === 'recording' ? <VoiceLevel metering={metering} /> : null}
+          {mode === 'recording' ? <Text style={styles.example}>說完後按「停止並送出」</Text> : null}
           {hint ? <Text style={styles.hint}>{hint}</Text> : null}
         </View>
         <SmallButton label="拍照" icon="camera-outline" onPress={onCamera} />
@@ -66,6 +70,8 @@ export function AssistantPanel({
     <View style={styles.panel}>
       <Mascot pose={mode === 'recording' ? 'mic' : 'idle'} size={180} />
       <Text style={styles.title}>{title}</Text>
+      {mode === 'recording' ? <VoiceLevel metering={metering} /> : null}
+      {mode === 'recording' ? <Text style={styles.example}>說完後按「停止並送出」，即可辨識並詢問 AI。</Text> : null}
       {hint ? <Text style={styles.hint}>{hint}</Text> : null}
       <View style={styles.examples}>
         <Text style={styles.examplesLabel}>你可以說：</Text>
@@ -80,6 +86,18 @@ export function AssistantPanel({
       </View>
     </View>
   );
+}
+
+function VoiceLevel({ metering }: { metering?: number }) {
+  const known = metering !== undefined && Number.isFinite(metering);
+  const bars = known ? Math.round(Math.max(0, Math.min(1, (metering + 60) / 60)) * 10) : 0;
+  const label = !known ? '音量偵測中…' : bars > 0 ? '收到聲音' : '目前未偵測到聲音，請確認麥克風輸入';
+  return <View style={{ gap: 4 }} accessibilityLabel={label} accessibilityLiveRegion="polite">
+    <View style={{ flexDirection: 'row', gap: 4 }}>
+      {Array.from({ length: 10 }, (_, i) => <View key={i} style={{ width: 9, height: 16, borderRadius: 3, backgroundColor: i < bars ? colors.primary : colors.border }} />)}
+    </View>
+    <Text style={styles.example}>{label}</Text>
+  </View>;
 }
 
 function RoundButton({ label, color, icon, onPress }: { label: string; color: string; icon: 'mic' | 'stop'; onPress(): void }) {
