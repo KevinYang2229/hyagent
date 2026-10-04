@@ -31,49 +31,58 @@ export default function Camera() {
   const [permission, requestPermission] = useCameraPermissions();
   const cam = useRef<CameraView>(null);
   const gate = useRef(createScanGate()).current;
+  const capture_ = useRef(createScanGate()).current;
   const api = useApi();
   const vision = useVisionResults();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function analyze(src: Photo) {
+  /** 拍照／選圖共用：同步取得鎖後才 await，連點只會處理一次。 */
+  async function capture(getPhoto: () => Promise<Photo | null>) {
+    if (!capture_.tryAcquire()) return;
     const kind = mode === 'coupon' ? 'coupon' : 'shelf';
     setBusy(true);
     setError(null);
+    let navigated = false;
     try {
+      const src = await getPhoto();
+      if (!src) return;
       const photo = await prepareImage(src);
       const res = await api.analyzeImage(kind, { uri: photo.uri, name: 'photo.jpg', type: 'image/jpeg' });
       if (res.mode === 'shelf') {
         vision.setShelf({ photo, result: res });
+        navigated = true;
         router.replace('/chat/shelf-result');
       } else {
         vision.setCoupon({ photo, view: fromVision(res) });
+        navigated = true;
         router.replace('/chat/coupon-result');
       }
     } catch (e) {
       setError(visionErrorHint(e, kind));
     } finally {
       setBusy(false);
+      if (!navigated) capture_.release();
     }
   }
 
-  async function shoot() {
-    if (busy) return;
-    const pic = await cam.current?.takePictureAsync({ quality: 0.8 });
-    if (pic) await analyze({ uri: pic.uri, width: pic.width, height: pic.height });
+  function shoot() {
+    void capture(async () => {
+      const pic = await cam.current?.takePictureAsync({ quality: 0.8 });
+      return pic ? { uri: pic.uri, width: pic.width, height: pic.height } : null;
+    });
   }
 
-  async function pick() {
-    if (busy) return;
-    const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8 });
-    if (!r.canceled && r.assets[0]) {
-      const a = r.assets[0];
-      await analyze({ uri: a.uri, width: a.width, height: a.height });
-    }
+  function pick() {
+    void capture(async () => {
+      const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8 });
+      const a = !r.canceled ? r.assets[0] : undefined;
+      return a ? { uri: a.uri, width: a.width, height: a.height } : null;
+    });
   }
 
   async function onScanned({ data }: { data: string }) {
-    if (mode !== 'barcode' || !data || !gate.tryAcquire()) return;
+    if (mode !== 'barcode' || !data || !gate.tryAcquire(data)) return;
     setBusy(true);
     setError(null);
     try {
@@ -82,7 +91,7 @@ export default function Camera() {
       router.replace('/chat/coupon-result');
     } catch (e) {
       setError(errorMessage(e));
-      gate.release();
+      gate.release({ cooldownMs: 2500 });
     } finally {
       setBusy(false);
     }
@@ -123,9 +132,7 @@ export default function Camera() {
       />
       <SafeAreaView style={StyleSheet.absoluteFill} pointerEvents="box-none">
         <View style={styles.top}>
-          <Pressable onPress={() => router.back()} accessibilityLabel="關閉" accessibilityRole="button" hitSlop={12}>
-            <Ionicons name="close" size={30} color="#fff" />
-          </Pressable>
+          <View style={{ width: 30 }} />
           <View style={styles.modes}>
             {MODES.map((m) => (
               <Pressable
@@ -148,7 +155,7 @@ export default function Camera() {
         </View>
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <View style={styles.bottom}>
-          <Pressable onPress={pick} style={styles.album} accessibilityLabel="從相簿選擇" accessibilityRole="button" disabled={mode === 'barcode'}>
+          <Pressable onPress={pick} style={styles.album} accessibilityLabel="從相簿選擇" accessibilityRole="button" disabled={mode === 'barcode' || busy}>
             <Ionicons name="images-outline" size={26} color={mode === 'barcode' ? 'rgba(255,255,255,0.3)' : '#fff'} />
           </Pressable>
           {mode !== 'barcode' ? (
@@ -162,17 +169,24 @@ export default function Camera() {
         </View>
       </SafeAreaView>
       {busy ? (
-        <View style={styles.busy}>
+        <View style={styles.busy} pointerEvents="none">
           <Mascot pose="wave" size={96} />
           <ActivityIndicator color="#fff" />
           <Text style={styles.busyText}>Open醬看看…</Text>
         </View>
       ) : null}
+      <SafeAreaView style={styles.closeWrap} pointerEvents="box-none">
+        <Pressable onPress={() => router.back()} accessibilityLabel="關閉" accessibilityRole="button" hitSlop={12} style={styles.close}>
+          <Ionicons name="close" size={30} color="#fff" />
+        </Pressable>
+      </SafeAreaView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  closeWrap: { position: 'absolute', top: 0, left: 0, right: 0 },
+  close: { paddingHorizontal: space.lg, paddingTop: space.sm, alignSelf: 'flex-start' },
   black: { flex: 1, backgroundColor: '#000' },
   top: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: space.lg, paddingTop: space.sm },
   modes: { flexDirection: 'row', gap: 4, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: radius.pill, padding: 4 },
