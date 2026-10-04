@@ -1,9 +1,21 @@
-import { Text, View } from 'react-native';
+import { useAuth } from '@/auth/AuthProvider';
+import { MeView } from '@/me/MeView';
+import { useSettings } from '@/settings/SettingsProvider';
 
 export default function Me() {
+  const { user, logout } = useAuth();
+  const { speakEnabled, setSpeakEnabled, serverUrl, setServerUrl } = useSettings();
   return (
-    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-      <Text>我的</Text>
-    </View>
+    <MeView
+      user={user}
+      speakEnabled={speakEnabled}
+      onToggleSpeak={(on) => void setSpeakEnabled(on)}
+      serverUrl={serverUrl}
+      onSaveServer={async (url) => {
+        await setServerUrl(url);
+        await logout();
+      }}
+      onLogout={() => void logout()}
+    />
   );
 }
