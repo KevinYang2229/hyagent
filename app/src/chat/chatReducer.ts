@@ -5,6 +5,7 @@ import { nextId, type ChatMessage, type ChatState } from './types';
 
 export type ChatAction =
   | { type: 'reset' }
+  | { type: 'sendCancelled' }
   | { type: 'userSent'; text: string }
   | { type: 'turnReceived'; conversationId?: string; turn: TurnData }
   | { type: 'conversationStarted'; conversationId: string }
@@ -16,7 +17,7 @@ export type ChatAction =
 
 export const initialChatState: ChatState = { conversationId: null, messages: [], pending: null, sending: false };
 
-function system(text: string, tone: 'info' | 'error'): ChatMessage {
+function system(text: string, tone: 'info' | 'error'): Extract<ChatMessage, { role: 'system' }> {
   return { id: nextId(), role: 'system', text, tone, at: Date.now() };
 }
 
@@ -37,6 +38,8 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
     case 'conversationStarted':
       // 只記對話 id，不動 sending（可能有另一個送出正在進行）
       return { ...state, conversationId: action.conversationId };
+    case 'sendCancelled':
+      return { ...state, sending: false, conversationId: null, pending: null, messages: [...state.messages, { ...system('已取消回覆。', 'info'), hideActions: true }] };
     case 'sendFailed':
       return { ...state, sending: false, messages: [...state.messages, system(action.message, 'error')] };
     case 'conversationLost':

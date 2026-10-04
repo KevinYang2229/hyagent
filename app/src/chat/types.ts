@@ -3,7 +3,7 @@ import type { DisplayBlock, PendingActionView } from '@hyagent/shared';
 export type ChatMessage =
   | { id: string; role: 'user'; text: string; at: number }
   | { id: string; role: 'agent'; text: string; blocks?: DisplayBlock[]; suggestions?: string[]; at: number }
-  | { id: string; role: 'system'; text: string; tone: 'info' | 'error'; at: number };
+  | { id: string; role: 'system'; text: string; tone: 'info' | 'error'; hideActions?: boolean; at: number };
 
 export interface ChatState {
   conversationId: string | null;

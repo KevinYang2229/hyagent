@@ -21,6 +21,7 @@ interface ChatContextValue {
   state: ChatState;
   send(text: string): Promise<boolean>;
   newConversation(): void;
+  cancelSend(): void;
   propose(toolId: string, input: Record<string, unknown>): Promise<void>;
   confirm(input?: Record<string, unknown>): Promise<ConfirmOutcome>;
   cancel(): Promise<void>;
@@ -39,6 +40,7 @@ export function ChatProvider({ children, api: injected }: { children: ReactNode;
   stateRef.current = state;
   // 同步旗標：dispatch 要等重新渲染才生效，同一個 tick 內連送兩次靠它擋
   const sendingRef = useRef(false);
+  const sendController = useRef<AbortController | null>(null);
   // 同步的對話 id（state 要等重新渲染才更新）
   const convIdRef = useRef<string | null>(null);
   // 進行中的「建立對話」：send 的第一句與 propose 的空對話共用，避免開出兩個對話
@@ -48,6 +50,8 @@ export function ChatProvider({ children, api: injected }: { children: ReactNode;
 
   const resetAll = useCallback(() => {
     genRef.current += 1;
+    sendController.current?.abort();
+    sendController.current = null;
     sendingRef.current = false;
     startRef.current = null;
     convIdRef.current = null;
@@ -61,10 +65,10 @@ export function ChatProvider({ children, api: injected }: { children: ReactNode;
 
   /** 建立對話（text 有值時連同第一句；沒有則開空對話）。回傳對話 id，世代已變則回 null。 */
   const startWith = useCallback(
-    (text?: string): Promise<string | null> => {
+    (text?: string, signal?: AbortSignal): Promise<string | null> => {
       const gen = genRef.current;
       const p = (async () => {
-        const d = text === undefined ? await api.startConversation() : await api.startConversation(text);
+        const d = text === undefined ? await api.startConversation() : await api.startConversation(text, signal);
         if (gen !== genRef.current) return null;
         convIdRef.current = d.id;
         if (text === undefined) dispatch({ type: 'conversationStarted', conversationId: d.id });
@@ -86,6 +90,8 @@ export function ChatProvider({ children, api: injected }: { children: ReactNode;
       const text = raw.trim();
       if (!text || sendingRef.current) return false;
       sendingRef.current = true;
+      const controller = new AbortController();
+      sendController.current = controller;
       const gen = genRef.current;
       dispatch({ type: 'userSent', text });
       try {
@@ -94,10 +100,10 @@ export function ChatProvider({ children, api: injected }: { children: ReactNode;
         if (gen !== genRef.current) return false;
         const id = convIdRef.current;
         if (!id) {
-          await startWith(text);
+          await startWith(text, controller.signal);
         } else {
           try {
-            const d = await api.sendMessage(id, text);
+            const d = await api.sendMessage(id, text, controller.signal);
             if (gen !== genRef.current) return false;
             dispatch({ type: 'turnReceived', turn: d });
           } catch (e) {
@@ -105,7 +111,7 @@ export function ChatProvider({ children, api: injected }: { children: ReactNode;
             if (!(e instanceof ApiError && e.status === 404) || gen !== genRef.current) throw e;
             convIdRef.current = null;
             dispatch({ type: 'conversationLost' });
-            await startWith(text);
+            await startWith(text, controller.signal);
           }
         }
         return gen === genRef.current;
@@ -114,11 +120,26 @@ export function ChatProvider({ children, api: injected }: { children: ReactNode;
         dispatch({ type: 'sendFailed', message: errorMessage(e) });
         return false;
       } finally {
-        if (gen === genRef.current) sendingRef.current = false;
+        if (gen === genRef.current) {
+          sendingRef.current = false;
+          sendController.current = null;
+        }
       }
     },
     [api, startWith],
   );
+
+  const cancelSend = useCallback(() => {
+    if (!sendingRef.current) return;
+    genRef.current += 1;
+    sendController.current?.abort();
+    sendController.current = null;
+    sendingRef.current = false;
+    startRef.current = null;
+    // 舊回合可能仍在伺服器執行；下一次使用新對話，避免兩個回合互相干擾。
+    convIdRef.current = null;
+    dispatch({ type: 'sendCancelled' });
+  }, []);
 
   const newConversation = resetAll;
 
@@ -190,8 +211,8 @@ export function ChatProvider({ children, api: injected }: { children: ReactNode;
   }, [api]);
 
   const value = useMemo(
-    () => ({ state, send, newConversation, propose, confirm, cancel }),
-    [state, send, newConversation, propose, confirm, cancel],
+    () => ({ state, send, cancelSend, newConversation, propose, confirm, cancel }),
+    [state, send, cancelSend, newConversation, propose, confirm, cancel],
   );
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
 }

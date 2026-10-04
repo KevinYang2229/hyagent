@@ -1,8 +1,9 @@
 /** AI 對話（稿 3）：寬版左助理面板、右對話；窄版助理橫條在上。 */
+import { APP_IMAGES } from '@/brand/assets';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { FlatList, KeyboardAvoidingView, Linking, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { FlatList, ImageBackground, KeyboardAvoidingView, Linking, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useApi } from '@/auth/AuthProvider';
 import { AssistantPanel } from '@/chat/AssistantPanel';
 import { ChatInput } from '@/chat/ChatInput';
@@ -27,9 +28,12 @@ export default function ChatScreen() {
   const { speakEnabled, setSpeakEnabled } = useSettings();
   const params = useLocalSearchParams<{ q?: string; nonce?: string; focus?: string; voice?: string }>();
   const inputRef = useRef<TextInput>(null);
+  const [editRequest, setEditRequest] = useState<{ text: string; nonce: number }>();
+  const editMessage = (text: string) => setEditRequest((previous) => ({ text, nonce: (previous?.nonce ?? 0) + 1 }));
   const listRef = useRef<FlatList>(null);
   const { messages, sending } = chat.state;
-  const lastAgentId = [...messages].reverse().find((m) => m.role === 'agent')?.id;
+  const lastAgent = [...messages].reverse().find((m) => m.role === 'agent');
+  const suggestions = sending ? [] : lastAgent?.suggestions ?? [];
 
   const nearBottom = useRef(true);
   const prev = useRef({ count: 0, sending: false });
@@ -75,6 +79,7 @@ export default function ChatScreen() {
     <View style={{ flex: wide ? 1 : undefined }}>
       <AssistantPanel
         mode={voice.state.mode}
+        metering={recorder.metering}
         hint={hint}
         compact={!wide}
         micAvailable={voice.available}
@@ -112,7 +117,7 @@ export default function ChatScreen() {
         contentContainerStyle={{ padding: space.md }}
         ListHeaderComponent={<Text style={styles.greeting}>{GREETING}</Text>}
         ListFooterComponent={sending ? <Text style={styles.typing}>Open醬思考中…</Text> : null}
-        renderItem={({ item }) => <MessageBubble message={item} showSuggestions={item.id === lastAgentId && !sending} onSuggestion={chat.send} />}
+        renderItem={({ item }) => <MessageBubble message={item} showSuggestions={false} onSuggestion={chat.send} onEdit={editMessage} />}
         keyboardShouldPersistTaps="handled"
         scrollEventThrottle={64}
         onScroll={(e) => {
@@ -127,12 +132,23 @@ export default function ChatScreen() {
         }}
       />
       <View style={{ padding: space.md }}>
+        {suggestions.length > 0 ? (
+          <View style={styles.suggestions}>
+            {suggestions.map((suggestion) => (
+              <Pressable key={suggestion} style={styles.suggestion} accessibilityRole="button" onPress={() => void chat.send(suggestion)}>
+                <Text style={styles.suggestionText}>{suggestion}</Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
         <ChatInput
           onSend={chat.send}
           micAvailable={voice.available && voice.state.mode === 'idle'}
           onMicPress={startVoice}
           disabled={sending}
+          onCancel={chat.cancelSend}
           inputRef={inputRef}
+          editRequest={editRequest}
         />
       </View>
     </View>
@@ -147,7 +163,7 @@ export default function ChatScreen() {
   );
 
   return (
-    <View style={styles.page}>
+    <ImageBackground source={APP_IMAGES.chatBackground} style={styles.page} resizeMode="cover">
       {wide ? (
         <View style={styles.row}>
           <View style={{ width: '38%' }}>{panel}</View>
@@ -159,7 +175,7 @@ export default function ChatScreen() {
           {column({ flex: 1 })}
         </View>
       )}
-    </View>
+    </ImageBackground>
   );
 }
 
@@ -174,4 +190,7 @@ const styles = StyleSheet.create({
   headerBtnText: { fontSize: font.sm, color: colors.text },
   greeting: { backgroundColor: colors.surface, borderRadius: radius.lg, padding: space.md, fontSize: font.md, color: colors.text, marginBottom: space.sm, maxWidth: '85%' },
   typing: { fontSize: font.sm, color: colors.textMuted, marginTop: space.sm },
+  suggestions: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm, marginBottom: space.sm },
+  suggestion: { borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, borderRadius: radius.pill, paddingHorizontal: space.md, paddingVertical: 6 },
+  suggestionText: { fontSize: font.sm, color: colors.text },
 });

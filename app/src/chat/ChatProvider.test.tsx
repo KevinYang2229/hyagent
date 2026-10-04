@@ -54,9 +54,35 @@ describe('ChatProvider', () => {
     const { result } = await setup(api);
     await act(async () => { await result.current.chat.send('你好'); });
     await act(async () => { await result.current.chat.send('查庫存'); });
-    expect(api.startConversation).toHaveBeenCalledWith('你好');
-    expect(api.sendMessage).toHaveBeenCalledWith('c1', '查庫存');
+    expect(api.startConversation).toHaveBeenCalledWith('你好', expect.any(AbortSignal));
+    expect(api.sendMessage).toHaveBeenCalledWith('c1', '查庫存', expect.any(AbortSignal));
     expect(result.current.chat.state.messages.map((m) => m.text)).toEqual(['你好', '回覆：你好', '查庫存', '回覆：查庫存']);
+  });
+
+  it.each([false, true])('取消等待後可重新送出，舊回覆不會插入（既有對話：%s）', async (existing) => {
+    let release!: (value: unknown) => void;
+    const delayed = jest.fn((_id?: string, _message?: string, _signal?: AbortSignal) => new Promise((resolve) => { release = resolve; }));
+    const api = fakeApi();
+    const { result } = await setup(api);
+    if (existing) {
+      await act(async () => { await result.current.chat.send('先前訊息'); });
+      api.sendMessage = delayed as never;
+    } else {
+      api.startConversation = delayed as never;
+    }
+    let request!: Promise<boolean>;
+    await act(async () => { request = result.current.chat.send('取消這句'); });
+    const signal = delayed.mock.calls[0][existing ? 2 : 1] as AbortSignal;
+    await act(async () => { result.current.chat.cancelSend(); result.current.chat.cancelSend(); });
+    expect(signal.aborted).toBe(true);
+    expect(result.current.chat.state.sending).toBe(false);
+    expect(result.current.chat.state.messages.at(-1)).toMatchObject({ text: '已取消回覆。', tone: 'info' });
+    api.startConversation = jest.fn(async () => ({ id: 'c2', status: 'collecting', reply: '新回覆' })) as never;
+    await act(async () => { expect(await result.current.chat.send('重新送出')).toBe(true); });
+    await act(async () => { release({ id: 'old', status: 'collecting', reply: '舊回覆' }); expect(await request).toBe(false); });
+    expect(result.current.chat.state.conversationId).toBe('c2');
+    expect(result.current.chat.state.messages.some((m) => m.text === '舊回覆')).toBe(false);
+    expect(result.current.chat.state.messages.at(-1)?.text).toBe('新回覆');
   });
 
   it('空白訊息不送；送出中再送被擋下', async () => {
@@ -81,7 +107,7 @@ describe('ChatProvider', () => {
     const { result } = await setup(api);
     await act(async () => { await result.current.chat.send('一'); });
     await act(async () => { expect(await result.current.chat.send('二')).toBe(true); });
-    expect(api.startConversation).toHaveBeenLastCalledWith('二');
+    expect(api.startConversation).toHaveBeenLastCalledWith('二', expect.any(AbortSignal));
   });
 
   it('送出失敗 → 回 false、加錯誤訊息', async () => {
