@@ -165,7 +165,8 @@ AI 只負責說明重點：
 後端的處理規則：
 
 - 修改後的 `input` 不可新增原始參數沒有的鍵；前端沒帶的鍵，會先以原始參數補齊再驗證。
-- `readOnly`、`x-hidden`、`x-display: "html"`、`x-image-source` 欄位必須與原始值相同（陣列可刪列，不可新增列或改唯讀值）。
+- `readOnly`、`x-hidden`、`x-display: "html"`、被 `x-image` 指向的圖片來源欄位必須與原始值相同（陣列可刪列，不可新增列或改唯讀值）。
+- `x-hidden` 欄位（如商品編號）使用者看不到，寫入工具必須自行驗證它與顯示欄位（名稱等）一致，不能只信任顯示值。
 - 其餘欄位依 schema 驗證；不合法回 `422 ACTION_INPUT_INVALID`，動作保留，可修正後重送。
 - 帶修改確認時若工具暫時無法使用，回 `503 TOOL_UNAVAILABLE`，動作同樣保留，可稍後重試。
 
@@ -178,7 +179,7 @@ AI 只負責說明重點：
 
 `POST /api/vision/analyze`（multipart：`image` 為 jpeg／png／webp ≤ 5MB、`mode` 為 `shelf` 或 `coupon`）：
 
-- `shelf`：回傳 `findings`（名稱、商品編號、狀態、庫存、到期日、框選座標）、`counts`，
+- `shelf`：回傳 `findings`（名稱、商品編號、狀態、庫存、建議補貨量 `suggestedQty`、到期日、備註 `note`、框選座標）、`counts`，
   以及可直接送到 `propose` 的 `replenishment`。框選座標為 0–1 的相對值，超出範圍會被夾回。
   商品資料每 30 筆為一批查詢；每張照片最多保留 50 筆辨識結果，補貨提議最多 30 項。
 - `coupon`：讀出券號後查券，回傳 `extracted`、`result` 與表格 `block`；讀不到券號時 `message` 提示改用掃條碼。
