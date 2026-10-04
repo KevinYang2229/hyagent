@@ -1,9 +1,105 @@
-import { Text, View } from 'react-native';
+/** AI 對話（稿 3）：寬版左助理面板、右對話；窄版助理橫條在上。語音在 Task 10 接上。 */
+import { Ionicons } from '@expo/vector-icons';
+import { router, useLocalSearchParams } from 'expo-router';
+import { useEffect, useRef } from 'react';
+import { FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { AssistantPanel } from '@/chat/AssistantPanel';
+import { ChatInput } from '@/chat/ChatInput';
+import { useChat } from '@/chat/ChatProvider';
+import { MessageBubble } from '@/chat/MessageBubble';
+import { useAutoAsk } from '@/chat/useAutoAsk';
+import { useIsWide } from '@/layout/useIsWide';
+import { useSettings } from '@/settings/SettingsProvider';
+import { colors, font, radius, shadow, space } from '@/theme/tokens';
+
+export const GREETING = '嗨！我是 Open醬，可以幫你查庫存、建補貨單、查活動和優惠券，也能回答門市作業問題。';
 
 export default function ChatScreen() {
-  return (
-    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-      <Text>AI 對話</Text>
+  const wide = useIsWide();
+  const chat = useChat();
+  const { speakEnabled, setSpeakEnabled } = useSettings();
+  const params = useLocalSearchParams<{ q?: string; nonce?: string; focus?: string }>();
+  const inputRef = useRef<TextInput>(null);
+  const listRef = useRef<FlatList>(null);
+  const { messages, sending } = chat.state;
+  const lastAgentId = [...messages].reverse().find((m) => m.role === 'agent')?.id;
+
+  useAutoAsk(params.q, params.nonce, chat.send);
+
+  useEffect(() => {
+    if (params.focus === '1') setTimeout(() => inputRef.current?.focus(), 300);
+  }, [params.focus, params.nonce]);
+
+  const openCamera = () => router.push({ pathname: '/camera', params: { mode: 'shelf' } });
+
+  const panel = (
+    <AssistantPanel
+      mode="idle"
+      compact={!wide}
+      micAvailable={false}
+      onMicPress={() => undefined}
+      onStopPress={() => undefined}
+      onKeyboard={() => inputRef.current?.focus()}
+      onCamera={openCamera}
+    />
+  );
+
+  const conversation = (
+    <View style={[styles.chatCard, !wide && styles.chatCardNarrow]}>
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>AI 小幫手</Text>
+        <View style={{ flex: 1 }} />
+        <Pressable onPress={() => setSpeakEnabled(!speakEnabled)} style={styles.headerBtn} accessibilityRole="switch" accessibilityState={{ checked: speakEnabled }} accessibilityLabel="朗讀">
+          <Ionicons name={speakEnabled ? 'volume-high-outline' : 'volume-mute-outline'} size={18} color={colors.text} />
+          <Text style={styles.headerBtnText}>朗讀 {speakEnabled ? '開' : '關'}</Text>
+        </Pressable>
+        <Pressable onPress={chat.newConversation} style={styles.headerBtn} accessibilityRole="button" accessibilityLabel="新對話">
+          <Ionicons name="refresh-outline" size={18} color={colors.text} />
+          <Text style={styles.headerBtnText}>新對話</Text>
+        </Pressable>
+      </View>
+      <FlatList
+        ref={listRef}
+        data={messages}
+        keyExtractor={(m) => m.id}
+        contentContainerStyle={{ padding: space.md }}
+        ListHeaderComponent={<Text style={styles.greeting}>{GREETING}</Text>}
+        ListFooterComponent={sending ? <Text style={styles.typing}>Open醬思考中…</Text> : null}
+        renderItem={({ item }) => <MessageBubble message={item} showSuggestions={item.id === lastAgentId && !sending} onSuggestion={chat.send} />}
+        onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
+      />
+      <View style={{ padding: space.md }}>
+        <ChatInput onSend={chat.send} micAvailable={false} disabled={sending} inputRef={inputRef} />
+      </View>
     </View>
   );
+
+  return (
+    <KeyboardAvoidingView style={styles.page} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={80}>
+      {wide ? (
+        <View style={styles.row}>
+          <View style={{ width: '38%' }}>{panel}</View>
+          <View style={{ flex: 1, padding: space.md }}>{conversation}</View>
+        </View>
+      ) : (
+        <View style={{ flex: 1 }}>
+          {panel}
+          {conversation}
+        </View>
+      )}
+    </KeyboardAvoidingView>
+  );
 }
+
+const styles = StyleSheet.create({
+  page: { flex: 1, backgroundColor: colors.bg },
+  row: { flex: 1, flexDirection: 'row' },
+  chatCard: { flex: 1, backgroundColor: colors.bg, borderRadius: radius.xl, overflow: 'hidden', borderWidth: 1, borderColor: colors.border, ...shadow.card },
+  chatCardNarrow: { borderRadius: 0, borderWidth: 0 },
+  header: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: space.lg, paddingVertical: space.md, backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border },
+  headerTitle: { fontSize: font.lg, fontWeight: '700', color: colors.text },
+  headerBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: space.sm, paddingVertical: 6, borderRadius: radius.md, backgroundColor: colors.bg },
+  headerBtnText: { fontSize: font.sm, color: colors.text },
+  greeting: { backgroundColor: colors.surface, borderRadius: radius.lg, padding: space.md, fontSize: font.md, color: colors.text, marginBottom: space.sm, maxWidth: '85%' },
+  typing: { fontSize: font.sm, color: colors.textMuted, marginTop: space.sm },
+});
