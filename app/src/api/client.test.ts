@@ -36,6 +36,19 @@ describe('normalizeServerUrl', () => {
 });
 
 describe('createApiClient', () => {
+  it('使用者取消會中止 fetch，並區分取消與逾時', async () => {
+    const controller = new AbortController();
+    const f = fakeFetch((_url, init) => new Promise((_resolve, reject) => {
+      init.signal!.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })));
+      controller.abort();
+    }));
+    const api = createApiClient({ baseUrl: () => 'http://h', tokens: memoryTokens(), fetchFn: f.fn });
+    await expect(api.request('/x', { signal: controller.signal })).rejects.toMatchObject({ code: 'CANCELLED' });
+    expect(f.calls[0].init.signal?.aborted).toBe(true);
+    await expect(api.request('/x', { signal: controller.signal })).rejects.toMatchObject({ code: 'CANCELLED' });
+    expect(f.calls).toHaveLength(1);
+  });
+
   it('組出 /api 路徑、帶 Bearer、回傳 data', async () => {
     const f = fakeFetch(() => ({ status: 200, body: { data: { ok: true } } }));
     const api = createApiClient({ baseUrl: () => 'http://h', tokens: memoryTokens(), fetchFn: f.fn });

@@ -19,10 +19,11 @@ export interface TokenStore {
 export interface RequestOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
   json?: unknown;
-  form?: () => FormData;
+  form?: () => FormData | Promise<FormData>;
   /** false：不帶 token、401 不換發（登入、換發本身） */
   auth?: boolean;
   timeoutMs?: number;
+  signal?: AbortSignal;
 }
 
 export interface ApiClient {
@@ -43,18 +44,22 @@ export function createApiClient(deps: ApiClientDeps): ApiClient {
   let refreshing: Promise<boolean> | null = null;
 
   async function send(path: string, opts: RequestOptions, accessToken?: string): Promise<Response> {
+    if (opts.signal?.aborted) throw new ApiError('已取消回覆', 0, 'CANCELLED');
     const base = deps.baseUrl();
     if (!base) throw new ApiError('尚未設定伺服器位址', 0, 'NO_SERVER');
     const headers: Record<string, string> = { Accept: 'application/json' };
     let body: BodyInit | undefined;
     if (opts.form) {
-      body = opts.form();
+      body = await opts.form();
     } else if (opts.json !== undefined) {
       headers['Content-Type'] = 'application/json';
       body = JSON.stringify(opts.json);
     }
     if (accessToken && opts.auth !== false) headers.Authorization = `Bearer ${accessToken}`;
     const controller = new AbortController();
+    const abort = () => controller.abort();
+    opts.signal?.addEventListener('abort', abort);
+    if (opts.signal?.aborted) controller.abort();
     const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? DEFAULT_TIMEOUT_MS);
     try {
       return await fetchFn(`${base}/api${path}`, {
@@ -64,10 +69,12 @@ export function createApiClient(deps: ApiClientDeps): ApiClient {
         signal: controller.signal,
       });
     } catch (err) {
+      if (opts.signal?.aborted) throw new ApiError('已取消回覆', 0, 'CANCELLED');
       const aborted = (err as { name?: string }).name === 'AbortError';
       throw new ApiError(aborted ? '連線逾時，請再試一次' : '無法連線到伺服器，請檢查網路', 0, aborted ? 'TIMEOUT' : 'NETWORK');
     } finally {
       clearTimeout(timer);
+      opts.signal?.removeEventListener('abort', abort);
     }
   }
 
