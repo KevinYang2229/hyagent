@@ -36,6 +36,20 @@ describe('normalizeServerUrl', () => {
 });
 
 describe('createApiClient', () => {
+  it('登入、受保護請求、換發與重試都帶相同租戶公開金鑰', async () => {
+    const f = fakeFetch((url, init) => {
+      if (url.endsWith('/auth/refresh')) return { status: 200, body: { data: { accessToken: 'a2', refreshToken: 'r2' } } };
+      if (url.endsWith('/auth/login')) return { status: 200, body: { data: {} } };
+      return auth(init) === 'Bearer a2' ? { status: 200, body: { data: 'ok' } } : { status: 401 };
+    });
+    const api = createApiClient({ baseUrl: () => 'http://h', tenantApiKey: () => ' pk_store ', tokens: memoryTokens(), fetchFn: f.fn });
+    await api.request('/auth/login', { json: {}, auth: false });
+    await expect(api.request('/x')).resolves.toBe('ok');
+    expect(f.calls).toHaveLength(4);
+    for (const call of f.calls) expect((call.init.headers as Record<string, string>)['x-api-key']).toBe('pk_store');
+    expect(auth(f.calls[0].init)).toBeUndefined();
+  });
+
   it('使用者取消會中止 fetch，並區分取消與逾時', async () => {
     const controller = new AbortController();
     const f = fakeFetch((_url, init) => new Promise((_resolve, reject) => {

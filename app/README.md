@@ -13,18 +13,32 @@
 
 ## 啟動
 
+先複製環境變數範例，修改後端位址與目標租戶公開金鑰：
+
+```sh
+cd app
+cp .env.example .env.local
+```
+
+編輯 `.env.local` 的 `EXPO_PUBLIC_API_BASE` 與 `EXPO_PUBLIC_TENANT_API_KEY`，再執行 `npx expo start`。變更環境變數後重新啟動 Expo；切換租戶需登出再登入。
+
+也可以直接在啟動指令指定：
+
     cd app
-    EXPO_PUBLIC_API_BASE=http://<電腦的區網 IP>:3000 npx expo start
+    EXPO_PUBLIC_API_BASE=http://<電腦的區網 IP>:3000 EXPO_PUBLIC_TENANT_API_KEY=pk_租戶公開金鑰 npx expo start
 
 平板與電腦連同一個 Wi-Fi，用 Expo Go 掃終端機上的 QR code。伺服器位址也可以在登入頁的「伺服器設定」欄位修改；在「我的」分頁改伺服器會同時登出，需重新登入。
 
 | 環境變數 | 用途 | 預設 |
 |---|---|---|
 | `EXPO_PUBLIC_API_BASE` | 後端位址 | 空（登入頁填） |
+| `EXPO_PUBLIC_TENANT_API_KEY` | 租戶公開金鑰（`pk_…`），所有 API 請求透過 `x-api-key` 指定租戶 | 空（後端預設租戶） |
 | `EXPO_PUBLIC_STORE_SERVER_ID` | 門市 MCP 服務 id | `store-demo` |
 | `EXPO_PUBLIC_STORE_NAME` | 頂部列顯示的門市名稱 | `中山門市` |
 
 ## 後端需要的設定
+
+在後台取得目標租戶的公開金鑰，設定 `EXPO_PUBLIC_TENANT_API_KEY`；也可以寫入 `app/.env.local`。請使用 `pk_…` 公開金鑰，勿使用秘密金鑰。變更租戶後請登出並重新登入，帳號及門市 MCP 服務都需屬於目標租戶。
 
 - 門市 Demo 服務（`mcp/store-demo`，共 7 個工具）已在後台註冊。啟動範例：`MCP_SERVER_ID=store-demo PUBLIC_BASE_URL=http://<區網 IP>:4200 PORT=4200 npm start -w mcp/store-demo`。`PUBLIC_BASE_URL` 必須是**平板連得到**的位址（商品圖片網址由它組成，不能用 `localhost`）。
 - 店員帳號需要 `service:agent` 與 `mcp:store-demo` 權限。

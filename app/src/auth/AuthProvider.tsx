@@ -45,6 +45,7 @@ export function AuthProvider({
       createEndpoints(
         createApiClient({
           baseUrl: () => urlRef.current,
+          tenantApiKey: () => process.env.EXPO_PUBLIC_TENANT_API_KEY ?? '',
           tokens: tokenStore,
           fetchFn,
           onAuthLost: () => {

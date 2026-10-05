@@ -32,6 +32,8 @@ export interface ApiClient {
 
 export interface ApiClientDeps {
   baseUrl: () => string;
+  /** 租戶公開金鑰 pk_…；登入與換發也必須帶入相同租戶。 */
+  tenantApiKey?: () => string;
   tokens: TokenStore;
   fetchFn?: typeof fetch;
   onAuthLost?: () => void;
@@ -48,6 +50,8 @@ export function createApiClient(deps: ApiClientDeps): ApiClient {
     const base = deps.baseUrl();
     if (!base) throw new ApiError('尚未設定伺服器位址', 0, 'NO_SERVER');
     const headers: Record<string, string> = { Accept: 'application/json' };
+    const tenantApiKey = deps.tenantApiKey?.().trim();
+    if (tenantApiKey) headers['x-api-key'] = tenantApiKey;
     let body: BodyInit | undefined;
     if (opts.form) {
       body = await opts.form();
