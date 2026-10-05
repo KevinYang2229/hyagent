@@ -5,7 +5,7 @@
  */
 import { tenantStore } from '@/modules/tenant/tenant.store';
 import { getApplicant } from '@/modules/user/user.directory';
-import { BASE_SCOPE_IDS } from './scope-catalog';
+import { BASE_SCOPE_IDS, isMcpScope } from './scope-catalog';
 import { scopePolicy } from './scope-policy';
 
 export interface ScopePrincipal {
@@ -13,10 +13,15 @@ export interface ScopePrincipal {
   userId: string;
 }
 
+/** 租戶層 grantedScopes 會併給所有人含訪客：mcp: 只能走部門/帳號層，這裡防禦性濾掉（寫入端已擋，防舊資料）。 */
+function tenantGrantedScopes(tenantId: string): string[] {
+  return (tenantStore.getTenant(tenantId)?.grantedScopes ?? []).filter((s) => !isMcpScope(s));
+}
+
 export function resolveScopes(principal: ScopePrincipal): string[] {
   const { tenantId, userId } = principal;
   if (!userId) return resolveGuestScopes(tenantId);
-  const tenantScopes = tenantStore.getTenant(tenantId)?.grantedScopes ?? [];
+  const tenantScopes = tenantGrantedScopes(tenantId);
   const department = getApplicant(userId, tenantId).department;
   const groupScopes = scopePolicy.groupScopes(tenantId, department);
   const accountScopes = scopePolicy.accountScopes(tenantId, userId);
@@ -39,7 +44,7 @@ export function resolveScopes(principal: ScopePrincipal): string[] {
 export function resolveGuestScopes(tenantId: string): string[] {
   return [...new Set([
     ...BASE_SCOPE_IDS,
-    ...(tenantStore.getTenant(tenantId)?.grantedScopes ?? []),
+    ...tenantGrantedScopes(tenantId),
     ...scopePolicy.groupScopes(tenantId, '—'),
     ...scopePolicy.groupBundleScopes(tenantId, '—'),
   ])];

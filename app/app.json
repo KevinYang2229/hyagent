@@ -1,0 +1,46 @@
+{
+  "expo": {
+    "name": "門市小幫手",
+    "slug": "hyagent-store",
+    "version": "0.1.0",
+    "orientation": "default",
+    "icon": "./assets/brand/app-icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F7F1",
+        "foregroundImage": "./assets/brand/app-icon.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/brand/app-icon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "需要相機來拍攝貨架與優惠券",
+          "recordAudioAndroid": false
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "需要麥克風來進行語音對話"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "需要相簿來選擇貨架或優惠券照片"
+        }
+      ]
+    ],
+    "scheme": "hyagent-store"
+  }
+}

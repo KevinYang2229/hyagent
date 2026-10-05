@@ -116,8 +116,8 @@ export const intentRouter = {
     // 保底：無任何啟用服務時退回第一個註冊服務（極端情況，避免 undefined）
     const fallbackId = enabled[0]?.id ?? serviceRegistry.all()[0].id;
 
-    // 待確認寄信草稿：本輪強制回 agent，讓確認閘處理確認/取消（agent sticky=false，否則收不到此輪）
-    if (session.pendingEmail && enabledIds.has('agent')) {
+    // 待確認的寫入動作：本輪強制回 agent，讓確認閘處理確認/取消
+    if (session.pendingAction && enabledIds.has('agent')) {
       return { serviceId: 'agent', viaLLM: false };
     }
 

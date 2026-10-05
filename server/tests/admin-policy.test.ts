@@ -4,6 +4,7 @@ import { createApp } from '@/app';
 import { adminController } from '@/modules/admin/admin.controller';
 import { scopePolicy } from '@/modules/authz/scope-policy';
 import { tenantStore } from '@/modules/tenant/tenant.store';
+import { mcpStore } from '@/modules/mcp/mcp.store';
 import { resolveScopes } from '@/modules/authz/resolve-scopes';
 
 const app = createApp();
@@ -185,5 +186,32 @@ describe('admin 權限 API', () => {
       .send({ grantedScopes: [], groups: {}, accounts: { kevin: ['kb:hr'] } });
     expect(acctLevel.status).toBe(200);
     expect((acctLevel.body as { data: { accounts: Record<string, string[]> } }).data.accounts.kevin).toContain('kb:hr');
+  });
+
+  describe('mcp: scope 不可在租戶層授予', () => {
+    afterEach(() => mcpStore.clear());
+
+    it('setPolicy 租戶層 mcp:x → 400；帳號層授予則通過並生效', async () => {
+      const t = tenantStore.createTenant('admin-policy-mcp-tenant');
+      tenantStore.updateTenant(t.id, { userDirectory: [{ id: 'kevin', name: 'Kevin', department: '行銷部', email: 'kevin@example.com' }] });
+      mcpStore.create({ id: 'x', name: 'X', url: 'http://x/mcp', ownerTenantId: t.id });
+      await expect(
+        adminController.setPolicy({ params: { id: t.id }, body: { grantedScopes: ['mcp:x'], groups: {}, accounts: {} } } as never, mockRes() as never),
+      ).rejects.toMatchObject({ statusCode: 400, message: expect.stringContaining('租戶層不可授予 MCP 服務權限') });
+      await adminController.setPolicy(
+        { params: { id: t.id }, body: { grantedScopes: [], groups: {}, accounts: { kevin: ['mcp:x'] } } } as never,
+        mockRes() as never,
+      );
+      expect(resolveScopes({ tenantId: t.id, userId: 'kevin' })).toContain('mcp:x');
+    });
+
+    it('getPolicy 讀回時租戶層 grantedScopes 濾掉殘留的 mcp:', async () => {
+      const t = tenantStore.createTenant('admin-policy-mcp-prune');
+      mcpStore.create({ id: 'x', name: 'X', url: 'http://x/mcp', ownerTenantId: t.id });
+      tenantStore.updateTenant(t.id, { grantedScopes: ['service:agent', 'mcp:x'] });
+      const res = mockRes();
+      await adminController.getPolicy({ params: { id: t.id } } as never, res as never);
+      expect((res.body as { data: { grantedScopes: string[] } }).data.grantedScopes).toEqual(['service:agent']);
+    });
   });
 });

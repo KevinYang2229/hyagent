@@ -371,3 +371,95 @@ export interface MySkillsView {
   roles: { id: string; name: string; description?: string }[];
   skills: { id: string; label: string; description: string }[];
 }
+
+/** 寫入動作確認卡片的一列（給人看的標籤與值） */
+export interface ConfirmCardField {
+  label: string;
+  value: string;
+}
+
+/** 寫入動作確認卡片 */
+export interface ConfirmCard {
+  title: string;
+  fields: ConfirmCardField[];
+}
+
+/** 前端看到的待確認動作：不含工具 id 與原始參數，確認時只帶 id 回來 */
+export interface PendingActionView {
+  id: string;
+  summary: ConfirmCard;
+  /** 依工具 schema 推導的可編輯表單；舊前台可忽略，只用 summary */
+  form?: ConfirmForm;
+  expiresAt: string;
+}
+
+/** 顯示區塊的色調（只有這四種，工具不能注入任意樣式） */
+export type DisplayTone = 'success' | 'warning' | 'danger' | 'neutral';
+
+export interface TableColumn {
+  key: string;
+  label: string;
+  unit?: string;
+  /** text（預設）；delta：>0 顯示強調色「+N 單位」、0 或空值顯示「–」；date */
+  format?: 'text' | 'delta' | 'date';
+  /** 同列中存放圖片網址的欄位名稱 */
+  image?: string;
+  /** 儲存格值 → 色調；未列出的值以 neutral 顯示 */
+  badge?: Record<string, DisplayTone>;
+}
+
+export interface TableBlock {
+  type: 'table';
+  title?: string;
+  columns: TableColumn[];
+  rows: Record<string, string | number | null>[];
+}
+
+/** 回覆中的畫面區塊；目前只有表格 */
+export type DisplayBlock = TableBlock;
+
+export type ConfirmFieldKind = 'text' | 'number' | 'date' | 'select';
+
+export interface ConfirmScalarField {
+  kind: ConfirmFieldKind;
+  key: string;
+  label: string;
+  value: unknown;
+  editable: boolean;
+  min?: number;
+  max?: number;
+  unit?: string;
+  /** raw 為 schema enum 的原始值（保留數字、布林型別） */
+  options?: { value: string; label: string; raw?: string | number | boolean }[];
+}
+
+export interface ConfirmTableColumn {
+  key: string;
+  label: string;
+  kind: ConfirmFieldKind;
+  editable: boolean;
+  unit?: string;
+  min?: number;
+  max?: number;
+  /** 同列中存放圖片網址的欄位名稱 */
+  image?: string;
+  /** raw 為 schema enum 的原始值（保留數字、布林型別） */
+  options?: { value: string; label: string; raw?: string | number | boolean }[];
+}
+
+export interface ConfirmTableField {
+  kind: 'table';
+  key: string;
+  label: string;
+  /** 是否可取消勾選（刪列） */
+  selectable: boolean;
+  columns: ConfirmTableColumn[];
+  rows: Record<string, unknown>[];
+}
+
+export type ConfirmField = ConfirmScalarField | ConfirmTableField;
+
+export interface ConfirmForm {
+  title: string;
+  fields: ConfirmField[];
+}

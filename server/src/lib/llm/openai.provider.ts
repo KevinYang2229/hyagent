@@ -7,6 +7,7 @@
  */
 import OpenAI from 'openai';
 import type {
+  ChatCompletionContentPart,
   ChatCompletionMessageParam,
   ChatCompletionTool,
 } from 'openai/resources/chat/completions';
@@ -69,16 +70,26 @@ function toOpenAIMessages(system: string, messages: LLMMessage[]): ChatCompletio
         ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
       });
     } else {
-      // user 訊息可能含 text（真使用者輸入）與／或 tool_result（工具輸出）
-      const texts: string[] = [];
+      // user 訊息可能含 text（真使用者輸入）、image 與／或 tool_result（工具輸出）
+      const parts: ChatCompletionContentPart[] = [];
+      let hasImage = false;
       for (const b of m.content) {
         if (b.type === 'tool_result') {
           out.push({ role: 'tool', tool_call_id: b.toolUseId, content: b.content });
         } else if (b.type === 'text') {
-          texts.push(b.text);
+          parts.push({ type: 'text', text: b.text });
+        } else if (b.type === 'image') {
+          hasImage = true;
+          parts.push({ type: 'image_url', image_url: { url: `data:${b.mediaType};base64,${b.data}` } });
         }
       }
-      if (texts.length > 0) out.push({ role: 'user', content: texts.join('\n') });
+      if (parts.length === 0) continue;
+      // 沒有圖片時維持字串內容（與既有行為相同，相容只吃字串的本地模型）
+      out.push(
+        hasImage
+          ? { role: 'user', content: parts }
+          : { role: 'user', content: parts.map((p) => (p.type === 'text' ? p.text : '')).join('\n') },
+      );
     }
   }
 
@@ -117,6 +128,7 @@ export function createOpenAIProvider(settings: ResolvedLLMSettings): LLMProvider
           ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
           messages: toOpenAIMessages(params.system, params.messages),
           tools: tools.length > 0 ? tools : undefined,
+          ...(params.toolChoice ? { tool_choice: { type: 'function' as const, function: { name: params.toolChoice.name } } } : {}),
         });
       } catch (err) {
         throw mapProviderError(err, settings);

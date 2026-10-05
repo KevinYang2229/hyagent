@@ -37,4 +37,15 @@ describe('resolveScopes', () => {
     const ctx = makeToolContext({ tenantId: 't1', userId: 'kevin', locale: 'zh-TW' });
     expect(ctx.scopes).toContain('oa:write');
   });
+
+  it('租戶層 grantedScopes 內的 mcp: 不併入（含訪客）；帳號層授予仍生效', () => {
+    const t = tenantStore.createTenant('mcp-tenant-level');
+    tenantStore.updateTenant(t.id, { grantedScopes: ['service:agent', 'mcp:x'] });
+    expect(resolveScopes({ tenantId: t.id, userId: 'kevin' })).not.toContain('mcp:x');
+    expect(resolveScopes({ tenantId: t.id, userId: '' })).not.toContain('mcp:x');
+    expect(resolveScopes({ tenantId: t.id, userId: 'kevin' })).toContain('service:agent');
+    scopePolicy.setPolicy(t.id, { groups: {}, accounts: { kevin: ['mcp:x'] } });
+    expect(resolveScopes({ tenantId: t.id, userId: 'kevin' })).toContain('mcp:x');
+    expect(resolveScopes({ tenantId: t.id, userId: '' })).not.toContain('mcp:x');
+  });
 });

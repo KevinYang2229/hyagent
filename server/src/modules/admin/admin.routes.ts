@@ -30,6 +30,8 @@ import {
   suggestionRefreshSchema,
 } from '@/modules/knowledge/knowledge.admin.schema';
 import { putLlmConfigSchema } from '@/modules/tenant/llm-config.schema';
+import { mcpAdminController } from '@/modules/mcp/mcp.admin.controller';
+import { createMcpServerSchema, mcpServerParamSchema, patchMcpServerSchema } from '@/modules/mcp/mcp.admin.schema';
 import { adminController } from './admin.controller';
 import { adminAuthController } from './admin.auth.controller';
 import {
@@ -88,6 +90,17 @@ router.use('/tenants/:id/users', userAdminRouter);
 
 // Skill Library（唯讀）：平台所有 skill 的正式描述 + 各租戶啟用狀態
 router.get('/skills', asyncHandler(adminController.listSkills));
+
+// MCP 服務（平台層）：登記、修改、刪除、重新整理工具清單
+router.get('/mcp-servers', asyncHandler(mcpAdminController.list));
+router.post('/mcp-servers', validate({ body: createMcpServerSchema }), asyncHandler(mcpAdminController.create));
+router.patch(
+  '/mcp-servers/:serverId',
+  validate({ params: mcpServerParamSchema, body: patchMcpServerSchema }),
+  asyncHandler(mcpAdminController.update),
+);
+router.delete('/mcp-servers/:serverId', validate({ params: mcpServerParamSchema }), asyncHandler(mcpAdminController.remove));
+router.post('/mcp-servers/:serverId/refresh', validate({ params: mcpServerParamSchema }), asyncHandler(mcpAdminController.refresh));
 
 router.post('/tenants', validate({ body: createTenantSchema }), asyncHandler(adminController.createTenant));
 router.get('/tenants', asyncHandler(adminController.listTenants));

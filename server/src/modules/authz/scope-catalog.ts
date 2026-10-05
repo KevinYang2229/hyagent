@@ -5,6 +5,7 @@
  */
 import { AppError } from '@/utils/app-error';
 import { listDefinitions } from '@/modules/form/form.registry';
+import { mcpStore } from '@/modules/mcp/mcp.store';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 
 export interface ScopeDef {
@@ -48,6 +49,12 @@ export function isKbScope(id: string): boolean {
   return id.startsWith(KB_SCOPE_PREFIX);
 }
 
+export const MCP_SCOPE_PREFIX = 'mcp:';
+
+export function isMcpScope(id: string): boolean {
+  return id.startsWith(MCP_SCOPE_PREFIX);
+}
+
 /**
  * labelId 限 [a-z0-9-]+。scope id 以冒號分段，label 內含冒號會讓 kb: 前綴的比對
  * 出現歧義——而該比對正是 assertTenantGrantable 這道安全檢查所依賴的。
@@ -68,8 +75,9 @@ export function assertGrantableScopes(ids: string[], tenantId?: string): void {
   const validLabelIds = tenantId
     ? new Set((tenantStore.getTenant(tenantId)?.knowledgeLabels ?? []).map((l) => kbScopeId(l.id)))
     : new Set<string>();
+  const validMcpIds = tenantId ? tenantMcpScopeIds(tenantId) : new Set<string>();
   const ok = (id: string): boolean =>
-    GRANTABLE_SCOPE_IDS.has(id) || validFormIds.has(id) || validLabelIds.has(id);
+    GRANTABLE_SCOPE_IDS.has(id) || validFormIds.has(id) || validLabelIds.has(id) || validMcpIds.has(id);
   const bad = ids.filter((id) => !ok(id));
   if (bad.length > 0) throw AppError.badRequest(`不可授予的 scope：${bad.join('、')}`);
 }
@@ -92,6 +100,12 @@ export function assertTenantGrantable(ids: string[], tenantId?: string): void {
       `租戶層不可授予知識庫標籤（會併給所有人含訪客）：${kb.join('、')}。請改於部門或帳號層指派。`,
     );
   }
+  const mcp = ids.filter(isMcpScope);
+  if (mcp.length > 0) {
+    throw AppError.badRequest(
+      `租戶層不可授予 MCP 服務權限（會併給所有人含訪客）：${mcp.join('、')}。請改於部門或帳號層指派。`,
+    );
+  }
   assertGrantableScopes(ids, tenantId);
 }
 
@@ -104,6 +118,16 @@ export const SERVICE_SCOPE_IDS: Set<string> = new Set([
 /** 表單 scope id：form:<formId>。 */
 export function formScopeId(formId: string): string {
   return `form:${formId}`;
+}
+
+/** MCP server scope：mcp:<serverId>。 */
+export function mcpServerScopeId(serverId: string): string {
+  return `mcp:${serverId}`;
+}
+
+/** 此租戶可授予的 MCP scope：共用 server 與該租戶專屬 server（不看啟用狀態，停用時仍可預先授權）。 */
+function tenantMcpScopeIds(tenantId: string): Set<string> {
+  return new Set(mcpStore.list().filter((s) => mcpStore.belongsTo(s, tenantId)).map((s) => mcpServerScopeId(s.id)));
 }
 
 /** 某租戶可授予的能力：靜態 grantable + 該租戶各表單的 form:<id>（label 用表單標題）。 */
@@ -120,5 +144,14 @@ export function tenantGrantableScopes(tenantId: string): ScopeDef[] {
     description: `檢索「${l.label}」分類的知識庫內容`,
     base: false,
   }));
-  return [...GRANTABLE_SCOPES, ...forms, ...labels];
+  const mcp: ScopeDef[] = mcpStore
+    .list()
+    .filter((s) => mcpStore.belongsTo(s, tenantId))
+    .map((s) => ({
+      id: mcpServerScopeId(s.id),
+      label: s.name,
+      description: s.description || `使用外部服務「${s.name}」`,
+      base: false,
+    }));
+  return [...GRANTABLE_SCOPES, ...forms, ...labels, ...mcp];
 }

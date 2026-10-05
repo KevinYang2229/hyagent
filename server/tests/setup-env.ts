@@ -50,3 +50,8 @@ process.env.LLM_MODEL ??= 'claude-sonnet-4-5';
 // 地端 LLM 測試：resolve/embedding 的 local 路徑需要端點；僅在 provider=local 時生效，
 // 不影響預設 anthropic 的雲端測試
 process.env.LLM_BASE_URL ??= 'http://localhost:8000/v1';
+
+// MCP 簽章固定關閉：本機 .env 可能有 MCP_SIGNING_KEY；需要的測試以 configureMcpSigningKey 注入
+process.env.MCP_SIGNING_KEY ??= '';
+process.env.MCP_PREVIOUS_PUBLIC_KEY ??= '';
+process.env.VISION_STORE_SERVER_ID ??= 'store-demo';

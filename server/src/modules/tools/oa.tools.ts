@@ -24,6 +24,7 @@ registerTool({
     additionalProperties: true,
   },
   scopes: ['oa:write'],
+  effect: 'write',
   audit: true,
   auditSummary: (input: OASubmitInput, result?: OASubmitResult) =>
     `表單 ${input.formId}｜單號 ${result?.oaRequestId ?? '—'}`,
@@ -38,6 +39,7 @@ registerTool({
     type: 'object',
   },
   scopes: ['oa:read'],
+  effect: 'read',
   agentExposed: true,
   // 身分一律取自 ctx.userId，不採信 LLM/呼叫端傳入的 input.userId，避免跨使用者查詢他人額度。
   handler: (_input, ctx): Promise<LeaveBalance[]> => {
@@ -62,6 +64,7 @@ registerTool({
   description: '列出你（目前登入使用者）送出過的申請及各自的目前簽核關卡。',
   inputSchema: { type: 'object', additionalProperties: false },
   scopes: ['oa:read'],
+  effect: 'read',
   agentExposed: true,
   handler: async (_input, ctx) => {
     const records = submissionStore.listByUser(ctx.tenantId, ctx.userId, 10);
@@ -86,6 +89,7 @@ registerTool({
     additionalProperties: false,
   },
   scopes: ['oa:read'],
+  effect: 'read',
   agentExposed: true,
   handler: async (input: { oaRequestId: string }, ctx) => {
     const rec = submissionStore.find(ctx.tenantId, input.oaRequestId);

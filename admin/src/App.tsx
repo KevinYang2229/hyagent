@@ -6,6 +6,7 @@ import LoginPage from './pages/LoginPage';
 import TenantsPage from './pages/TenantsPage';
 import TenantDetailPage from './pages/TenantDetailPage';
 import SkillsPage from './pages/SkillsPage';
+import McpServersPage from './pages/McpServersPage';
 import FormDesignerPage from './pages/FormDesignerPage';
 
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -51,6 +52,14 @@ export default function App() {
             element={
               <RequireAuth>
                 <SkillsPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/mcp-servers"
+            element={
+              <RequireAuth>
+                <McpServersPage />
               </RequireAuth>
             }
           />

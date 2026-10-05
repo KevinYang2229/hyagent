@@ -84,6 +84,15 @@ export default function AppLayout({
             <IconTenants className="nav-ico" />
             Skill Library
           </div>
+          <div
+            className={`nav-item${loc.pathname === "/mcp-servers" ? " active" : ""}`}
+            onClick={() => go("/mcp-servers")}
+            role="button"
+            tabIndex={0}
+          >
+            <IconTenants className="nav-ico" />
+            MCP 服務
+          </div>
         </nav>
 
         <button

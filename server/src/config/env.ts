@@ -106,6 +106,8 @@ export const envSchema = z.object({
   LLM_MAX_TOKENS: z.coerce.number().int().positive().default(1024),
   ANTHROPIC_API_KEY: z.string().default(''),
   OPENAI_API_KEY: z.string().default(''),
+  // 語音轉文字（App 語音對話）；用 OPENAI_API_KEY，未設定時語音 API 回 503
+  SPEECH_MODEL: z.string().default('gpt-4o-transcribe'),
   // ---- 地端 LLM（provider=local；OpenAI 相容端點，如 vLLM / Ollama）----
   // 地端 chat 端點根路徑（含 /v1）；LLM_PROVIDER=local 時必填（見 superRefine）
   LLM_BASE_URL: z.string().optional(),
@@ -145,6 +147,12 @@ export const envSchema = z.object({
   OA_CONNECTOR: z.enum(['stub', 'http']).default('stub'),
   OA_BASE_URL: z.string().optional(),
   OA_API_KEY: z.string().optional(),
+  // MCP 呼叫簽章私鑰（ES256 / PKCS#8 PEM，可用 \n 跳脫換行）；未設＝MCP 功能整體停用
+  MCP_SIGNING_KEY: z.string().default(''),
+  // 換鑰過渡：上一把公鑰（SPKI PEM），仍列在 JWKS 讓 MCP server 驗得過換鑰前簽的 token
+  MCP_PREVIOUS_PUBLIC_KEY: z.string().default(''),
+  // 影像辨識查詢門市資料用的 MCP serverId（product_lookup／inventory_query／coupon_check 所在服務）
+  VISION_STORE_SERVER_ID: z.string().regex(/^[a-z0-9-]{1,32}$/).default('store-demo'),
 }).superRefine((val, ctx) => {
   // production 不得沿用 dev 預設密鑰/密碼，boot 時 fail-fast（避免帶著佔位密鑰上線）
   if (val.NODE_ENV === 'production') {

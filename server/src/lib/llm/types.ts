@@ -21,7 +21,9 @@ export interface LLMToolCall {
 export type LLMContentBlock =
   | { type: 'text'; text: string }
   | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
-  | { type: 'tool_result'; toolUseId: string; content: string; isError?: boolean };
+  | { type: 'tool_result'; toolUseId: string; content: string; isError?: boolean }
+  // image：base64 圖片（影像辨識用）；只出現在 user 訊息
+  | { type: 'image'; mediaType: 'image/jpeg' | 'image/png' | 'image/webp'; data: string };
 
 export interface LLMMessage {
   role: 'user' | 'assistant';
@@ -45,6 +47,8 @@ export interface LLMCreateParams {
    * 對話類呼叫維持不帶，避免回答變得呆板。
    */
   temperature?: number;
+  /** 強制 LLM 呼叫指定工具（取得固定格式的結構化輸出用）；省略＝由模型自行決定 */
+  toolChoice?: { name: string };
 }
 
 export interface LLMUsage {

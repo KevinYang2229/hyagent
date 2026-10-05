@@ -110,3 +110,81 @@ npm run dev:admin    # 後台 5174
   - **用量** — 對話 / 訊息 / 送出計數（唯讀）。
 
 > `ADMIN_PASSWORD` 留空＝停用後台登入（回 403）。與機器對機器用的 `ADMIN_API_KEY` 分開，避免主控金鑰外洩到瀏覽器。
+
+---
+
+## 自建 MCP 服務（讓 AI 呼叫外部系統）
+
+HyAgent 的智慧代理可以呼叫我們自建的 MCP server。整體流程：
+
+1. **寫 MCP server**：用 [`mcp/kit`](mcp/kit/README.md)（`createMcpHttpApp` + `createHyAgentVerifier`），照 README 的規範寫工具（欄位要有描述、唯讀工具標 `readOnlyHint`）。範例在 `mcp/kit/examples/rooms/`。
+2. **部署**：MCP server 要能連到 HyAgent 後端的 `GET /.well-known/hyagent-mcp-jwks.json`（驗章用），HyAgent 後端要能連到 MCP server 的 `/mcp`。
+3. **登記**：後台「MCP 服務」→ 新增，填 `serverId`、URL、擁有租戶（共用或某租戶專屬）、能力描述與路由關鍵字，按「測試連線」確認工具清單與讀寫判定。
+4. **授權**：在租戶的權限分頁，把 `mcp:<serverId>` 授予要使用的部門或帳號（也需要 `service:agent`）。
+
+### 身分與安全
+
+- HyAgent 每個請求都簽一張 60 秒的 ES256 JWT：`aud` 為 `serverId`、`sub` 為使用者、`tenant` 為租戶、`scopes` 只含 `mcp:<serverId>` 相關項。MCP server 用 `callerFrom(extra)` 取得，可自行做二次權限檢查與稽核。
+- 唯讀工具（`readOnlyHint: true`）AI 會直接呼叫；**其餘一律視為寫入**：AI 只能提議，使用者在確認卡片按「確認」後才由後端執行。後台可對單一工具強制確認或停用。
+
+**唯讀工具可能被 App 直接呼叫**：標示 `readOnlyHint: true` 的工具除了給 AI 使用，也會被前台（例如門市 App 的首頁摘要、列表、掃條碼查券）透過 `POST /api/tools/:toolId/invoke` 直接呼叫，不經 AI、也不經使用者確認。因此唯讀工具**不得有任何副作用**；權限一樣以 `mcp:<serverId>` 控管，呼叫身分同樣以簽章 JWT 帶給你的服務。
+- MCP server 端的 kit 會快取 JWKS 公鑰 5 分鐘，換鑰後最慢 5 分鐘生效；遇到未知 kid 會提前重抓，但最多每 30 秒一次。
+- 後端未設 `MCP_SIGNING_KEY` 時，MCP 功能整體停用。
+
+### 前台整合（自製 UI）
+
+對話 API 的回應若帶 `pendingAction`（`{ id, summary: { title, fields[] }, expiresAt }`），請畫成確認卡片：
+
+- 確認：`POST /api/conversations/:id/actions/:actionId/confirm` → `data.reply`、`data.actionOk`
+- 取消：`POST /api/conversations/:id/actions/:actionId/cancel`
+- `409 ACTION_EXPIRED`：已逾時（10 分鐘），請使用者重新提出；`409 ACTION_NOT_FOUND`：已處理過；`403`：權限已撤銷。
+- 沒有畫卡片的舊前台，使用者打「確認」也能執行（打字備援）。
+
+### 回傳表格（顯示提示）
+
+工具可在結果的 `_meta["hyagent/display"]` 宣告表格，HyAgent 會把資料原樣畫成表格（不經 AI 轉述），
+AI 只負責說明重點：
+
+```jsonc
+{ "type": "table", "title": "商品庫存", "rows": "items",
+  "columns": [
+    { "key": "name", "label": "商品名稱", "image": "image" },
+    { "key": "stock", "label": "目前庫存", "unit": "個" },
+    { "key": "suggested", "label": "建議補貨", "unit": "個", "format": "delta" },
+    { "key": "status", "label": "狀態", "badge": { "庫存偏低": "danger", "正常": "success" } } ] }
+```
+
+限制：最多 50 列、12 欄；儲存格只接受字串或數字；色調只有 success／warning／danger／neutral；圖片須為 http(s) 網址。
+對話 API 的回應會在 `blocks` 帶出這些表格。
+
+### 可編輯的確認卡片
+
+寫入工具的確認卡片由輸入 schema 自動產生：`readOnly` 不可改、數字帶 `minimum`／`maximum`、
+`format: "date"` 為日期（後端會驗證日期格式）、`enum` 為下拉（`x-enumLabels` 顯示文字）、
+物件陣列為可勾選表格（項目需有唯讀欄位辨識列）；延伸關鍵字 `x-unit`、`x-image`、`x-hidden`、`x-display: "html"`。
+
+前端確認時可帶修改後的完整參數：`POST /api/conversations/:id/actions/:actionId/confirm`，body `{ input }`。
+後端的處理規則：
+
+- 修改後的 `input` 不可新增原始參數沒有的鍵；前端沒帶的鍵，會先以原始參數補齊再驗證。
+- `readOnly`、`x-hidden`、`x-display: "html"`、被 `x-image` 指向的圖片來源欄位必須與原始值相同（陣列可刪列，不可新增列或改唯讀值）。
+- `x-hidden` 欄位（如商品編號）使用者看不到，寫入工具必須自行驗證它與顯示欄位（名稱等）一致，不能只信任顯示值。
+- 其餘欄位依 schema 驗證；不合法回 `422 ACTION_INPUT_INVALID`，動作保留，可修正後重送。
+- 帶修改確認時若工具暫時無法使用，回 `503 TOOL_UNAVAILABLE`，動作同樣保留，可稍後重試。
+
+不經 AI 直接提議：`POST /api/conversations/:id/actions/propose`，body `{ toolId, input }`：
+
+- 只接受對 AI 開放（`agentExposed`）的寫入工具，否則 `404 TOOL_NOT_FOUND`。
+- 該工具不是寫入工具回 `422 NOT_A_WRITE_TOOL`。
+
+### 影像辨識
+
+`POST /api/vision/analyze`（multipart：`image` 為 jpeg／png／webp ≤ 5MB、`mode` 為 `shelf` 或 `coupon`）：
+
+- `shelf`：回傳 `findings`（名稱、商品編號、狀態、庫存、建議補貨量 `suggestedQty`、到期日、備註 `note`、框選座標）、`counts`，
+  以及可直接送到 `propose` 的 `replenishment`。框選座標為 0–1 的相對值，超出範圍會被夾回。
+  商品資料每 30 筆為一批查詢；每張照片最多保留 50 筆辨識結果，補貨提議最多 30 項。
+- `coupon`：讀出券號後查券，回傳 `extracted`、`result` 與表格 `block`；讀不到券號時 `message` 提示改用掃條碼。
+
+查詢門市資料用的 MCP serverId 由 `VISION_STORE_SERVER_ID` 指定（預設 `store-demo`）。
+Demo 前可用 `server/scripts/vision-eval.ts` 以實際照片檢視辨識效果（會呼叫真實 LLM，產生費用）。

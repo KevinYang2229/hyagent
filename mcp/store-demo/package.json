@@ -1,0 +1,27 @@
+{
+  "name": "@hyagent/store-demo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "門市 Demo MCP 服務：商品庫存、補貨單、促銷活動、優惠券（假資料，日期以相對天數儲存）。",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "start": "tsx src/server.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hyagent/mcp-kit": "*",
+    "@modelcontextprotocol/sdk": "1.31.0",
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
+    "express": "^4.21.1"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^20.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.8"
+  }
+}

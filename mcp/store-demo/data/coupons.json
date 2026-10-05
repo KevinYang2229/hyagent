@@ -1,0 +1,7 @@
+[
+  { "code": "COFFEE50", "title": "咖啡折 5 元", "description": "中杯以上咖啡折抵 5 元", "categories": ["咖啡"], "validFromDays": -5, "validToDays": 10, "used": false, "conditions": "限中杯以上，每次限用一張" },
+  { "code": "ONIGIRI10", "title": "御飯糰折 10 元", "description": "任一御飯糰折抵 10 元", "categories": ["御飯糰"], "validFromDays": -2, "validToDays": 1, "used": false, "conditions": "不得與第二件 6 折併用" },
+  { "code": "SALAD20", "title": "沙拉折 20 元", "description": "任一沙拉折抵 20 元", "categories": ["沙拉"], "validFromDays": -30, "validToDays": -1, "used": false, "conditions": "已過期" },
+  { "code": "BENTO15", "title": "便當折 15 元", "description": "任一便當折抵 15 元", "categories": ["便當"], "validFromDays": -3, "validToDays": 7, "used": true, "conditions": "限用一次" },
+  { "code": "MILK5", "title": "鮮奶折 5 元", "description": "鮮奶 290ml 折抵 5 元", "categories": ["飲料"], "productIds": ["P014"], "validFromDays": 2, "validToDays": 9, "used": false, "conditions": "活動尚未開始" }
+]

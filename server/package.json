@@ -31,6 +31,7 @@
     "@aws-sdk/client-s3": "^3.685.0",
     "@aws-sdk/s3-request-presigner": "^3.685.0",
     "@hyagent/shared": "*",
+    "@modelcontextprotocol/sdk": "1.31.0",
     "@prisma/client": "^5.22.0",
     "@types/markdown-it": "^14.1.2",
     "ajv": "^8.17.1",
@@ -66,6 +67,8 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@hyagent/mcp-kit": "*",
+    "@hyagent/store-demo": "*",
     "@types/bcrypt": "^5.0.2",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",

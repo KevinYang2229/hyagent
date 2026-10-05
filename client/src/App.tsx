@@ -16,12 +16,15 @@ import {
   type Definition,
   type FormSummary,
   type LeaveBalance,
+  type PendingActionView,
   type SessionStatus,
   type SubmissionInfo,
   type TurnData,
 } from './api';
-import type { TenantAppearance } from '@hyagent/shared';
+import type { DisplayBlock, TenantAppearance } from '@hyagent/shared';
 import { changeLanguage } from './i18n';
+import { ConfirmActionCard } from './ConfirmActionCard';
+import { DisplayBlockView } from './DisplayBlockView';
 import { debugLog } from './debugLog';
 import { embedConfig, fetchAppearance } from './embedConfig';
 import { hostBridge, type UiStatePayload } from './hostBridge';
@@ -34,6 +37,7 @@ import LoginView from './LoginView';
 import AuthErrorView from './AuthErrorView';
 import SettingsMenu, { FONT_MAX, FONT_MIN } from './SettingsMenu';
 import { ReportStatus } from './ReportStatus';
+import { useImeSubmit } from './useImeSubmit';
 
 type Role = 'user' | 'agent' | 'sys';
 interface ChatMessage {
@@ -51,6 +55,10 @@ interface ChatMessage {
    * 一段對話可能產生多份報告，各自的進度與下載入口要跟著它所屬的那則回覆走。
    */
   reportId?: string;
+  /** 本則回覆附帶的待確認寫入動作（確認卡片） */
+  pendingAction?: PendingActionView;
+  /** 本則回覆的畫面區塊 */
+  blocks?: DisplayBlock[];
 }
 
 // 氣泡下方時間：YYYY-MM-DD HH:mm:ss
@@ -173,6 +181,7 @@ export default function App() {
     { id: nextId(), role: 'agent', text: greetingText, greeting: true, at: Date.now() },
   ]);
   const [input, setInput] = useState('');
+  const imeSubmit = useImeSubmit(submitForm);
   const [busy, setBusy] = useState(false);
   const [conn, setConn] = useState<Conn>('checking');
   const [formDef, setFormDef] = useState<Definition | null>(null);
@@ -495,10 +504,10 @@ export default function App() {
     };
   }, [authUser]);
 
-  function pushMsg(role: Role, text: string, suggestions?: string[], reportId?: string) {
+  function pushMsg(role: Role, text: string, suggestions?: string[], reportId?: string, pendingAction?: PendingActionView, blocks?: DisplayBlock[]) {
     setMessages((prev) => [
       ...prev,
-      { id: nextId(), role, text, suggestions, reportId, at: Date.now() },
+      { id: nextId(), role, text, suggestions, reportId, pendingAction, blocks, at: Date.now() },
     ]);
   }
 
@@ -576,7 +585,7 @@ export default function App() {
     setSubmission(data.submission ?? null);
     // 本回合啟動了報告產生（僅報告服務會帶）：把 id 掛在這則回覆上，
     // 由該則訊息下方的膠囊按鈕負責輪詢與開啟下載彈窗
-    if (data.reply) pushMsg('agent', data.reply, data.suggestions, data.report?.id);
+    if (data.reply) pushMsg('agent', data.reply, data.suggestions, data.report?.id, data.pendingAction, data.blocks);
 
     // 只在「剛填寫完畢（→confirming）」或「剛送出（→submitted）」的轉變當下主動開表單；
     // 停留在同一狀態（例如 confirming 中繼續問話）不再強制彈出。
@@ -711,6 +720,21 @@ export default function App() {
   }
 
   // 取消：打後端 cancel 端點（非送對話訊息，Agent 無取消工具）
+  // 確認卡片：不經 LLM，直接打確認／取消端點；回覆另以一則訊息顯示
+  async function confirmPendingAction(action: PendingActionView, input?: Record<string, unknown>): Promise<{ ok: boolean; reply: string }> {
+    if (!convId) throw new Error('no conversation');
+    const turn = await api.confirmAction(userId, convId, action.id, input);
+    if (turn.reply) pushMsg('agent', turn.reply);
+    return { ok: turn.actionOk === true, reply: turn.reply ?? '' };
+  }
+
+  async function cancelPendingAction(action: PendingActionView): Promise<{ reply: string }> {
+    if (!convId) throw new Error('no conversation');
+    const turn = await api.cancelAction(userId, convId, action.id);
+    if (turn.reply) pushMsg('agent', turn.reply);
+    return { reply: turn.reply ?? '' };
+  }
+
   async function handleCancel() {
     if (!convId || busy) return;
     setBusy(true);
@@ -1067,6 +1091,14 @@ export default function App() {
                       m.text
                     )}
                   </div>
+                  {m.blocks?.map((b, i) => <DisplayBlockView key={i} block={b} />)}
+                  {m.pendingAction && (
+                    <ConfirmActionCard
+                      action={m.pendingAction}
+                      onConfirm={(input) => confirmPendingAction(m.pendingAction!, input)}
+                      onCancel={() => cancelPendingAction(m.pendingAction!)}
+                    />
+                  )}
                   {/* 送出日期時間 + 訊息動作（hover 顯示 icon：複製；使用者訊息另有編輯。tooltip/aria 保留文字語意） */}
                   <span className="msg-meta">
                     <span className="msg-time">{formatTime(m.at)}</span>
@@ -1230,10 +1262,7 @@ export default function App() {
 
           <form
             className="composer"
-            onSubmit={(e) => {
-              e.preventDefault();
-              submitForm();
-            }}
+            onSubmit={imeSubmit.onSubmit}
           >
             <span className="min-w-0 flex-1">
               <Input
@@ -1241,13 +1270,10 @@ export default function App() {
                 placeholder={t('app.inputPlaceholder')}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  // 輸入法組字中的 Enter 是「選字」，不可當送出（否則中文會殘留在框內）
-                  if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-                    e.preventDefault();
-                    submitForm();
-                  }
-                }}
+                onCompositionStart={imeSubmit.onCompositionStart}
+                onCompositionEnd={imeSubmit.onCompositionEnd}
+                onKeyDown={imeSubmit.onKeyDown}
+                onKeyUp={imeSubmit.onKeyUp}
               />
             </span>
             <Button variant="confirm" size="md" type="submit" disabled={busy}>

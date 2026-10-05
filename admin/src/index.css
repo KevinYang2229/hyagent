@@ -1140,3 +1140,59 @@ a {
 .report-date-range > .field-hint { flex-shrink: 0; }
 .report-date-range .date-picker-trigger-btn { max-width: none; min-width: 0; }
 .report-date-range .picker-display-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---- MCP 服務頁 ---- */
+.mcp-page {
+  @apply flex flex-col gap-4;
+}
+.mcp-server {
+  @apply border-b border-[var(--border-color)];
+}
+.mcp-server:last-child {
+  @apply border-b-0;
+}
+.mcp-server-head {
+  @apply flex flex-wrap items-start justify-between gap-3 px-4 py-3;
+}
+.mcp-server-head .row-title {
+  @apply flex-wrap;
+}
+.mcp-error {
+  @apply mt-1 text-xs text-[var(--status-danger)];
+}
+.mcp-hint {
+  @apply px-4 pb-4 text-[13px];
+}
+.mcp-tools-wrap {
+  @apply overflow-x-auto px-4 pb-4;
+}
+.mcp-tools {
+  @apply w-full border-collapse text-[13.5px];
+}
+.mcp-tools th {
+  @apply border-b border-[var(--border-color)] px-2 py-2 text-left text-xs font-semibold text-[var(--text-secondary)];
+}
+.mcp-tools td {
+  @apply border-b border-[var(--border-color)] px-2 py-2 align-middle;
+}
+.mcp-tools tr:last-child td {
+  @apply border-b-0;
+}
+.mcp-tools .center {
+  @apply text-center;
+}
+.mcp-tools .input {
+  @apply min-w-[160px];
+}
+.mcp-tool-name {
+  @apply font-semibold;
+}
+.mcp-check {
+  @apply mt-3 flex items-center gap-2 text-sm font-semibold;
+}
+.form-errors {
+  @apply mb-3 rounded-[10px] border border-[var(--status-danger)] bg-[var(--badge-danger-bg)] py-2 pr-3 pl-7 text-[13px] text-[var(--status-danger)];
+}
+.row-error td {
+  @apply bg-[var(--badge-danger-bg)];
+}

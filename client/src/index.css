@@ -719,3 +719,46 @@
 .my-skills p { margin: 6px 0; }
 .my-skills ul { padding-left: 20px; }
 .my-skills li { margin: 10px 0; }
+
+/* 寫入動作確認卡片 */
+.confirm-card {
+  margin-top: 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: var(--card-bg);
+}
+.confirm-card-title { font-weight: 600; margin-bottom: 0.5rem; }
+.confirm-card-fields { display: grid; gap: 0.25rem; margin: 0 0 0.75rem; }
+.confirm-card-field { display: grid; grid-template-columns: minmax(4rem, max-content) 1fr; gap: 0.75rem; }
+.confirm-card-field dt { opacity: 0.7; }
+.confirm-card-field dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.confirm-card-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.confirm-card-actions button { min-height: 2.5rem; padding: 0 1rem; border-radius: 0.5rem; }
+.confirm-card-primary { background: var(--primary-color); color: white; border: none; }
+.confirm-card-status { opacity: 0.8; }
+.confirm-card-error { color: #b91c1c; margin-top: 0.25rem; }
+
+/* 回覆中的表格區塊 */
+.display-block { margin-top: 0.5rem; border: 1px solid var(--border-color); border-radius: 0.75rem; background: var(--card-bg); overflow: hidden; }
+.display-block-title { font-weight: 600; padding: 0.6rem 0.9rem; border-bottom: 1px solid var(--border-color); }
+.display-block-scroll { overflow-x: auto; }
+.display-table, .confirm-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.display-table th, .display-table td, .confirm-table th, .confirm-table td { padding: 0.5rem 0.75rem; text-align: left; border-bottom: 1px solid var(--border-color); white-space: nowrap; }
+.display-table th, .confirm-table th { font-size: 0.8rem; opacity: 0.7; font-weight: 600; }
+.display-table tr:last-child td, .confirm-table tr:last-child td { border-bottom: none; }
+.display-cell { display: inline-flex; align-items: center; gap: 0.5rem; }
+.display-thumb { width: 28px; height: 28px; object-fit: cover; border-radius: 6px; }
+.block-delta { color: #dc2626; background: #fef2f2; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 0.4rem; }
+.block-muted { opacity: 0.5; }
+.block-badge { font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 0.4rem; }
+.block-badge[data-tone='success'] { color: #15803d; background: #f0fdf4; }
+.block-badge[data-tone='warning'] { color: #b45309; background: #fffbeb; }
+.block-badge[data-tone='danger'] { color: #dc2626; background: #fef2f2; }
+.block-badge[data-tone='neutral'] { color: inherit; background: var(--border-color); }
+.confirm-card-form { display: grid; gap: 0.75rem; margin-bottom: 0.75rem; }
+.confirm-card-form .confirm-card-field { display: grid; grid-template-columns: minmax(6rem, max-content) 1fr; gap: 0.75rem; align-items: center; }
+.confirm-card-form input, .confirm-card-form select { min-height: 2.25rem; padding: 0 0.5rem; border: 1px solid var(--border-color); border-radius: 0.5rem; background: var(--card-bg); color: inherit; }
+.confirm-table input[type='number'] { width: 5.5rem; }
+.confirm-table tr[data-removed] td { opacity: 0.45; }
+.confirm-unit { margin-left: 0.35rem; opacity: 0.7; }

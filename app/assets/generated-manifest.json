@@ -1,0 +1,145 @@
+{
+  "products": [
+    {
+      "id": "P001",
+      "subject": "salmon triangular seaweed wrapped rice ball in clear convenience store wrapper",
+      "path": "app/assets/products/P001.png"
+    },
+    {
+      "id": "P002",
+      "subject": "tuna triangular seaweed wrapped rice ball in clear convenience store wrapper",
+      "path": "app/assets/products/P002.png"
+    },
+    {
+      "id": "P003",
+      "subject": "mentaiko cod roe triangular seaweed wrapped rice ball in clear convenience store wrapper",
+      "path": "app/assets/products/P003.png"
+    },
+    {
+      "id": "P004",
+      "subject": "chicken triangular seaweed wrapped rice ball in clear convenience store wrapper",
+      "path": "app/assets/products/P004.png"
+    },
+    {
+      "id": "P005",
+      "subject": "ham and egg sandwich wedges in triangular clear convenience store packaging",
+      "path": "app/assets/products/P005.png"
+    },
+    {
+      "id": "P006",
+      "subject": "tuna salad sandwich wedges in triangular clear packaging",
+      "path": "app/assets/products/P006.png"
+    },
+    {
+      "id": "P007",
+      "subject": "Japanese dressing grilled chicken salad in a clear round bowl with lettuce tomato and chicken",
+      "path": "app/assets/products/P007.png"
+    },
+    {
+      "id": "P008",
+      "subject": "Caesar salad in clear bowl with lettuce croutons chicken and dressing",
+      "path": "app/assets/products/P008.png"
+    },
+    {
+      "id": "P009",
+      "subject": "Taiwanese chicken drumstick rice bento in black rectangular tray with rice vegetables and egg",
+      "path": "app/assets/products/P009.png"
+    },
+    {
+      "id": "P010",
+      "subject": "Taiwanese pork chop rice bento in black rectangular tray with rice and vegetables",
+      "path": "app/assets/products/P010.png"
+    },
+    {
+      "id": "P011",
+      "subject": "Japanese oden thick cooked white daikon radish slices in small paper bowl",
+      "path": "app/assets/products/P011.png"
+    },
+    {
+      "id": "P012",
+      "subject": "Japanese oden dark fish cake rings in small paper bowl",
+      "path": "app/assets/products/P012.png"
+    },
+    {
+      "id": "P013",
+      "subject": "Taiwanese tea egg, one whole marbled egg and one cut half showing yolk",
+      "path": "app/assets/products/P013.png"
+    },
+    {
+      "id": "P014",
+      "subject": "small 290ml fresh milk carton, white and blue blank packaging",
+      "path": "app/assets/products/P014.png"
+    },
+    {
+      "id": "P015",
+      "subject": "600ml bottle of unsweetened green tea, pale green drink, simple green blank label",
+      "path": "app/assets/products/P015.png"
+    },
+    {
+      "id": "P016",
+      "subject": "medium takeaway cup of black Americano coffee, white cup green sleeve black lid",
+      "path": "app/assets/products/P016.png"
+    },
+    {
+      "id": "P017",
+      "subject": "medium takeaway cup of latte coffee, white cup cream sleeve black lid",
+      "path": "app/assets/products/P017.png"
+    },
+    {
+      "id": "P018",
+      "subject": "caramel egg pudding in clear single serving cup with caramel top",
+      "path": "app/assets/products/P018.png"
+    },
+    {
+      "id": "P019",
+      "subject": "Taiwanese pineapple bun with golden crackled crust in clear bakery wrapper",
+      "path": "app/assets/products/P019.png"
+    },
+    {
+      "id": "P020",
+      "subject": "plain yogurt in white single serving cup with simple blue accent and peeled foil lid",
+      "path": "app/assets/products/P020.png"
+    }
+  ],
+  "extras": [
+    {
+      "id": "staff-avatar",
+      "transparent": true,
+      "prompt": "Use case: illustration-story. Standalone friendly Taiwanese male convenience store clerk portrait avatar, short black hair, cream skin, gentle smile, dark green vest over white shirt, head and shoulders centered, simple polished flat cartoon navy outlines matching cute store assistant UI. Circular pale mint backdrop inside image, outside circle genuinely transparent. No words, no logo. Square composition.",
+      "path": "app/assets/brand/staff-avatar.png"
+    },
+    {
+      "id": "chat-background",
+      "transparent": false,
+      "prompt": "Use case: stylized-concept. App conversation background plate, wide 3:2. Extremely soft pale mint aqua and ivory gradients with gently blurred warm yellow light in upper left, subtle diffuse bokeh, bright nearly white right half for chat cards. Match welcoming Taiwanese convenience store app UI. No objects, people, characters, lettering, icons, cards, devices or interface.",
+      "path": "app/assets/brand/chat-background.png"
+    },
+    {
+      "id": "shelf-demo",
+      "transparent": false,
+      "prompt": "Use case: photorealistic-natural. Demo photo for Taiwanese convenience store shelf recognition. Straight-on close photo of refrigerated food shelf with three horizontal shelves, individually clear wrapped triangular seaweed rice balls on top shelf, triangular sandwiches and clear salad bowls middle shelf, black rice bento trays bottom shelf. Natural bright ceiling fluorescent light, realistic packaging without readable labels. No UI, boxes, annotations, people, text overlays or watermark. Landscape 3:2, entire shelf visible.",
+      "path": "app/assets/scenes/shelf-demo.png"
+    },
+    {
+      "id": "app-icon",
+      "transparent": false,
+      "path": "app/assets/brand/app-icon.png",
+      "prompt": "Use case: illustration-story. Mobile app launcher icon, exactly square composition. Use reference Open Chan rainbow head mascot identity. Friendly smiling face and rainbow green red orange yellow arch only, centered within middle 60 percent safe area. Flat polished navy outline cartoon matching reference. Solid very pale mint background edge to edge, no rounded outer corners, no transparency. No body, no words, no letters, no border. Simple readable at tiny icon size."
+    },
+    {
+      "id": "mascot-home",
+      "path": "app/assets/brand/mascot-home.png",
+      "transparent": true,
+      "prompt": "Use case: background-extraction. Faithfully reconstruct only the exact waving Open Chan mascot from the homepage reference screenshot. Upper body cropped at waist, rainbow semicircle head green red yellow with narrow white stripes and navy outline, cream face tilted slightly, left eye winks, small navy right eye, tiny brown nose, smiling mouth, pink cheeks, raised waving hand with green sleeve and white store uniform. Include two orange accents and yellow sparkle. Simple flat cartoon, no UI, text, speech bubble, legs or shoes; tight transparent cutout."
+    },
+    {
+      "id": "staff-avatar-home",
+      "path": "app/assets/brand/staff-avatar-home.png",
+      "transparent": true,
+      "prompt": "Use case: background-extraction. Reconstruct only the staff avatar at top right of the reference screenshot: simple flat cartoon male clerk with neat short black hair, round cream face, tiny black eyes, small nose and smile, white shirt and dark blue vest, sky blue circle background. No anime eyes, realistic hair strokes, text or UI; outside circle transparent."
+    }
+  ],
+  "productPrompt": "Use case: product-mockup. Asset type: mobile app inventory product thumbnail. Create a single photorealistic Taiwanese convenience store product: {subject}. Clean studio product photography, centered 3/4 view, entire product visible with 12 percent padding, crisp recognizable silhouette at 36px display size, consistent soft lighting. Actual transparent background. No scene, no extra objects, no watermark, no readable labels, no text, no product ID. Square composition.",
+  "mode": "built-in imagegen",
+  "date": "2026-10-04"
+}

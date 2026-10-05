@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express';
 import { AppError } from '@/utils/app-error';
 import { conversationService } from './conversation.service';
-import type { MessageInput, StartInput, UpdateFieldsInput } from './conversation.schema';
+import type { ConfirmBody, MessageInput, ProposeBody, StartInput, UpdateFieldsInput } from './conversation.schema';
 
 // app.ts 已在本路由掛 requireAuth，req.user.sub 一定存在——這是權限計算的身分來源，
 // 不是可信輸入。x-user-id / demo-user 只是這條路由建好、requireAuth 尚未掛上時期的
@@ -37,6 +37,9 @@ export const conversationController = {
         reply: turn?.reply ?? null,
         suggestions: turn?.suggestions ?? [],
         ...(turn?.report ? { report: turn.report } : {}),
+        // 第一則訊息就可能查出表格或提議寫入：與 sendMessage 一樣帶回，否則前端看不到
+        ...(turn?.pendingAction ? { pendingAction: turn.pendingAction } : {}),
+        ...(turn?.blocks ? { blocks: turn.blocks } : {}),
       },
     });
   },
@@ -61,6 +64,43 @@ export const conversationController = {
     const tenantId = resolveTenantId(req);
     const userId = resolveUserId(req);
     const turn = await conversationService.submit(tenantId, userId, String(req.params.id));
+    res.status(200).json({ data: turn });
+  },
+
+  /** 確認卡片「確認」（不經 LLM）；body.input 為使用者修改後的參數（選填） */
+  async confirmAction(req: Request, res: Response): Promise<void> {
+    const { input } = req.body as ConfirmBody;
+    const turn = await conversationService.confirmAction(
+      resolveTenantId(req),
+      resolveUserId(req),
+      String(req.params.id),
+      String(req.params.actionId),
+      input,
+    );
+    res.status(200).json({ data: turn });
+  },
+
+  /** 不經 AI 直接提議寫入動作 */
+  async proposeAction(req: Request, res: Response): Promise<void> {
+    const { toolId, input } = req.body as ProposeBody;
+    const data = await conversationService.proposeAction(
+      resolveTenantId(req),
+      resolveUserId(req),
+      String(req.params.id),
+      toolId,
+      input,
+    );
+    res.status(200).json({ data });
+  },
+
+  /** 確認卡片「取消」 */
+  async cancelAction(req: Request, res: Response): Promise<void> {
+    const turn = conversationService.cancelAction(
+      resolveTenantId(req),
+      resolveUserId(req),
+      String(req.params.id),
+      String(req.params.actionId),
+    );
     res.status(200).json({ data: turn });
   },
 

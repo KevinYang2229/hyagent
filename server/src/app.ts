@@ -13,7 +13,9 @@ import { tenantRateLimit } from '@/middlewares/tenant-rate-limit';
 import { tenantMonthlyQuota } from '@/middlewares/tenant-quota';
 import { tenantService } from '@/modules/tenant/tenant.service';
 import { authRouter } from '@/modules/auth/auth.routes';
+import { mcpPublicRouter } from '@/modules/mcp/mcp.routes';
 import { conversationRouter } from '@/modules/conversation/conversation.routes';
+import { visionRouter } from '@/modules/vision/vision.routes';
 import { formRouter } from '@/modules/form/form.routes';
 import { knowledgeMemberRouter } from '@/modules/knowledge/knowledge.member.routes';
 import { notificationsRouter } from '@/modules/notifications/notifications.routes';
@@ -24,6 +26,8 @@ import { leaveRouter } from '@/modules/leave/leave.routes';
 import { adminRouter } from '@/modules/admin/admin.routes';
 import { widgetRouter } from '@/modules/widget/widget.routes';
 import { tenantSelfRouter } from '@/modules/tenant/tenant.routes';
+import { toolInvokeRouter } from '@/modules/tools/tool-invoke.routes';
+import { speechRouter } from '@/modules/speech/speech.routes';
 
 /**
  * MVP app：只掛對話與表單路由，不連 DB / Redis / Socket。
@@ -103,6 +107,8 @@ export function createApp(): Express {
   app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(openapiSpec as object));
 
   // 公開：登入 / 換發 token
+  // MCP 呼叫 JWT 的公鑰（MCP server 驗章用；公開、不需登入）
+  app.use(mcpPublicRouter);
   app.use('/api/auth', authRouter);
 
   // 受保護：需帶有效 access token 才能操作
@@ -110,6 +116,10 @@ export function createApp(): Express {
   // requireAuth 驗證使用者身分後 tenantRateLimit 依「租戶＋使用者」限流；
   // conversations 會觸發 LLM 計費，再加 tenantMonthlyQuota 月配額守門
   app.use('/api/conversations', resolveTenant, requireAuth, tenantRateLimit, tenantMonthlyQuota, conversationRouter);
+  // 影像辨識（貨架／優惠券）：呼叫 LLM 計費，與對話同樣套月配額
+  app.use('/api/vision', resolveTenant, requireAuth, tenantRateLimit, tenantMonthlyQuota, visionRouter);
+  app.use('/api/tools', resolveTenant, requireAuth, tenantRateLimit, toolInvokeRouter);
+  app.use('/api/speech', resolveTenant, requireAuth, tenantRateLimit, tenantMonthlyQuota, speechRouter);
   app.use('/api/forms', resolveTenant, requireAuth, tenantRateLimit, formRouter);
 
   // 報告：狀態查詢與下載。不掛 tenantMonthlyQuota——那是對話輪次額度，

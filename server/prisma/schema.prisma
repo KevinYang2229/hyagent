@@ -169,6 +169,17 @@ model WebhookRow {
   @@map("webhooks")
 }
 
+model McpServerRow {
+  id            String   @id
+  ownerTenantId String?  @map("owner_tenant_id")
+  /// 整個 McpServerConfig（url / description / keywords / toolOverrides…）
+  data          Json
+  createdAt     DateTime @map("created_at")
+
+  @@index([ownerTenantId])
+  @@map("mcp_servers")
+}
+
 model ApiKeyRow {
   /// 完整金鑰字串（pk_/sk_）。MVP 沿用明文（與檔案 store 相同）；改存雜湊為後續事項
   key       String    @id

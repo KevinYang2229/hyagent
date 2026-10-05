@@ -1,6 +1,7 @@
-import type { ReportRef, SessionStatus, SubmissionInfo } from '@hyagent/shared';
+import type { DisplayBlock, PendingActionView, ReportRef, SessionStatus, SubmissionInfo } from '@hyagent/shared';
 import type { LLMMessage } from '@/lib/llm/types';
 import type { FormValues } from '@/modules/form/form.types';
+import type { PendingAction } from './pending-action';
 
 export type { SessionStatus, SubmissionInfo };
 
@@ -19,8 +20,8 @@ export interface Session {
   /** 給 LLM 的逐字稿（含 tool_use / tool_result 區塊） */
   messages: LLMMessage[];
   submission?: SubmissionInfo;
-  /** Agent 待使用者確認的寄信草稿；確認後由確認閘以 email.send 送出，非確認的 agent 輪一律清空。 */
-  pendingEmail?: { to: string; subject: string; html: string };
+  /** Agent 提議、待使用者確認的寫入動作；確認後由後端執行，非確認的下一輪、過期或新提議即失效。 */
+  pendingAction?: PendingAction;
   createdAt: string;
   updatedAt?: string;
 }
@@ -34,4 +35,8 @@ export interface TurnResult {
   suggestions: string[];
   /** 本回合啟動的報告（僅 report 服務會帶） */
   report?: ReportRef;
+  /** 本回合產生的待確認寫入動作（前端畫確認卡片） */
+  pendingAction?: PendingActionView;
+  /** 本回合的畫面區塊（表格等）；不寫入對話歷史 */
+  blocks?: DisplayBlock[];
 }
