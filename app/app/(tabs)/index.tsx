@@ -5,6 +5,7 @@ import { formatMonthDay, summaryCards, type SummaryCard } from '@/home/summaryCa
 import { useTodaySummary } from '@/home/useTodaySummary';
 import { useIsWide } from '@/layout/useIsWide';
 import { chatRoute } from '@/navigation/chatRoute';
+import { errorMessage } from '@/api/errors';
 
 export default function Home() {
   const wide = useIsWide();
@@ -19,6 +20,7 @@ export default function Home() {
     cards={summary.data ? summaryCards(summary.data) : undefined}
     loading={summary.isLoading}
     error={summary.isError}
+    errorMessage={summary.isError ? errorMessage(summary.error) : undefined}
     dateLabel={formatMonthDay(now)}
     hour={now.getHours()}
     onRetry={() => void summary.refetch()}

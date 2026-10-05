@@ -12,11 +12,12 @@ const TONE: Record<SummaryCard['tone'], { fg: string; bg: string; icon: string }
 };
 
 export function TodayPanel({
-  cards, loading, error, onRetry, onPress, onAll, dateLabel, scale = 1,
+  cards, loading, error, errorMessage, onRetry, onPress, onAll, dateLabel, scale = 1,
 }: {
   cards?: SummaryCard[];
   loading: boolean;
   error: boolean;
+  errorMessage?: string;
   onRetry(): void;
   onPress(card: SummaryCard): void;
   dateLabel: string;
@@ -35,6 +36,7 @@ export function TodayPanel({
       {error && !cards ? (
         <View style={styles.error}>
           <Text style={styles.errorText}>暫時無法取得</Text>
+          {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
           <Pressable onPress={onRetry} accessibilityLabel="重試" accessibilityRole="button" style={styles.retry}>
             <Text style={{ color: colors.primaryDark, fontWeight: '600' }}>重試</Text>
           </Pressable>

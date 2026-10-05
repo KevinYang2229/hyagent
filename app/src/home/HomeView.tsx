@@ -13,6 +13,7 @@ export interface HomeViewProps {
   cards?: SummaryCard[];
   loading: boolean;
   error: boolean;
+  errorMessage?: string;
   dateLabel: string;
   hour: number;
   onRetry(): void;
@@ -55,7 +56,7 @@ export function HomeView(props: HomeViewProps) {
       <Entry tone="text" icon="keypad" title="輸入文字" sub="用打字詢問" scale={scale} wide={wide} onPress={props.onText} />
     </View>
   );
-  const today = <TodayPanel cards={props.cards} loading={props.loading} error={props.error} onRetry={props.onRetry} onPress={props.onSummary} onAll={props.onAll} dateLabel={props.dateLabel} scale={scale} />;
+  const today = <TodayPanel cards={props.cards} loading={props.loading} error={props.error} errorMessage={props.errorMessage} onRetry={props.onRetry} onPress={props.onSummary} onAll={props.onAll} dateLabel={props.dateLabel} scale={scale} />;
 
   return (
     <View style={styles.viewport} onLayout={(event) => setAvailableHeight(event.nativeEvent.layout.height)}>
