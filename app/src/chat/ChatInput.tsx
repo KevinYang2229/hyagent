@@ -22,6 +22,7 @@ export function ChatInput({
   editRequest?: { text: string; nonce: number };
 }) {
   const [text, setText] = useState('');
+  const [focused, setFocused] = useState(false);
   const localInputRef = useRef<TextInput>(null);
   const editorRef = inputRef ?? localInputRef;
   const latestText = useRef('');
@@ -63,7 +64,7 @@ export function ChatInput({
   }
 
   return (
-    <View style={styles.bar}>
+    <View style={[styles.bar, focused && styles.barFocused]}>
       {micAvailable ? (
         <Pressable style={styles.mic} onPress={onMicPress} accessibilityLabel="開始說話" accessibilityRole="button">
           <Ionicons name="mic" size={22} color="#fff" />
@@ -78,6 +79,8 @@ export function ChatInput({
         // 由原生輸入框保留注音組字，避免每次更新 value 覆蓋尚未選字的內容。
         defaultValue={editor.initial}
         onChangeText={(next) => { revision.current += 1; latestText.current = next; setText(next); }}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
         multiline
         submitBehavior="newline"
         returnKeyType="default"
@@ -95,6 +98,7 @@ export function ChatInput({
 
 const styles = StyleSheet.create({
   bar: { flexDirection: 'row', alignItems: 'center', gap: space.sm, backgroundColor: colors.surface, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, padding: 6 },
+  barFocused: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
   mic: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
   input: { flex: 1, minWidth: 0, maxHeight: 120, fontSize: font.md, color: colors.text, paddingHorizontal: space.sm, paddingVertical: 10 },
   send: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },

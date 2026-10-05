@@ -7,6 +7,8 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import { Mascot } from '@/brand/Mascot';
 import { colors, font, space } from '@/theme/tokens';
 
+export type VoiceInteraction = 'conversation' | 'dictation';
+
 export type AssistantMode = 'idle' | 'recording' | 'transcribing';
 
 export const VOICE_EXAMPLES = ['「查詢御飯糰的庫存」', '「建立補貨單」', '「今天有哪些即期品？」', '「咖啡機紅燈怎麼處理？」'];
@@ -19,6 +21,8 @@ const TITLE: Record<AssistantMode, string> = {
 
 export function AssistantPanel({
   mode,
+  interaction,
+  onInteractionChange,
   metering,
   hint,
   compact,
@@ -29,6 +33,8 @@ export function AssistantPanel({
   onCamera,
 }: {
   mode: AssistantMode;
+  interaction: VoiceInteraction;
+  onInteractionChange(value: VoiceInteraction): void;
   metering?: number;
   hint?: string | null;
   compact: boolean;
@@ -38,10 +44,17 @@ export function AssistantPanel({
   onKeyboard(): void;
   onCamera(): void;
 }) {
+  const stopLabel = interaction === 'dictation' ? '停止並轉文字' : '停止並送出';
+  const modeSwitch = <View style={styles.modeSwitch}>
+    {(['conversation', 'dictation'] as const).map((value) => <Pressable key={value} accessibilityRole="button" accessibilityState={{ selected: interaction === value, disabled: mode !== 'idle' }} disabled={mode !== 'idle'} onPress={() => onInteractionChange(value)} style={[styles.modeButton, interaction === value && styles.modeSelected, mode !== 'idle' && { opacity: 0.6 }]}>
+      <Text style={[styles.modeText, interaction === value && { color: colors.primaryDark }]}>{value === 'conversation' ? '直接送出' : '編輯後送出'}</Text>
+    </Pressable>)}
+  </View>;
   const title = micAvailable ? TITLE[mode] : '用打字或拍照問我';
+  const description = interaction === 'dictation' ? '辨識後顯示文字，可修改再手動送出' : '辨識完成後自動送出';
   const center =
     mode === 'recording' ? (
-      <RoundButton label="停止並送出" color={colors.danger} icon="stop" onPress={onStopPress} />
+      <RoundButton label={stopLabel} color={colors.danger} icon="stop" onPress={onStopPress} />
     ) : mode === 'transcribing' ? (
       <View style={[styles.round, { backgroundColor: colors.primarySoft }]}>
         <ActivityIndicator color={colors.primary} />
@@ -52,27 +65,33 @@ export function AssistantPanel({
 
   if (compact) {
     return (
-      <View style={styles.compact}>
+      <View>
+        {modeSwitch}
+        <View style={styles.compact}>
         <Mascot pose={mode === 'recording' ? 'mic' : 'idle'} size={44} />
         <View style={{ flex: 1 }}>
           <Text style={styles.compactTitle}>{title}</Text>
+          {mode === 'idle' && micAvailable ? <Text style={styles.example}>{description}</Text> : null}
           {mode === 'recording' ? <VoiceLevel metering={metering} /> : null}
-          {mode === 'recording' ? <Text style={styles.example}>說完後按「停止並送出」</Text> : null}
+          {mode === 'recording' ? <Text style={styles.example}>說完後按「{stopLabel}」</Text> : null}
           {hint ? <Text style={styles.hint}>{hint}</Text> : null}
         </View>
         <SmallButton label="拍照" icon="camera-outline" onPress={onCamera} />
         {center}
+        </View>
       </View>
     );
   }
 
   return (
     <View style={styles.panel}>
+      {modeSwitch}
       <Mascot pose={mode === 'recording' ? 'mic' : 'idle'} size={180} />
       <Text style={styles.title}>{title}</Text>
       {mode === 'recording' ? <VoiceLevel metering={metering} /> : null}
-      {mode === 'recording' ? <Text style={styles.example}>說完後按「停止並送出」，即可辨識並詢問 AI。</Text> : null}
+      {mode === 'recording' ? <Text style={styles.example}>說完後按「{stopLabel}」，{interaction === 'dictation' ? '辨識後可修改文字再送出。' : '即可辨識並詢問 AI。'}</Text> : null}
       {hint ? <Text style={styles.hint}>{hint}</Text> : null}
+      <Text style={styles.example}>{description}</Text>
       <View style={styles.examples}>
         <Text style={styles.examplesLabel}>你可以說：</Text>
         {VOICE_EXAMPLES.map((e) => (
@@ -80,7 +99,7 @@ export function AssistantPanel({
         ))}
       </View>
       <View style={styles.buttons}>
-        <SmallButton label="鍵盤輸入" icon="keypad-outline" onPress={onKeyboard} />
+        <SmallButton label="前往輸入框" icon="keypad-outline" onPress={onKeyboard} />
         {center}
         <SmallButton label="拍照" icon="camera-outline" onPress={onCamera} />
       </View>
@@ -123,6 +142,10 @@ function SmallButton({ label, icon, onPress }: { label: string; icon: 'keypad-ou
 }
 
 const styles = StyleSheet.create({
+  modeSwitch: { flexDirection: 'row', alignSelf: 'center', backgroundColor: colors.surface, borderRadius: 24, padding: 4, gap: 4 },
+  modeButton: { paddingHorizontal: space.md, paddingVertical: 10, borderRadius: 20 },
+  modeSelected: { backgroundColor: colors.primarySoft },
+  modeText: { fontSize: font.sm, fontWeight: '600', color: colors.textMuted },
   panel: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: space.xl, gap: space.md },
   title: { fontSize: font.xl, fontWeight: '700', color: colors.text },
   hint: { fontSize: font.sm, color: colors.danger },

@@ -5,7 +5,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FlatList, ImageBackground, KeyboardAvoidingView, Linking, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useApi } from '@/auth/AuthProvider';
-import { AssistantPanel } from '@/chat/AssistantPanel';
+import { AssistantPanel, type VoiceInteraction } from '@/chat/AssistantPanel';
 import { ChatInput } from '@/chat/ChatInput';
 import { useChat } from '@/chat/ChatProvider';
 import { MessageBubble } from '@/chat/MessageBubble';
@@ -47,12 +47,21 @@ export default function ChatScreen() {
 
   useAutoAsk(params.q, params.nonce, chat.send);
 
+  const [voiceInteraction, setVoiceInteraction] = useState<VoiceInteraction>('conversation');
+  const recordingInteraction = useRef<VoiceInteraction>('conversation');
+  const voiceStarting = useRef(false);
   const api = useApi();
   const recorder = useExpoRecorder();
-  const voice = useVoiceInput({ recorder, transcribe: api.transcribe, onText: (t) => void chat.send(t) });
-  const startVoice = () => {
+  const voice = useVoiceInput({ recorder, transcribe: api.transcribe, onText: (t) => {
+    if (recordingInteraction.current === 'dictation') editMessage(t);
+    else void chat.send(t);
+  } });
+  const startVoice = async (interaction = voiceInteraction) => {
+    if (voiceStarting.current || voice.state.mode !== 'idle') return;
+    voiceStarting.current = true;
+    recordingInteraction.current = interaction;
     stopSpeaking();
-    void voice.start();
+    try { await voice.start(); } finally { voiceStarting.current = false; }
   };
   // 錄音中不朗讀：視同關閉（會停止朗讀，且錄音期間到的回覆不補唸）
   useSpeakReplies(messages, speakEnabled && voice.state.mode !== 'recording');
@@ -62,7 +71,8 @@ export default function ChatScreen() {
   useEffect(() => {
     if (params.voice === '1' && params.nonce && voiceNonce.current !== params.nonce) {
       voiceNonce.current = params.nonce;
-      startVoice();
+      setVoiceInteraction('conversation');
+      void startVoice('conversation');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.voice, params.nonce]);
@@ -79,11 +89,13 @@ export default function ChatScreen() {
     <View style={{ flex: wide ? 1 : undefined }}>
       <AssistantPanel
         mode={voice.state.mode}
+        interaction={voiceInteraction}
+        onInteractionChange={setVoiceInteraction}
         metering={recorder.metering}
         hint={hint}
         compact={!wide}
         micAvailable={voice.available}
-        onMicPress={startVoice}
+        onMicPress={() => void startVoice()}
         onStopPress={() => void voice.stop()}
         onKeyboard={() => inputRef.current?.focus()}
         onCamera={openCamera}
@@ -143,8 +155,7 @@ export default function ChatScreen() {
         ) : null}
         <ChatInput
           onSend={chat.send}
-          micAvailable={voice.available && voice.state.mode === 'idle'}
-          onMicPress={startVoice}
+          micAvailable={false}
           disabled={sending}
           onCancel={chat.cancelSend}
           inputRef={inputRef}

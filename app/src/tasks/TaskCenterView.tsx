@@ -49,7 +49,7 @@ export function TaskCenterView(props: TaskCenterViewProps) {
     <View style={[styles.hero, wide ? { height: 238 * scale, flexDirection: 'row', paddingHorizontal: 28 * scale, gap: 18 * scale } : { padding: 16, gap: 14, alignItems: 'stretch' }]}>
       <View style={[styles.welcome, wide ? { flex: 1, height: 238 * scale, gap: 12 * scale } : { height: 220, gap: 4 }]}>
         <View style={[styles.heroArt, { width: (wide ? 290 : 150) * scale, height: (wide ? 238 : 220) * scale }]}>
-          <Image source={require('../../assets/brand/mascot-tasks.png')} resizeMode="contain" accessibilityLabel="Open醬拿著工作板陪你完成任務" style={{ position: 'absolute', width: (wide ? 390 : 250) * scale, height: (wide ? 300 : 260) * scale, left: (wide ? -52 : -54) * scale, bottom: (wide ? -42 : -22) * scale }} />
+          <Image source={require('../../assets/brand/mascot-tasks.png')} resizeMode="contain" accessibilityLabel="Open醬拿著工作板陪你完成任務" style={{ position: 'absolute', width: (wide ? 390 : 250) * scale, height: (wide ? 300 : 260) * scale, transform: [{ scaleX: -1 }], left: (wide ? -52 : -54) * scale, bottom: (wide ? -42 : -22) * scale }} />
         </View>
         <View style={[styles.intro, { flex: 1, gap: wide ? 14 : 10 }]}>
           <Text style={[styles.heading, { fontSize: wide ? 38 * scale : 27, paddingHorizontal: wide ? 14 : 10, paddingVertical: wide ? 8 : 6 }]}>任務中心</Text>

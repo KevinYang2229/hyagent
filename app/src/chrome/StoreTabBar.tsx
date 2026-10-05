@@ -18,7 +18,8 @@ export function StoreTabBar({ active, badge, onPress, onLongPress }: { active: s
   const insets = useSafeAreaInsets();
   const wide = useWindowDimensions().width >= 900;
   return (
-    <View style={[styles.bar, { paddingBottom: Math.max(insets.bottom, 8), height: 72 + Math.max(insets.bottom - 8, 0) }]}>
+    <View style={[styles.bar, { paddingBottom: Math.max(insets.bottom - 8, 0) }]}>
+      <View style={styles.buttons}>
       {TABS.map((tab) => {
         const selected = active === tab.name;
         const color = selected ? '#00866B' : '#465875';
@@ -31,6 +32,7 @@ export function StoreTabBar({ active, badge, onPress, onLongPress }: { active: s
           </View>
         </Pressable>;
       })}
+      </View>
     </View>
   );
 }
@@ -48,7 +50,8 @@ export function NavigationTabBar({ state, navigation, badge = 0 }: BottomTabBarP
 }
 
 const styles = StyleSheet.create({
-  bar: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.98)', paddingTop: 8, borderTopWidth: 1, borderTopColor: '#EFF8F5' },
+  bar: { backgroundColor: 'rgba(255,255,255,0.98)', borderTopWidth: 1, borderTopColor: '#EFF8F5' },
+  buttons: { height: 72, flexDirection: 'row', alignItems: 'stretch', paddingVertical: 8 },
   slot: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   pill: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, paddingHorizontal: 28, height: 50, borderRadius: 28 },
   selected: { backgroundColor: '#DAF7EF' },
