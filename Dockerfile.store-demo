@@ -1,0 +1,20 @@
+FROM mirror.gcr.io/library/node:20-slim
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+COPY mcp/kit/package.json ./mcp/kit/
+COPY mcp/store-demo/package.json ./mcp/store-demo/
+
+RUN npm ci --include=dev \
+    --workspace=mcp/kit \
+    --workspace=mcp/store-demo \
+    --include-workspace-root=false
+
+COPY mcp/kit ./mcp/kit
+COPY mcp/store-demo ./mcp/store-demo
+
+ENV NODE_ENV=production
+ENV PORT=4200
+EXPOSE 4200
+
+CMD ["npm", "start", "-w", "mcp/store-demo"]
