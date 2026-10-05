@@ -1,5 +1,10 @@
 # 品牌素材
 
+`mascot-tasks.png`：任務中心拿工作板的半身角色；2026-10-05 使用內建 imagegen，依附件 `截圖 2026-10-05 凌晨1.08.05.png` 製作，存放於本資料夾。
+
+最終提示：
+> Use case: illustration-story. Reference screenshot: reproduce ONLY the task-center mascot in the upper center. Transparent PNG illustration for store app. Same round cream face, rainbow arch green outer band then red/yellow separated by white navy outlines, viewer left eye winking and right eye open, happy open mouth and blush. White store uniform with small 7 logo and green trim, compact body. Viewer LEFT hand holds an upright clipboard with pale paper, viewer RIGHT arm resting bent at waist. Half-body waist-up, upright centered horizontally, flat clean 2D illustration faithful to screenshot proportions. Do not include bubbles, text, UI, scenery, sparkles, or background. Tight even transparent margins, no cut off head or clipboard.
+
 依使用者提供的門市 App 截圖，以內建 imagegen 重繪（2026-10-04）。這些是參考稿重繪素材，並非官方原始圖檔。原占位圖保留，新版使用 `-v2` 檔名。
 
 | 檔名 | 內容 | 使用位置 |

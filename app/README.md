@@ -56,3 +56,11 @@ npx expo start --web
 ```
 
 開啟 Metro 網址的 `/_home-preview.html`。完成後移除 `public/_home-preview.html`，避免納入網頁匯出。最新平板、手機比較圖放在 `docs/home-tablet-preview.png` 與 `docs/home-phone-preview.png`。比較圖使用設計稿範例日期與資料；正式 App 使用即時日期及後端數量。
+
+## 任務中心
+
+任務頁整合門市今日摘要與補貨單，列出缺貨、即期、設備事項並提供狀態篩選。待處理事項帶入 AI 對話，已送出的補貨單可查看原有明細。移除頂部四張分類卡，將版面空間留給任務清單。
+
+今日進度以今日已送出補貨單 /（今日警示數量 + 今日已送出補貨單）計算，不代表完成率。後端尚未提供任務完成狀態，因此「已完成」顯示 —；清單篩選數量以後端提供的可列出事項計算，可能不同於摘要總數。
+
+使用 `scripts/preview-tasks.tsx` 的固定資料預覽：將 `scripts/preview-tasks.html` 複製至 `public/_tasks-preview.html`，執行 `npx expo start --web` 後開啟 `/_tasks-preview.html`，完成後移除該 public 檔案。預覽截圖：`docs/tasks-tablet-preview.png`、`docs/tasks-phone-preview.png`、`docs/tasks-phone-list-preview.png`。

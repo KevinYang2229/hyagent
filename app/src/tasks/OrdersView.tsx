@@ -74,7 +74,7 @@ export function OrdersView({
   );
 }
 
-function OrderDetail({ order, onClose }: { order: ReplenishmentOrder; onClose(): void }) {
+export function OrderDetail({ order, onClose }: { order: ReplenishmentOrder; onClose(): void }) {
   return (
     <View style={{ gap: space.md }}>
       <View style={styles.cardHead}>

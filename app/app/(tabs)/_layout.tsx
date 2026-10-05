@@ -14,8 +14,9 @@ const icon = (name: IconName) => ({ color, size }: { color: ColorValue; size: nu
 export default function TabsLayout() {
   const { count } = useTaskBadge();
   const home = usePathname() === "/";
+  const taskCenter = usePathname() === '/tasks';
   return (
-    <HomeBackdrop fade={home}>
+    <HomeBackdrop fade={home || taskCenter}>
       <TopBar home={home} />
       <Tabs
         tabBar={(props) => <NavigationTabBar {...props} badge={count} />}

@@ -1,29 +1,28 @@
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useCallback } from 'react';
-import { Text, View } from 'react-native';
-import { useIsWide } from '@/layout/useIsWide';
-import { OrdersView } from '@/tasks/OrdersView';
+import { TaskCenterView } from '@/tasks/TaskCenterView';
+import { useTodaySummary } from '@/home/useTodaySummary';
+import { formatMonthDay } from '@/home/summaryCards';
+import { chatRoute } from '@/navigation/chatRoute';
 import { useTaskBadge } from '@/tasks/TaskBadge';
 import { useReplenishments } from '@/tasks/useReplenishments';
-import { colors, font, space } from '@/theme/tokens';
 
 export default function Tasks() {
-  const wide = useIsWide();
+  const summary = useTodaySummary();
   const q = useReplenishments();
   const { clear } = useTaskBadge();
   const { refetch } = q;
+  const { refetch: refetchSummary } = summary;
 
   useFocusEffect(
     useCallback(() => {
       clear();
       void refetch();
-    }, [clear, refetch]),
+      void refetchSummary();
+    }, [clear, refetch, refetchSummary]),
   );
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <Text style={{ fontSize: font.xl, fontWeight: '800', color: colors.text, paddingHorizontal: space.lg, paddingTop: space.lg }}>我的補貨單</Text>
-      <OrdersView orders={q.data} loading={q.isLoading} error={q.isError} onRetry={() => void q.refetch()} wide={wide} />
-    </View>
+    <TaskCenterView summary={summary.data} orders={q.data} summaryLoading={summary.isLoading} ordersLoading={q.isLoading} summaryError={summary.isError} ordersError={q.isError} dateLabel={formatMonthDay(new Date())} onRetry={() => { void q.refetch(); void summary.refetch(); }} onAsk={(question) => router.navigate(chatRoute({ q: question }))} />
   );
 }
