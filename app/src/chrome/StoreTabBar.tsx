@@ -11,7 +11,7 @@ const TABS = [
   { name: 'index', label: '首頁', icon: 'home-outline', activeIcon: 'home' },
   { name: 'chat', label: 'AI 對話', icon: 'chatbubble-ellipses-outline', activeIcon: 'chatbubble-ellipses' },
   { name: 'tasks', label: '任務', icon: 'clipboard-outline', activeIcon: 'clipboard' },
-  { name: 'me', label: '我的', icon: 'person-outline', activeIcon: 'person' },
+  { name: 'me', label: '設定', icon: 'settings-outline', activeIcon: 'settings' },
 ] as const;
 
 export function StoreTabBar({ active, badge, onPress, onLongPress }: { active: string; badge: number; onPress(name: string): void; onLongPress?(name: string): void }) {

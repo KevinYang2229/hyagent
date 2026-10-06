@@ -32,7 +32,7 @@ export default function TabsLayout() {
         <Tabs.Screen name="index" options={{ title: '首頁', tabBarIcon: icon('home-outline') }} />
         <Tabs.Screen name="chat" options={{ title: 'AI 對話', tabBarIcon: icon('chatbubble-ellipses-outline') }} />
         <Tabs.Screen name="tasks" options={{ title: '任務', tabBarIcon: icon('clipboard-outline'), tabBarBadge: count > 0 ? count : undefined }} />
-        <Tabs.Screen name="me" options={{ title: '我的', tabBarIcon: icon('person-outline') }} />
+        <Tabs.Screen name="me" options={{ title: '設定', tabBarIcon: icon('settings-outline') }} />
       </Tabs>
       <ConfirmModalHost />
     </HomeBackdrop>
