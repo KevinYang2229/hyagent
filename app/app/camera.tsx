@@ -3,7 +3,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { errorMessage } from '@/api/errors';
@@ -13,8 +13,8 @@ import { Mascot } from '@/brand/Mascot';
 import { colors, font, radius, space } from '@/theme/tokens';
 import { canInteract } from '@/vision/cameraGuard';
 import { fromCouponCheck, fromVision, type CouponCheck } from '@/vision/coupon';
+import { goToResult } from '@/vision/goToResult';
 import { prepareImage } from '@/vision/prepareImage';
-
 import { createScanGate } from '@/vision/scanGate';
 import type { Photo } from '@/vision/types';
 import { visionErrorHint } from '@/vision/visionErrors';
@@ -38,6 +38,13 @@ export default function Camera() {
   const vision = useVisionResults();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 辨識中使用者按了關閉：之後回來的結果不寫入、不導頁
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+  const isMounted = () => mounted.current;
 
   /** 拍照／選圖共用：同步取得鎖後才 await，連點只會處理一次。 */
   async function capture(getPhoto: () => Promise<Photo | null>) {
@@ -51,19 +58,13 @@ export default function Camera() {
       if (!src) return;
       const photo = await prepareImage(src);
       const res = await api.analyzeImage(kind, { uri: photo.uri, name: 'photo.jpg', type: 'image/jpeg' });
-      if (res.mode === 'shelf') {
-        vision.setShelf({ photo, result: res });
-        navigated = true;
-        router.replace('/chat/shelf-result');
-      } else {
-        vision.setCoupon({ photo, view: fromVision(res) });
-        navigated = true;
-        router.replace('/chat/coupon-result');
-      }
+      navigated = res.mode === 'shelf'
+        ? goToResult('/chat/shelf-result', isMounted, () => vision.setShelf({ photo, result: res }))
+        : goToResult('/chat/coupon-result', isMounted, () => vision.setCoupon({ photo, view: fromVision(res) }));
     } catch (e) {
-      setError(visionErrorHint(e, kind));
+      if (isMounted()) setError(visionErrorHint(e, kind));
     } finally {
-      setBusy(false);
+      if (isMounted()) setBusy(false);
       if (!navigated) capture_.release();
     }
   }
@@ -71,7 +72,7 @@ export default function Camera() {
   function shoot() {
     if (!canInteract(busy)) return;
     void capture(async () => {
-      const pic = await cam.current?.takePictureAsync({ quality: 0.8 });
+      const pic = await cam.current?.takePictureAsync({ quality: 1 });
       return pic ? { uri: pic.uri, width: pic.width, height: pic.height } : null;
     });
   }
@@ -79,7 +80,7 @@ export default function Camera() {
   function pick() {
     if (!canInteract(busy)) return;
     void capture(async () => {
-      const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8 });
+      const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 1 });
       const a = !r.canceled ? r.assets[0] : undefined;
       return a ? { uri: a.uri, width: a.width, height: a.height } : null;
     });
@@ -91,13 +92,13 @@ export default function Camera() {
     setError(null);
     try {
       const { result } = await api.invokeTool<CouponCheck>(storeTool('coupon_check'), { code: data });
-      vision.setCoupon({ view: fromCouponCheck(result) });
-      router.replace('/chat/coupon-result');
+      goToResult('/chat/coupon-result', isMounted, () => vision.setCoupon({ view: fromCouponCheck(result) }));
     } catch (e) {
+      if (!isMounted()) return;
       setError(errorMessage(e));
       gate.release({ cooldownMs: 2500 });
     } finally {
-      setBusy(false);
+      if (isMounted()) setBusy(false);
     }
   }
 
