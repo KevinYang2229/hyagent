@@ -2,7 +2,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
-import { colors, font, radius, space } from '@/theme/tokens';
+import { chatFont, colors, radius, space } from '@/theme/tokens';
 
 export function ChatInput({
   onSend,
@@ -100,6 +100,6 @@ const styles = StyleSheet.create({
   bar: { flexDirection: 'row', alignItems: 'center', gap: space.sm, backgroundColor: colors.surface, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, padding: 6 },
   barFocused: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
   mic: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
-  input: { flex: 1, minWidth: 0, maxHeight: 120, fontSize: font.md, color: colors.text, paddingHorizontal: space.sm, paddingVertical: 10 },
+  input: { flex: 1, minWidth: 0, maxHeight: 120, fontSize: chatFont.body, lineHeight: chatFont.lineHeight, fontWeight: '500', color: colors.text, paddingHorizontal: space.sm, paddingVertical: 10 },
   send: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
 });

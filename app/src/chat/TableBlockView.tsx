@@ -1,7 +1,7 @@
 /** 回覆中的表格（資料來自工具，不經 AI 轉述）；欄位多時可左右滑。 */
 import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { DisplayBlock } from '@hyagent/shared';
-import { colors, font, radius, space, toneColors } from '@/theme/tokens';
+import { chatFont, colors, radius, space, toneColors } from '@/theme/tokens';
 import { productImageSource } from '@/brand/productImages';
 import { cellTone, formatCell, imageUri } from './tableFormat';
 
@@ -46,15 +46,15 @@ export function TableBlockView({ block }: { block: DisplayBlock }) {
 
 const styles = StyleSheet.create({
   card: { marginTop: space.sm, backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, paddingVertical: space.sm },
-  title: { fontSize: font.md, fontWeight: '700', color: colors.text, paddingHorizontal: space.md, paddingBottom: space.sm },
+  title: { fontSize: chatFont.body, fontWeight: '700', color: colors.text, paddingHorizontal: space.md, paddingBottom: space.sm },
   row: { flexDirection: 'row', alignItems: 'center' },
   head: { backgroundColor: colors.bg },
   divider: { borderTopWidth: 1, borderTopColor: colors.border },
   cell: { minWidth: MIN_COL, paddingHorizontal: space.md, paddingVertical: 10 },
   first: { minWidth: 168 },
   cellRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  headText: { fontSize: font.sm, color: colors.textMuted },
-  value: { fontSize: font.md, color: colors.text },
-  pill: { fontSize: font.sm, fontWeight: '700', paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.sm, overflow: 'hidden' },
+  headText: { fontSize: chatFont.label, fontWeight: '600', color: colors.textMuted },
+  value: { fontSize: chatFont.body, fontWeight: '500', color: colors.text },
+  pill: { fontSize: chatFont.label, fontWeight: '700', paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.sm, overflow: 'hidden' },
   thumb: { width: 36, height: 36, borderRadius: 8, backgroundColor: colors.bg },
 });

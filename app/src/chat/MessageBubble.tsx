@@ -3,7 +3,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Mascot } from '@/brand/Mascot';
-import { colors, font, radius, shadow, space } from '@/theme/tokens';
+import { chatFont, colors, radius, shadow, space } from '@/theme/tokens';
 import { RichText } from './RichText';
 import { TableBlockView } from './TableBlockView';
 import type { ChatMessage } from './types';
@@ -97,15 +97,15 @@ const styles = StyleSheet.create({
   meta: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', justifyContent: 'flex-start', gap: space.sm, marginTop: -6, marginLeft: 8 },
   actions: { flexDirection: 'row' },
   action: { width: 28, minHeight: 44, justifyContent: 'center', alignItems: 'center' },
-  system: { alignSelf: 'center', fontSize: font.sm, color: colors.textMuted, marginVertical: space.sm, textAlign: 'center' },
+  system: { alignSelf: 'center', fontSize: chatFont.label, fontWeight: '500', color: colors.textMuted, marginVertical: space.sm, textAlign: 'center' },
   userWrap: { alignItems: 'flex-end', marginVertical: space.sm },
   userMessage: { maxWidth: '80%' },
   userBubble: { backgroundColor: colors.primarySoft, borderRadius: radius.lg, borderBottomRightRadius: 4, paddingHorizontal: space.lg, paddingVertical: space.md },
-  userText: { fontSize: font.md, color: colors.text },
+  userText: { fontSize: chatFont.body, lineHeight: chatFont.lineHeight, fontWeight: '500', color: colors.text },
   agentWrap: { flexDirection: 'row', gap: space.sm, marginVertical: space.sm, alignItems: 'flex-start' },
   agentBubble: { backgroundColor: colors.surface, borderRadius: radius.lg, borderTopLeftRadius: 4, padding: space.md, ...shadow.card },
-  time: { fontSize: 11, color: colors.textMuted },
+  time: { fontSize: chatFont.caption, color: colors.textMuted },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm, marginTop: space.sm },
   chip: { borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, borderRadius: radius.pill, paddingHorizontal: space.md, paddingVertical: 6 },
-  chipText: { fontSize: font.sm, color: colors.text },
+  chipText: { fontSize: chatFont.label, fontWeight: '500', color: colors.text },
 });

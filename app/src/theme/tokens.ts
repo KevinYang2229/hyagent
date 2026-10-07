@@ -25,6 +25,9 @@ export const radius = { sm: 8, md: 12, lg: 16, xl: 24, pill: 999 } as const;
 export const space = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 } as const;
 export const font = { sm: 13, md: 15, lg: 17, xl: 20, xxl: 26 } as const;
 
+// AI 對話與操作區共用字級，集中調整以維持閱讀層級一致。
+export const chatFont = { body: 18, lineHeight: 28, label: 16, caption: 13 } as const;
+
 export const shadow = {
   card: { shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 3 },
 } as const;

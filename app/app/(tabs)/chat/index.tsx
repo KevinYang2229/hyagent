@@ -13,7 +13,7 @@ import { isNearBottom, shouldAutoScroll } from '@/chat/autoScroll';
 import { useAutoAsk } from '@/chat/useAutoAsk';
 import { useIsWide } from '@/layout/useIsWide';
 import { useSettings } from '@/settings/SettingsProvider';
-import { colors, font, radius, shadow, space } from '@/theme/tokens';
+import { chatFont, colors, font, radius, shadow, space } from '@/theme/tokens';
 import { useExpoRecorder } from '@/voice/expoRecorder';
 import { stopSpeaking } from '@/voice/speech';
 import { useSpeakReplies } from '@/voice/useSpeakReplies';
@@ -198,10 +198,10 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: space.lg, paddingVertical: space.md, backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border },
   headerTitle: { fontSize: font.lg, fontWeight: '700', color: colors.text },
   headerBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: space.sm, paddingVertical: 6, borderRadius: radius.md, backgroundColor: colors.bg },
-  headerBtnText: { fontSize: font.sm, color: colors.text },
-  greeting: { backgroundColor: colors.surface, borderRadius: radius.lg, padding: space.md, fontSize: font.md, color: colors.text, marginBottom: space.sm, maxWidth: '85%' },
+  headerBtnText: { fontSize: chatFont.label, fontWeight: '600', color: colors.text },
+  greeting: { backgroundColor: colors.surface, borderRadius: radius.lg, padding: space.md, fontSize: chatFont.body, lineHeight: chatFont.lineHeight, fontWeight: '500', color: colors.text, marginBottom: space.sm, maxWidth: '85%' },
   typing: { fontSize: font.sm, color: colors.textMuted, marginTop: space.sm },
   suggestions: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm, marginBottom: space.sm },
   suggestion: { borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, borderRadius: radius.pill, paddingHorizontal: space.md, paddingVertical: 6 },
-  suggestionText: { fontSize: font.sm, color: colors.text },
+  suggestionText: { fontSize: chatFont.label, fontWeight: '600', color: colors.text },
 });
