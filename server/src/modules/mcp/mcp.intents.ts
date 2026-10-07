@@ -20,6 +20,11 @@ export function mcpIntentsFor(tenantId: string, userId: string): IntentDescripto
   }));
 }
 
+/** 使用者可用的外部服務（名稱＋說明），給護欄的能力清單用。 */
+export function mcpServicesFor(tenantId: string, userId: string): { name: string; description: string }[] {
+  return usableFor(tenantId, userId).map((c) => ({ name: c.name, description: c.description ?? '' }));
+}
+
 export function mcpPromptLines(tenantId: string, userId: string): string[] {
   const servers = usableFor(tenantId, userId);
   if (servers.length === 0) return [];

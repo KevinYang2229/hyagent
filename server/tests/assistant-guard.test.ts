@@ -2,7 +2,11 @@
  * assistant 守門服務：離題/客套統一入口。
  * 驗證：旁路作答不觸碰 form 狀態、en locale 走英文 prompt、且守門服務永遠啟用。
  */
+import { generateHyAgentKeyPair } from '@/lib/assertion/keygen';
+import { scopePolicy } from '@/modules/authz/scope-policy';
 import type { Session } from '@/modules/conversation/conversation.types';
+import { configureMcpSigningKey } from '@/modules/mcp/mcp.identity';
+import { mcpStore } from '@/modules/mcp/mcp.store';
 import { assistantAgentService } from '@/modules/conversation/assistant.agent-service';
 import { serviceRegistry } from '@/modules/conversation/service.registry';
 import { tenantStore } from '@/modules/tenant/tenant.store';
@@ -96,6 +100,48 @@ describe('assistantAgentService', () => {
     const sys = mockCreate.mock.calls[0][0].system as string;
     expect(sys).toContain('知識庫問答');
     expect(sys).not.toContain('代理任務');
+  });
+});
+
+describe('代理任務的能力描述', () => {
+  afterEach(() => {
+    mcpStore.clear();
+    configureMcpSigningKey(null);
+  });
+
+  async function systemFor(session: Session): Promise<string> {
+    const mockCreate = jest.fn().mockResolvedValue({ text: 'ok', toolCalls: [], stopReason: 'end_turn' });
+    await assistantAgentService.handleTurn(session, '你好', { name: 'mock', createMessage: mockCreate } as never);
+    return mockCreate.mock.calls[0][0].system as string;
+  }
+
+  it('有門市 MCP 權限：列出外部服務的名稱與說明，沒有寄信權限就不提代擬寄信', async () => {
+    configureMcpSigningKey(generateHyAgentKeyPair('ES256').privateKeyPem);
+    const t = tenantStore.createTenant('guard-mcp-on');
+    tenantStore.updateTenant(t.id, { grantedScopes: ['service:agent'] });
+    mcpStore.create({ id: 'store-demo', name: '門市 Demo', url: 'http://x/mcp', ownerTenantId: t.id, description: '門市商品、庫存、補貨、活動與優惠券' });
+    scopePolicy.setPolicy(t.id, { groups: {}, accounts: { HYW103: ['mcp:store-demo'] } });
+    const sys = await systemFor(makeSession({ tenantId: t.id }));
+    expect(sys).toContain('門市 Demo（門市商品、庫存、補貨、活動與優惠券）');
+    expect(sys).not.toContain('代擬寄信');
+    const en = await systemFor(makeSession({ tenantId: t.id, locale: 'en' }));
+    expect(en).toContain('門市 Demo (門市商品、庫存、補貨、活動與優惠券)');
+    expect(en).not.toContain('drafting emails');
+  });
+
+  it('有寄信權限才列出代擬寄信', async () => {
+    const t = tenantStore.createTenant('guard-email-on');
+    tenantStore.updateTenant(t.id, { grantedScopes: ['service:agent', 'email:write'] });
+    const sys = await systemFor(makeSession({ tenantId: t.id }));
+    expect(sys).toContain('代擬寄信');
+  });
+
+  it('有智慧代理但沒有任何可用工具類能力：不列代理任務', async () => {
+    const t = tenantStore.createTenant('guard-agent-bare');
+    tenantStore.updateTenant(t.id, { grantedScopes: ['service:agent', 'service:knowledge'] });
+    const sys = await systemFor(makeSession({ tenantId: t.id }));
+    expect(sys).not.toContain('代理任務');
+    expect(sys).toContain('知識庫問答');
   });
 });
 

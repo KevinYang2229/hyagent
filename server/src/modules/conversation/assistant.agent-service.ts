@@ -11,6 +11,7 @@ import type { LLMProvider } from '@/lib/llm/types';
 import { normalizeLocale } from '@/lib/locale';
 import { logger } from '@/lib/logger';
 import { resolveScopes } from '@/modules/authz/resolve-scopes';
+import { mcpServicesFor } from '@/modules/mcp/mcp.intents';
 import { usageStore } from '@/modules/usage/usage.store';
 import type { AgentService, AgentTurnResult, IntentDescriptor } from './agent-service.types';
 import type { Session } from './conversation.types';
@@ -27,13 +28,20 @@ function guardSystem(tenantId: string, userId: string, locale?: string): string 
     .map((d) => d.data.title ?? d.agent.description)
     .filter(Boolean);
   const knowledgeOn = scopes.has('service:knowledge');
+  // 代理任務只列這位使用者真的能用的：已授權的外部服務（後台註冊時填的說明），有寄信權限才提寄信
   const agentOn = scopes.has('service:agent');
+  const services = agentOn ? mcpServicesFor(tenantId, userId) : [];
+  const emailOn = agentOn && scopes.has('email:write');
 
   if (normalizeLocale(locale) === 'en') {
     const parts: string[] = [];
     if (forms.length) parts.push(`form applications (e.g. ${forms.join(', ')})`);
     if (knowledgeOn) parts.push('knowledge-base Q&A (company info and any ingested documents, any topic)');
-    if (agentOn) parts.push('assistant tasks (e.g. drafting emails)');
+    const tasks = [
+      ...services.map((m) => (m.description ? `${m.name} (${m.description})` : m.name)),
+      ...(emailOn ? ['drafting emails'] : []),
+    ];
+    if (tasks.length) parts.push(`assistant tasks (${tasks.join(', ')})`);
     // 一項服務都沒開通：誠實說明並導向管理員，切勿再建議用不到的功能（否則使用者被困在「建議→試→被擋」循環）
     if (parts.length === 0) {
       return [
@@ -66,7 +74,11 @@ function guardSystem(tenantId: string, userId: string, locale?: string): string 
   const parts: string[] = [];
   if (forms.length) parts.push(`表單申請（例如：${forms.join('、')}）`);
   if (knowledgeOn) parts.push('知識庫問答（公司資訊與已收錄文件的內容，主題不限）');
-  if (agentOn) parts.push('代理任務（如代擬寄信）');
+  const tasks = [
+    ...services.map((m) => (m.description ? `${m.name}（${m.description}）` : m.name)),
+    ...(emailOn ? ['代擬寄信'] : []),
+  ];
+  if (tasks.length) parts.push(`代理任務：${tasks.join('、')}`);
   // 一項服務都沒開通：誠實說明並導向管理員，切勿再建議用不到的功能
   if (parts.length === 0) {
     return [

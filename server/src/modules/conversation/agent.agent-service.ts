@@ -34,7 +34,7 @@ const LLM_TOOL_NAME_RE = /^[a-zA-Z0-9_-]{1,64}$/;
 function buildSystemPrompt(userId: string, locale?: string, extraLines: string[] = []): string {
   const today = new Date().toISOString().slice(0, 10);
   return [
-    `你是公司 OA 系統的智慧代理，協助使用者完成需要操作公司系統的任務。${languageDirective(locale)}`,
+    `你是本系統的智慧代理，協助使用者完成需要操作各項系統服務的任務。${languageDirective(locale)}`,
     `今天日期是 ${today}；請把相對日期（明天、下週一等）換算成 YYYY-MM-DD。`,
     `目前登入使用者的識別碼是 ${userId}；查詢「自己」資料的工具會自動綁定此身分，不需要你提供或詢問使用者 id。`,
     ...extraLines,
