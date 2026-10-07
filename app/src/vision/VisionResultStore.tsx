@@ -1,5 +1,6 @@
-/** 相機與結果頁之間傳遞辨識結果（照片與結果物件太大，不放路由參數）。 */
-import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
+/** 相機與結果頁之間傳遞辨識結果（照片與結果物件太大，不放路由參數）；登出時清空。 */
+import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
+import { useSignedOutReset } from '@/auth/useSignedOutReset';
 import type { ShelfResult } from '@/api/types';
 import type { CouponView } from './coupon';
 import type { Photo } from './types';
@@ -27,6 +28,12 @@ const Ctx = createContext<VisionResults | null>(null);
 export function VisionResultProvider({ children }: { children: ReactNode }) {
   const [shelf, setShelf] = useState<ShelfEntry | null>(null);
   const [coupon, setCoupon] = useState<CouponEntry | null>(null);
+  // 登出就丟掉上一位使用者的辨識結果（含照片）
+  const clear = useCallback(() => {
+    setShelf(null);
+    setCoupon(null);
+  }, []);
+  useSignedOutReset(clear);
   const value = useMemo(() => ({ shelf, setShelf, coupon, setCoupon }), [shelf, coupon]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

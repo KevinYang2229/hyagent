@@ -30,11 +30,7 @@ export function ConfirmModal({
   now?: number;
 }) {
   if (!action) return null;
-  return (
-    <Modal transparent animationType="fade" visible onRequestClose={() => void onCancel()}>
-      <ConfirmCard action={action} onConfirm={onConfirm} onCancel={onCancel} now={now} />
-    </Modal>
-  );
+  return <ConfirmCard action={action} onConfirm={onConfirm} onCancel={onCancel} now={now} />;
 }
 
 function ConfirmCard({
@@ -125,6 +121,8 @@ function ConfirmCard({
   }
 
   return (
+    // Android 返回鍵走同一個受保護的取消：送出中不會再取消
+    <Modal testID="confirm-modal" transparent animationType="fade" visible onRequestClose={() => void cancel()}>
     <View style={styles.overlay}>
       <View style={[styles.dialog, showCompanion && { width: cardWidth }]}>
       <View style={styles.card}>
@@ -185,6 +183,7 @@ function ConfirmCard({
       ) : null}
       </View>
     </View>
+    </Modal>
   );
 }
 

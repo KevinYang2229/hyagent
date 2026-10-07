@@ -6,7 +6,7 @@ import type { Endpoints } from '@/api/endpoints';
 import { ApiError } from '@/api/errors';
 import { TaskBadgeProvider, useTaskBadge } from '@/tasks/TaskBadge';
 import { useAuth } from '@/auth/AuthProvider';
-import { ChatProvider, useChat } from './ChatProvider';
+import { ChatProvider, MAX_QUEUED, useChat } from './ChatProvider';
 
 // 測試用：不掛真的 AuthProvider，由 mockAuthStatus 控制登入狀態；預設（undefined）等同沒有 AuthProvider
 jest.mock('@/auth/AuthProvider', () => ({ useAuth: jest.fn(), useApi: jest.fn() }));
@@ -85,7 +85,7 @@ describe('ChatProvider', () => {
     expect(result.current.chat.state.messages.at(-1)?.text).toBe('新回覆');
   });
 
-  it('空白訊息不送；送出中再送被擋下', async () => {
+  it('空白訊息不送；送出中再送 → 排隊，這一輪結束後依序送出', async () => {
     let release!: () => void;
     const api = fakeApi({
       startConversation: jest.fn(() => new Promise((r) => { release = () => r({ id: 'c1', status: 'collecting', reply: 'ok' }); })) as never,
@@ -95,11 +95,50 @@ describe('ChatProvider', () => {
     await act(async () => {
       expect(await result.current.chat.send('   ')).toBe(false);
       first = result.current.chat.send('一');
-      expect(await result.current.chat.send('二')).toBe(false);
-      release();
-      await first;
+      expect(await result.current.chat.send('二')).toBe(true);
+      expect(await result.current.chat.send('三')).toBe(true);
     });
+    // 排隊中的句子還沒送出，也還沒有使用者泡泡
+    expect(result.current.chat.state.messages.map((m) => m.text)).toEqual(['一']);
+    await act(async () => { release(); await first; });
     expect(api.startConversation).toHaveBeenCalledTimes(1);
+    expect((api.sendMessage as jest.Mock).mock.calls.map((c) => c[1])).toEqual(['二', '三']);
+    expect(result.current.chat.state.messages.map((m) => m.text)).toEqual(['一', 'ok', '二', '回覆：二', '三', '回覆：三']);
+    expect(result.current.chat.state.sending).toBe(false);
+  });
+
+  it('排隊最多 MAX_QUEUED 句，滿了回 false', async () => {
+    let release!: () => void;
+    const api = fakeApi({
+      startConversation: jest.fn(() => new Promise((r) => { release = () => r({ id: 'c1', status: 'collecting', reply: 'ok' }); })) as never,
+    });
+    const { result } = await setup(api);
+    let first!: Promise<boolean>;
+    await act(async () => {
+      first = result.current.chat.send('一');
+      for (let i = 0; i < MAX_QUEUED; i += 1) expect(await result.current.chat.send(`排${i}`)).toBe(true);
+      expect(await result.current.chat.send('太多')).toBe(false);
+    });
+    await act(async () => { release(); await first; });
+    expect(api.sendMessage).toHaveBeenCalledTimes(MAX_QUEUED);
+  });
+
+  it.each(['newConversation', 'cancelSend'] as const)('%s 清掉排隊中的句子', async (method) => {
+    let release!: () => void;
+    const api = fakeApi({
+      startConversation: jest.fn(() => new Promise((r) => { release = () => r({ id: 'c1', status: 'collecting', reply: 'ok' }); })) as never,
+    });
+    const { result } = await setup(api);
+    let first!: Promise<boolean>;
+    await act(async () => {
+      first = result.current.chat.send('一');
+      await result.current.chat.send('二');
+    });
+    await act(async () => { result.current.chat[method](); });
+    await act(async () => { release(); await first; });
+    expect(api.sendMessage).not.toHaveBeenCalled();
+    expect(result.current.chat.state.messages.some((m) => m.text === '二')).toBe(false);
+    expect(result.current.chat.state.sending).toBe(false);
   });
 
   it('對話已不存在（404）→ 自動重開一個對話再送', async () => {

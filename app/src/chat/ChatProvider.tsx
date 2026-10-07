@@ -3,10 +3,11 @@
  * 寫入動作的確認／取消也在這裡，成功後讓今日重點與補貨單重新取資料、任務分頁亮紅點。
  */
 import { useQueryClient } from '@tanstack/react-query';
-import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useMemo, useReducer, useRef, type ReactNode } from 'react';
 import type { Endpoints } from '@/api/endpoints';
 import { ApiError, errorMessage } from '@/api/errors';
-import { useApi, useAuth } from '@/auth/AuthProvider';
+import { useApi } from '@/auth/AuthProvider';
+import { useSignedOutReset } from '@/auth/useSignedOutReset';
 import { useTaskBadge } from '@/tasks/TaskBadge';
 import { chatReducer, initialChatState } from './chatReducer';
 import type { ChatState } from './types';
@@ -19,6 +20,7 @@ export type ConfirmOutcome =
 
 interface ChatContextValue {
   state: ChatState;
+  /** 回覆中呼叫會排隊（最多 MAX_QUEUED 句）並回 true；空白或佇列已滿回 false。 */
   send(text: string): Promise<boolean>;
   newConversation(): void;
   cancelSend(): void;
@@ -29,9 +31,11 @@ interface ChatContextValue {
 
 const ChatContext = createContext<ChatContextValue | null>(null);
 
+/** 回覆中最多可排隊的句子數 */
+export const MAX_QUEUED = 3;
+
 export function ChatProvider({ children, api: injected }: { children: ReactNode; api?: Endpoints }) {
   const fromAuth = useApiOptional();
-  const authStatus = useAuthStatusOptional();
   const api = injected ?? fromAuth!;
   const queryClient = useQueryClient();
   const badge = useTaskBadge();
@@ -47,21 +51,23 @@ export function ChatProvider({ children, api: injected }: { children: ReactNode;
   const startRef = useRef<Promise<string | null> | null>(null);
   // 世代：登出重置後，舊請求的結果要丟掉
   const genRef = useRef(0);
+  // 回覆中又送來的句子（語音、首頁帶問題、優惠券問 AI）先排隊，這一輪結束後依序送出
+  const queueRef = useRef<string[]>([]);
+  const sendRef = useRef<(text: string) => Promise<boolean>>(async () => false);
 
   const resetAll = useCallback(() => {
     genRef.current += 1;
     sendController.current?.abort();
     sendController.current = null;
     sendingRef.current = false;
+    queueRef.current = [];
     startRef.current = null;
     convIdRef.current = null;
     dispatch({ type: 'reset' });
   }, []);
 
   // 登入狀態離開 signedIn（登出、換人）就清掉對話；沒有 AuthProvider（測試注入 api）時略過
-  useEffect(() => {
-    if (authStatus !== undefined && authStatus !== 'signedIn') resetAll();
-  }, [authStatus, resetAll]);
+  useSignedOutReset(resetAll);
 
   /** 建立對話（text 有值時連同第一句；沒有則開空對話）。回傳對話 id，世代已變則回 null。 */
   const startWith = useCallback(
@@ -88,7 +94,13 @@ export function ChatProvider({ children, api: injected }: { children: ReactNode;
   const send = useCallback(
     async (raw: string) => {
       const text = raw.trim();
-      if (!text || sendingRef.current) return false;
+      if (!text) return false;
+      if (sendingRef.current) {
+        // 不丟掉：排隊等這一輪結束；佇列滿了才拒絕
+        if (queueRef.current.length >= MAX_QUEUED) return false;
+        queueRef.current.push(text);
+        return true;
+      }
       sendingRef.current = true;
       const controller = new AbortController();
       sendController.current = controller;
@@ -123,11 +135,15 @@ export function ChatProvider({ children, api: injected }: { children: ReactNode;
         if (gen === genRef.current) {
           sendingRef.current = false;
           sendController.current = null;
+          // 同一個 tick 接著送下一句，使用者泡泡在送出時才出現
+          const next = queueRef.current.shift();
+          if (next !== undefined) void sendRef.current(next);
         }
       }
     },
     [api, startWith],
   );
+  sendRef.current = send;
 
   const cancelSend = useCallback(() => {
     if (!sendingRef.current) return;
@@ -135,6 +151,8 @@ export function ChatProvider({ children, api: injected }: { children: ReactNode;
     sendController.current?.abort();
     sendController.current = null;
     sendingRef.current = false;
+    // 取消回覆也一併放棄排隊中的句子，避免取消後又自動送出
+    queueRef.current = [];
     startRef.current = null;
     // 舊回合可能仍在伺服器執行；下一次使用新對話，避免兩個回合互相干擾。
     convIdRef.current = null;
@@ -223,14 +241,6 @@ function useApiOptional(): Endpoints | null {
     return useApi();
   } catch {
     return null;
-  }
-}
-
-function useAuthStatusOptional(): string | undefined {
-  try {
-    return useAuth().status;
-  } catch {
-    return undefined;
   }
 }
 

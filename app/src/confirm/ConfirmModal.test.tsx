@@ -107,4 +107,19 @@ describe('ConfirmModal', () => {
     await render(<ConfirmModal action={null} onConfirm={jest.fn()} onCancel={jest.fn()} />);
     expect(screen.queryByText('取消')).toBeNull();
   });
+  it('送出中按 Android 返回鍵不會取消', async () => {
+    const onConfirm = jest.fn(() => new Promise(() => {}));
+    const onCancel = jest.fn().mockResolvedValue(undefined);
+    await render(<ConfirmModal action={action} onConfirm={onConfirm as never} onCancel={onCancel} now={NOW} />);
+    await act(async () => { screen.getByLabelText('確認建立補貨單').props.onClick({}); });
+    await act(async () => { fireEvent(screen.getByTestId('confirm-modal'), 'requestClose'); });
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+
+  it('閒置時按 Android 返回鍵 → 取消', async () => {
+    const onCancel = jest.fn().mockResolvedValue(undefined);
+    await render(<ConfirmModal action={action} onConfirm={jest.fn()} onCancel={onCancel} now={NOW} />);
+    await act(async () => { fireEvent(screen.getByTestId('confirm-modal'), 'requestClose'); });
+    expect(onCancel).toHaveBeenCalledTimes(1);
+  });
 });
