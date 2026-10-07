@@ -3,7 +3,8 @@ import request from 'supertest';
 import { createApp } from '@/app';
 import { env } from '@/config/env';
 import { McpToolCallError } from '@/modules/mcp/mcp.connection';
-import { registerTool, toolOutput } from '@/modules/tools';
+import { auditStore } from '@/modules/audit/audit.store';
+import { makeToolContext, registerTool, toolOutput, toolRegistry } from '@/modules/tools';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 
 const app = createApp();
@@ -48,7 +49,12 @@ registerTool({
   handler: async () => ({}),
 });
 registerTool({
-  id: 'test.invokeDown', description: 'x', scopes: [], agentExposed: true, effect: 'read',
+  id: 'test.invokeAudited', description: 'x', scopes: [], agentExposed: true, effect: 'read', audit: true,
+  inputSchema: { type: 'object' },
+  handler: async () => ({ ok: 1 }),
+});
+registerTool({
+  id: 'test.invokeDown', description: 'x', scopes: [], agentExposed: true, effect: 'read', audit: true,
   inputSchema: { type: 'object' },
   handler: async () => { throw new McpToolCallError('門市 Demo 暫時無法使用：connect ECONNREFUSED'); },
 });
@@ -105,10 +111,25 @@ describe('POST /api/tools/:toolId/invoke', () => {
     expect(res.status).toBe(422);
   });
 
-  it('MCP 呼叫失敗 → 503 TOOL_UNAVAILABLE', async () => {
+  it('MCP 呼叫失敗 → 503 TOOL_UNAVAILABLE，訊息固定、不外洩內部細節', async () => {
     const res = await invoke(await token(), 'test.invokeDown');
     expect(res.status).toBe(503);
     expect(res.body.error.code).toBe('TOOL_UNAVAILABLE');
+    expect(res.body.error.message).toBe('相關服務暫時無法使用，請稍後再試');
+    expect(JSON.stringify(res.body)).not.toContain('ECONNREFUSED');
+  });
+
+  it('直接呼叫唯讀工具不寫稽核（成功與失敗皆然）', async () => {
+    const before = auditStore.list('default', 1000).length;
+    expect((await invoke(await token(), 'test.invokeAudited')).status).toBe(200);
+    expect((await invoke(await token(), 'test.invokeDown')).status).toBe(503);
+    expect(auditStore.list('default', 1000).filter((e) => e.toolId === 'test.invokeAudited' || e.toolId === 'test.invokeDown')).toEqual([]);
+    expect(auditStore.list('default', 1000).length).toBe(before);
+  });
+
+  it('Agent 路徑（registry.invoke 不帶選項）照舊稽核 audit 工具', async () => {
+    await toolRegistry.invoke('test.invokeAudited', {}, makeToolContext({ tenantId: 'default', userId: 'kevin' }));
+    expect(auditStore.list('default', 1)[0]).toMatchObject({ toolId: 'test.invokeAudited', ok: true });
   });
 
   it('沒有 service:agent → 403；沒登入 → 401', async () => {

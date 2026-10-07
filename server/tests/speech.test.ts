@@ -90,4 +90,11 @@ describe('POST /api/speech/transcribe', () => {
     const anon = await request(app).post('/api/speech/transcribe').attach('audio', AUDIO, { filename: 'a.m4a', contentType: 'audio/m4a' });
     expect(anon.status).toBe(401);
   });
+
+  it('沒有 service:agent → 在收檔（multer）之前就 403：不支援的格式也回 403 而非 422', async () => {
+    tenantStore.updateTenant('default', { grantedScopes: [] });
+    const res = await upload(await token(), 'text/plain');
+    expect(res.status).toBe(403);
+    expect(transcriptionsCreate).not.toHaveBeenCalled();
+  });
 });

@@ -123,11 +123,15 @@ export const toolRegistry = {
     const error = precheck(id, lookup(id, ctx), input, ctx);
     if (error) throw error;
   },
-  async invoke(id: string, input: unknown, ctx: ToolContext): Promise<unknown> {
+  /**
+   * 執行工具。options.audit=false 只給「直接呼叫唯讀工具」路徑用（App 首頁輪詢等），
+   * 避免高頻讀取塞滿每租戶的稽核環、擠掉真正的寫入稽核；Agent 路徑不傳，照舊依 tool.audit 稽核。
+   */
+  async invoke(id: string, input: unknown, ctx: ToolContext, options: { audit?: boolean } = {}): Promise<unknown> {
     const entry = lookup(id, ctx);
     const { tool } = entry;
     const audit = (ok: boolean, extra: { summary?: string; error?: string }): void => {
-      if (!tool.audit) return;
+      if (!tool.audit || options.audit === false) return;
       // 稽核為旁路：整段包 try/catch——摘要或寫入的任何失敗都不得影響工具呼叫的正常回傳/錯誤
       // （否則成功送出的 email/表單可能被回報成失敗，導致使用者重送）。
       try {

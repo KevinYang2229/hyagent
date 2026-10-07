@@ -4,6 +4,7 @@
  */
 import type { Request, Response } from 'express';
 import { z } from 'zod';
+import { logger } from '@/lib/logger';
 import { resolveScopes } from '@/modules/authz/resolve-scopes';
 import { buildDisplayBlock } from '@/modules/display/display-block';
 import { McpToolCallError } from '@/modules/mcp/mcp.connection';
@@ -12,6 +13,8 @@ import { AppError } from '@/utils/app-error';
 
 export const invokeParamSchema = z.object({ toolId: z.string().trim().min(1).max(200) });
 export const invokeBodySchema = z.object({ input: z.record(z.unknown()).default({}) }).strict();
+
+export const TOOL_UNAVAILABLE_MESSAGE = '相關服務暫時無法使用，請稍後再試';
 
 function notFound(toolId: string): AppError {
   return new AppError(404, 'TOOL_NOT_FOUND', `找不到工具：${toolId}`);
@@ -41,9 +44,14 @@ export const toolInvokeController = {
 
     let out: unknown;
     try {
-      out = await toolRegistry.invoke(toolId, input, ctx);
+      // 唯讀直呼不寫稽核：首頁每分鐘輪詢會擠掉真正的寫入稽核（寫入一律走 propose → confirm，照常稽核）
+      out = await toolRegistry.invoke(toolId, input, ctx, { audit: false });
     } catch (err) {
-      if (err instanceof McpToolCallError) throw new AppError(503, 'TOOL_UNAVAILABLE', err.message);
+      if (err instanceof McpToolCallError) {
+        // 錯誤細節可能含內部主機／網址：只記在伺服器 log，對外回固定訊息
+        logger.warn({ err, toolId, tenantId }, 'direct tool invoke failed: MCP unavailable');
+        throw new AppError(503, 'TOOL_UNAVAILABLE', TOOL_UNAVAILABLE_MESSAGE);
+      }
       throw err;
     }
     const { data, display } = unwrapToolOutput(out);

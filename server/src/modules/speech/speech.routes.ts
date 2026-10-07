@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import { singleAudioUpload } from '@/middlewares/upload';
 import { asyncHandler } from '@/utils/async-handler';
-import { speechController } from './speech.controller';
+import { requireSpeechScope, speechController } from './speech.controller';
 
 export const speechRouter = Router();
 
-speechRouter.post('/transcribe', singleAudioUpload('audio'), asyncHandler(speechController.transcribe));
+speechRouter.post('/transcribe', requireSpeechScope, singleAudioUpload('audio'), asyncHandler(speechController.transcribe));
