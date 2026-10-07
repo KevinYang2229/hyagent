@@ -10,3 +10,5 @@ node_modules
 **/.env
 **/.env.*
 .DS_Store
+# Expo App（app/）是獨立 npm 專案，任何 Docker 映像都不需要
+app/

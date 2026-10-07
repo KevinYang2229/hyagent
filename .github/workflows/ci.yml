@@ -14,21 +14,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Node 20 取最新 20.x，符合 Expo SDK 57（react-native／metro）要求的 ^20.19.4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            app/package-lock.json
 
       - name: 安裝依賴（monorepo 全 workspace）
         run: npm ci
 
+      # app/ 是獨立 npm 專案（不在 root workspace），typecheck／test 會跑 npm --prefix app
+      # lockfile 以 legacy peer deps 產生，ci 也要用同樣設定才不會判定不同步
+      - name: 安裝 App 依賴（app/ 獨立專案）
+        run: npm ci --prefix app --legacy-peer-deps
+
       - name: Prisma client 生成（server typecheck 依賴生成型別）
         run: npm run db:generate -w server
 
-      - name: Typecheck（ui / sdk / server / client / admin）
+      - name: Typecheck（ui / sdk / server / client / admin / mcp / app）
         run: npm run typecheck
 
-      - name: 測試（server jest + admin/client vitest）
+      - name: 測試（server jest + admin/client vitest + app jest）
         run: npm test
 
       - name: Lint
