@@ -46,8 +46,8 @@ module.exports = [
       // 非主應用程式碼：示範專案、文件
       'presale/**',
       'docs/**',
-      // Expo App 有自己的工具鏈（獨立 npm 專案）
-      'app/**',
+      // 行動 App 有自己的工具鏈（mobile/ 獨立 npm 工作區）
+      'mobile/**',
     ],
   },
 

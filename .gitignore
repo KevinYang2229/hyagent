@@ -40,6 +40,6 @@ server/data/knowledge-config.json
 ~$*.doc
 
 # Expo App 產物
-app/.expo/
-app/dist/
-app/expo-env.d.ts
+mobile/apps/*/.expo/
+mobile/apps/*/dist/
+mobile/apps/*/expo-env.d.ts

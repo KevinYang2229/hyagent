@@ -1,0 +1,14 @@
+{
+  "name": "hyagent-mobile",
+  "private": true,
+  "description": "HyAgent 行動 App 工作區：apps/* 是各個 Expo App，packages/app-core 是共用核心（登入、API、對話、語音、確認彈窗）",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:store": "npm run dev -w apps/store",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm test --workspaces --if-present -- --ci"
+  }
+}

@@ -21,23 +21,23 @@ jobs:
           cache: npm
           cache-dependency-path: |
             package-lock.json
-            app/package-lock.json
+            mobile/package-lock.json
 
       - name: 安裝依賴（monorepo 全 workspace）
         run: npm ci
 
-      # app/ 是獨立 npm 專案（不在 root workspace），typecheck／test 會跑 npm --prefix app
-      # lockfile 以 legacy peer deps 產生，ci 也要用同樣設定才不會判定不同步
-      - name: 安裝 App 依賴（app/ 獨立專案）
-        run: npm ci --prefix app --legacy-peer-deps
+      # mobile/ 是獨立的 npm 工作區（Expo App 用 React 19，不在 root workspace），typecheck／test 會跑 npm --prefix mobile
+      # lockfile 以 legacy peer deps 產生（mobile/.npmrc 也有設定），ci 也要用同樣設定才不會判定不同步
+      - name: 安裝行動 App 依賴（mobile/ 獨立工作區）
+        run: npm ci --prefix mobile --legacy-peer-deps
 
       - name: Prisma client 生成（server typecheck 依賴生成型別）
         run: npm run db:generate -w server
 
-      - name: Typecheck（ui / sdk / server / client / admin / mcp / app）
+      - name: Typecheck（ui / sdk / server / client / admin / mcp / mobile）
         run: npm run typecheck
 
-      - name: 測試（server jest + admin/client vitest + app jest）
+      - name: 測試（server jest + admin/client vitest + mobile jest）
         run: npm test
 
       - name: Lint

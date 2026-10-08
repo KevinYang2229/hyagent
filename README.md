@@ -15,6 +15,7 @@
 | [`INTEGRATION.md`](INTEGRATION.md) | 對外整合：多租戶、API Key、widget/SDK、SSO handoff、webhook、後台管理 |
 | [`mcp/kit/README.md`](mcp/kit/README.md) | 自建 MCP server：驗 HyAgent 呼叫身分、工具撰寫規範、範例 |
 | [`mcp/store-demo/README.md`](mcp/store-demo/README.md) | 門市 Demo MCP 服務：庫存、補貨單、活動、優惠券（假資料） |
+| [`mobile/README.md`](mobile/README.md) | 行動 App 工作區：共用核心與各 App 怎麼拆、如何新增一個 App |
 | [`DEPLOY.zeabur.md`](DEPLOY.zeabur.md) | 部署：Zeabur 前後端分服務、四個 Dockerfile、環境變數清單 |
 | [`docs/LOCAL-SETUP.md`](docs/LOCAL-SETUP.md) | 本機架設：file 模式（零資料庫）跑起來的完整步驟、SSO demo 與疑難排解 |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | 目標架構、現況對照、演進觸發點——決定「要不要做某個平台機制」時查它 |
@@ -62,6 +63,7 @@ hyagent/
 ├─ server/             後端 Express（schema 引擎 + 對話 Agent + 知識庫 + 報告 + REST）
 ├─ client/             前端 Vite + React + TS（對話 + schema-driven 表單）
 ├─ admin/              後台 Vite + React + TS（租戶／權限／知識庫／表單 Designer／報告／稽核）
+├─ mobile/             行動 App 獨立工作區（React 19，不在 root workspaces）：apps/store 門市小幫手、packages/app-core 共用核心
 ├─ presale/            整合範例（公開 widget、租戶 widget、自製 UI、webhook receiver、mock OA）
 └─ docs/               架構決策、產品／系統規格、串接交接文件（見上方「文件地圖」）
 ```
