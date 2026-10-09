@@ -3,7 +3,7 @@ import type { Applicant, NotificationFeed, PendingActionView } from '@hyagent/sh
 import { Platform } from 'react-native';
 import { File } from 'expo-file-system';
 import { ApiError } from './errors';
-import type { ApiClient } from './client';
+import type { ApiClient, GuestSession } from './client';
 import type { InvokeResult, LoginResult, StartData, TurnData, UploadFile } from './types';
 
 /** Expo 57 fetch 接受 Blob 或提供 bytes() 的 File，不能直接上傳 URI 物件。 */
@@ -44,6 +44,8 @@ export function createEndpoints(api: ApiClient) {
     login: (username: string, password: string) =>
       api.request<LoginResult>('/auth/login', { method: 'POST', json: { username, password }, auth: false }),
     me: () => api.request<Applicant>('/auth/me'),
+    /** 免登入訪客 Session（租戶須開啟訪客使用） */
+    guestSession: () => api.request<GuestSession>('/auth/guest', { method: 'POST', auth: false }),
 
     startConversation: (message?: string, signal?: AbortSignal) =>
       api.request<StartData>('/conversations', { method: 'POST', json: message ? { message } : {}, timeoutMs: TURN_TIMEOUT_MS, ...(signal ? { signal } : {}) }),

@@ -1,6 +1,7 @@
 /**
  * API 請求包裝：組網址、帶 token、逾時、錯誤轉 ApiError。
  * 401 時以 refresh token 換發一次（同時多個請求共用同一次換發），成功後重送；失敗則清 token 並通知登出。
+ * 訪客模式（guest）沒有 refresh token：401 改向 /auth/guest 換一個新的訪客 Session。
  * 上傳用 form 工廠：重送時重新建立 FormData，不重用已送出的 body。
  */
 import { ApiError } from './errors';
@@ -37,6 +38,15 @@ export interface ApiClientDeps {
   tokens: TokenStore;
   fetchFn?: typeof fetch;
   onAuthLost?: () => void;
+  /** 訪客模式：Session 失效時改換發新的訪客 Session（POST /auth/guest），不用 refresh token */
+  guest?: boolean;
+}
+
+/** /auth/guest 的回應 */
+export interface GuestSession {
+  sessionToken: string;
+  expiresIn: number;
+  user: { sub: string; name: string };
 }
 
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -90,6 +100,7 @@ export function createApiClient(deps: ApiClientDeps): ApiClient {
   async function doRefresh(): Promise<boolean> {
     const tokens = await deps.tokens.get();
     if (!tokens) return false;
+    if (deps.guest) return renewGuest();
     const res = await send('/auth/refresh', { method: 'POST', json: { refreshToken: tokens.refreshToken }, auth: false });
     if (res.status === 401 || res.status === 403) {
       await deps.tokens.clear();
@@ -105,6 +116,20 @@ export function createApiClient(deps: ApiClientDeps): ApiClient {
       throw new ApiError('換發回應格式不正確', res.status, 'BAD_REFRESH_RESPONSE');
     }
     await deps.tokens.set({ accessToken: body.data.accessToken, refreshToken: body.data.refreshToken });
+    return true;
+  }
+
+  /** 訪客：換一個新的訪客 Session。租戶關閉訪客使用（401／403）才算失去身分。 */
+  async function renewGuest(): Promise<boolean> {
+    const res = await send('/auth/guest', { method: 'POST', auth: false });
+    if (res.status === 401 || res.status === 403) {
+      await deps.tokens.clear();
+      deps.onAuthLost?.();
+      return false;
+    }
+    const session = await parse<GuestSession>(res);
+    if (!session?.sessionToken) throw new ApiError('訪客換發回應格式不正確', res.status, 'BAD_GUEST_RESPONSE');
+    await deps.tokens.set({ accessToken: session.sessionToken, refreshToken: '' });
     return true;
   }
 

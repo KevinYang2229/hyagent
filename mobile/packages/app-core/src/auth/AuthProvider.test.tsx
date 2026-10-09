@@ -26,11 +26,11 @@ function fetchFrom(handler: (url: string, init: RequestInit) => { status: number
   }) as unknown as typeof fetch;
 }
 
-async function setup(tokens: TokenStore, fetchFn: typeof fetch, qc = new QueryClient()) {
+async function setup(tokens: TokenStore, fetchFn: typeof fetch, qc = new QueryClient(), mode: 'account' | 'guest' = 'account') {
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={qc}>
       <SettingsProvider store={kv} defaultServerUrl="http://h">
-        <AuthProvider tokenStore={tokens} fetchFn={fetchFn}>{children}</AuthProvider>
+        <AuthProvider tokenStore={tokens} fetchFn={fetchFn} mode={mode}>{children}</AuthProvider>
       </SettingsProvider>
     </QueryClientProvider>
   );
@@ -106,5 +106,47 @@ describe('AuthProvider', () => {
     await act(() => result.current.login('kevin', 'pw', '192.168.1.9:3000/'));
     const url = (fetchFn as unknown as jest.Mock).mock.calls[0][0] as string;
     expect(url.startsWith('http://192.168.1.9:3000/')).toBe(true);
+  });
+
+  describe('訪客模式', () => {
+    const GUEST_USER = { id: 'guest_x', name: '訪客', department: '—' };
+    const session = { sessionToken: 'hyas_g', expiresIn: 3600, user: { sub: 'guest_x', name: '訪客' } };
+
+    it('沒有 token → 自動換發訪客 Session 並 signedIn，不需要登入', async () => {
+      const tokens = memoryTokens(null);
+      const fetchFn = fetchFrom((url) =>
+        url.endsWith('/auth/guest') ? { status: 201, body: { data: session } } : url.endsWith('/auth/me') ? { status: 200, body: { data: GUEST_USER } } : { status: 404 },
+      );
+      const { result } = await setup(tokens, fetchFn, new QueryClient(), 'guest');
+      await waitFor(() => expect(result.current.status).toBe('signedIn'));
+      expect(result.current.user).toEqual(GUEST_USER);
+      expect(tokens.value).toEqual({ accessToken: 'hyas_g', refreshToken: '' });
+      expect(result.current.error).toBeNull();
+    });
+
+    it('租戶未開放訪客 → signedOut 並說明原因；開放後 connect() 重試成功', async () => {
+      let open = false;
+      const fetchFn = fetchFrom((url) => {
+        if (url.endsWith('/auth/guest')) return open ? { status: 201, body: { data: session } } : { status: 403, body: { error: { code: 'GUEST_ACCESS_DISABLED', message: 'x' } } };
+        return url.endsWith('/auth/me') ? { status: 200, body: { data: GUEST_USER } } : { status: 404 };
+      });
+      const { result } = await setup(memoryTokens(null), fetchFn, new QueryClient(), 'guest');
+      await waitFor(() => expect(result.current.status).toBe('signedOut'));
+      expect(result.current.error).toBe('此服務目前未開放訪客使用，請聯絡管理員。');
+      open = true;
+      await act(() => result.current.connect());
+      expect(result.current.status).toBe('signedIn');
+      expect(result.current.error).toBeNull();
+    });
+
+    it.each([
+      [404, undefined, '伺服器版本尚未支援訪客使用，請更新後端。'],
+      [500, 'INTERNAL_SERVER_ERROR', '伺服器暫時無法提供服務，請稍後再試。'],
+    ])('換發回 %s → 顯示易懂的原因，不露出後端錯誤原文', async (status, code, message) => {
+      const fetchFn = fetchFrom(() => ({ status, body: { error: { code, message: 'Invalid `db.authSessionRow.create()` …' } } }));
+      const { result } = await setup(memoryTokens(null), fetchFn, new QueryClient(), 'guest');
+      await waitFor(() => expect(result.current.status).toBe('signedOut'));
+      expect(result.current.error).toBe(message);
+    });
   });
 });

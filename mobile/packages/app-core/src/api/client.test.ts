@@ -189,4 +189,30 @@ describe('createApiClient', () => {
     expect([slow, fast]).toEqual(['slow-ok', 'fast-ok']);
     expect(refreshes).toBe(1);
   });
+
+  describe('訪客模式', () => {
+    const GUEST = { sessionToken: 'hyas_new', expiresIn: 3600, user: { sub: 'guest_x', name: '訪客' } };
+
+    it('401 → 改換發訪客 Session（不打 /auth/refresh），存新 token 後重送', async () => {
+      const tokens = memoryTokens({ accessToken: 'hyas_old', refreshToken: '' });
+      const f = fakeFetch((url, init) => {
+        if (url.endsWith('/auth/guest')) return { status: 201, body: { data: GUEST } };
+        return auth(init) === 'Bearer hyas_new' ? { status: 200, body: { data: 'ok' } } : { status: 401 };
+      });
+      const api = createApiClient({ baseUrl: () => 'http://h', tokens, fetchFn: f.fn, guest: true });
+      await expect(api.request('/x')).resolves.toBe('ok');
+      expect(f.calls.map((c) => c.url)).toEqual(['http://h/api/x', 'http://h/api/auth/guest', 'http://h/api/x']);
+      expect(tokens.value).toEqual({ accessToken: 'hyas_new', refreshToken: '' });
+    });
+
+    it('租戶關閉訪客使用（403）→ 清 token、通知失去身分', async () => {
+      const tokens = memoryTokens({ accessToken: 'hyas_old', refreshToken: '' });
+      const onAuthLost = jest.fn();
+      const f = fakeFetch((url) => (url.endsWith('/auth/guest') ? { status: 403, body: { error: { code: 'GUEST_ACCESS_DISABLED' } } } : { status: 401 }));
+      const api = createApiClient({ baseUrl: () => 'http://h', tokens, fetchFn: f.fn, guest: true, onAuthLost });
+      await expect(api.request('/x')).rejects.toMatchObject({ status: 401 });
+      expect(tokens.value).toBeNull();
+      expect(onAuthLost).toHaveBeenCalledTimes(1);
+    });
+  });
 });
