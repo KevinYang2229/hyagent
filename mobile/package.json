@@ -8,6 +8,7 @@
   ],
   "scripts": {
     "dev:store": "npm run dev -w apps/store",
+    "dev:space-me": "npm run dev -w apps/space-me",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm test --workspaces --if-present -- --ci"
   }

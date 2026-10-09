@@ -24,7 +24,7 @@ export function MessageBubble({
   onSuggestion(text: string): void;
   onEdit(text: string): void;
 }) {
-  const { Mascot } = useAppBranding();
+  const { Mascot, accent = colors } = useAppBranding();
   const [copied, setCopied] = useState(false);
   const actions = (
     <View style={styles.actions}>
@@ -36,10 +36,10 @@ export function MessageBubble({
           Alert.alert('複製失敗', '請再試一次');
         }
       }}>
-        <Ionicons name={copied ? 'checkmark' : 'copy-outline'} size={20} color={colors.primaryDark} />
+        <Ionicons name={copied ? 'checkmark' : 'copy-outline'} size={20} color={accent.primaryDark} />
       </Pressable>
       <Pressable accessibilityRole="button" accessibilityLabel="重新編輯訊息" style={styles.action} onPress={() => onEdit(message.text)}>
-        <Ionicons name="create-outline" size={20} color={colors.primaryDark} />
+        <Ionicons name="create-outline" size={20} color={accent.primaryDark} />
       </Pressable>
     </View>
   );
@@ -57,7 +57,7 @@ export function MessageBubble({
     return (
       <View style={styles.userWrap}>
         <View style={styles.userMessage}>
-        <View style={styles.userBubble}>
+        <View style={[styles.userBubble, { backgroundColor: accent.primarySoft }]}>
           <Text style={styles.userText}>{message.text}</Text>
         </View>
         <View style={styles.meta}>
@@ -101,7 +101,7 @@ const styles = StyleSheet.create({
   system: { alignSelf: 'center', fontSize: chatFont.label, fontWeight: '500', color: colors.textMuted, marginVertical: space.sm, textAlign: 'center' },
   userWrap: { alignItems: 'flex-end', marginVertical: space.sm },
   userMessage: { maxWidth: '80%' },
-  userBubble: { backgroundColor: colors.primarySoft, borderRadius: radius.lg, borderBottomRightRadius: 4, paddingHorizontal: space.lg, paddingVertical: space.md },
+  userBubble: { borderRadius: radius.lg, borderBottomRightRadius: 4, paddingHorizontal: space.lg, paddingVertical: space.md },
   userText: { fontSize: chatFont.body, lineHeight: chatFont.lineHeight, fontWeight: '500', color: colors.text },
   agentWrap: { flexDirection: 'row', gap: space.sm, marginVertical: space.sm, alignItems: 'flex-start' },
   agentBubble: { backgroundColor: colors.surface, borderRadius: radius.lg, borderTopLeftRadius: 4, padding: space.md, ...shadow.card },

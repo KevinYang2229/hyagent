@@ -1,6 +1,7 @@
 import { createRef } from 'react';
 import { TextInput } from 'react-native';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { AppBrandingProvider, defaultBranding } from '@hyagent/app-core/branding/AppBranding';
 import { ChatInput } from './ChatInput';
 
 describe('ChatInput', () => {
@@ -110,5 +111,27 @@ describe('ChatInput', () => {
     await act(async () => { await fireEvent.press(screen.getByLabelText('送出')); });
     expect(onSend).toHaveBeenCalledTimes(2);
     expect(onSend).toHaveBeenLastCalledWith('查庫存');
+  });
+});
+
+describe('ChatInput 品牌主色', () => {
+  const flat = (style: unknown) => Object.assign({}, ...[style].flat(Infinity).filter(Boolean));
+
+  it('沒注入時用預設綠色與預設提示文字', async () => {
+    await render(<ChatInput onSend={jest.fn()} micAvailable onMicPress={jest.fn()} />);
+    expect(screen.getByPlaceholderText('請說出或輸入你的需求…')).toBeTruthy();
+    expect(flat(screen.getByLabelText('開始說話').props.style).backgroundColor).toBe('#2E7D5B');
+  });
+
+  it('App 注入 accent 與 placeholder 時照用', async () => {
+    const accent = { primary: '#2F6BFF', primaryDark: '#1F4FD8', primarySoft: '#EAF1FF' };
+    await render(
+      <AppBrandingProvider value={{ ...defaultBranding, accent }}>
+        <ChatInput onSend={jest.fn()} micAvailable onMicPress={jest.fn()} placeholder="請輸入您的問題…" />
+      </AppBrandingProvider>,
+    );
+    expect(screen.getByPlaceholderText('請輸入您的問題…')).toBeTruthy();
+    expect(flat(screen.getByLabelText('開始說話').props.style).backgroundColor).toBe('#2F6BFF');
+    expect(flat(screen.getByLabelText('送出').props.style).backgroundColor).toBe('#EAF1FF');
   });
 });

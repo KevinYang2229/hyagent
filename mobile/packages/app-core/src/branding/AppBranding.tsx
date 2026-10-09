@@ -19,6 +19,13 @@ export interface ConfirmCompanion {
   label: string;
 }
 
+/** 對話元件（輸入列、使用者泡泡、複製／編輯按鈕）的主色 */
+export interface BrandAccent {
+  primary: string;
+  primaryDark: string;
+  primarySoft: string;
+}
+
 export interface AppBranding {
   /** 對話泡泡與助理面板旁的角色；沒有就不顯示 */
   Mascot?: ComponentType<{ pose: MascotPose; size: number }>;
@@ -30,6 +37,8 @@ export interface AppBranding {
   confirmHeader?: { name: string; image: ImageSourcePropType };
   /** 平板寬度時確認彈窗旁的角色；依標題決定要不要出現 */
   confirmCompanion?(title: string): ConfirmCompanion | null;
+  /** 對話元件主色；沒有就用 theme/tokens 的綠色 */
+  accent?: BrandAccent;
 }
 
 /** 沒有本機素材時，後端給的 http(s) 圖片網址照用。 */

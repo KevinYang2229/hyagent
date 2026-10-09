@@ -9,6 +9,7 @@ mobile/
     app-core/             共用核心 @hyagent/app-core：登入、API、對話、語音、確認彈窗、設定、主題
   apps/
     store/                門市小幫手（7-ELEVEN POC）
+    space-me/             SpaceMe 智慧空間產品導覽（訪客免登入，AI 產品顧問）
 ```
 
 ## 安裝與常用指令
@@ -18,6 +19,7 @@ mobile/
     npm run typecheck      # 全部 App 與共用核心
     npm test               # 全部 App 與共用核心
     npm run dev:store      # 啟動門市小幫手（等同在 apps/store 執行 npx expo start）
+    npm run dev:space-me   # 啟動 SpaceMe
 
 根目錄的 `npm run typecheck`、`npm test`、`npm run dev:app` 會轉呼叫這裡。
 

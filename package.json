@@ -19,6 +19,7 @@
     "dev:client": "npm run dev -w client",
     "dev:admin": "npm run dev -w admin",
     "dev:app": "npm --prefix mobile run dev:store",
+    "dev:space-me": "npm --prefix mobile run dev:space-me",
     "dev:mcp": "npm run dev -w mcp/kit && npm run dev -w mcp/store-demo",
     "build": "npm run build -w server && npm run build -w client && npm run build -w admin",
     "typecheck": "npm run typecheck -w ui && npm run typecheck -w sdk && npm run typecheck -w server && npm run typecheck -w client && npm run typecheck -w admin && npm run typecheck -w mcp/kit && npm run typecheck -w mcp/store-demo && npm --prefix mobile run typecheck",
