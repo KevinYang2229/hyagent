@@ -9,7 +9,6 @@ mobile/
     app-core/             共用核心 @hyagent/app-core：登入、API、對話、語音、確認彈窗、設定、主題
   apps/
     store/                門市小幫手（7-ELEVEN POC）
-    space-me/             SpaceMe 智慧空間產品導覽（訪客免登入，AI 產品顧問）
 ```
 
 ## 安裝與常用指令
@@ -19,6 +18,7 @@ mobile/
     npm run typecheck      # 全部 App 與共用核心
     npm test               # 全部 App 與共用核心
     npm run dev:store      # 啟動門市小幫手（等同在 apps/store 執行 npx expo start）
+    npm run dev:lib-one    # 啟動 LIB ONE
     npm run dev:space-me   # 啟動 SpaceMe
 
 根目錄的 `npm run typecheck`、`npm test`、`npm run dev:app` 會轉呼叫這裡。
@@ -50,7 +50,7 @@ mobile/
    - `package.json` 的 `name`；依賴版本要與其他 App 相同，因為整個工作區共用一套 Expo SDK
    - `app.json` 的 `name`、`slug`、`scheme`、圖示，以及之後上架用的 bundle id／package name
 2. 寫自己的品牌設定（參考 `apps/store/src/brand/storeBranding.ts`），在根 `_layout.tsx` 用 `AppBrandingProvider` 包起來。
-3. 根 layout 的 Provider 順序可參考 store：`QueryClientProvider` → `SettingsProvider` → `AuthProvider` → `ChatProvider`。
+3. 根 layout 的 Provider 順序可參考 store：`QueryClientProvider` → `SettingsProvider` → `AuthProvider` → `ChatProvider`。沒有登入機制的 App 用 `<AuthProvider mode="guest">`，自動換發訪客 Session（後端租戶須開啟「允許訪客免登入使用」），參考 `apps/lib-one`。
 4. 後端：每個 App 對應一個租戶公開金鑰（`EXPO_PUBLIC_TENANT_API_KEY`）。領域工具開一個新的 MCP 服務（例如 `mcp/<領域>`），不要加在 store-demo。
 5. 在 `mobile/` 執行 `npm install`，再跑 `npm run typecheck` 和 `npm test`。
 
