@@ -54,3 +54,7 @@ App 結構與 `apps/store`、`apps/lib-one` 相同：分頁加上共用核心 `@
     npx tsc --noEmit
 
 啟動順序：原生 Splash → App icon（0.8 秒）→ 轉導動畫 → 首頁。原生 Splash 設定修改後需要重新建置 App；網頁版會直接顯示 App icon 啟動畫面。
+
+## 即時資訊顯示 MCP
+
+對應示範服務在 [`mcp/space-me-demo`](../../../mcp/space-me-demo/README.md)，提供空間狀態、環境數據與有效公告。需在 HyAgent 後台登記服務並授予訪客部門權限，設定方式見服務 README。

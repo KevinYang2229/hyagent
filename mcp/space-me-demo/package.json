@@ -1,0 +1,11 @@
+{
+  "name": "@hyagent/space-me-demo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SpaceMe 即時資訊顯示 MCP：空間狀態、環境數據與公告（示範資料）",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": { "start": "tsx src/server.ts", "test": "vitest run", "typecheck": "tsc --noEmit" },
+  "dependencies": { "@hyagent/mcp-kit": "*", "@modelcontextprotocol/sdk": "1.31.0", "express": "^4.21.1", "zod": "^3.25.0" },
+  "devDependencies": { "@types/express": "^5.0.0", "@types/node": "^20.0.0", "tsx": "^4.19.0", "typescript": "^5.6.3", "vitest": "^2.1.8" }
+}
