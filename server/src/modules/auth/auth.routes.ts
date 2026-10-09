@@ -1,4 +1,4 @@
-import { loginRateLimit, ssoRateLimit, refreshRateLimit } from '@/middlewares/auth-rate-limit';
+import { guestRateLimit, loginRateLimit, ssoRateLimit, refreshRateLimit } from '@/middlewares/auth-rate-limit';
 import { Router } from 'express';
 import { validate } from '@/middlewares/validate';
 import { requireAuth } from '@/middlewares/require-auth';
@@ -24,6 +24,10 @@ router.post(
   validate({ body: ssoExchangeSchema }),
   asyncHandler(authController.ssoExchange),
 );
+
+// 免登入訪客 Session：租戶由 pk_ 解出，且租戶須開啟 guestAccess（見 guest-session.ts）。
+// 依 IP 限流——每次換發都會寫一筆 Session。
+router.post('/guest', guestRateLimit, resolveTenant, asyncHandler(authController.guest));
 
 // 受保護端點
 router.get('/me', requireAuth, asyncHandler(authController.me));

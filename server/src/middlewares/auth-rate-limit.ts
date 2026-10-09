@@ -12,3 +12,4 @@ export const loginRateLimit = makeAuthRateLimit(env.AUTH_LOGIN_RATE_LIMIT_MAX);
 export const adminLoginRateLimit = makeAuthRateLimit(env.AUTH_ADMIN_RATE_LIMIT_MAX);
 export const ssoRateLimit = makeAuthRateLimit(env.AUTH_SSO_RATE_LIMIT_MAX);
 export const refreshRateLimit = makeAuthRateLimit(env.AUTH_REFRESH_RATE_LIMIT_MAX);
+export const guestRateLimit = makeAuthRateLimit(env.AUTH_GUEST_RATE_LIMIT_MAX);

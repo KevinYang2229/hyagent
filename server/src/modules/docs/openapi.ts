@@ -114,6 +114,20 @@ export const openapiSpec = {
         },
       },
     },
+    "/api/auth/guest": {
+      post: {
+        tags: ["auth"],
+        summary: "免登入訪客 Session（租戶需開啟 guestAccess）",
+        description:
+          "帶租戶 pk_ 換一個 hyas_ Session，身分為伺服器隨機產生的 guest_…，權限即訪客部門。租戶關閉 guestAccess 後，既有訪客 Session 在下一個請求即失效。依 IP 限流。",
+        security: [{ apiKeyAuth: [] }],
+        responses: {
+          "201": { description: "data: { sessionToken, expiresIn, user: { sub, name } }" },
+          "403": { description: "GUEST_ACCESS_DISABLED：租戶未開放訪客使用" },
+          "429": { description: "請求過於頻繁" },
+        },
+      },
+    },
     "/api/skills": {
       get: {
         tags: ["Skills"],

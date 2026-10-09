@@ -110,6 +110,8 @@ export const patchTenantSchema = z
     appearance: appearanceSchema.optional(),
     // 月度 LLM token 配額；0 = 不限
     quotaMonthlyLlmTokens: z.number().int().min(0).optional(),
+    // 允許免登入訪客 Session（POST /api/auth/guest）
+    guestAccess: z.boolean().optional(),
   })
   /*
    * 也是舊旗標的擋板：ACL 已無每租戶開關（見 knowledge.visibility.ts），

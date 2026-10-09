@@ -63,6 +63,8 @@ export interface Tenant {
   grantedScopes?: string[];
   /** 月度 LLM token 配額；0 或未設＝不限 */
   quotaMonthlyLlmTokens?: number;
+  /** 允許免登入訪客 Session（公開 App 用）；未設＝關閉 */
+  guestAccess?: boolean;
   createdAt: string;
 }
 export interface ApiKey {
@@ -428,7 +430,7 @@ export const api = {
     patch: Partial<
       Pick<
         Tenant,
-        'name' | 'allowedOrigins' | 'appearance' | 'quotaMonthlyLlmTokens'
+        'name' | 'allowedOrigins' | 'appearance' | 'quotaMonthlyLlmTokens' | 'guestAccess'
       >
     >,
   ) => req<Tenant>('PATCH', `/admin/tenants/${id}`, patch),

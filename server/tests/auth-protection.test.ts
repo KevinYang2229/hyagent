@@ -8,12 +8,12 @@ import { verifyAccessToken } from '@/utils/jwt';
 // Use small quotas, retaining the actual IP limiter and production route wiring.
 jest.mock('@/middlewares/auth-rate-limit', () => {
   const { makeAuthRateLimit } = jest.requireActual('@/middlewares/auth-rate-limit');
-  return { makeAuthRateLimit, loginRateLimit: makeAuthRateLimit(2), adminLoginRateLimit: makeAuthRateLimit(2), ssoRateLimit: makeAuthRateLimit(2), refreshRateLimit: makeAuthRateLimit(2) };
+  return { makeAuthRateLimit, loginRateLimit: makeAuthRateLimit(2), adminLoginRateLimit: makeAuthRateLimit(2), ssoRateLimit: makeAuthRateLimit(2), refreshRateLimit: makeAuthRateLimit(2), guestRateLimit: makeAuthRateLimit(2) };
 });
 
-it('login, admin, SSO and refresh routes limit requests even with changing identities', async () => {
+it('login, admin, SSO, refresh and guest routes limit requests even with changing identities', async () => {
   const app = createApp();
-  for (const path of ['/api/auth/login', '/api/admin/auth/login', '/api/auth/sso/exchange', '/api/auth/refresh']) {
+  for (const path of ['/api/auth/login', '/api/admin/auth/login', '/api/auth/sso/exchange', '/api/auth/refresh', '/api/auth/guest']) {
     const responses = [];
     for (let i = 0; i < 3; i++) responses.push(await request(app).post(path).set('x-user-id', `user-${i}`).send({ username: `user-${i}`, password: 'wrong', userToken: 'bad', refreshToken: 'bad' }));
     expect(responses[0].status).not.toBe(429);

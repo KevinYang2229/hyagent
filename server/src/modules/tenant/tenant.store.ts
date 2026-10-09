@@ -362,6 +362,7 @@ export const tenantStore = {
         | 'scopesMigrated'
         | 'llmConfig'
         | 'quotaMonthlyLlmTokens'
+        | 'guestAccess'
       >
     >,
   ): Tenant | undefined {
@@ -386,6 +387,7 @@ export const tenantStore = {
       ...(patch.quotaMonthlyLlmTokens !== undefined
         ? { quotaMonthlyLlmTokens: patch.quotaMonthlyLlmTokens }
         : {}),
+      ...(patch.guestAccess !== undefined ? { guestAccess: patch.guestAccess } : {}),
     };
     tenants.set(id, next);
     persist();

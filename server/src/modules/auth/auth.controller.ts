@@ -4,6 +4,7 @@ import { authSessionStore } from '@/lib/auth-session.store';
 import { logger } from '@/lib/logger';
 import { assertionExchange } from './assertion-exchange';
 import { authService } from './auth.service';
+import { issueGuestSession } from './guest-session';
 import type { LoginInput, RefreshInput, SsoExchangeInput } from './auth.schema';
 
 export const authController = {
@@ -54,6 +55,16 @@ export const authController = {
       else logger.info({ code: body.error, status }, 'assertion exchange rejected');
       res.status(status).json(body);
     }
+  },
+
+  /**
+   * 公開：免登入訪客 Session。租戶由 resolveTenant 依 pk_ 解出（未帶則預設租戶），須開啟 guestAccess。
+   * 回應形狀與 /sso/exchange 相同，客戶端可用同一套 Session 處理。
+   */
+  async guest(req: Request, res: Response): Promise<void> {
+    const result = await issueGuestSession(req.tenant);
+    logger.info({ tenantId: req.tenant?.id }, 'guest session issued');
+    res.status(201).json({ data: result });
   },
 
   /** 公開（需帶 Session）：結束目前的 HyAgent Session（規格 §7.2、SDK 的 logout()）。 */

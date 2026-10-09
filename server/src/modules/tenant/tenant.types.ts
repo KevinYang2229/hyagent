@@ -88,6 +88,14 @@ export interface Tenant {
   assertionLifetimeSeconds?: number;
   /** HyAgent Session 有效秒數（規格 §7.1）。未設＝預設 3600，範圍 300～28800。 */
   sessionExpiresIn?: number;
+  /**
+   * 是否允許免登入的訪客 Session（POST /api/auth/guest）。未設＝關閉。
+   *
+   * 給沒有登入機制的公開 App 用（例如產品導覽 App）：帶此租戶的 pk_ 就能換一個訪客 Session，
+   * 權限只有「訪客部門」（'—'）那一份，與 widget 訪客同一套。關閉後既有訪客 Session 在下一個
+   * 請求即失效（requireAuth 每次重驗這個開關），不必另外作廢。
+   */
+  guestAccess?: boolean;
   /** widget 外觀設定（admin 後台維護）；未設則 widget 用內建預設 */
   appearance?: TenantAppearance;
   /** 停用的 agent 服務 id（如 ['knowledge']）；空/未設 = 全部啟用（opt-out） */

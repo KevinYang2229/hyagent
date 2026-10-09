@@ -16,6 +16,7 @@ export default function SettingsTab({
   const [quota, setQuota] = useState(
     tenant.quotaMonthlyLlmTokens ? String(tenant.quotaMonthlyLlmTokens) : '',
   );
+  const [guestAccess, setGuestAccess] = useState(tenant.guestAccess === true);
   const [busy, setBusy] = useState(false);
   const [newKeys, setNewKeys] = useState<ApiKey[]>([]);
 
@@ -76,7 +77,7 @@ export default function SettingsTab({
     setBusy(true);
     try {
       const allowedOrigins = origins.split('\n').map((s) => s.trim()).filter(Boolean);
-      const patch: Parameters<typeof api.updateTenant>[1] = { name: name.trim(), allowedOrigins };
+      const patch: Parameters<typeof api.updateTenant>[1] = { name: name.trim(), allowedOrigins, guestAccess };
       // 空字串或 0 = 不限（送 0 以清除既有配額）
       patch.quotaMonthlyLlmTokens = quota.trim() === '' ? 0 : Math.max(0, Number(quota) || 0);
       await api.updateTenant(tenant.id, patch);
@@ -103,7 +104,7 @@ export default function SettingsTab({
         <div className="card-head">
           <div>
             <div className="card-title">租戶設定</div>
-            <div className="card-desc">名稱、允許嵌入來源與用量配額。</div>
+            <div className="card-desc">名稱、允許嵌入來源、用量配額與訪客使用。</div>
           </div>
         </div>
         <div className="card-body">
@@ -137,6 +138,15 @@ export default function SettingsTab({
               onChange={(e) => setQuota(e.target.value)}
               placeholder="例：1000000（100 萬 tokens／月）"
             />
+          </div>
+
+          <div className="field">
+            <label className="field-label">
+              <input type="checkbox" checked={guestAccess} onChange={(e) => setGuestAccess(e.target.checked)} /> 允許訪客免登入使用
+            </label>
+            <span className="field-hint">
+              給沒有登入機制的公開 App（例如產品導覽 App）。開啟後，帶此租戶 pk_ 金鑰即可取得訪客身分，權限依「訪客部門」設定；關閉後既有訪客立即失效。
+            </span>
           </div>
 
           <div className="form-actions">

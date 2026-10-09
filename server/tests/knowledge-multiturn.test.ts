@@ -22,6 +22,7 @@ import { _setIndexForTest } from '@/modules/knowledge/retriever.staticIndex';
 import type { Session } from '@/modules/conversation/conversation.types';
 import type { LLMMessage, LLMProvider } from '@/lib/llm/types';
 import { tenantStore } from '@/modules/tenant/tenant.store';
+import { env } from '@/config/env';
 
 let tenantId: string;
 
@@ -165,5 +166,33 @@ describe('作答脈絡', () => {
     const answer = calls[calls.length - 1];
     expect(answer.text).toContain('…'); // 截斷標記
     expect(answer.text.length).toBeLessThan(huge.length);
+  });
+});
+
+describe('作答長度', () => {
+  it('作答使用 KNOWLEDGE_ANSWER_MAX_TOKENS（比較表等長回答不被 512 截斷）', async () => {
+    const seen: (number | undefined)[] = [];
+    const llm = {
+      name: 'mock',
+      createMessage: jest.fn(async (params) => {
+        if (!params.model) seen.push(params.maxTokens);
+        return { text: params.model ? '430-01 完成日期' : '答案', toolCalls: [], stopReason: 'end_turn' };
+      }),
+    } as unknown as LLMProvider;
+    await knowledgeAgentService.handleTurn(makeSession([]), '430-01 完成日期', llm);
+    expect(seen.at(-1)).toBe(env.KNOWLEDGE_ANSWER_MAX_TOKENS);
+    expect(env.KNOWLEDGE_ANSWER_MAX_TOKENS).toBeGreaterThanOrEqual(1500);
+  });
+
+  it('仍超過上限時，在回答結尾說明已截斷', async () => {
+    const llm = {
+      name: 'mock',
+      createMessage: jest.fn(async (params) =>
+        params.model
+          ? { text: '430-01 完成日期', toolCalls: [], stopReason: 'end_turn' }
+          : { text: '| 項目 | 說明 |\n|---|---|\n| 完成日期 | 2013', toolCalls: [], stopReason: 'max_tokens' }),
+    } as unknown as LLMProvider;
+    const { reply } = await knowledgeAgentService.handleTurn(makeSession([]), '430-01 完成日期', llm);
+    expect(reply).toMatch(/回答較長已截斷/);
   });
 });

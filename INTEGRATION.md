@@ -16,6 +16,8 @@
   - `server/src/middlewares/resolve-tenant.ts`
 - **動態 CORS**：放行來源＝第一方設定 ∪ 任一租戶白名單；預設租戶為 `*` 時維持全放行。
 - **SSO handoff**：每租戶登記 Assertion 公鑰（最多 2 把），宿主以自家私鑰簽發的 Identity Assertion 經 `POST /api/auth/sso/exchange` 換發 HyAgent Session（嵌入免帳密登入）。HyAgent 只持有公鑰。
+- **訪客 Session**：沒有登入機制的公開 App（例如 LIB ONE 產品導覽）以租戶 `pk_` 呼叫 `POST /api/auth/guest` 換發訪客 Session。租戶須在後台「租戶設定」勾選「允許訪客免登入使用」（`guestAccess`，預設關閉）；身分由伺服器隨機產生，權限即「訪客部門」；關閉後既有訪客 Session 立即失效。依 IP 限流（`AUTH_GUEST_RATE_LIMIT_MAX`，預設 30／15 分鐘）。
+  - `server/src/modules/auth/guest-session.ts`
 - **每租戶 rate limit**：`server/src/middlewares/tenant-rate-limit.ts`。
 
 ### 2. 三種整合方式

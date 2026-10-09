@@ -77,6 +77,10 @@ export const envSchema = z.object({
   AUTH_ADMIN_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(10),
   AUTH_SSO_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(60),
   AUTH_REFRESH_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(120),
+  AUTH_GUEST_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(30),
+
+  // 知識庫問答單次回答的輸出上限（tokens）；比較表等長回答需要較大值
+  KNOWLEDGE_ANSWER_MAX_TOKENS: z.coerce.number().int().min(256).max(8000).default(1500),
 
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),

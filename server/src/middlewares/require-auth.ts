@@ -11,6 +11,7 @@ import type { NextFunction, Request, Response } from 'express';
 import { authSessionStore, readSub } from '@/lib/auth-session.store';
 import { runWithSsoIdentity, type SsoIdentity } from '@/lib/sso-identity.context';
 import { validateIdentity } from '@/modules/auth/credential-version';
+import { GUEST_SESSION_KID, isGuestAccessEnabled } from '@/modules/auth/guest-session';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 import { verifyAccessToken } from '@/utils/jwt';
 import { AppError } from '@/utils/app-error';
@@ -32,8 +33,13 @@ async function authenticateSession(sessionToken: string, req: Request): Promise<
 
   const tenant = await tenantStore.getTenantFromPrimary(session.tenantId);
   if (!tenant) throw AppError.unauthorized('Tenant no longer exists');
-  const key = tenant.publicKeys?.find((k) => k.kid === session.kid);
-  if (key?.status !== 'active') throw AppError.unauthorized('建立此 Session 的公鑰已失效');
+  if (session.kid === GUEST_SESSION_KID) {
+    // 訪客 Session 沒有簽章公鑰可重驗；改為每次重驗租戶的訪客開關——關掉即全部失效
+    if (!isGuestAccessEnabled(tenant)) throw AppError.unauthorized('此租戶已關閉訪客使用');
+  } else {
+    const key = tenant.publicKeys?.find((k) => k.kid === session.kid);
+    if (key?.status !== 'active') throw AppError.unauthorized('建立此 Session 的公鑰已失效');
+  }
 
   const sub = readSub(session);
   req.user = {

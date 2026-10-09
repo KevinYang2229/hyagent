@@ -228,10 +228,17 @@ export const knowledgeAgentService: AgentService = {
             },
           ],
           cache: true,
-          maxTokens: 512,
+          // 比較表、條列建議等完整回答需要較長篇幅；512 會把表格與建議截斷
+          maxTokens: env.KNOWLEDGE_ANSWER_MAX_TOKENS,
         });
         usageStore.recordLLMUsage(session.tenantId, result);
         reply = result.text || fallbackReply(chunks, session.locale);
+        // 仍然超過上限：明白告知被截斷，而不是讓回答停在半句
+        if (result.text && result.stopReason === 'max_tokens') {
+          reply += normalizeLocale(session.locale) === 'en'
+            ? '\n\n(The answer was cut short. Ask a narrower question for the rest.)'
+            : '\n\n（回答較長已截斷，可以縮小範圍再問一次。）';
+        }
       } catch (err) {
         logger.warn({ err, sessionId: session.id }, 'knowledge synthesis failed');
         reply = fallbackReply(chunks, session.locale);
