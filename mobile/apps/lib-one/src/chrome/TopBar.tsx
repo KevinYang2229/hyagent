@@ -25,7 +25,7 @@ export function TopBar({ pathname, onBack, onSettings, chatTools }: { pathname: 
   const home = pathname === '/';
   const title = pageTitle(pathname);
   return (
-    <SafeAreaView edges={['top']} style={{ backgroundColor: 'transparent' }}>
+    <SafeAreaView edges={['top']} style={styles.safeArea}>
       <View style={styles.bar}>
         {home ? null : (
           <Pressable onPress={onBack} hitSlop={10} accessibilityRole="button" accessibilityLabel="返回" style={styles.icon}>
@@ -54,6 +54,7 @@ export function TopBar({ pathname, onBack, onSettings, chatTools }: { pathname: 
 }
 
 const styles = StyleSheet.create({
+  safeArea: { backgroundColor: 'transparent', paddingTop: 28 },
   bar: { height: 56, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 20 },
   icon: { padding: 4 },
   title: { fontSize: 19, fontWeight: '800', color: lib.ink, marginLeft: 12 },
