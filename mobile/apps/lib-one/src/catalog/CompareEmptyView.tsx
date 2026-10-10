@@ -40,10 +40,14 @@ export function CompareEmptyView({ selected, wide, onBrowse, onPreset, onRemove,
     <View style={[styles.page, wide && styles.pageWide]}>
       {/* 比較格位 */}
       <View style={[styles.hero, { flex: 1 }]}>
-        <View style={{ gap: 4 }}>
-          <Text style={[styles.title, !wide && { fontSize: 22 }]}>{selected.length === 0 ? '選 2～3 項產品來比較' : `再選 ${remaining} 項就能開始比較`}</Text>
-          <Text style={[styles.subtitle, !wide && { fontSize: 15 }]}>並排看規格差異，還能請 HyAgent 依館舍需求給建議</Text>
+        <View style={styles.heroHeader}>
+          <Text style={[styles.title, { flex: 1 }, !wide && { fontSize: 22 }]}>{selected.length === 0 ? '選 2～3 項產品來比較' : `再選 ${remaining} 項就能開始比較`}</Text>
+          <Pressable onPress={onAsk} style={({ pressed }) => [styles.askButton, pressed && { opacity: 0.85 }]} accessibilityRole="button" accessibilityLabel="請 HyAgent 幫我挑選比較產品">
+            <MaterialCommunityIcons name="star-four-points" size={24} color="#FFFFFF" />
+            <Text style={styles.askText}>AI 幫我挑選</Text>
+          </Pressable>
         </View>
+        <Text style={[styles.subtitle, !wide && { fontSize: 15 }]}>並排看規格差異，還能請 HyAgent 依館舍需求給建議</Text>
         <View style={[styles.slots, { gap: wide ? 16 : 10, flex: 1 }]}>
           {slots.map((p, i) => p ? (
             <View key={p.id} style={styles.slot}>
@@ -103,17 +107,7 @@ export function CompareEmptyView({ selected, wide, onBrowse, onPreset, onRemove,
         </View>
       </View>
 
-      {/* 行動按鈕 */}
-      <View style={[styles.actions, !wide && { gap: 8 }]}>
-        <Pressable onPress={onBrowse} style={({ pressed }) => [styles.primary, pressed && { opacity: 0.85 }]} accessibilityRole="button">
-          <Ionicons name="grid-outline" size={20} color="#FFFFFF" />
-          <Text style={[styles.primaryText, !wide && { fontSize: 16 }]}>{wide ? '前往產品探索選擇' : '去產品探索'}</Text>
-        </Pressable>
-        <Pressable onPress={onAsk} style={({ pressed }) => [styles.secondary, pressed && { opacity: 0.85 }]} accessibilityRole="button">
-          <MaterialCommunityIcons name="star-four-points" size={18} color={lib.greenDark} />
-          <Text style={[styles.secondaryText, !wide && { fontSize: 15 }]}>{wide ? '不確定選哪些？問 HyAgent' : '問 HyAgent'}</Text>
-        </Pressable>
-      </View>
+
     </View>
   );
 }
@@ -147,9 +141,7 @@ const styles = StyleSheet.create({
   pair: { flexDirection: 'row', gap: 4 },
   presetTitle: { fontSize: 17, fontWeight: '800', color: lib.ink },
   presetHint: { fontSize: 14, color: lib.muted },
-  actions: { flexDirection: 'row', gap: 12 },
-  primary: { flex: 1.2, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 15, borderRadius: 999, backgroundColor: lib.greenDark },
-  primaryText: { fontSize: 19, fontWeight: '800', color: '#FFFFFF' },
-  secondary: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 14, borderRadius: 999, borderWidth: 1.5, borderColor: '#CFE8D6', backgroundColor: '#FFFFFF' },
-  secondaryText: { fontSize: 17, fontWeight: '800', color: lib.greenDark },
+  heroHeader: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  askButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 20, minHeight: 50, borderRadius: 14, backgroundColor: lib.greenDark, shadowColor: lib.greenDark, shadowOpacity: 0.2, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 3 },
+  askText: { fontSize: 18, fontWeight: '800', color: '#FFFFFF' },
 });
