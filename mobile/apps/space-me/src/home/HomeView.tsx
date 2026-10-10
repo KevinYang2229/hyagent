@@ -1,8 +1,10 @@
+import { BrandHeader } from '@/chrome/BrandHeader';
+import { pageTypography } from '@/brand/typography';
 /** 首頁（稿 4）：主視覺標語、探索按鈕、揮手的 HyAgent 機器人，下方四張入口卡。 */
 import { Ionicons } from '@expo/vector-icons';
 import { Image, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { PHOTOS, type PhotoKey } from '@/brand/assets';
-import { RobotFigure, SpaceMeLogo } from '@/brand/Brand';
+import { RobotFigure } from '@/brand/Brand';
 import { shadow, sm, type Tint } from '@/brand/theme';
 import { ArrowDot, IconBadge, Page, useLandscapeLayout } from '@/chrome/Page';
 
@@ -32,17 +34,16 @@ export function HomeView({ wide, onExplore, onEntry, onSettings }: { wide: boole
   const robot = wide ? Math.min(landscape ? height * 0.3 : 290, width * 0.23) : Math.min(150, width * 0.34);
   return (
     <Page wide={wide} photo={PHOTOS.hero} photoHeight={wide ? 520 : 300}>
-      <View style={styles.topBar}>
-        <SpaceMeLogo size={wide ? 30 : 24} />
+      <BrandHeader wide={wide}>
         <Pressable onPress={onSettings} style={styles.settings} accessibilityRole="button" accessibilityLabel="App 設定">
           <Ionicons name="settings-outline" size={22} color={sm.inkSoft} />
         </Pressable>
-      </View>
+      </BrandHeader>
       <View style={[styles.hero, wide && styles.heroWide, landscape && { minHeight: 0, marginTop: 16 }]}>
-        <View style={{ flex: 1, gap: landscape ? 10 : wide ? 18 : 12, maxWidth: 560, paddingRight: wide ? 0 : robot * 0.75 }}>
-          <Text style={[styles.headline, { fontSize: landscape ? 36 : wide ? 44 : 28, lineHeight: landscape ? 46 : wide ? 58 : 38 }]}>智慧空間，{'\n'}讓學習與工作更美好</Text>
-          <Text style={[styles.intro, { fontSize: wide ? 18 : 15 }]}>
-            SpaceMe 提供圖書館與辦公空間的智慧管理解決方案，結合數位化與智慧化，打造更高效率、更友善的使用體驗。
+        <View style={{ flex: 1, gap: landscape ? 10 : wide ? 18 : 12, maxWidth: wide ? 720 : 560, paddingRight: wide ? 0 : robot * 0.75 }}>
+          <Text style={pageTypography(wide).title}>智慧空間，{'\n'}讓學習與工作更美好</Text>
+          <Text style={[pageTypography(wide).description, { maxWidth: wide ? Math.min(460, (width - 64) * 0.38) : '100%' }]}>
+            SpaceMe 提供圖書館與辦公空間的智慧管理解決方案，{'\n'}結合數位化與智慧化，打造更高效率、更友善的使用體驗。
           </Text>
           <Pressable onPress={onExplore} style={({ pressed }) => [styles.cta, pressed && { opacity: 0.85 }]} accessibilityRole="button">
             <Text style={styles.ctaText}>探索 SpaceMe</Text>
@@ -88,12 +89,9 @@ export function HomeView({ wide, onExplore, onEntry, onSettings }: { wide: boole
 }
 
 const styles = StyleSheet.create({
-  topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   settings: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   hero: { marginTop: 28, gap: 16 },
-  heroWide: { flexDirection: 'row', alignItems: 'flex-end', minHeight: 360, marginTop: 40 },
-  headline: { fontWeight: '900', color: sm.ink },
-  intro: { lineHeight: 28, color: sm.inkSoft, fontWeight: '500' },
+  heroWide: { flexDirection: 'row', alignItems: 'center', minHeight: 280, marginTop: 28 },
   cta: { flexDirection: 'row', alignItems: 'center', gap: 10, alignSelf: 'flex-start', backgroundColor: sm.blue, paddingHorizontal: 28, paddingVertical: 14, borderRadius: 999, marginTop: 6, ...shadow.card },
   ctaText: { color: '#FFFFFF', fontSize: 18, fontWeight: '800' },
   robotWide: { marginLeft: 'auto', marginRight: 8, marginBottom: -20 },

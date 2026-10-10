@@ -22,6 +22,7 @@ import { useVoiceInput } from '@hyagent/app-core/voice/useVoiceInput';
 import { PERMISSION_HINT } from '@hyagent/app-core/voice/voiceMachine';
 import { RobotAvatar } from '@/brand/Brand';
 import { shadow, sm } from '@/brand/theme';
+import { PAGE_TOP_SPACE } from '@/chrome/Page';
 import { useAdvisor } from './AdvisorProvider';
 import { advisorPrompt } from './prompts';
 
@@ -92,7 +93,7 @@ function AdvisorConversation({ pathname, onClose }: { pathname: string; onClose(
 
   return (
     <KeyboardAvoidingView style={[styles.conversation, { paddingLeft: insets.left, paddingRight: insets.right }]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <View style={[styles.header, { paddingTop: insets.top + 18 }]}>
+      <View style={[styles.header, { paddingTop: insets.top + PAGE_TOP_SPACE.phone }]}>
         <Pressable onPress={close} hitSlop={10} accessibilityRole="button" accessibilityLabel="返回">
           <Ionicons name="arrow-back" size={26} color={sm.blue} />
         </Pressable>

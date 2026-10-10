@@ -16,6 +16,8 @@ export const FEATURES: Feature[] = [
   { title: '多元空間管理', desc: '討論室、自習室、視聽等', icon: 'grid-outline', tint: 'blue' },
   { title: '數據分析報表', desc: '掌握使用趨勢與價值', icon: 'bar-chart-outline', tint: 'blue' },
   { title: '即時資訊顯示', desc: '方便掌握空間狀態', icon: 'desktop-outline', tint: 'blue' },
+  { title: '到場報到', desc: '確認實際使用，減少空佔', icon: 'checkmark-circle-outline', tint: 'green' },
+  { title: '設備連動', desc: '依使用狀態連動燈光與空調', icon: 'options-outline', tint: 'orange' },
 ];
 
 export function featureQuestion(feature: Feature): string {

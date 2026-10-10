@@ -1,3 +1,4 @@
+import { pageTypography } from '@/brand/typography';
 /** 方案詳細（稿 2 左半）：標題、標語、介紹與各空間類型卡；每張卡都能一鍵請 AI 顧問說明。 */
 import { Ionicons } from '@expo/vector-icons';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -18,9 +19,9 @@ export function SolutionDetailView({ solution, wide, onBack, onAsk }: { solution
         <Text style={styles.backText}>解決方案</Text>
       </Pressable>
       <View style={{ maxWidth: 560, gap: 10, marginTop: wide ? 48 : 24 }}>
-        <Text style={[styles.title, { fontSize: wide ? 42 : 30 }]}>{solution.name}</Text>
-        <Text style={[styles.headline, { fontSize: wide ? 24 : 19 }]}>{solution.headline}</Text>
-        <Text style={styles.intro}>{solution.intro}</Text>
+        <Text style={pageTypography(wide).title}>{solution.name}</Text>
+        <Text style={pageTypography(wide).subtitle}>{solution.headline}</Text>
+        <Text style={pageTypography(wide).description}>{solution.intro}</Text>
         <Pressable onPress={() => onAsk(`${solution.name}有哪些功能？`)} style={({ pressed }) => [styles.ask, pressed && { opacity: 0.85 }]} accessibilityRole="button">
           <Ionicons name="chatbubbles-outline" size={18} color="#FFFFFF" />
           <Text style={styles.askText}>問 AI 產品顧問</Text>
@@ -52,9 +53,6 @@ export function SolutionDetailView({ solution, wide, onBack, onAsk }: { solution
 const styles = StyleSheet.create({
   back: { flexDirection: 'row', alignItems: 'center', gap: 2, alignSelf: 'flex-start', paddingVertical: 6, paddingRight: 12, paddingLeft: 6, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.9)' },
   backText: { fontSize: 16, fontWeight: '700', color: sm.blue },
-  title: { fontWeight: '900', color: sm.ink },
-  headline: { fontWeight: '800', color: sm.ink },
-  intro: { fontSize: 17, lineHeight: 28, color: sm.inkSoft, fontWeight: '500' },
   ask: { flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'flex-start', backgroundColor: sm.blue, paddingHorizontal: 22, paddingVertical: 12, borderRadius: 999, marginTop: 6 },
   askText: { color: '#FFFFFF', fontWeight: '800', fontSize: 16 },
   items: { gap: 16, marginTop: 32 },

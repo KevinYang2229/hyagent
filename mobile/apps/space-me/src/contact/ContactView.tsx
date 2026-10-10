@@ -1,11 +1,15 @@
+import { useState } from 'react';
+import * as Clipboard from 'expo-clipboard';
+import { pageTypography } from '@/brand/typography';
 /**
- * 聯絡我們畫面：上方品牌橫幅與諮詢服務，下方分成「HyAgent 幫你整理需求＋諮詢流程」與「聯絡窗口＋常見問題」兩塊，
- * 平板左右並排、手機上下排，區塊撐滿畫面不留空。路由在 app/(tabs)/contact.tsx。
+ * 聯絡我們畫面：上方標題與服務摘要，下方依序呈現 AI 輔助、聯絡窗口、常見問題與諮詢流程。
+ * 平板橫向使用固定雙欄、整頁不捲動；其他尺寸使用直向可捲動版面。路由在 app/(tabs)/contact.tsx。
  */
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { Linking, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Linking, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { sm } from '@/brand/theme';
 import { RobotAvatar } from '@/brand/Brand';
+import { PAGE_TOP_SPACE } from '@/chrome/Page';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ContactChannel } from './contact';
 
@@ -25,7 +29,15 @@ const FLOW = [
 ];
 
 /** 聯絡前常見的問題：點了直接問 HyAgent */
-export const CONTACT_FAQ = ['導入 SpaceMe 大概需要多久？', '可以和現有的系統整合嗎？', 'SpaceMe 有哪些維運與支援服務？'];
+export const CONTACT_FAQ = [
+  '如何評估適合的方案與費用？',
+  '導入 SpaceMe 大概需要多久？',
+  '可以和現有的系統整合嗎？',
+  'SpaceMe 有哪些維運與支援服務？',
+  '可以安排產品展示或現場勘查嗎？',
+  '可以依場域調整預約規則嗎？',
+  '上線後有提供人員教育訓練嗎？',
+];
 
 export interface ContactViewProps {
   wide: boolean;
@@ -36,71 +48,96 @@ export interface ContactViewProps {
 export const PREPARE_QUESTION = '我想導入 SpaceMe，請幫我整理聯絡業務前需要準備的需求';
 
 export function ContactView({ wide, channels, onAsk }: ContactViewProps) {
-  const { width, height } = useWindowDimensions();
+  const { width, height, fontScale } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  // 固定一頁；橫向使用緊湊間距與單欄常見問題。
+  const [failedChannel, setFailedChannel] = useState<ContactChannel | null>(null);
+  const [copyStatus, setCopyStatus] = useState('');
+  async function openChannel(channel: ContactChannel) {
+    setFailedChannel(null);
+    setCopyStatus('');
+    try {
+      await Linking.openURL(channel.url);
+    } catch {
+      setFailedChannel(channel);
+    }
+  }
+  async function copyChannel(channel: ContactChannel) {
+    try {
+      await Clipboard.setStringAsync(channel.value);
+      setCopyStatus('已複製聯絡資訊');
+    } catch {
+      setCopyStatus('複製失敗，請稍後再試，或手動選取下方聯絡資訊。');
+    }
+  }
+  // 小螢幕依聯絡優先順序排列，常見問題維持每題一列。
   const landscape = wide && width > height;
+  // 大字模式與較矮的橫向畫面減少題數，避免拉高或壓縮問題列。
+  const effectiveHeight = (height - insets.top - insets.bottom) / Math.max(1, fontScale);
+  const faqCount = !landscape ? CONTACT_FAQ.length : effectiveHeight < 720 ? 3 : effectiveHeight < 800 ? 4 : effectiveHeight < 950 ? 5 : 6;
+  const visibleFaq = CONTACT_FAQ.slice(0, faqCount);
   const robotSize = landscape ? 64 : wide ? 96 : 56;
-  const banner = (
-    <View style={[styles.banner, !wide && { padding: 14, paddingBottom: 12 }, landscape && { padding: 12 }]}>
-      <View style={{ flex: 1, gap: 6, zIndex: 1 }}>
-        <Text style={[styles.title, !wide && { fontSize: 24 }]}>聯絡我們</Text>
-        <Text style={[styles.sub, !wide && { fontSize: 15, lineHeight: 22 }]}>想了解導入方案、報價或安排展示，我們很樂意協助。</Text>
-
-      </View>
-      <View style={styles.contactRobot}><RobotAvatar size={robotSize} /></View>
-    </View>
-  );
-
   const services = (
-    <View style={[styles.services, !wide && { flexWrap: 'wrap', gap: 0, rowGap: 8 }]}>
+    <View style={styles.services}>
       {SERVICES.map((s) => (
-        <View key={s.title} style={[styles.service, wide ? { flex: 1, padding: landscape ? 10 : 14 } : { width: '48.8%', padding: 8 }]}>
-          <View style={[styles.serviceIcon, !wide && { width: 34, height: 34, borderRadius: 10 }]}><MaterialCommunityIcons name={s.icon} size={wide ? 26 : 18} color={sm.blueDark} /></View>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.serviceTitle, !wide && { fontSize: 15 }]}>{s.title}</Text>
-            {wide ? <Text style={styles.serviceText} numberOfLines={2}>{s.text}</Text> : null}
-          </View>
+        <View key={s.title} style={styles.service}>
+          <MaterialCommunityIcons name={s.icon} size={20} color={sm.blueDark} />
+          <Text style={styles.serviceTitle}>{s.title}</Text>
         </View>
       ))}
     </View>
   );
 
-  const prepare = (
-    <View style={[styles.block, wide && { flex: 1 }]}>
+  const banner = (
+    <View style={[styles.banner, !wide && { padding: 14, paddingBottom: 12 }, landscape && { padding: 12 }]}>
+      <View style={styles.bannerHeading}>
+      <View style={{ flex: 1, gap: 6, zIndex: 1 }}>
+        <Text accessibilityRole="header" style={pageTypography(wide).title}>聯絡我們</Text>
+        <Text style={pageTypography(wide).description}>想了解導入方案、報價或安排展示，我們很樂意協助。</Text>
+
+      </View>
+      <View style={styles.contactRobot}><RobotAvatar size={robotSize} /></View>
+      </View>
+      {services}
+    </View>
+  );
+
+  const agent = (
       <Pressable onPress={() => onAsk(PREPARE_QUESTION)} style={({ pressed }) => [styles.agent, landscape && { padding: 12 }, pressed && { opacity: 0.85 }]} accessibilityRole="button">
-        <MaterialCommunityIcons name="star-four-points" size={28} color="#FFFFFF" />
+        <MaterialCommunityIcons name="star-four-points" size={28} color={sm.blueDark} />
         <View style={{ flex: 1, gap: 2 }}>
-          <Text style={[styles.agentTitle, !wide && { fontSize: 17 }]}>先讓 HyAgent 幫你整理需求</Text>
+          <Text style={[styles.agentTitle, !wide && { fontSize: 19 }]}>需要協助？讓 HyAgent 整理需求</Text>
           {wide ? <Text style={styles.agentSub}>場域類型、空間數量、想解決的問題，整理好再聯絡更快</Text> : null}
         </View>
-        <Ionicons name="chevron-forward" size={22} color="#FFFFFF" />
+        <Ionicons name="chevron-forward" size={22} color={sm.blueDark} />
       </Pressable>
-      <View style={[styles.card, wide && { flex: 1, minHeight: 0 }, landscape && { padding: 12 }]}>
-        <Text style={styles.cardTitle}>諮詢流程</Text>
-        <View style={[styles.flow, wide ? { flex: 1, justifyContent: 'space-evenly', minHeight: 0 } : { flexDirection: 'row', gap: 6 }]}>
+  );
+
+  const flow = (
+      <View style={[styles.card, { flexShrink: 0 }, landscape && { padding: 12 }]}>
+        <Text accessibilityRole="header" style={styles.cardTitle}>諮詢流程</Text>
+        <View style={[styles.flow, landscape && { gap: 10 }, wide && !landscape && styles.flowWide]}>
           {FLOW.map((f, i) => (
-            <View key={f.title} style={[styles.flowRow, !wide && styles.flowPill]}>
-              <View style={[styles.flowNo, !wide && { width: 22, height: 22 }]}><Text style={[styles.flowNoText, !wide && { fontSize: 12 }]}>{i + 1}</Text></View>
+            <View key={f.title} style={[styles.flowRow, wide && !landscape ? styles.flowStepWide : !wide && styles.flowPill]}>
+              <View style={[styles.flowNo, !wide && { width: 22, height: 22 }]}><Text style={[styles.flowNoText, !wide && { fontSize: 14 }]}>{i + 1}</Text></View>
               <View style={{ flex: 1 }}>
-                <Text style={[styles.flowText, !wide && { fontSize: 13 }]} numberOfLines={wide ? undefined : 2}>{wide ? f.title : f.short}</Text>
-                {wide ? <Text style={styles.flowSub}>{f.text}</Text> : null}
+                <Text style={[styles.flowText, landscape && { fontSize: 18, lineHeight: 25 }]}>{f.title}</Text>
+                <Text style={[styles.flowSub, landscape && { fontSize: 15, lineHeight: 22 }]}>{f.text}</Text>
               </View>
             </View>
           ))}
         </View>
       </View>
-    </View>
   );
 
   const faq = (
-    <View style={[styles.card, wide && { flexShrink: 0 }, landscape && { padding: 12 }]}>
-      <Text style={styles.cardTitle}>聯絡前常見問題</Text>
-      <View style={{ gap: 8 }}>
-        {CONTACT_FAQ.map((q) => (
-          <Pressable key={q} onPress={() => onAsk(q)} style={({ pressed }) => [styles.faq, landscape && { paddingVertical: 9 }, pressed && { opacity: 0.8 }]} accessibilityRole="button">
+    <View style={[styles.card, { flexShrink: 0 }, landscape && { padding: 14 }]}>
+      <Text accessibilityRole="header" style={styles.cardTitle}>聯絡前常見問題</Text>
+      <Text style={styles.channelNote}>點選問題，由 AI 顧問解答。</Text>
+      <View style={{ gap: landscape ? 10 : 14 }}>
+        {visibleFaq.map((q) => (
+          <Pressable key={q} onPress={() => onAsk(q)} style={({ pressed }) => [styles.faq, landscape && { paddingVertical: 14 }, pressed && { opacity: 0.8 }]} accessibilityRole="button" accessibilityHint="開啟 AI 顧問並詢問這個問題">
             <MaterialCommunityIcons name="star-four-points" size={16} color={sm.blue} />
-            <Text style={[styles.faqText, !wide && { fontSize: 15 }]} numberOfLines={2}>{q}</Text>
+            <Text style={[styles.faqText, landscape && { fontSize: 22, lineHeight: 32 }, !wide && { fontSize: 20, lineHeight: 30 }]}>{q}</Text>
             <Ionicons name="chevron-forward" size={18} color={sm.blueDark} />
           </Pressable>
         ))}
@@ -109,19 +146,29 @@ export function ContactView({ wide, channels, onAsk }: ContactViewProps) {
   );
 
   const contacts = (
-    <View style={[styles.card, wide && { flexGrow: 1 }, landscape && { padding: 12 }]}>
-      <Text style={styles.cardTitle}>聯絡窗口</Text>
+    <View style={[styles.card, styles.contactCard, landscape && { padding: 12 }]}>
+      <Text accessibilityRole="header" style={styles.cardTitle}>聯絡窗口</Text>
       <View style={{ gap: 6 }}>
         {channels.map((c) => (
-          <Pressable key={c.kind} onPress={() => void Linking.openURL(c.url)} style={[styles.channel, landscape && { paddingVertical: 4 }]} accessibilityRole="link" accessibilityLabel={`${c.label} ${c.value}`}>
+          <Pressable key={c.kind} onPress={() => void openChannel(c)} style={({ pressed }) => [styles.channel, landscape && { paddingVertical: 4 }, pressed && styles.channelPressed]} accessibilityRole="link" accessibilityLabel={`${c.label} ${c.value}`}>
             <View style={[styles.channelIcon, landscape && { width: 36, height: 36 }]}><Ionicons name={ICON[c.kind]} size={22} color={sm.blueDark} /></View>
             <View style={{ flex: 1 }}>
               <Text style={styles.channelLabel}>{c.kind === 'website' ? '官方網站' : c.label}</Text>
-              <Text style={[styles.channelValue, !wide && { fontSize: 16 }]} numberOfLines={1}>{c.value.replace(/^https?:\/\//, '')}</Text>
+              <Text selectable style={[styles.channelValue, !wide && { fontSize: 18 }]}>{c.value.replace(/^https?:\/\//, '')}</Text>
             </View>
             <Ionicons name="open-outline" size={20} color={sm.muted} />
           </Pressable>
         ))}
+        {failedChannel ? (
+          <View style={styles.channelError}>
+            <Text accessibilityLiveRegion="polite" style={styles.channelNote}>無法開啟{failedChannel.label}，請複製聯絡資訊後使用其他應用程式聯絡。</Text>
+            <Text selectable style={styles.channelValue}>{failedChannel.value}</Text>
+            <Pressable onPress={() => void copyChannel(failedChannel)} accessibilityRole="button" style={({ pressed }) => [styles.copyButton, pressed && styles.channelPressed]}>
+              <Text style={styles.copyText}>複製聯絡資訊</Text>
+            </Pressable>
+            {copyStatus ? <Text accessibilityLiveRegion="polite" style={styles.channelNote}>{copyStatus}</Text> : null}
+          </View>
+        ) : null}
         {channels.length === 0 ? <Text style={styles.channelNote}>業務窗口尚未設定，請先透過 HyAgent 整理您的需求。</Text> : null}
         {wide && channels.length > 0 && channels.every((c) => c.kind === 'website') ? (
           <Text style={styles.channelNote}>業務電話與信箱將由管理員設定；目前可先透過官網或 HyAgent 了解產品。</Text>
@@ -130,25 +177,37 @@ export function ContactView({ wide, channels, onAsk }: ContactViewProps) {
     </View>
   );
 
-  return (
-    <View style={[styles.page, wide && styles.pageWide, { paddingTop: insets.top + (landscape ? 12 : wide ? 24 : 14), paddingBottom: wide ? 38 : 28, paddingLeft: Math.max(insets.left, wide ? 24 : 14), paddingRight: Math.max(insets.right, wide ? 24 : 14) }, landscape && { gap: 12 }]}>
-      {banner}
-      {services}
-      {wide ? (
+  const pageStyle = [styles.page, wide && styles.pageWide, {
+    paddingTop: insets.top + (landscape ? PAGE_TOP_SPACE.landscape : wide ? PAGE_TOP_SPACE.tablet : PAGE_TOP_SPACE.phone) + 16,
+    paddingBottom: landscape ? 16 : wide ? 24 : 20,
+    paddingLeft: Math.max(insets.left, wide ? 24 : 14),
+    paddingRight: Math.max(insets.right, wide ? 24 : 14),
+  }];
+
+  if (landscape) {
+    return (
+      <View testID="contact-landscape" style={[pageStyle, { flex: 1, gap: 12 }]}>
+        {banner}
         <View style={styles.columns}>
-          {prepare}
-          <View style={{ flex: 1, gap: 12 }}>
+          <View style={styles.column}>
+            {agent}
             {contacts}
-            {faq}
+            {flow}
           </View>
+          <View style={styles.column}>{faq}</View>
         </View>
-      ) : (
-        <View style={{ flex: 1, justifyContent: 'space-between', gap: 10 }}>
-          {prepare}
-          {contacts}
-        </View>
-      )}
-    </View>
+      </View>
+    );
+  }
+
+  return (
+    <ScrollView testID="contact-scroll" style={styles.scroll} contentContainerStyle={pageStyle}>
+      {banner}
+      {agent}
+      {contacts}
+      {faq}
+      {flow}
+    </ScrollView>
   );
 }
 
@@ -156,35 +215,40 @@ const card = { backgroundColor: '#FFFFFF', borderRadius: 18, shadowColor: sm.blu
 
 const styles = StyleSheet.create({
   contactRobot: { marginLeft: 16 },
-  page: { flex: 1, backgroundColor: sm.blueMist, padding: 14, gap: 12 },
+  scroll: { flex: 1, backgroundColor: sm.blueMist },
+  page: { flexGrow: 1, backgroundColor: sm.blueMist, padding: 14, gap: 12 },
   pageWide: { padding: 24, gap: 16 },
-  columns: { flex: 1, flexDirection: 'row', gap: 16 },
-  banner: { ...card, flexDirection: 'row', alignItems: 'center', padding: 22, paddingBottom: 18, overflow: 'hidden', backgroundColor: sm.blueSoft },
-  title: { fontSize: 30, fontWeight: '900', color: sm.ink },
-  sub: { fontSize: 18, lineHeight: 26, color: sm.inkSoft },
-  services: { flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
-  service: { ...card, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14 },
-  serviceIcon: { width: 44, height: 44, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: sm.blueSoft },
-  serviceTitle: { fontSize: 17, fontWeight: '900', color: sm.ink },
-  serviceText: { fontSize: 14, color: sm.inkSoft },
-  block: { gap: 12 },
-  agent: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 18, borderRadius: 20, backgroundColor: sm.blueDark },
-  agentTitle: { fontSize: 19, fontWeight: '800', color: '#FFFFFF' },
-  agentSub: { fontSize: 15, color: '#EAF1FF' },
+  columns: { flexDirection: 'row', alignItems: 'flex-start', gap: 16 },
+  column: { flex: 1, gap: 12 },
+  banner: { padding: 22, gap: 16, borderRadius: 20, backgroundColor: sm.blueSoft },
+  bannerHeading: { flexDirection: 'row', alignItems: 'center' },
+  services: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  service: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: sm.blueSoft },
+  serviceTitle: { fontSize: 19, lineHeight: 27, fontWeight: '900', color: sm.ink },
+  agent: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 18, borderRadius: 20, backgroundColor: sm.blueSoft, borderWidth: 1, borderColor: sm.line },
+  agentTitle: { fontSize: 21, lineHeight: 29, fontWeight: '800', color: sm.ink },
+  agentSub: { fontSize: 17, lineHeight: 25, color: sm.inkSoft },
   card: { ...card, gap: 10, padding: 18 },
-  cardTitle: { fontSize: 19, fontWeight: '900', color: sm.ink },
-  flow: { gap: 10 },
+  contactCard: { flexShrink: 0, padding: 14, gap: 8 },
+  cardTitle: { fontSize: 21, lineHeight: 29, fontWeight: '900', color: sm.ink },
+  flow: { gap: 18 },
+  flowWide: { flexDirection: 'row', gap: 20 },
+  flowStepWide: { flex: 1, alignItems: 'flex-start', paddingVertical: 8 },
   flowRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   flowNo: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: sm.blueDark },
-  flowNoText: { fontSize: 15, fontWeight: '900', color: '#FFFFFF' },
-  flowText: { fontSize: 17, fontWeight: '800', color: sm.ink },
-  flowPill: { flex: 1, gap: 6, paddingHorizontal: 8, paddingVertical: 8, borderRadius: 12, backgroundColor: sm.blueMist },
-  flowSub: { fontSize: 15, color: sm.inkSoft, marginTop: 2 },
-  faq: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 12, borderRadius: 14, backgroundColor: sm.blueMist },
-  faqText: { flex: 1, fontSize: 16, fontWeight: '700', color: sm.ink },
+  flowNoText: { fontSize: 17, fontWeight: '900', color: '#FFFFFF' },
+  flowText: { fontSize: 19, lineHeight: 27, fontWeight: '800', color: sm.ink },
+  flowPill: { gap: 6, paddingHorizontal: 8, paddingVertical: 12, borderRadius: 12, backgroundColor: sm.blueMist },
+  flowSub: { fontSize: 17, lineHeight: 25, color: sm.inkSoft, marginTop: 2 },
+  faq: { flexDirection: 'row', alignItems: 'center', gap: 16, paddingHorizontal: 20, paddingVertical: 20, borderRadius: 14, backgroundColor: sm.blueMist },
+  faqText: { flex: 1, fontSize: 22, lineHeight: 32, fontWeight: '700', color: sm.ink },
   channel: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8 },
   channelIcon: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', backgroundColor: sm.blueSoft },
-  channelLabel: { fontSize: 14, color: sm.muted },
-  channelValue: { fontSize: 18, fontWeight: '800', color: sm.ink },
-  channelNote: { fontSize: 14, lineHeight: 21, color: sm.muted, marginTop: 4 },
+  channelPressed: { backgroundColor: sm.blueSoft, opacity: 0.8 },
+  channelError: { gap: 8, padding: 12, borderRadius: 12, backgroundColor: sm.blueMist },
+  copyButton: { alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center', paddingHorizontal: 14, borderRadius: 10, borderWidth: 1, borderColor: sm.blueDark },
+  copyText: { fontSize: 17, fontWeight: '700', color: sm.blueDark },
+  channelLabel: { fontSize: 16, lineHeight: 24, color: sm.inkSoft },
+  channelValue: { fontSize: 20, lineHeight: 28, fontWeight: '800', color: sm.ink },
+  channelNote: { fontSize: 16, lineHeight: 24, color: sm.muted, marginTop: 4 },
 });

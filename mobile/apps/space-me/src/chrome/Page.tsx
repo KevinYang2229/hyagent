@@ -6,6 +6,8 @@ import { Image, ScrollView, StyleSheet, View, useWindowDimensions, type ImageSou
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { sm, tints, type Tint } from '@/brand/theme';
 
+export const PAGE_TOP_SPACE = { phone: 32, tablet: 40, landscape: 24 } as const;
+
 export function useLandscapeLayout() {
   const { width, height } = useWindowDimensions();
   return width >= 700 && width > height;
@@ -16,7 +18,7 @@ export function Page({ photo, photoHeight = 360, wide, children }: { photo?: Ima
   const landscape = useLandscapeLayout();
   return (
     <View style={styles.page}>
-      <ScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + (landscape ? 12 : wide ? 24 : 16), paddingLeft: Math.max(insets.left, wide ? 32 : 18), paddingRight: Math.max(insets.right, wide ? 32 : 18), paddingBottom: wide ? 42 : 32 }]} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + (landscape ? PAGE_TOP_SPACE.landscape : wide ? PAGE_TOP_SPACE.tablet : PAGE_TOP_SPACE.phone), paddingLeft: Math.max(insets.left, wide ? 32 : 18), paddingRight: Math.max(insets.right, wide ? 32 : 18), paddingBottom: wide ? 42 : 32 }]} keyboardShouldPersistTaps="handled">
         {photo ? (
           <View pointerEvents="none" style={[styles.photoWrap, { height: photoHeight, width: wide ? '62%' : '100%' }]}>
             <Image source={photo} style={styles.photo} resizeMode="cover" />

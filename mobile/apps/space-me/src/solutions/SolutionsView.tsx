@@ -1,8 +1,9 @@
+import { BrandHeader } from '@/chrome/BrandHeader';
+import { pageTypography } from '@/brand/typography';
 /** 解決方案（稿 3）：搜尋、方案大卡（照片＋圖示＋適用空間）。 */
 import { Ionicons } from '@expo/vector-icons';
 import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { PHOTOS } from '@/brand/assets';
-import { SpaceMeLogo } from '@/brand/Brand';
 import { shadow, sm } from '@/brand/theme';
 import { ArrowDot, IconBadge, Page, useLandscapeLayout } from '@/chrome/Page';
 import { SOLUTIONS, filterSolutions } from '@/content/solutions';
@@ -25,14 +26,13 @@ export function SolutionsView({ wide, query, searchOpen, onQuery, onToggleSearch
     : list.map((solution) => [solution]);
   return (
     <Page wide={wide} photo={PHOTOS.hero} photoHeight={wide ? 300 : 220}>
-      <View style={styles.top}>
-        <SpaceMeLogo size={wide ? 30 : 24} />
+      <BrandHeader wide={wide}>
         <Pressable onPress={onToggleSearch} style={styles.search} accessibilityRole="button" accessibilityLabel={searchOpen ? '關閉搜尋' : '搜尋解決方案'}>
           <Ionicons name={searchOpen ? 'close' : 'search'} size={24} color={sm.ink} />
         </Pressable>
-      </View>
-      <Text style={[styles.title, { fontSize: landscape ? 32 : wide ? 40 : 30 }]}>解決方案</Text>
-      <Text style={styles.subtitle}>針對不同場域，提供最適合的智慧空間管理方案。</Text>
+      </BrandHeader>
+      <Text style={[styles.title, pageTypography(wide).title]}>解決方案</Text>
+      <Text style={[styles.subtitle, pageTypography(wide).description]}>針對不同場域，提供最適合的智慧空間管理方案。</Text>
 
       {searchOpen ? (
         <View style={styles.searchBox}>
@@ -93,10 +93,9 @@ export function SolutionsView({ wide, query, searchOpen, onQuery, onToggleSearch
 }
 
 const styles = StyleSheet.create({
-  top: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   search: { width: 52, height: 52, borderRadius: 26, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', ...shadow.card },
-  title: { fontWeight: '900', color: sm.ink, marginTop: 12 },
-  subtitle: { fontSize: 17, color: sm.inkSoft, marginTop: 6, fontWeight: '500' },
+  title: { marginTop: 12 },
+  subtitle: { marginTop: 6 },
   searchBox: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 16, paddingHorizontal: 16, borderRadius: 999, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: sm.line, maxWidth: 520 },
   searchInput: { flex: 1, fontSize: 17, paddingVertical: 12, color: sm.ink },
   grid: { gap: 18, marginTop: 20 },

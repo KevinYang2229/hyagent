@@ -8,8 +8,12 @@ import { normalizeServerUrl } from '@hyagent/app-core/api/config';
 import { useAuth } from '@hyagent/app-core/auth/AuthProvider';
 import { useSettings } from '@hyagent/app-core/settings/SettingsProvider';
 import { sm } from '@/brand/theme';
+import { pageTypography } from '@/brand/typography';
+import { useIsWide } from '@hyagent/app-core/layout/useIsWide';
+import { PAGE_TOP_SPACE } from '@/chrome/Page';
 
 export default function Settings() {
+  const wide = useIsWide();
   const { connect } = useAuth();
   const { speakEnabled, setSpeakEnabled, serverUrl, setServerUrl } = useSettings();
   const [server, setServer] = useState(serverUrl);
@@ -31,7 +35,7 @@ export default function Settings() {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
-        <Text style={styles.title}>設定</Text>
+        <Text style={pageTypography(wide).title}>設定</Text>
         <Pressable onPress={() => router.back()} hitSlop={10} accessibilityRole="button" accessibilityLabel="關閉"><Ionicons name="close" size={26} color={sm.ink} /></Pressable>
       </View>
       <ScrollView contentContainerStyle={styles.page}>
@@ -58,8 +62,7 @@ export default function Settings() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: sm.blueMist },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 12 },
-  title: { fontSize: 25, fontWeight: '900', color: sm.ink },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: PAGE_TOP_SPACE.phone, paddingBottom: 12 },
   page: { padding: 20, gap: 14, width: '100%', maxWidth: 640, alignSelf: 'center' },
   card: { gap: 8, padding: 18, borderRadius: 18, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: sm.line },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
@@ -67,6 +70,6 @@ const styles = StyleSheet.create({
   desc: { fontSize: 15, lineHeight: 22, color: sm.inkSoft },
   input: { borderWidth: 1, borderColor: sm.line, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 17, color: sm.ink, backgroundColor: sm.blueMist },
   error: { color: '#D93B30' },
-  save: { alignSelf: 'flex-end', backgroundColor: sm.blueDark, borderRadius: 12, paddingHorizontal: 20, paddingVertical: 12 },
+  save: { alignSelf: 'flex-end', backgroundColor: sm.blueDark, borderRadius: 12, paddingHorizontal: 20, paddingTop: PAGE_TOP_SPACE.phone, paddingBottom: 12 },
   saveText: { color: '#FFFFFF', fontWeight: '700', fontSize: 16 },
 });

@@ -19,7 +19,7 @@ it('方案 id 唯一，詳細頁找得到；未知 id 回 undefined', () => {
   expect(findSolution(undefined)).toBeUndefined();
 });
 
-it('產品特色六項，點了會帶出問題', () => {
-  expect(FEATURES).toHaveLength(6);
+it('產品特色八項，點了會帶出問題', () => {
+  expect(FEATURES).toHaveLength(8);
   expect(featureQuestion(FEATURES[0])).toBe('請介紹 SpaceMe 的「彈性預約機制」');
 });
