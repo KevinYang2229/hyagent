@@ -44,7 +44,7 @@ export function ContactView({ wide, product, channels, onPrepare, onClearProduct
     <View style={[styles.banner, !wide && { padding: 14, paddingBottom: 12 }, landscape && { paddingVertical: 14 }]}>
       <View style={{ flex: 1, gap: 6, zIndex: 1 }}>
         <Text style={[styles.title, !wide && { fontSize: 24 }]}>聯絡我們</Text>
-        <Text style={[styles.sub, !wide && { fontSize: 15, lineHeight: 22 }]}>想了解導入方案、報價或安排展示，我們很樂意協助。</Text>
+        <Text style={[styles.sub, !wide && { fontSize: 17, lineHeight: 25 }]}>想了解導入方案、報價或安排展示，我們很樂意協助。</Text>
         {product ? (
           <View style={styles.product}>
             <Text style={styles.productLabel} numberOfLines={1}>{wide ? '諮詢產品' : '諮詢'}</Text>
@@ -63,9 +63,9 @@ export function ContactView({ wide, product, channels, onPrepare, onClearProduct
     <View style={[styles.services, !wide && { flexWrap: 'wrap', gap: 0, rowGap: 8 }]}>
       {SERVICES.map((s) => (
         <View key={s.title} style={[styles.service, wide ? { flex: 1 } : { width: '48.8%', padding: 10 }]}>
-          <View style={[styles.serviceIcon, !wide && { width: 34, height: 34, borderRadius: 10 }]}><MaterialCommunityIcons name={s.icon} size={wide ? 26 : 18} color={lib.greenDark} /></View>
+          <View style={[styles.serviceIcon, !wide && { width: 40, height: 40, borderRadius: 12 }]}><MaterialCommunityIcons name={s.icon} size={wide ? 30 : 22} color={lib.greenDark} /></View>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.serviceTitle, !wide && { fontSize: 15 }]}>{s.title}</Text>
+            <Text style={[styles.serviceTitle, !wide && { fontSize: 19 }]}>{s.title}</Text>
             {wide ? <Text style={styles.serviceText} numberOfLines={2}>{s.text}</Text> : null}
           </View>
         </View>
@@ -83,14 +83,14 @@ export function ContactView({ wide, product, channels, onPrepare, onClearProduct
         </View>
         <Ionicons name="chevron-forward" size={22} color="#FFFFFF" />
       </Pressable>
-      <View style={[styles.card, wide && { flex: 1 }]}>
+      <View style={styles.card}>
         <Text style={styles.cardTitle}>諮詢流程</Text>
-        <View style={[styles.flow, wide ? { flex: 1, justifyContent: 'space-evenly' } : { flexDirection: 'row', gap: 6 }]}>
+        <View style={[styles.flow, !wide && { flexDirection: 'row', gap: 6 }]}>
           {FLOW.map((f, i) => (
             <View key={f.title} style={[styles.flowRow, !wide && styles.flowPill]}>
-              <View style={[styles.flowNo, !wide && { width: 22, height: 22 }]}><Text style={[styles.flowNoText, !wide && { fontSize: 12 }]}>{i + 1}</Text></View>
+              <View style={[styles.flowNo, !wide && { width: 26, height: 26 }]}><Text style={[styles.flowNoText, !wide && { fontSize: 14 }]}>{i + 1}</Text></View>
               <View style={{ flex: 1 }}>
-                <Text style={[styles.flowText, !wide && { fontSize: 13 }]} numberOfLines={wide ? undefined : 2}>{wide ? f.title : f.short}</Text>
+                <Text style={[styles.flowText, !wide && { fontSize: 17 }]} numberOfLines={wide ? undefined : 2}>{wide ? f.title : f.short}</Text>
                 {wide ? <Text style={styles.flowSub}>{f.text}</Text> : null}
               </View>
             </View>
@@ -101,11 +101,11 @@ export function ContactView({ wide, product, channels, onPrepare, onClearProduct
   );
 
   const faq = (
-    <View style={[styles.card, wide && { flex: 1 }]}>
+    <View style={styles.card}>
       <Text style={styles.cardTitle}>聯絡前常見問題</Text>
-      <View style={[{ gap: 8 }, wide && { flex: 1, justifyContent: 'space-evenly' }]}>
+      <View style={{ gap: 10 }}>
         {CONTACT_FAQ.slice(0, landscape ? 3 : CONTACT_FAQ.length).map((q) => (
-          <Pressable key={q} onPress={() => onAsk(q)} style={({ pressed }) => [styles.faq, landscape && { paddingVertical: 9 }, pressed && { opacity: 0.8 }]} accessibilityRole="button">
+          <Pressable key={q} onPress={() => onAsk(q)} style={({ pressed }) => [styles.faq, pressed && { opacity: 0.8 }]} accessibilityRole="button">
             <MaterialCommunityIcons name="star-four-points" size={16} color={lib.green} />
             <Text style={[styles.faqText, !wide && { fontSize: 15 }]} numberOfLines={1}>{q}</Text>
             <Ionicons name="chevron-forward" size={18} color={lib.greenDark} />
@@ -118,13 +118,13 @@ export function ContactView({ wide, product, channels, onPrepare, onClearProduct
   const contacts = (
     <View style={styles.card}>
       <Text style={styles.cardTitle}>聯絡窗口</Text>
-      <View style={{ gap: 6 }}>
+      <View style={{ gap: 8 }}>
         {channels.map((c) => (
           <Pressable key={c.kind} onPress={() => void Linking.openURL(c.url)} style={styles.channel} accessibilityRole="link" accessibilityLabel={`${c.label} ${c.value}`}>
             <View style={styles.channelIcon}><Ionicons name={ICON[c.kind]} size={22} color={lib.greenDark} /></View>
             <View style={{ flex: 1 }}>
               <Text style={styles.channelLabel}>{c.kind === 'website' ? '官方網站' : c.label}</Text>
-              <Text style={[styles.channelValue, !wide && { fontSize: 16 }]} numberOfLines={1}>{c.value.replace(/^https?:\/\//, '')}</Text>
+              <Text style={[styles.channelValue, !wide && { fontSize: 18 }]} numberOfLines={1}>{c.value.replace(/^https?:\/\//, '')}</Text>
             </View>
             <Ionicons name="open-outline" size={20} color={lib.muted} />
           </Pressable>
@@ -172,27 +172,27 @@ const styles = StyleSheet.create({
   productName: { fontSize: 16, fontWeight: '800', color: lib.ink, maxWidth: 260 },
   services: { flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
   service: { ...card, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14 },
-  serviceIcon: { width: 44, height: 44, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: lib.greenSoft },
-  serviceTitle: { fontSize: 17, fontWeight: '900', color: lib.ink },
-  serviceText: { fontSize: 14, color: lib.inkSoft },
+  serviceIcon: { width: 50, height: 50, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: lib.greenSoft },
+  serviceTitle: { fontSize: 21, fontWeight: '900', color: lib.ink },
+  serviceText: { fontSize: 19, lineHeight: 27, color: lib.inkSoft },
   block: { gap: 12 },
   agent: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 18, borderRadius: 20, backgroundColor: lib.greenDark },
   agentTitle: { fontSize: 19, fontWeight: '800', color: '#FFFFFF' },
-  agentSub: { fontSize: 15, color: '#D7EEDD' },
-  card: { ...card, gap: 10, padding: 18 },
-  cardTitle: { fontSize: 19, fontWeight: '900', color: lib.ink },
-  flow: { gap: 10 },
+  agentSub: { fontSize: 17, lineHeight: 24, color: '#D7EEDD' },
+  card: { ...card, gap: 12, padding: 16 },
+  cardTitle: { fontSize: 21, fontWeight: '900', color: lib.ink },
+  flow: { gap: 18 },
   flowRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  flowNo: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: lib.greenDark },
-  flowNoText: { fontSize: 15, fontWeight: '900', color: '#FFFFFF' },
-  flowText: { fontSize: 17, fontWeight: '800', color: lib.ink },
+  flowNo: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: lib.greenDark },
+  flowNoText: { fontSize: 18, fontWeight: '900', color: '#FFFFFF' },
+  flowText: { fontSize: 21, fontWeight: '800', color: lib.ink },
   flowPill: { flex: 1, gap: 6, paddingHorizontal: 8, paddingVertical: 8, borderRadius: 12, backgroundColor: lib.greenMist },
-  flowSub: { fontSize: 15, color: lib.inkSoft, marginTop: 2 },
-  faq: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 12, borderRadius: 14, backgroundColor: lib.greenMist },
-  faqText: { flex: 1, fontSize: 16, fontWeight: '700', color: lib.ink },
-  channel: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8 },
+  flowSub: { fontSize: 19, lineHeight: 27, color: lib.inkSoft, marginTop: 4 },
+  faq: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 16, borderRadius: 14, backgroundColor: lib.greenMist },
+  faqText: { flex: 1, fontSize: 20, fontWeight: '700', color: lib.ink },
+  channel: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 6 },
   channelIcon: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', backgroundColor: lib.greenSoft },
-  channelLabel: { fontSize: 14, color: lib.muted },
-  channelValue: { fontSize: 18, fontWeight: '800', color: lib.ink },
-  channelNote: { fontSize: 14, lineHeight: 21, color: lib.muted, marginTop: 4 },
+  channelLabel: { fontSize: 16, color: lib.muted },
+  channelValue: { fontSize: 20, fontWeight: '800', color: lib.ink },
+  channelNote: { fontSize: 16, lineHeight: 23, color: lib.muted, marginTop: 4 },
 });
