@@ -5,10 +5,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Animated, BackHandler, Easing, FlatList, KeyboardAvoidingView, Linking, Platform, Pressable, StyleSheet, Text, View,
+  ActivityIndicator, Animated, BackHandler, Easing, FlatList, KeyboardAvoidingView, Linking, Platform, Pressable, StyleSheet, Text, View, useWindowDimensions,
   type TextInput,
 } from 'react-native';
 import { useApi } from '@hyagent/app-core/auth/AuthProvider';
+import { ChatTypographyContext } from '@hyagent/app-core/chat/ChatTypography';
 import { ChatInput } from '@hyagent/app-core/chat/ChatInput';
 import { useChat } from '@hyagent/app-core/chat/ChatProvider';
 import { MessageBubble } from '@hyagent/app-core/chat/MessageBubble';
@@ -25,6 +26,9 @@ import { shadow, sm } from '@/brand/theme';
 import { PAGE_TOP_SPACE } from '@/chrome/Page';
 import { useAdvisor } from './AdvisorProvider';
 import { advisorPrompt } from './prompts';
+
+const ADVISOR_AVATAR_SIZE = 60;
+const advisorTypography = { body: 20, lineHeight: 32, label: 18, caption: 15 };
 
 export function AdvisorPanel({ pathname }: { pathname: string }) {
   const { open, hide } = useAdvisor();
@@ -50,13 +54,17 @@ export function AdvisorPanel({ pathname }: { pathname: string }) {
       style={[styles.panel, StyleSheet.absoluteFill, { opacity: fade }]}
       accessibilityViewIsModal
     >
-      <AdvisorConversation pathname={pathname} onClose={hide} />
+      <ChatTypographyContext.Provider value={advisorTypography}>
+        <AdvisorConversation pathname={pathname} onClose={hide} />
+      </ChatTypographyContext.Provider>
     </Animated.View>
   );
 }
 
 function AdvisorConversation({ pathname, onClose }: { pathname: string; onClose(): void }) {
   const chat = useChat();
+  const { width, fontScale } = useWindowDimensions();
+  const twoColumns = width >= 700 && fontScale < 1.4;
   const { speakEnabled, setSpeakEnabled } = useSettings();
   const prompt = advisorPrompt(pathname);
   const insets = useSafeAreaInsets();
@@ -93,38 +101,44 @@ function AdvisorConversation({ pathname, onClose }: { pathname: string; onClose(
 
   return (
     <KeyboardAvoidingView style={[styles.conversation, { paddingLeft: insets.left, paddingRight: insets.right }]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <View style={[styles.header, { paddingTop: insets.top + PAGE_TOP_SPACE.phone }]}>
+      <View style={[styles.header, { paddingTop: insets.top + PAGE_TOP_SPACE.phone + 16 }]}>
         <Pressable onPress={close} hitSlop={10} accessibilityRole="button" accessibilityLabel="返回">
           <Ionicons name="arrow-back" size={26} color={sm.blue} />
         </Pressable>
         <Text style={styles.title} numberOfLines={1}>HyAgent AI 產品顧問</Text>
+        <View style={styles.tools}>
         <Pressable onPress={() => void setSpeakEnabled(!speakEnabled)} hitSlop={8} style={styles.tool} accessibilityRole="switch" accessibilityState={{ checked: speakEnabled }} accessibilityLabel="朗讀回覆">
           <Ionicons name={speakEnabled ? 'volume-high-outline' : 'volume-mute-outline'} size={22} color={sm.inkSoft} />
         </Pressable>
         <Pressable onPress={() => { stopSpeaking(); chat.newConversation(); }} hitSlop={8} style={styles.tool} accessibilityRole="button" accessibilityLabel="新對話">
           <Ionicons name="refresh-outline" size={22} color={sm.inkSoft} />
         </Pressable>
+        </View>
       </View>
 
       <FlatList
         ref={listRef}
         data={messages}
         keyExtractor={(m) => m.id}
-        contentContainerStyle={styles.list}
+        contentContainerStyle={[styles.list, messages.length === 0 && styles.emptyList]}
         ListHeaderComponent={
-          <View style={{ gap: 16, marginBottom: 8 }}>
+          <View style={[styles.intro, messages.length === 0 && styles.introEmpty]}>
             <View style={styles.welcome}>
-              <RobotAvatar size={60} />
+              <View style={{ width: ADVISOR_AVATAR_SIZE, flexShrink: 0 }}><RobotAvatar size={ADVISOR_AVATAR_SIZE} /></View>
               <View style={styles.greeting}><Text style={styles.greetingText}>{prompt.greeting}</Text></View>
             </View>
             {messages.length === 0 ? (
-              <View style={styles.starters}>
+              <View style={{ gap: 14 }}>
+                <Text style={styles.startersTitle}>今天想了解什麼？</Text>
+                <View style={[styles.starters, twoColumns && styles.startersWide]}>
                 {prompt.suggestions.map((q) => (
-                  <Pressable key={q} onPress={() => void chat.send(q)} style={({ pressed }) => [styles.starter, pressed && { opacity: 0.7 }]} accessibilityRole="button">
+                  <Pressable key={q} onPress={() => void chat.send(q)} style={({ pressed }) => [styles.starter, twoColumns && styles.starterWide, pressed && { opacity: 0.7 }]} accessibilityRole="button">
                     <View style={styles.starterIcon}><Ionicons name="arrow-forward" size={16} color={sm.blue} /></View>
                     <Text style={styles.starterText}>{q}</Text>
                   </Pressable>
                 ))}
+                </View>
+                <Text style={styles.inputHint}>選擇問題開始，或在下方輸入您的需求。</Text>
               </View>
             ) : null}
           </View>
@@ -132,7 +146,7 @@ function AdvisorConversation({ pathname, onClose }: { pathname: string; onClose(
         ListFooterComponent={sending ? (
           <View style={styles.thinking}><ActivityIndicator color={sm.blue} /><Text style={styles.thinkingText}>HyAgent 思考中…</Text></View>
         ) : null}
-        renderItem={({ item }) => <MessageBubble message={item} showSuggestions={false} onSuggestion={(t) => void chat.send(t)} onEdit={editMessage} />}
+        renderItem={({ item }) => <MessageBubble avatarSize={ADVISOR_AVATAR_SIZE} message={item} showSuggestions={false} onSuggestion={(t) => void chat.send(t)} onEdit={editMessage} />}
         keyboardShouldPersistTaps="handled"
         scrollEventThrottle={64}
         onScroll={(e) => {
@@ -174,6 +188,7 @@ function AdvisorConversation({ pathname, onClose }: { pathname: string; onClose(
           </View>
         ) : null}
         <ChatInput
+          largeControls
           onSend={chat.send}
           micAvailable={voice.available && !sending && voice.state.mode === 'idle'}
           onMicPress={() => void startVoice()}
@@ -190,29 +205,37 @@ function AdvisorConversation({ pathname, onClose }: { pathname: string; onClose(
 
 const styles = StyleSheet.create({
   panel: { backgroundColor: '#F7FAFF', zIndex: 200, elevation: 40 },
-  conversation: { flex: 1, width: '100%', maxWidth: 1040, alignSelf: 'center' },
-  header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 20, paddingTop: 18, paddingBottom: 12 },
-  title: { flex: 1, fontSize: 21, fontWeight: '800', color: sm.ink },
-  tool: { padding: 4 },
-  list: { paddingHorizontal: 20, paddingBottom: 12, flexGrow: 1 },
+  conversation: { flex: 1, width: '100%' },
+  header: { width: '100%', maxWidth: 1200, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingTop: 18, paddingBottom: 12 },
+  title: { flex: 1, fontSize: 22, lineHeight: 30, fontWeight: '800', color: sm.ink },
+  tools: { flexDirection: 'row', alignItems: 'center', gap: 0 },
+  tool: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  list: { width: '100%', maxWidth: 1200, alignSelf: 'center', paddingHorizontal: 16, paddingTop: 24, paddingBottom: 12, flexGrow: 1 },
+  emptyList: { paddingBottom: 24 },
+  intro: { gap: 20, marginBottom: 8 },
+  introEmpty: { padding: 20, borderRadius: 28, backgroundColor: sm.blueSoft },
+  startersTitle: { fontSize: 22, lineHeight: 32, fontWeight: '800', color: sm.ink },
+  inputHint: { fontSize: 17, lineHeight: 26, color: sm.inkSoft },
   welcome: { flexDirection: 'row', alignItems: 'flex-start', gap: 14 },
   greeting: { flex: 1, backgroundColor: '#FFFFFF', borderRadius: 20, borderTopLeftRadius: 6, padding: 16, ...shadow.card },
-  greetingText: { fontSize: 17, lineHeight: 27, color: sm.ink, fontWeight: '500' },
-  starters: { gap: 10, paddingLeft: 74 },
-  starter: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 11, borderRadius: 999, borderWidth: 1.5, borderColor: '#C9D9FF', backgroundColor: '#FFFFFF' },
+  greetingText: { fontSize: 20, lineHeight: 32, color: sm.ink, fontWeight: '500' },
+  starters: { gap: 12 },
+  startersWide: { flexDirection: 'row', flexWrap: 'wrap' },
+  starterWide: { flexBasis: '48%', flexGrow: 1, minHeight: 100 },
+  starter: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 18, borderRadius: 18, borderWidth: 1, borderColor: '#C9D9FF', backgroundColor: '#FFFFFF' },
   starterIcon: { width: 26, height: 26, borderRadius: 13, borderWidth: 1.5, borderColor: sm.blue, alignItems: 'center', justifyContent: 'center' },
-  starterText: { flex: 1, fontSize: 16, fontWeight: '600', color: sm.blueDark },
+  starterText: { flex: 1, fontSize: 18, lineHeight: 28, fontWeight: '600', color: sm.blueDark },
   thinking: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
-  thinkingText: { fontSize: 16, color: sm.muted },
-  bottom: { paddingHorizontal: 16, paddingTop: 6, paddingBottom: 14, gap: 8 },
+  thinkingText: { fontSize: 18, lineHeight: 28, color: sm.inkSoft },
+  bottom: { width: '100%', maxWidth: 1200, alignSelf: 'center', paddingHorizontal: 16, paddingTop: 10, paddingBottom: 14, gap: 10 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#C9D9FF' },
-  chipText: { fontSize: 15, fontWeight: '600', color: sm.blueDark },
+  chipText: { fontSize: 18, lineHeight: 28, fontWeight: '600', color: sm.blueDark },
   voice: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, borderRadius: 16, backgroundColor: sm.blueSoft },
-  voiceText: { flex: 1, fontSize: 16, fontWeight: '600', color: sm.ink },
+  voiceText: { flex: 1, fontSize: 18, lineHeight: 28, fontWeight: '600', color: sm.ink },
   stop: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 999, backgroundColor: sm.danger },
-  stopText: { fontSize: 15, fontWeight: '800', color: '#FFFFFF' },
+  stopText: { fontSize: 18, lineHeight: 28, fontWeight: '800', color: '#FFFFFF' },
   hintRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  hint: { flex: 1, fontSize: 15, color: sm.danger },
-  hintLink: { fontSize: 15, fontWeight: '700', color: sm.blueDark },
+  hint: { flex: 1, fontSize: 18, lineHeight: 28, color: sm.danger },
+  hintLink: { fontSize: 18, lineHeight: 28, fontWeight: '700', color: sm.blueDark },
 });

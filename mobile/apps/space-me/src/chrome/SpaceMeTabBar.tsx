@@ -1,6 +1,6 @@
 /**
- * 底部導覽（各稿底部）：首頁、解決方案、凸起的「AI 對話」、產品特色、聯絡我們。
- * 「AI 對話」不是分頁：它打開覆蓋在目前頁面上的顧問面板，所以目前分頁的選取狀態不變；
+ * 底部導覽（各稿底部）：首頁、解決方案、凸起的 HyAgent 按鈕、產品特色、聯絡我們。
+ * HyAgent 按鈕不是分頁：它打開覆蓋在目前頁面上的顧問面板，所以目前分頁的選取狀態不變；
  * 按鈕本身是 AdvisorOrb，由分頁版面疊在最上層。
  */
 import { Ionicons } from '@expo/vector-icons';
@@ -19,7 +19,7 @@ export const ADVISOR_SLOT = 'advisor';
 export const TABS = [
   { name: 'index', label: '首頁', icon: 'home-outline', activeIcon: 'home' },
   { name: 'solutions', label: '解決方案', icon: 'grid-outline', activeIcon: 'grid' },
-  { name: ADVISOR_SLOT, label: 'AI 對話', icon: 'chatbubbles-outline', activeIcon: 'chatbubbles' },
+  { name: ADVISOR_SLOT, label: 'HyAgent', icon: 'chatbubbles-outline', activeIcon: 'chatbubbles' },
   { name: 'features', label: '產品特色', icon: 'briefcase-outline', activeIcon: 'briefcase' },
   { name: 'contact', label: '聯絡我們', icon: 'call-outline', activeIcon: 'call' },
 ] as const;
@@ -29,9 +29,9 @@ export function tabPath(name: string): '/' | `/${string}` {
   return name === 'index' ? '/' : `/${name}`;
 }
 
-/** 中央「AI 對話」按鈕的直徑 */
+/** 中央 HyAgent 按鈕的直徑 */
 export function orbSize(width: number): number {
-  return width >= 700 ? 96 : 72;
+  return width >= 700 ? 80 : 60;
 }
 
 /** 分頁列底部的留白（安全區） */
@@ -40,31 +40,31 @@ export function barBottomPadding(insetBottom: number): number {
 }
 
 /**
- * 中央凸起的「AI 對話」按鈕。由分頁版面浮在最上層（不放在分頁列裡），
- * 對話開啟後隱藏按鈕，以免遮擋整頁對話的輸入列。
+ * 中央凸起的 HyAgent 按鈕，標籤放在圓鈕下方、與其他分頁標籤對齊。
+ * 由分頁版面浮在最上層（不放在分頁列裡），對話開啟後隱藏按鈕，以免遮擋整頁對話的輸入列。
  */
 export function AdvisorOrb({ open, onPress }: { open: boolean; onPress(): void }) {
   const { width } = useWindowDimensions();
   const wide = width >= 700;
   const orb = orbSize(width);
   return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [styles.orb, { width: orb, height: orb, borderRadius: orb / 2 }, (pressed || open) && { transform: [{ scale: 0.96 }] }]}
-      accessibilityRole="button"
-      accessibilityLabel="AI 對話"
-      accessibilityState={{ expanded: open }}
-    >
-      <View style={[StyleSheet.absoluteFill, { borderRadius: orb / 2, overflow: 'hidden' }]}>
-        <LinearGradient
-          colors={open ? ['#B8D8FF', '#80B6FF', '#2F6BFF', '#1F4FD8'] : ['#EAF3FF', '#A8CEFF', '#4D96FF', '#0874FF', '#1F55E6']}
-          locations={open ? [0, 0.18, 0.5, 1] : [0, 0.1, 0.34, 0.65, 1]}
-          start={{ x: 0.35, y: 0 }} end={{ x: 0.65, y: 1 }} style={StyleSheet.absoluteFill}
-        />
-        <LinearGradient colors={['rgba(255,255,255,0.28)', 'rgba(255,255,255,0)']} start={{ x: 0, y: 0 }} end={{ x: 0.65, y: 0.65 }} style={StyleSheet.absoluteFill} />
-      </View>
-      <View pointerEvents="none" style={{ position: 'absolute', top: orb * 0.04, alignSelf: 'center', transform: [{ scaleY: 0.82 }] }}><RobotHead size={orb * 0.68} animated /></View>
-      <Text style={[styles.orbLabel, { fontSize: wide ? 14 : 11, bottom: orb * 0.1 }]}>AI 對話</Text>
+    <Pressable onPress={onPress} style={styles.orbColumn} accessibilityRole="button" accessibilityLabel="HyAgent" accessibilityState={{ expanded: open }}>
+      {({ pressed }) => (
+        <>
+          <View style={[styles.orb, { width: orb, height: orb, borderRadius: orb / 2 }, (pressed || open) && { transform: [{ scale: 0.96 }] }]}>
+            <View style={[StyleSheet.absoluteFill, { borderRadius: orb / 2, overflow: 'hidden' }]}>
+              <LinearGradient
+                colors={open ? ['#B8D8FF', '#80B6FF', '#2F6BFF', '#1F4FD8'] : ['#EAF3FF', '#A8CEFF', '#4D96FF', '#0874FF', '#1F55E6']}
+                locations={open ? [0, 0.18, 0.5, 1] : [0, 0.1, 0.34, 0.65, 1]}
+                start={{ x: 0.35, y: 0 }} end={{ x: 0.65, y: 1 }} style={StyleSheet.absoluteFill}
+              />
+              <LinearGradient colors={['rgba(255,255,255,0.28)', 'rgba(255,255,255,0)']} start={{ x: 0, y: 0 }} end={{ x: 0.65, y: 0.65 }} style={StyleSheet.absoluteFill} />
+            </View>
+            <View pointerEvents="none" style={{ transform: [{ scaleY: 0.82 }] }}><RobotHead size={orb * 0.68} animated /></View>
+          </View>
+          <Text style={[styles.orbLabel, { fontSize: wide ? 16 : 12 }]}>HyAgent</Text>
+        </>
+      )}
     </Pressable>
   );
 }
@@ -113,5 +113,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', backgroundColor: sm.blue, borderWidth: 2, borderColor: '#C7D8F5',
     shadowColor: sm.blue, shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 10,
   },
-  orbLabel: { position: 'absolute', color: '#FFFFFF', fontWeight: '800', textShadowColor: 'rgba(15,65,170,0.35)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 },
+  // 標籤下方留出分頁底線的高度（marginTop 2 + 3），讓文字與其他分頁標籤同一條線
+  orbColumn: { alignItems: 'center', gap: 4, paddingBottom: 5 },
+  orbLabel: { color: sm.blue, fontWeight: '800' },
 });

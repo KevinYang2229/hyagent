@@ -13,13 +13,25 @@ export function useLandscapeLayout() {
   return width >= 700 && width > height;
 }
 
-export function Page({ photo, photoHeight = 360, wide, children }: { photo?: ImageSourcePropType; photoHeight?: number; wide: boolean; children: ReactNode }) {
+/** 霧玻璃背景放在頁面底層，不受內容邊距或捲動範圍限制。 */
+export function FrostedBackground({ photo }: { photo: ImageSourcePropType }) {
+  return (
+    <View pointerEvents="none" accessible={false} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={[StyleSheet.absoluteFill, styles.frostedWrap]}>
+      <Image source={photo} style={[styles.photo, styles.frostedPhoto]} resizeMode="cover" blurRadius={7} />
+      <View style={[StyleSheet.absoluteFill, styles.glassWash]} />
+      <LinearGradient colors={['rgba(255,255,255,0.2)', 'rgba(225,236,252,0.06)', 'rgba(239,245,255,0.3)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+    </View>
+  );
+}
+
+export function Page({ photo, photoHeight = 360, wide, children, backgroundEffect }: { photo?: ImageSourcePropType; photoHeight?: number; wide: boolean; children: ReactNode; backgroundEffect?: 'frosted' }) {
   const insets = useSafeAreaInsets();
   const landscape = useLandscapeLayout();
   return (
     <View style={styles.page}>
+      {photo && backgroundEffect === 'frosted' ? <FrostedBackground photo={photo} /> : null}
       <ScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + (landscape ? PAGE_TOP_SPACE.landscape : wide ? PAGE_TOP_SPACE.tablet : PAGE_TOP_SPACE.phone), paddingLeft: Math.max(insets.left, wide ? 32 : 18), paddingRight: Math.max(insets.right, wide ? 32 : 18), paddingBottom: wide ? 42 : 32 }]} keyboardShouldPersistTaps="handled">
-        {photo ? (
+        {photo && backgroundEffect !== 'frosted' ? (
           <View pointerEvents="none" style={[styles.photoWrap, { height: photoHeight, width: wide ? '62%' : '100%' }]}>
             <Image source={photo} style={styles.photo} resizeMode="cover" />
             <LinearGradient colors={[sm.blueMist, 'rgba(245,248,255,0.55)', 'rgba(245,248,255,0)']} locations={[0, 0.2, 0.42]} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={StyleSheet.absoluteFill} />
@@ -52,8 +64,11 @@ export function ArrowDot({ size = 28 }: { size?: number }) {
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: sm.blueMist },
   photoWrap: { position: 'absolute', top: 0, right: 0 },
+  frostedWrap: { overflow: 'hidden' },
+  frostedPhoto: { opacity: 0.88, transform: [{ scale: 1.06 }] },
+  glassWash: { backgroundColor: 'rgba(240,246,255,0.16)' },
   // 網頁版 Image 沒有明確寬高會用原圖尺寸，absoluteFill 撐不開
   photo: { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' },
-  // 底部留白讓出中央凸起的「AI 對話」按鈕
+  // 底部留白讓出中央凸起的HyAgent 按鈕
   content: { paddingBottom: 96, flexGrow: 1 },
 });

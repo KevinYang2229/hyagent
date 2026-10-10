@@ -1,9 +1,11 @@
+import { useMemo } from 'react';
+import { useChatTypography } from './ChatTypography';
 import { useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useAppBranding } from '@hyagent/app-core/branding/AppBranding';
-import { chatFont, colors, radius, shadow, space } from '@hyagent/app-core/theme/tokens';
+import { colors, radius, shadow, space } from '@hyagent/app-core/theme/tokens';
 import { RichText } from './RichText';
 import { TableBlockView } from './TableBlockView';
 import type { ChatMessage } from './types';
@@ -18,12 +20,15 @@ export function MessageBubble({
   showSuggestions,
   onSuggestion,
   onEdit,
+  avatarSize = 36,
 }: {
   message: ChatMessage;
+  avatarSize?: number;
   showSuggestions: boolean;
   onSuggestion(text: string): void;
   onEdit(text: string): void;
 }) {
+  const styles = useStyles();
   const { Mascot, accent = colors } = useAppBranding();
   const [copied, setCopied] = useState(false);
   const actions = (
@@ -70,7 +75,7 @@ export function MessageBubble({
   }
   return (
     <View style={styles.agentWrap}>
-      {Mascot ? <Mascot pose="wave" size={36} /> : null}
+      {Mascot ? <View style={{ width: avatarSize, flexShrink: 0 }}><Mascot pose="wave" size={avatarSize} /></View> : null}
       <View style={{ flex: 1 }}>
         <View style={styles.agentBubble}>
           <RichText text={message.text} />
@@ -94,7 +99,9 @@ export function MessageBubble({
   );
 }
 
-const styles = StyleSheet.create({
+function useStyles() {
+  const chatFont = useChatTypography();
+  return useMemo(() => StyleSheet.create({
   meta: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', justifyContent: 'flex-start', gap: space.sm, marginTop: -6, marginLeft: 8 },
   actions: { flexDirection: 'row' },
   action: { width: 28, minHeight: 44, justifyContent: 'center', alignItems: 'center' },
@@ -109,4 +116,5 @@ const styles = StyleSheet.create({
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm, marginTop: space.sm },
   chip: { borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, borderRadius: radius.pill, paddingHorizontal: space.md, paddingVertical: 6 },
   chipText: { fontSize: chatFont.label, fontWeight: '500', color: colors.text },
-});
+}), [chatFont]);
+}

@@ -1,5 +1,5 @@
 /**
- * 分頁：首頁、解決方案、產品特色、聯絡我們；中央「AI 對話」打開整頁顧問對話。
+ * 分頁：首頁、解決方案、產品特色、聯絡我們；中央 HyAgent 按鈕打開整頁顧問對話。
  * 對話覆蓋整個頁面與導覽列，返回後顯示原本的分頁。
  */
 import { Tabs, usePathname } from 'expo-router';
@@ -35,7 +35,7 @@ export default function TabsLayout() {
       </View>
       {/* 對話開啟時隱藏中央按鈕，讓輸入列使用完整空間 */}
       {!advisor.open ? (
-        <View pointerEvents="box-none" style={[styles.orb, { bottom: barBottomPadding(insets.bottom) + 2 }]}>
+        <View pointerEvents="box-none" style={[styles.orb, { bottom: barBottomPadding(insets.bottom) }]}>
           <AdvisorOrb open={false} onPress={() => advisor.show()} />
         </View>
       ) : null}

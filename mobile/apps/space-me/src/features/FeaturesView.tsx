@@ -13,7 +13,7 @@ export function FeaturesView({ wide, onAsk }: { wide: boolean; onAsk(question: s
     ? Array.from({ length: Math.ceil(FEATURES.length / 2) }, (_, index) => FEATURES.slice(index * 2, index * 2 + 2))
     : FEATURES.map((feature) => [feature]);
   return (
-    <Page wide={wide} photo={PHOTOS.hero} photoHeight={wide ? 360 : 240}>
+    <Page wide={wide} photo={PHOTOS.featuresBackground} backgroundEffect="frosted">
       <BrandHeader wide={wide} />
       <View style={{ maxWidth: 560, gap: 10, marginTop: landscape ? 16 : wide ? 40 : 24 }}>
         <Text style={pageTypography(wide).title}>產品特色</Text>
@@ -49,7 +49,7 @@ export function FeaturesView({ wide, onAsk }: { wide: boolean; onAsk(question: s
 const styles = StyleSheet.create({
   grid: { gap: 14 },
   row: { flexDirection: 'row', gap: 14 },
-  card: { flexDirection: 'row', alignItems: 'center', gap: 16, padding: 18, minHeight: 116, backgroundColor: sm.card, borderRadius: 18, ...shadow.card },
+  card: { flexDirection: 'row', alignItems: 'center', gap: 16, padding: 18, minHeight: 116, backgroundColor: sm.card, borderRadius: 18, ...shadow.card, shadowOpacity: 0.14, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 5 },
   cardTitle: { fontSize: 20, lineHeight: 28, fontWeight: '800', color: sm.ink },
   cardDesc: { fontSize: 16, lineHeight: 24, color: sm.inkSoft },
 });

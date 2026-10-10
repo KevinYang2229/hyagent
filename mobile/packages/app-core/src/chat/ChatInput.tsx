@@ -1,9 +1,11 @@
+import { useMemo } from 'react';
+import { useChatTypography } from './ChatTypography';
 /** 輸入列：送出即清空（失敗還原草稿）；麥克風可用時顯示在左邊。 */
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { useAppBranding } from '@hyagent/app-core/branding/AppBranding';
-import { chatFont, colors, radius, space } from '@hyagent/app-core/theme/tokens';
+import { colors, radius, space } from '@hyagent/app-core/theme/tokens';
 
 export function ChatInput({
   onSend,
@@ -14,6 +16,7 @@ export function ChatInput({
   inputRef,
   editRequest,
   placeholder = '請說出或輸入你的需求…',
+  largeControls = false,
 }: {
   onSend(text: string): Promise<boolean>;
   micAvailable: boolean;
@@ -23,7 +26,9 @@ export function ChatInput({
   inputRef?: RefObject<TextInput | null>;
   editRequest?: { text: string; nonce: number };
   placeholder?: string;
+  largeControls?: boolean;
 }) {
+  const styles = useStyles();
   const accent = useAppBranding().accent ?? colors;
   const [text, setText] = useState('');
   const [focused, setFocused] = useState(false);
@@ -70,8 +75,8 @@ export function ChatInput({
   return (
     <View style={[styles.bar, focused && { borderColor: accent.primary, backgroundColor: accent.primarySoft }]}>
       {micAvailable ? (
-        <Pressable style={[styles.mic, { backgroundColor: accent.primary }]} onPress={onMicPress} accessibilityLabel="開始說話" accessibilityRole="button">
-          <Ionicons name="mic" size={22} color="#fff" />
+        <Pressable style={[styles.mic, largeControls && styles.largeControl, { backgroundColor: accent.primary }]} onPress={onMicPress} accessibilityLabel="開始說話" accessibilityRole="button">
+          <Ionicons name="mic" size={largeControls ? 30 : 22} color="#fff" />
         </Pressable>
       ) : null}
       <TextInput
@@ -90,19 +95,23 @@ export function ChatInput({
         returnKeyType="default"
       />
       {disabled && onCancel ? (
-        <Pressable style={styles.send} onPress={onCancel} accessibilityLabel="取消回覆" accessibilityRole="button">
-          <Ionicons name="stop" size={20} color={accent.primaryDark} />
+        <Pressable style={[styles.send, largeControls && styles.largeControl]} onPress={onCancel} accessibilityLabel="取消回覆" accessibilityRole="button">
+          <Ionicons name="stop" size={largeControls ? 28 : 20} color={accent.primaryDark} />
         </Pressable>
-      ) : <Pressable style={[styles.send, { backgroundColor: accent.primarySoft }, (!text.trim() || disabled) && { opacity: 0.4 }]} onPress={submit} accessibilityLabel="送出" accessibilityRole="button">
-        <Ionicons name="send" size={20} color={accent.primaryDark} />
+      ) : <Pressable style={[styles.send, largeControls && styles.largeControl, { backgroundColor: accent.primarySoft }, (!text.trim() || disabled) && { opacity: 0.4 }]} onPress={submit} accessibilityLabel="送出" accessibilityRole="button">
+        <Ionicons name="send" size={largeControls ? 28 : 20} color={accent.primaryDark} />
       </Pressable>}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+function useStyles() {
+  const chatFont = useChatTypography();
+  return useMemo(() => StyleSheet.create({
   bar: { flexDirection: 'row', alignItems: 'center', gap: space.sm, backgroundColor: colors.surface, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, padding: 6 },
   mic: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  largeControl: { width: 56, height: 56, borderRadius: 28 },
   input: { flex: 1, minWidth: 0, maxHeight: 120, fontSize: chatFont.body, lineHeight: chatFont.lineHeight, fontWeight: '500', color: colors.text, paddingHorizontal: space.sm, paddingVertical: 10 },
   send: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-});
+}), [chatFont]);
+}

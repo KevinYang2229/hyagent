@@ -8,8 +8,9 @@ import { pageTypography } from '@/brand/typography';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Linking, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { sm } from '@/brand/theme';
+import { PHOTOS } from '@/brand/assets';
 import { RobotAvatar } from '@/brand/Brand';
-import { PAGE_TOP_SPACE } from '@/chrome/Page';
+import { FrostedBackground, PAGE_TOP_SPACE } from '@/chrome/Page';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ContactChannel } from './contact';
 
@@ -186,6 +187,9 @@ export function ContactView({ wide, channels, onAsk }: ContactViewProps) {
 
   if (landscape) {
     return (
+      <View style={styles.background}>
+      <FrostedBackground photo={PHOTOS.contactBackground} />
+      <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.backgroundShade]} />
       <View testID="contact-landscape" style={[pageStyle, { flex: 1, gap: 12 }]}>
         {banner}
         <View style={styles.columns}>
@@ -197,10 +201,14 @@ export function ContactView({ wide, channels, onAsk }: ContactViewProps) {
           <View style={styles.column}>{faq}</View>
         </View>
       </View>
+      </View>
     );
   }
 
   return (
+    <View style={styles.background}>
+    <FrostedBackground photo={PHOTOS.contactBackground} />
+      <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.backgroundShade]} />
     <ScrollView testID="contact-scroll" style={styles.scroll} contentContainerStyle={pageStyle}>
       {banner}
       {agent}
@@ -208,24 +216,27 @@ export function ContactView({ wide, channels, onAsk }: ContactViewProps) {
       {faq}
       {flow}
     </ScrollView>
+    </View>
   );
 }
 
-const card = { backgroundColor: '#FFFFFF', borderRadius: 18, shadowColor: sm.blueDark, shadowOpacity: 0.06, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 2 };
+const card = { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#C4D2EA', borderRadius: 18, shadowColor: sm.blueDark, shadowOpacity: 0.2, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 5 };
 
 const styles = StyleSheet.create({
   contactRobot: { marginLeft: 16 },
-  scroll: { flex: 1, backgroundColor: sm.blueMist },
-  page: { flexGrow: 1, backgroundColor: sm.blueMist, padding: 14, gap: 12 },
+  background: { flex: 1, backgroundColor: sm.blueMist },
+  backgroundShade: { backgroundColor: 'rgba(14,27,69,0.14)' },
+  scroll: { flex: 1 },
+  page: { flexGrow: 1, padding: 14, gap: 12 },
   pageWide: { padding: 24, gap: 16 },
   columns: { flexDirection: 'row', alignItems: 'flex-start', gap: 16 },
   column: { flex: 1, gap: 12 },
-  banner: { padding: 22, gap: 16, borderRadius: 20, backgroundColor: sm.blueSoft },
+  banner: { ...card, padding: 22, gap: 16, borderRadius: 20 },
   bannerHeading: { flexDirection: 'row', alignItems: 'center' },
   services: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   service: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: sm.blueSoft },
   serviceTitle: { fontSize: 19, lineHeight: 27, fontWeight: '900', color: sm.ink },
-  agent: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 18, borderRadius: 20, backgroundColor: sm.blueSoft, borderWidth: 1, borderColor: sm.line },
+  agent: { ...card, flexDirection: 'row', alignItems: 'center', gap: 14, padding: 18, borderRadius: 20, backgroundColor: sm.blueSoft, borderColor: '#AFC5F5' },
   agentTitle: { fontSize: 21, lineHeight: 29, fontWeight: '800', color: sm.ink },
   agentSub: { fontSize: 17, lineHeight: 25, color: sm.inkSoft },
   card: { ...card, gap: 10, padding: 18 },

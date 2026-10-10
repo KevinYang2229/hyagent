@@ -1,9 +1,11 @@
+import { useMemo } from 'react';
+import { useChatTypography } from './ChatTypography';
 /**
  * AI 回覆的簡易排版：處理條列（- 、* 顯示為 •；1. 保留原編號）、標題（去掉開頭 #，整行粗體）、**粗體**、
  * markdown 表格（連續以 | 開頭的行，畫成表格、欄位多時可左右滑）與分隔線（---）。其餘 markdown 符號照原文顯示。
  */
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { chatFont, colors } from '@hyagent/app-core/theme/tokens';
+import { colors } from '@hyagent/app-core/theme/tokens';
 
 export interface RichLine {
   bullet: boolean;
@@ -71,10 +73,12 @@ export function parseRichBlocks(text: string): RichBlock[] {
 }
 
 function Parts({ parts }: { parts: RichLine['parts'] }) {
+  const styles = useStyles();
   return <>{parts.map((p, j) => <Text key={j} style={p.bold ? styles.bold : undefined}>{p.text}</Text>)}</>;
 }
 
 function MarkdownTable({ header, rows, color }: { header: RichLine['parts'][]; rows: RichLine['parts'][][]; color: string }) {
+  const styles = useStyles();
   const cols = Math.max(header.length, rows[0]?.length ?? 0);
   // 欄位少時平均分配；多時給固定寬度、可左右滑
   const colWidth = cols <= 3 ? undefined : 150;
@@ -97,6 +101,7 @@ function MarkdownTable({ header, rows, color }: { header: RichLine['parts'][]; r
 }
 
 export function RichText({ text, color = colors.text }: { text: string; color?: string }) {
+  const styles = useStyles();
   return (
     <View style={{ gap: 8 }}>
       {parseRichBlocks(text).map((b, i) => {
@@ -114,7 +119,9 @@ export function RichText({ text, color = colors.text }: { text: string; color?: 
   );
 }
 
-const styles = StyleSheet.create({
+function useStyles() {
+  const chatFont = useChatTypography();
+  return useMemo(() => StyleSheet.create({
   line: { flexDirection: 'row', gap: 6 },
   text: { fontSize: chatFont.body, lineHeight: chatFont.lineHeight, fontWeight: '500' },
   bold: { fontWeight: '700' },
@@ -124,5 +131,6 @@ const styles = StyleSheet.create({
   thRow: { borderTopWidth: 0, backgroundColor: colors.primarySoft },
   td: { paddingHorizontal: 10, paddingVertical: 8 },
   tdBorder: { borderLeftWidth: 1, borderLeftColor: colors.border },
-  cell: { fontSize: chatFont.label, lineHeight: 22 },
-});
+  cell: { fontSize: chatFont.label, lineHeight: chatFont.label + 6 },
+}), [chatFont]);
+}

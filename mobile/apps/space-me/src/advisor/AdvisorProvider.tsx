@@ -1,5 +1,5 @@
 /**
- * AI 產品顧問面板的開關：中央「AI 對話」按鈕與各頁的「問 AI」都透過這裡打開面板，
+ * AI 產品顧問面板的開關：中央 HyAgent 按鈕與各頁的「問 AI」都透過這裡打開面板，
  * 帶問題時直接送出（回覆中會由 ChatProvider 排隊）。
  */
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';

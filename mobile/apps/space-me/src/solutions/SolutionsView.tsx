@@ -25,7 +25,7 @@ export function SolutionsView({ wide, query, searchOpen, onQuery, onToggleSearch
     ? Array.from({ length: Math.ceil(list.length / 2) }, (_, index) => list.slice(index * 2, index * 2 + 2))
     : list.map((solution) => [solution]);
   return (
-    <Page wide={wide} photo={PHOTOS.hero} photoHeight={wide ? 300 : 220}>
+    <Page wide={wide} photo={PHOTOS.pageBackground} backgroundEffect="frosted">
       <BrandHeader wide={wide}>
         <Pressable onPress={onToggleSearch} style={styles.search} accessibilityRole="button" accessibilityLabel={searchOpen ? '關閉搜尋' : '搜尋解決方案'}>
           <Ionicons name={searchOpen ? 'close' : 'search'} size={24} color={sm.ink} />
@@ -63,7 +63,7 @@ export function SolutionsView({ wide, query, searchOpen, onQuery, onToggleSearch
       ) : (
         <View style={[styles.grid, wide && { flexGrow: 1 }]}>
           {rows.map((row, index) => (
-            <View key={index} style={[styles.row, wide && { flexGrow: 1 }]}>
+            <View key={index} style={[styles.row, wide && { flexGrow: 1, flexBasis: 0, minHeight: (landscape ? 100 : 150) + 74 }]}>
             {row.map((s) => (
             <Pressable
               key={s.id}
@@ -72,7 +72,9 @@ export function SolutionsView({ wide, query, searchOpen, onQuery, onToggleSearch
               accessibilityRole="button"
               accessibilityLabel={s.name}
             >
-              <Image source={PHOTOS[s.photo]} style={[styles.photo, wide ? { flexGrow: 1, flexBasis: landscape ? 100 : 150, minHeight: 100 } : { height: 130 }]} resizeMode="cover" />
+              <View style={[styles.photoFrame, wide ? { flexGrow: 1, flexBasis: landscape ? 100 : 150, minHeight: 100 } : { height: 130 }]}>
+                <Image source={PHOTOS[s.photo]} style={styles.photo} resizeMode="cover" />
+              </View>
               <View style={styles.cardBody}>
                 <IconBadge name={s.icon} tint={s.tint} size={50} />
                 <View style={{ flex: 1, gap: 4 }}>
@@ -100,8 +102,9 @@ const styles = StyleSheet.create({
   searchInput: { flex: 1, fontSize: 17, paddingVertical: 12, color: sm.ink },
   grid: { gap: 18, marginTop: 20 },
   row: { flexDirection: 'row', gap: 18 },
-  card: { backgroundColor: sm.card, borderRadius: 22, overflow: 'hidden', ...shadow.card },
-  photo: { width: '100%', overflow: 'hidden' },
+  card: { backgroundColor: sm.card, borderRadius: 22, overflow: 'hidden', ...shadow.card, shadowOpacity: 0.14, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 5 },
+  photoFrame: { width: '100%', overflow: 'hidden' },
+  photo: { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' },
   cardBody: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 14, paddingVertical: 12, backgroundColor: sm.card, flexShrink: 0 },
   cardTitle: { fontSize: 19, fontWeight: '800', color: sm.ink },
   cardTags: { fontSize: 14, color: sm.inkSoft },
