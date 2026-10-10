@@ -11,3 +11,11 @@ export const PHOTOS = {
 } as const;
 
 export type PhotoKey = keyof typeof PHOTOS;
+
+/** 首頁專用高解析度情境圖，避免使用設計稿的小尺寸裁圖。 */
+export const HOME_PHOTOS = {
+  library: require('../../assets/photos/home-library.jpg'),
+  office: require('../../assets/photos/home-office.jpg'),
+  success: require('../../assets/photos/home-success.jpg'),
+  demo: require('../../assets/photos/home-demo.jpg'),
+} as const;

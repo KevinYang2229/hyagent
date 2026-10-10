@@ -1,31 +1,30 @@
 import { BrandHeader } from '@/chrome/BrandHeader';
 import { pageTypography } from '@/brand/typography';
-/** 首頁（稿 4）：主視覺標語、探索按鈕、揮手的 HyAgent 機器人，下方四張入口卡。 */
+/** 首頁（稿 4）：主視覺標語、探索按鈕、揮手的 HyAgent 機器人，下方四張情境入口卡。 */
 import { Ionicons } from '@expo/vector-icons';
 import { Image, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import { PHOTOS, type PhotoKey } from '@/brand/assets';
+import { HOME_PHOTOS, PHOTOS } from '@/brand/assets';
 import { RobotFigure } from '@/brand/Brand';
-import { shadow, sm, type Tint } from '@/brand/theme';
-import { ArrowDot, IconBadge, Page, useLandscapeLayout } from '@/chrome/Page';
+import { shadow, sm } from '@/brand/theme';
+import { ArrowDot, Page, useLandscapeLayout } from '@/chrome/Page';
 
+/** 首頁入口是「訪客會問的問題」，跟解決方案分頁的目錄卡區隔：問題交給 AI 顧問，展示預約導到聯絡頁。 */
 export type HomeEntry =
-  | { kind: 'solution'; id: string }
-  | { kind: 'ask'; question: string };
+  | { kind: 'ask'; question: string }
+  | { kind: 'contact' };
 
 interface HomeCard {
   title: string;
   desc: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  tint: Tint;
-  photo: PhotoKey;
+  photo: keyof typeof HOME_PHOTOS;
   entry: HomeEntry;
 }
 
 export const HOME_CARDS: HomeCard[] = [
-  { title: '圖書館空間管理', desc: '討論室、研究小間、自習室、視聽座位、電腦座位', icon: 'book-outline', tint: 'purple', photo: 'library', entry: { kind: 'solution', id: 'library' } },
-  { title: 'OfficeMe 智慧辦公空間', desc: '彈性辦公、會議室、共享空間', icon: 'business-outline', tint: 'blue', photo: 'office', entry: { kind: 'solution', id: 'office' } },
-  { title: '智慧環控與數據分析', desc: '提升空間體驗，優化使用價值', icon: 'leaf-outline', tint: 'green', photo: 'environment', entry: { kind: 'solution', id: 'environment' } },
-  { title: '成功案例', desc: '眾多單位的選擇，見證 SpaceMe 的價值', icon: 'trophy-outline', tint: 'orange', photo: 'roomReading', entry: { kind: 'ask', question: '有哪些單位使用 SpaceMe？請介紹成功案例' } },
+  { title: '我是圖書館', desc: '討論室、自習座位總是被佔用，該怎麼管？', photo: 'library', entry: { kind: 'ask', question: '我是圖書館，討論室與自習座位常被佔用又難以管理，SpaceMe 可以怎麼協助？' } },
+  { title: '我是企業', desc: '想導入彈性座位與會議室預約', photo: 'office', entry: { kind: 'ask', question: '我們公司想導入彈性座位與會議室預約，OfficeMe 可以怎麼規劃？導入大概需要多久？' } },
+  { title: '成功案例', desc: '眾多單位的選擇，見證 SpaceMe 的價值', photo: 'success', entry: { kind: 'ask', question: '有哪些單位使用 SpaceMe？請介紹成功案例' } },
+  { title: '預約產品展示', desc: '由顧問團隊依您的場域實際示範', photo: 'demo', entry: { kind: 'contact' } },
 ];
 
 export function HomeView({ wide, onExplore, onEntry, onSettings }: { wide: boolean; onSettings(): void; onExplore(): void; onEntry(entry: HomeEntry): void }) {
@@ -64,15 +63,10 @@ export function HomeView({ wide, onExplore, onEntry, onSettings }: { wide: boole
           >
             {wide ? (
               <View style={styles.cardTop}>
-                <Image source={PHOTOS[card.photo]} style={styles.thumb} resizeMode="cover" />
-                <View style={styles.wideBadge}><IconBadge name={card.icon} tint={card.tint} size={44} /></View>
+                <Image source={HOME_PHOTOS[card.photo]} style={styles.photoWide} resizeMode="cover" accessible={false} />
               </View>
             ) : (
-              // 手機寬度有限：只放照片，圖示疊在照片角落，讓標題完整顯示
-              <View>
-                <Image source={PHOTOS[card.photo]} style={styles.thumbNarrow} resizeMode="cover" />
-                <View style={styles.badgeOnPhoto}><IconBadge name={card.icon} tint={card.tint} size={34} /></View>
-              </View>
+              <Image source={HOME_PHOTOS[card.photo]} style={styles.photoNarrow} resizeMode="cover" accessible={false} />
             )}
             <View style={[styles.cardBody, wide ? styles.cardBodyWide : { flex: 1 }]}>
               <View style={styles.titleRow}>
@@ -103,10 +97,8 @@ const styles = StyleSheet.create({
   cardBody: { gap: 8 },
   cardBodyWide: { padding: 16, minHeight: 128, flexShrink: 0 },
   cardTop: { flexGrow: 1, minHeight: 112 },
-  wideBadge: { position: 'absolute', left: 12, bottom: 10, borderRadius: 16, borderWidth: 3, borderColor: '#FFFFFF', ...shadow.card },
-  thumb: { position: 'absolute', width: '100%', height: '100%', top: 0, left: 0 },
-  thumbNarrow: { width: 96, height: 76, borderRadius: 14 },
-  badgeOnPhoto: { position: 'absolute', left: -6, bottom: -6, borderRadius: 12, borderWidth: 2, borderColor: '#FFFFFF' },
+  photoWide: { position: 'absolute', width: '100%', height: '100%', top: 0, left: 0, backgroundColor: sm.blueSoft },
+  photoNarrow: { width: 96, height: 76, borderRadius: 14, flexShrink: 0, backgroundColor: sm.blueSoft },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   cardTitle: { flex: 1, fontSize: 18, fontWeight: '800', color: sm.ink },
   cardDesc: { fontSize: 14, lineHeight: 21, color: sm.inkSoft },
