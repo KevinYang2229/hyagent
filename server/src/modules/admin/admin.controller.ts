@@ -7,6 +7,7 @@ import { DEFAULT_TENANT_ID, tenantStore } from '@/modules/tenant/tenant.store';
 import { serviceRegistry } from '@/modules/conversation/service.registry';
 import { conversationStore } from '@/modules/conversation/conversation.store';
 import { webhookStore } from '@/modules/webhook/webhook.store';
+import { feedbackStore } from '@/modules/feedback/feedback.store';
 import { mcpStore } from '@/modules/mcp/mcp.store';
 import { usageStore } from '@/modules/usage/usage.store';
 import { auditStore } from '@/modules/audit/audit.store';
@@ -235,6 +236,7 @@ export const adminController = {
     scopePolicy.purgeTenant(id);
     webhookStore.purgeTenant(id);
     mcpStore.purgeTenant(id);
+    feedbackStore.purgeTenant(id);
     res.status(200).json({ data: { id } });
   },
 

@@ -16,6 +16,7 @@ import { startExpirySweeper } from '@/lib/expiry-sweeper';
 import { initUsageStore } from '@/modules/usage/usage.store';
 import { initWebhookStore } from '@/modules/webhook/webhook.store';
 import { assertMcpSigningKeyValid } from '@/modules/mcp/mcp.identity';
+import { feedbackStore, initFeedbackStore } from '@/modules/feedback/feedback.store';
 import { initMcpStore } from '@/modules/mcp/mcp.store';
 import { initSubmissionStore } from '@/modules/workflow/submission.store';
 
@@ -31,6 +32,7 @@ async function main(): Promise<void> {
     initScopePolicy(),
     initWebhookStore(),
     initMcpStore(),
+    initFeedbackStore(),
     initKnowledgeStore(),
   ]);
 
@@ -45,8 +47,18 @@ async function main(): Promise<void> {
   // session 保留政策：開機已清一次（initConversationStore），此後每日再跑；unref 不擋關機
   // 報告 TTL 回收（產出物 + job 記錄）比照同一個每日排程：purgeExpired 不呼叫就等於 TTL
   // 只在 get() 讀取時擋讀、資料本體與 job 記錄永遠不刪，與設計文件承諾的「記憶體與 DB 皆然」不符。
+  const cleanupFeedback = (): void => {
+    try {
+      const removed = feedbackStore.cleanupExpired();
+      if (removed > 0) logger.info({ removed }, 'expired reply feedback cleaned up');
+    } catch (err) {
+      logger.warn({ err }, 'reply feedback cleanup failed');
+    }
+  };
+  cleanupFeedback();
   setInterval(() => {
     cleanupExpiredSessions().catch((err) => logger.warn({ err }, 'session cleanup failed'));
+    cleanupFeedback();
     reportStore.purgeExpired();
     purgeFinishedReportJobs();
   }, 24 * 60 * 60 * 1000).unref();

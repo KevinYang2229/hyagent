@@ -232,3 +232,15 @@ model ReportDocRow {
   @@index([expiresAt])
   @@map("report_docs")
 }
+
+model ReplyFeedbackRow {
+  id        String   @id
+  tenantId  String   @map("tenant_id")
+  updatedAt DateTime @map("updated_at")
+  /// 整個 ReplyFeedback（評價＋問答快照＋trace）
+  data      Json
+
+  @@index([tenantId])
+  @@index([updatedAt])
+  @@map("reply_feedback")
+}
