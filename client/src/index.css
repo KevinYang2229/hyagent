@@ -225,6 +225,46 @@
   .msg:focus-within .msg-action {
     @apply opacity-100 disabled:opacity-40;
   }
+  /* 評價鈕：已評價的那顆固定顯示（帶狀態的元素不可隱藏，理由同報告入口） */
+  .msg-action--active {
+    @apply text-[var(--primary-color)] opacity-100;
+  }
+  .feedback {
+    @apply relative inline-flex items-center gap-1;
+  }
+  .feedback-thanks {
+    @apply text-xs text-[var(--text-secondary)];
+  }
+  .feedback-panel {
+    @apply absolute left-0 top-full z-20 mt-1 w-72 rounded-xl border border-[var(--border-color)] bg-[var(--bg-color)] p-3 text-sm shadow-lg;
+  }
+  .feedback-panel-title {
+    @apply mb-2 font-medium text-[var(--text-primary)];
+  }
+  .feedback-reasons {
+    @apply mb-2 flex flex-wrap gap-1.5;
+  }
+  .feedback-reason {
+    @apply cursor-pointer rounded-full border border-[var(--border-color)] px-2.5 py-1 text-xs text-[var(--text-secondary)];
+  }
+  .feedback-reason input {
+    @apply sr-only;
+  }
+  .feedback-reason.is-selected {
+    @apply border-[var(--primary-color)] text-[var(--primary-color)];
+  }
+  .feedback-comment {
+    @apply mb-2 w-full rounded-lg border border-[var(--border-color)] bg-transparent px-2.5 py-1.5 text-sm text-[var(--text-primary)];
+  }
+  .feedback-panel-actions {
+    @apply flex justify-end gap-2;
+  }
+  .feedback-skip {
+    @apply cursor-pointer rounded-lg px-3 py-1 text-[var(--text-secondary)];
+  }
+  .feedback-submit {
+    @apply cursor-pointer rounded-lg bg-[var(--primary-color)] px-3 py-1 text-white;
+  }
   .bubble {
     @apply max-w-[72%] whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2.5 leading-relaxed;
   }

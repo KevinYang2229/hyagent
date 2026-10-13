@@ -20,7 +20,8 @@ import {
   type SubmissionInfo,
   type TurnData,
 } from './api';
-import type { DisplayBlock, TenantAppearance } from '@hyagent/shared';
+import type { DisplayBlock, ReplyFeedbackInput, TenantAppearance } from '@hyagent/shared';
+import { FeedbackButtons } from './FeedbackButtons';
 import { changeLanguage } from './i18n';
 import { ConfirmActionCard } from './ConfirmActionCard';
 import { DisplayBlockView } from './DisplayBlockView';
@@ -58,6 +59,11 @@ interface ChatMessage {
   pendingAction?: PendingActionView;
   /** 本則回覆的畫面區塊 */
   blocks?: DisplayBlock[];
+  /** 可評價回覆的編號與所屬對話（對話重開後仍評價到原對話） */
+  replyId?: string;
+  convId?: string;
+  /** 目前的評價（樂觀更新） */
+  feedback?: ReplyFeedbackInput;
 }
 
 // 氣泡下方時間：YYYY-MM-DD HH:mm:ss
@@ -503,14 +509,17 @@ export default function App() {
     };
   }, [authUser]);
 
-  function pushMsg(role: Role, text: string, suggestions?: string[], reportId?: string, pendingAction?: PendingActionView, blocks?: DisplayBlock[]) {
+  function pushMsg(role: Role, text: string, suggestions?: string[], reportId?: string, pendingAction?: PendingActionView, blocks?: DisplayBlock[], reply?: { replyId: string; convId: string }) {
     setMessages((prev) => [
       ...prev,
-      { id: nextId(), role, text, suggestions, reportId, pendingAction, blocks, at: Date.now() },
+      { id: nextId(), role, text, suggestions, reportId, pendingAction, blocks, ...(reply ?? {}), at: Date.now() },
     ]);
   }
 
   // 訊息動作：複製（AI/使用者皆可）與編輯（僅使用者訊息：帶回輸入框改完再送）
+  function setMsgFeedback(id: number, feedback: ReplyFeedbackInput | undefined) {
+    setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, feedback } : m)));
+  }
   const [copiedId, setCopiedId] = useState<string | null>(null);
   async function copyMsg(id: string, text: string) {
     try {
@@ -584,7 +593,11 @@ export default function App() {
     setSubmission(data.submission ?? null);
     // 本回合啟動了報告產生（僅報告服務會帶）：把 id 掛在這則回覆上，
     // 由該則訊息下方的膠囊按鈕負責輪詢與開啟下載彈窗
-    if (data.reply) pushMsg('agent', data.reply, data.suggestions, data.report?.id, data.pendingAction, data.blocks);
+    const turnConvId = data.id ?? sessionId ?? convId;
+    if (data.reply) {
+      pushMsg('agent', data.reply, data.suggestions, data.report?.id, data.pendingAction, data.blocks,
+        data.replyId && turnConvId ? { replyId: data.replyId, convId: turnConvId } : undefined);
+    }
 
     // 只在「剛填寫完畢（→confirming）」或「剛送出（→submitted）」的轉變當下主動開表單；
     // 停留在同一狀態（例如 confirming 中繼續問話）不再強制彈出。
@@ -1129,6 +1142,16 @@ export default function App() {
                         </svg>
                       )}
                     </button>
+                    {m.role === 'agent' && m.replyId && m.convId && (
+                      <FeedbackButtons
+                        convId={m.convId}
+                        replyId={m.replyId}
+                        userId={userId}
+                        value={m.feedback}
+                        onChange={(next) => setMsgFeedback(m.id, next)}
+                        onError={(message) => pushMsg('sys', '⚠️ ' + message)}
+                      />
+                    )}
                     {m.role === 'user' && (
                       <button
                         type="button"

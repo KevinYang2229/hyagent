@@ -12,6 +12,7 @@ import type {
   FieldSpec,
   LeaveBalance,
   PendingActionView,
+  ReplyFeedbackInput,
   ReportRef,
   SessionStatus,
   SubmissionInfo,
@@ -45,6 +46,8 @@ export interface TurnData {
   pendingAction?: PendingActionView;
   /** 本回合的畫面區塊（表格等） */
   blocks?: DisplayBlock[];
+  /** 本則回覆的編號（可評價） */
+  replyId?: string;
   /** 確認端點回傳：執行是否成功 */
   actionOk?: boolean;
 }
@@ -492,6 +495,23 @@ export const api = {
   cancelAction(userId: string, convId: string, actionId: string): Promise<TurnData> {
     return request<TurnData>(`${BASE}/${convId}/actions/${actionId}/cancel`, {
       method: 'POST',
+      headers: headers(userId),
+    });
+  },
+
+  /** 評價 AI 回覆（建立或更新）；伺服器依 replyId 取問答快照 */
+  setFeedback(userId: string, convId: string, replyId: string, input: ReplyFeedbackInput): Promise<ReplyFeedbackInput> {
+    return request<ReplyFeedbackInput>(`${BASE}/${convId}/replies/${replyId}/feedback`, {
+      method: 'PUT',
+      headers: headers(userId),
+      body: JSON.stringify(input),
+    });
+  },
+
+  /** 撤回評價（冪等） */
+  async clearFeedback(userId: string, convId: string, replyId: string): Promise<void> {
+    await request<void>(`${BASE}/${convId}/replies/${replyId}/feedback`, {
+      method: 'DELETE',
       headers: headers(userId),
     });
   },
