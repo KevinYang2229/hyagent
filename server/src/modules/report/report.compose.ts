@@ -4,6 +4,7 @@
  * 節與節之間刻意不共享脈絡：每節只看自己的參考資料。共享脈絡會讓後面的節帶著前面節的
  * 結論走，而那些結論的來源片段已不在視野內——等於讓模型在無法核對的二手資訊上繼續推論。
  */
+import { untrustedDataRule, wrapUntrusted } from '@/lib/untrusted-content';
 import { env } from '@/config/env';
 import type { LLMProvider } from '@/lib/llm/types';
 import { logger } from '@/lib/logger';
@@ -73,6 +74,7 @@ function sectionSystem(locale?: string): string {
       '  ```',
       '- Every value MUST appear verbatim in the material. Never estimate, interpolate, or total.',
       '- Mixed units, single values, or narrative material: omit the block entirely.',
+      untrustedDataRule('en'),
     ].join('\n');
   }
   return [
@@ -119,6 +121,7 @@ function sectionSystem(locale?: string): string {
     '  ```',
     '- 每個數值都必須在參考資料中原樣出現，嚴禁估算、內插或自行加總。',
     '- 單位不一致、只有單一數值、或材料是敘述性文字時，一律不要附這個區塊。',
+    untrustedDataRule(),
   ].join('\n');
 }
 
@@ -1169,7 +1172,7 @@ export async function composeSection(
       logger.warn({ err, tenantId, table: entry.id }, 'table preview load failed');
     }
   }
-  const previewBlock = previews.length > 0 ? `\n\n資料表實際內容：\n${previews.join('\n\n')}` : '';
+  const previewBlock = previews.length > 0 ? `\n\n資料表實際內容：\n${wrapUntrusted(previews.join('\n\n'))}` : '';
 
   try {
     const result = await llm.createMessage({
@@ -1180,7 +1183,7 @@ export async function composeSection(
           content: [
             {
               type: 'text',
-              text: `章節標題：${section.heading}\n\n參考資料：\n${context}${catalogBlock}${previewBlock}\n\n本節要回答：${section.query}`,
+              text: `章節標題：${section.heading}\n\n參考資料：\n${wrapUntrusted(context)}${catalogBlock}${previewBlock}\n\n本節要回答：${section.query}`,
             },
           ],
         },

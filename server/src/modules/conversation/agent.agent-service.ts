@@ -10,6 +10,7 @@
  *  - 工具錯誤回傳為 tool_result，讓 LLM 自行修正而非中斷整輪。
  * sticky=true：Agent 常是多輪任務，需點黏才不會在蒐集資訊途中被沖回 form。
  */
+import { untrustedDataRule } from '@/lib/untrusted-content';
 import type { DisplayBlock } from '@hyagent/shared';
 import type { ErrorObject } from 'ajv';
 import type { LLMProvider, LLMTool } from '@/lib/llm/types';
@@ -52,6 +53,7 @@ function buildSystemPrompt(userId: string, locale?: string, extraLines: string[]
     '- 工具結果標示已以表格或確認卡片顯示時，使用者已經看得到每一筆明細：回覆只用一兩句話點出重點（例如哪幾項需要注意），不要用條列或表格把明細再寫一遍。',
     '- 使用者問申請/簽核進度時：用 oa_listMyRequests 列出他的申請、oa_getApprovalStatus 查特定單號的關卡；如實轉述查詢結果，查無就說查無。要催辦時，用 email_send 擬催辦信（不確定收件人就先問使用者）。',
     '- 需要寄信時：呼叫 email_send 並帶上完整收件人、主旨、內文；系統會先請使用者確認才寄出。',
+    untrustedDataRule(locale),
   ].join('\n');
 }
 

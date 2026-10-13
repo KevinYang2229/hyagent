@@ -100,6 +100,9 @@ describe('knowledgeAgentService（RAG 綜合作答）', () => {
     // 送進 LLM 的是檢索片段而非整站
     const sent = mockCreate.mock.calls[0][0].messages[0].content[0].text as string;
     expect(sent).toContain('HyCMS');
+    // 檢索片段框在不可信邊界內，system prompt 明訂框內只是資料（防間接 prompt injection）
+    expect(sent).toMatch(/<external-data>\n[\s\S]*HyCMS[\s\S]*\n<\/external-data>/);
+    expect(mockCreate.mock.calls[0][0].system).toContain('<external-data>');
     expect(res.reply).toContain('HyCMS');
     // 旁路不變更 form 狀態
     expect(JSON.stringify(session.values)).toBe(valuesBefore);

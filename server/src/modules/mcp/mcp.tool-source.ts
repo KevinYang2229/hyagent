@@ -6,6 +6,7 @@
 import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
 import { logger } from '@/lib/logger';
+import { sanitizeExternalText } from '@/lib/untrusted-content';
 import { DISPLAY_META_KEY } from '@/modules/display/display-block';
 import { toolOutput } from '@/modules/tools/tool-output';
 import type { ToolContext, ToolDef, ToolEffect, ToolSource } from '@/modules/tools/tool.types';
@@ -17,6 +18,8 @@ import type { McpServerConfig, McpToolOverride } from './mcp.types';
 /** Anthropic 上限 128、OpenAI 上限 64，取交集。 */
 export const LLM_TOOL_NAME_RE = /^[a-zA-Z0-9_-]{1,64}$/;
 const TOOL_NAME_RE = /^[a-zA-Z0-9_-]+$/;
+/** 遠端工具說明進 LLM 的長度上限：夠寫清楚用途，又不讓單一工具塞進大段文字 */
+const MCP_DESCRIPTION_MAX = 1024;
 
 export function mcpScopeId(serverId: string): string {
   return `mcp:${serverId}`;
@@ -88,8 +91,9 @@ export function toToolDef(
   }
   return {
     id: mcpToolId(config.id, remote.name),
-    description: remote.description ?? remote.title ?? remote.name,
-    confirmTitle: override?.cardTitle ?? remote.title,
+    // 遠端說明會原樣進 LLM 的工具定義：清掉藏指令用的不可見字元並限長
+    description: sanitizeExternalText(remote.description ?? remote.title ?? remote.name, MCP_DESCRIPTION_MAX),
+    confirmTitle: override?.cardTitle ?? (remote.title ? sanitizeExternalText(remote.title, 60) : undefined),
     inputSchema: normalizeSchema(remote.inputSchema),
     scopes: [mcpScopeId(config.id)],
     agentExposed: true,

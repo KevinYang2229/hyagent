@@ -5,6 +5,7 @@
  * 檢索：依 DATA_BACKEND 選 pgvector 或靜態索引檔（見 retriever.pick），皆無索引時退回 stub FAQ（dev/測試）。
  * 作答：只把 top-k 片段交給 LLM 綜合成答案並附來源；整站內容永不進 LLM（省 token）。
  */
+import { untrustedDataRule, wrapUntrusted } from '@/lib/untrusted-content';
 import { env } from '@/config/env';
 import type { LLMMessage, LLMProvider } from '@/lib/llm/types';
 import { logger } from '@/lib/logger';
@@ -139,6 +140,7 @@ function kbAnswerSystem(locale?: string): string {
       '- "Previous conversation", if present, is only for resolving what the question refers to — never use it as a source of answers.',
       '- Be concise and directly on point; use bullet points when helpful.',
       '- When helpful, cite the source at the end as (Source: title).',
+      untrustedDataRule('en'),
     ].join('\n');
   }
   return [
@@ -149,6 +151,7 @@ function kbAnswerSystem(locale?: string): string {
     '- 「先前對話」若有，僅用於理解本次問題在指涉什麼，不得作為答案來源。',
     '- 回答精簡、直接切中問題；必要時條列。',
     '- 若有幫助，於句末以（來源：標題）標註引用。',
+    untrustedDataRule(),
   ].join('\n');
 }
 
@@ -217,8 +220,8 @@ export const knowledgeAgentService: AgentService = {
                   text: [
                     // 脈絡只用來理解問題在指什麼；答案仍只能出自參考資料（system prompt 已明訂）
                     history.length > 0 ? `先前對話（僅供理解問題脈絡）：\n${transcriptOf(history)}\n` : '',
-                    `參考資料：\n${context || '（無相關文字片段）'}`,
-                    tableContext ? `資料表實際內容：\n${tableContext}` : '',
+                    `參考資料：\n${context ? wrapUntrusted(context) : '（無相關文字片段）'}`,
+                    tableContext ? `資料表實際內容：\n${wrapUntrusted(tableContext)}` : '',
                     `\n問題：${userText}`,
                   ]
                     .filter(Boolean)
