@@ -529,6 +529,19 @@ a {
 .badge-warn {
   @apply bg-[var(--badge-warning-bg)] text-[var(--status-warning)];
 }
+.feedback-row-btn {
+  all: unset;
+  cursor: pointer;
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.feedback-row-btn:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
 .badge-off {
   @apply bg-[var(--bg-secondary)] text-[var(--text-secondary)];
 }

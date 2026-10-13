@@ -37,6 +37,9 @@ describe('diagnose', () => {
   it('知識庫查無片段 → 沒檢索到資料', () => {
     expect(diagnose(item({ trace: { retrieval: { query: 'q', poolSize: 0, usedTables: false, chunks: [] } } }))).toMatch(/沒檢索到資料/);
   });
+  it('有用到資料表時，空片段不判為沒檢索到資料', () => {
+    expect(diagnose(item({ reason: 'other', trace: { retrieval: { query: 'q', poolSize: 0, usedTables: true, chunks: [] } } }))).toBeNull();
+  });
   it('資料過時優先於答錯', () => {
     expect(diagnose(item({ reason: 'outdated' }))).toMatch(/資料可能過時/);
   });
@@ -50,6 +53,27 @@ describe('diagnose', () => {
 });
 
 describe('FeedbackTab', () => {
+  it('點開列後詳情卡捲入視窗', async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    vi.mocked(api.listFeedback).mockResolvedValue({ items: [item()], nextCursor: null });
+    render(<FeedbackTab tenantId="t1" onError={vi.fn()} onTestRetrieval={vi.fn()} />);
+    fireEvent.click(await screen.findByText('特休幾天？'));
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' });
+  });
+
+  it('只有 http(s) 來源才渲染成連結，file:// 等為純文字', async () => {
+    const chunk = (rank: number, title: string, url: string) => ({ rank, id: `c${rank}`, title, url, excerpt: 'x' });
+    vi.mocked(api.listFeedback).mockResolvedValue({
+      items: [item({ trace: { retrieval: { query: 'q', poolSize: 2, usedTables: false, chunks: [chunk(1, '網頁來源', 'https://x/a'), chunk(2, '檔案來源', 'file:///data/a.pdf')] } } })],
+      nextCursor: null,
+    });
+    render(<FeedbackTab tenantId="t1" onError={vi.fn()} onTestRetrieval={vi.fn()} />);
+    fireEvent.click(await screen.findByText('特休幾天？'));
+    expect(screen.getByRole('link', { name: '網頁來源' })).toHaveAttribute('href', 'https://x/a');
+    expect(screen.getByText('檔案來源')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: '檔案來源' })).not.toBeInTheDocument();
+  });
+
   it('預設篩選待處理倒讚，顯示統計與清單；捲到底帶游標載下一頁', async () => {
     vi.mocked(api.listFeedback)
       .mockResolvedValueOnce({ items: [item()], nextCursor: 'cur1' })

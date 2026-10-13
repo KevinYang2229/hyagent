@@ -23,7 +23,7 @@ const tdNowrap: CSSProperties = { ...td, whiteSpace: 'nowrap' };
 /** 一行初步判斷：依序套用第一條成立者（見設計文件 §7.3） */
 export function diagnose(f: FeedbackItem): string | null {
   const chunks = f.trace?.retrieval?.chunks;
-  if (f.serviceId === 'knowledge' && chunks && chunks.length === 0) {
+  if (f.serviceId === 'knowledge' && chunks && chunks.length === 0 && !f.trace?.retrieval?.usedTables) {
     return '沒檢索到資料：知識庫可能缺這份內容，或提問者沒有權限看到';
   }
   if (f.reason === 'outdated') return '資料可能過時：請更新下列來源';
@@ -58,6 +58,7 @@ export default function FeedbackTab({
   const [note, setNote] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
+  const detailRef = useRef<HTMLDivElement>(null);
   const genRef = useRef(0);
   const loadingRef = useRef(false);
 
@@ -142,6 +143,11 @@ export default function FeedbackTab({
   }
 
   const open = rows?.find((r) => r.id === openId);
+
+  // 詳情卡在 480px 捲動清單下方：點開後捲過去，否則看起來像點了沒反應
+  useEffect(() => {
+    if (openId) detailRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+  }, [openId]);
 
   return (
     <div style={{ display: 'grid', gap: 16 }}>
@@ -235,7 +241,7 @@ export default function FeedbackTab({
                           type="button"
                           aria-expanded={f.id === openId}
                           onClick={(e) => { e.stopPropagation(); toggleRow(f); }}
-                          style={{ all: 'unset', cursor: 'pointer', display: 'block', width: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                          className="feedback-row-btn"
                         >
                           {f.question}
                         </button>
@@ -255,7 +261,7 @@ export default function FeedbackTab({
       </div>
 
       {open && (
-        <div className="card">
+        <div ref={detailRef} className="card">
           <div className="card-head">
             <div className="card-title">回饋詳情</div>
             <button type="button" className="btn" onClick={() => onTestRetrieval(open.question, open.userId)}>用這題測試檢索</button>
@@ -278,7 +284,7 @@ export default function FeedbackTab({
                           <td style={tdNowrap}>{`#${c.rank}`}</td>
                           <td style={tdNowrap}>{c.score !== undefined ? c.score.toFixed(3) : '—'}</td>
                           <td style={td}>
-                            <div>{c.url ? <a href={c.url} target="_blank" rel="noopener noreferrer">{c.title}</a> : c.title}</div>
+                            <div>{c.url && /^https?:/i.test(c.url) ? <a href={c.url} target="_blank" rel="noopener noreferrer">{c.title}</a> : c.title}</div>
                             <div className="row-sub" style={{ whiteSpace: 'pre-wrap' }}>{c.excerpt}</div>
                           </td>
                         </tr>

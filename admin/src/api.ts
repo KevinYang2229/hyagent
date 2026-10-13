@@ -163,6 +163,7 @@ export interface FeedbackItem {
   comment?: string;
   status: 'open' | 'resolved';
   resolutionNote?: string;
+  resolvedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
