@@ -87,7 +87,7 @@ router.delete(
   asyncHandler(conversationController.deleteAttachment),
 );
 
-// AI 回覆評價：不呼叫 LLM，app.ts 掛載的 tenantRateLimit 已涵蓋；月配額只算對話輪次，不影響
+// AI 回覆評價：不呼叫 LLM、不計入用量；但掛在 /api/conversations 下，租戶超過月配額時與對話一樣回 429
 router.put(
   '/:id/replies/:replyId/feedback',
   validate({ params: replyParamSchema, body: putFeedbackSchema }),
