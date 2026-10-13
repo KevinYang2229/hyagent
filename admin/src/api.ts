@@ -139,6 +139,61 @@ export interface AuditPage {
   nextCursor: string | null;
 }
 
+export type FeedbackReasonKey = 'wrong' | 'not_answered' | 'outdated' | 'inappropriate' | 'other';
+
+export interface FeedbackTraceChunk { rank: number; id: string; title: string; url?: string; score?: number; excerpt: string }
+
+export interface FeedbackItem {
+  id: string;
+  tenantId: string;
+  userId: string;
+  sessionId: string;
+  replyId: string;
+  serviceId: string;
+  question: string;
+  answer: string;
+  trace?: {
+    model?: string;
+    retrieval?: { query: string; poolSize: number; usedTables: boolean; chunks: FeedbackTraceChunk[] };
+    tools?: { name: string; ok: boolean }[];
+    reportId?: string;
+  };
+  rating: 'up' | 'down';
+  reason?: FeedbackReasonKey;
+  comment?: string;
+  status: 'open' | 'resolved';
+  resolutionNote?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FeedbackPage { items: FeedbackItem[]; nextCursor: string | null }
+
+export interface FeedbackStats {
+  days: number;
+  total: number;
+  up: number;
+  down: number;
+  openDown: number;
+  byService: Record<string, { up: number; down: number }>;
+  byReason: Record<FeedbackReasonKey, number>;
+}
+
+export interface FeedbackFilterQuery {
+  rating?: 'up' | 'down';
+  serviceId?: string;
+  reason?: FeedbackReasonKey;
+  status?: 'open' | 'resolved';
+}
+
+function feedbackQuery(filter: FeedbackFilterQuery, before?: string): string {
+  const params = new URLSearchParams();
+  for (const [k, v] of Object.entries(filter)) if (v) params.set(k, v);
+  if (before) params.set('before', before);
+  const s = params.toString();
+  return s ? `?${s}` : '';
+}
+
 function auditQuery(before?: string): string {
   return before ? `?before=${encodeURIComponent(before)}` : '';
 }
@@ -526,6 +581,12 @@ export const api = {
   getTenantAudit: (id: string, before?: string) =>
     req<AuditPage>('GET', `/admin/tenants/${id}/audit${auditQuery(before)}`),
   getPlatformAudit: (before?: string) => req<AuditPage>('GET', `/admin/audit${auditQuery(before)}`),
+  listFeedback: (id: string, filter: FeedbackFilterQuery, before?: string) =>
+    req<FeedbackPage>('GET', `/admin/tenants/${id}/feedback${feedbackQuery(filter, before)}`),
+  getFeedbackStats: (id: string, days: 7 | 30 | 90) =>
+    req<FeedbackStats>('GET', `/admin/tenants/${id}/feedback/stats?days=${days}`),
+  updateFeedback: (id: string, feedbackId: string, body: { status: 'open' | 'resolved'; resolutionNote?: string }) =>
+    req<FeedbackItem>('PATCH', `/admin/tenants/${id}/feedback/${feedbackId}`, body),
 
   // ---- 報告 ----
   listReports: (id: string, filter: ReportListFilter = {}) => {

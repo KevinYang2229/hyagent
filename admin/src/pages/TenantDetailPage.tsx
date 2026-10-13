@@ -13,6 +13,7 @@ import FormsTab from './tabs/FormsTab';
 import KnowledgeTab from './tabs/KnowledgeTab';
 import PermissionsTab from './tabs/PermissionsTab';
 import AuditTab from './tabs/AuditTab';
+import FeedbackTab from './tabs/FeedbackTab';
 import ReportsTab from './tabs/ReportsTab';
 import UsersTab from './tabs/UsersTab';
 import SsoTab from './tabs/SsoTab';
@@ -28,6 +29,7 @@ type TabKey =
   | 'webhook'
   | 'usage'
   | 'reports'
+  | 'feedback'
   | 'audit';
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'settings', label: '設定' },
@@ -40,6 +42,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'webhook', label: 'Webhook' },
   { key: 'usage', label: '用量' },
   { key: 'reports', label: '報告' },
+  { key: 'feedback', label: '回饋' },
   { key: 'audit', label: '稽核' },
 ];
 
@@ -125,6 +128,13 @@ export default function TenantDetailPage() {
           {tab === 'webhook' && <WebhookTab tenantId={tenant.id} onError={handleErr} />}
           {tab === 'usage' && <UsageTab tenant={tenant} onError={handleErr} />}
           {tab === 'reports' && <ReportsTab tenantId={tenant.id} onError={handleErr} />}
+          {tab === 'feedback' && (
+            <FeedbackTab
+              tenantId={tenant.id}
+              onError={handleErr}
+              onTestRetrieval={(question, asUserId) => setSearchParams({ tab: 'knowledge', q: question, as: asUserId }, { replace: true })}
+            />
+          )}
           {tab === 'audit' && <AuditTab tenantId={tenant.id} onError={handleErr} />}
         </>
       )}

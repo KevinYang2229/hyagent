@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Checkbox, useToast } from "@hyagent/ui";
 import {
   api,
@@ -54,8 +54,14 @@ export default function KnowledgeTab({
   const [src, setSrc] = useState<KnowledgeSource | null>(null);
   const [meta, setMeta] = useState<KnowledgeMeta | null>(null);
   const [job, setJob] = useState<IngestJob | null>(null);
-  const [question, setQuestion] = useState("");
-  const [asUserId, setAsUserId] = useState(""); // 試查身分：留空＝以管理者身分（見 test()）
+  // 從回饋分頁「用這題測試檢索」帶入：?q=問題&as=提問者，預填後由管理員按下測試
+  const [searchParams] = useSearchParams();
+  const [question, setQuestion] = useState(searchParams.get("q") ?? "");
+  const [asUserId, setAsUserId] = useState(searchParams.get("as") ?? ""); // 試查身分：留空＝以管理者身分（見 test()）
+  const testCardRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (searchParams.get("q")) testCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [searchParams]);
   const [hits, setHits] = useState<QueryHit[]>([]);
   const [fileSearch, setFileSearch] = useState("");
   const [fileFilter, setFileFilter] = useState("all");
@@ -1129,7 +1135,7 @@ export default function KnowledgeTab({
           </div>
         </div>
 
-        <div className="card">
+        <div className="card" ref={testCardRef}>
           <div className="card-head">
             <div>
               <div className="card-title">測試查詢</div>
