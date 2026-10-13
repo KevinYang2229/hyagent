@@ -48,6 +48,20 @@ describe('FeedbackButtons', () => {
     expect(screen.getByText('感謝回饋')).toBeInTheDocument();
   });
 
+  it('輸入法選字 Enter（Safari keyCode 229）不送出，一般 Enter 才送出', async () => {
+    render(<Harness />);
+    fireEvent.click(screen.getByRole('button', { name: '沒有幫助' }));
+    await waitFor(() => expect(api.setFeedback).toHaveBeenCalledTimes(1));
+    const input = screen.getByLabelText('補充說明（選填）');
+    fireEvent.change(input, { target: { value: '注音' } });
+    fireEvent.keyDown(input, { key: 'Enter', keyCode: 229 });
+    expect(api.setFeedback).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    fireEvent.keyUp(input, { key: 'Enter', keyCode: 229 });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => expect(api.setFeedback).toHaveBeenCalledTimes(2));
+  });
+
   it('略過只保留倒讚', async () => {
     render(<Harness />);
     fireEvent.click(screen.getByRole('button', { name: '沒有幫助' }));

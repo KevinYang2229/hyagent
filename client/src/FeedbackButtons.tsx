@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { FeedbackReason, ReplyFeedbackInput } from '@hyagent/shared';
 import { api } from './api';
+import { useImeSubmit } from './useImeSubmit';
 
 const REASONS: { value: FeedbackReason; key: string }[] = [
   { value: 'wrong', key: 'app.feedbackReasonWrong' },
@@ -102,6 +103,9 @@ export function FeedbackButtons({ convId, replyId, userId, value, onChange, onEr
     if (await apply(next)) setThanks(true);
   }
 
+  // 選字 Enter（含 Safari 的 keyCode 229）留給輸入法，不能當成送出
+  const ime = useImeSubmit(() => void submitDetail());
+
   return (
     <span ref={wrapRef} className="feedback">
       <button
@@ -157,7 +161,10 @@ export function FeedbackButtons({ convId, replyId, userId, value, onChange, onEr
             value={comment}
             maxLength={COMMENT_MAX}
             onChange={(e) => setComment(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) void submitDetail(); }}
+            onCompositionStart={ime.onCompositionStart}
+            onCompositionEnd={ime.onCompositionEnd}
+            onKeyDown={ime.onKeyDown}
+            onKeyUp={ime.onKeyUp}
           />
           <div className="feedback-panel-actions">
             <button type="button" className="feedback-skip" onClick={() => setPanelOpen(false)}>{t('app.feedbackSkip')}</button>
