@@ -463,3 +463,13 @@ export interface ConfirmForm {
   title: string;
   fields: ConfirmField[];
 }
+
+// ---- AI 回覆回饋 ----
+export type FeedbackRating = 'up' | 'down';
+export type FeedbackReason = 'wrong' | 'not_answered' | 'outdated' | 'inappropriate' | 'other';
+/** 使用者送出評價的內容；reason／comment 只在 down 時有效 */
+export interface ReplyFeedbackInput {
+  rating: FeedbackRating;
+  reason?: FeedbackReason;
+  comment?: string;
+}

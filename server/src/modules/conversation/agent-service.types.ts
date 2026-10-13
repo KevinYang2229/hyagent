@@ -7,7 +7,7 @@
  */
 import type { DisplayBlock, PendingActionView, ReportRef } from '@hyagent/shared';
 import type { LLMProvider } from '@/lib/llm/types';
-import type { Session } from './conversation.types';
+import type { ReplyTrace, Session } from './conversation.types';
 
 export interface IntentDescriptor {
   /** 正規化意圖 ID（命名空間），如 'leave-request.apply' / 'kb.query' */
@@ -30,6 +30,8 @@ export interface AgentTurnResult {
   pendingAction?: PendingActionView;
   /** 本回合工具結果產生的畫面區塊（依序接在回覆文字之後呈現） */
   blocks?: DisplayBlock[];
+  /** 回覆的產生紀錄（檢索片段、工具序列、模型），供回饋診斷 */
+  trace?: ReplyTrace;
 }
 
 export interface AgentService {

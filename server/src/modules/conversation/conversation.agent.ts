@@ -13,6 +13,7 @@ import { usageStore } from '@/modules/usage/usage.store';
 import { conversationStore } from './conversation.store';
 import type { Session, TurnResult } from './conversation.types';
 import { intentRouter } from './intent-router';
+import { recordReply } from './reply-record';
 import { serviceRegistry } from './service.registry';
 
 // 送出語意判斷仍由 form 服務定義；此處 re-export 維持既有匯入點（含測試）不變
@@ -90,7 +91,7 @@ export async function runTurn(session: Session, userText: string): Promise<TurnR
   // 路由：判斷本輪指派哪個服務（填表點黏、知識可旁路插入）
   const route = await intentRouter.route(session, userText);
   const service = serviceRegistry.get(route.serviceId);
-  const { reply, report, pendingAction, blocks } = await service.handleTurn(session, userText, llm);
+  const { reply, report, pendingAction, blocks, trace } = await service.handleTurn(session, userText, llm);
 
   // 只有點黏服務（form）成為 activeService；旁路服務（knowledge）不奪走流程擁有權
   if (service.sticky) session.activeServiceId = service.id;
@@ -101,9 +102,15 @@ export async function runTurn(session: Session, userText: string): Promise<TurnR
   );
 
   const suggestions = await generateSuggestions(llm, session, reply);
-  conversationStore.save(session); // flush 本輪變更（values/status/messages/submission）
+  // 有回覆文字才可評價；報告 id 併進 trace，後台從回饋可追到那份報告
+  const replyTrace = report ? { ...(trace ?? {}), reportId: report.id } : trace;
+  const record = reply
+    ? recordReply(session, { question: userText, answer: reply, serviceId: service.id, trace: replyTrace })
+    : undefined;
+  conversationStore.save(session); // flush 本輪變更（values/status/messages/submission/replies）
   return {
     reply,
+    ...(record ? { replyId: record.id } : {}),
     status: session.status,
     values: session.values,
     submission: session.submission,

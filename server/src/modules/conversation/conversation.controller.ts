@@ -36,6 +36,7 @@ export const conversationController = {
         values: session.values,
         reply: turn?.reply ?? null,
         suggestions: turn?.suggestions ?? [],
+        ...(turn?.replyId ? { replyId: turn.replyId } : {}),
         ...(turn?.report ? { report: turn.report } : {}),
         // 第一則訊息就可能查出表格或提議寫入：與 sendMessage 一樣帶回，否則前端看不到
         ...(turn?.pendingAction ? { pendingAction: turn.pendingAction } : {}),
