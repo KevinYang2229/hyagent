@@ -81,7 +81,7 @@ describe('FeedbackTab', () => {
     render(<FeedbackTab tenantId="t1" onError={vi.fn()} onTestRetrieval={vi.fn()} />);
     await screen.findByText('特休幾天？');
     expect(api.listFeedback).toHaveBeenCalledWith('t1', { rating: 'down', status: 'open' }, undefined);
-    expect(screen.getByText('待處理 1')).toBeInTheDocument();
+    expect(screen.getByText('待處理倒讚')).toBeInTheDocument();
     await act(async () => fireIntersect());
     await screen.findByText('加班費怎麼算？');
     expect(api.listFeedback).toHaveBeenLastCalledWith('t1', { rating: 'down', status: 'open' }, 'cur1');

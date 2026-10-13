@@ -546,6 +546,40 @@ a {
   @apply bg-[var(--bg-secondary)] text-[var(--text-secondary)];
 }
 
+/* ---- 回饋統計與篩選 ---- */
+.feedback-stats { display: grid; gap: 20px; }
+.feedback-kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.feedback-kpi-warn { background: var(--badge-warning-bg); }
+.feedback-kpi-warn .usage-kpi-value { color: var(--status-warning); }
+.feedback-breakdowns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 40px; padding-top: 4px; }
+.feedback-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.feedback-section-head .usage-section-title { margin-bottom: 0; }
+.feedback-legend { display: inline-flex; gap: 12px; font-size: 12px; color: var(--text-secondary); }
+.feedback-legend > span { display: inline-flex; align-items: center; gap: 5px; }
+.feedback-legend i { width: 8px; height: 8px; border-radius: 2px; }
+.feedback-dot-up { background: var(--status-positive); }
+.feedback-dot-down { background: var(--status-danger); }
+.feedback-bars { display: grid; margin: 0; padding: 0; list-style: none; font-size: 13px; }
+.feedback-bars li { display: grid; grid-template-columns: 88px minmax(0, 1fr) 96px; align-items: center; gap: 14px; padding-block: 7px; }
+.feedback-bars li + li { border-top: 1px dashed var(--border-color); }
+.feedback-bars li.is-empty { color: var(--text-secondary); }
+.feedback-bars li.is-empty .feedback-bar-count b { font-weight: 400; }
+.feedback-bar-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.feedback-bar { display: flex; gap: 2px; height: 6px; overflow: hidden; border-radius: 999px; }
+li:not(.is-empty) > .feedback-bar { background: var(--bg-secondary); }
+.feedback-bar-up { background: var(--status-positive); opacity: 0.85; }
+.feedback-bar-down { background: var(--status-danger); opacity: 0.85; }
+.feedback-bar-count { display: inline-flex; align-items: baseline; justify-content: flex-end; gap: 8px; font-variant-numeric: tabular-nums; }
+.feedback-bar-count b { font-weight: 600; }
+.feedback-bar-count span { min-width: 44px; text-align: right; font-size: 12px; color: var(--text-secondary); }
+.feedback-filters { display: flex; flex-wrap: wrap; gap: 8px; }
+.feedback-filters .input { width: auto; min-width: 120px; }
+@media (max-width: 640px) {
+  .feedback-kpis, .feedback-breakdowns { grid-template-columns: minmax(0, 1fr); }
+  .feedback-filters { width: 100%; }
+  .feedback-filters .input { flex: 1 1 140px; }
+}
+
 /* ---- 統計卡 ---- */
 .stats {
   @apply grid grid-cols-3 gap-4;

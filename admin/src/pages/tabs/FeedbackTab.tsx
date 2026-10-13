@@ -12,7 +12,7 @@ const REASON_LABEL: Record<FeedbackReasonKey, string> = {
   inappropriate: '內容不恰當',
   other: '其他',
 };
-const SERVICE_LABEL: Record<string, string> = { knowledge: '知識庫', agent: '智慧代理', form: '表單', report: '報告' };
+const SERVICE_LABEL: Record<string, string> = { assistant: '一般對話', knowledge: '知識庫', agent: '智慧代理', form: '表單', report: '報告' };
 const serviceLabel = (id: string): string => SERVICE_LABEL[id] ?? id;
 
 const SCROLL_MAX_HEIGHT = 480;
@@ -167,19 +167,83 @@ export default function FeedbackTab({
           {!stats ? (
             <div className="row-sub">載入中…</div>
           ) : (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24, fontSize: 14 }}>
-              <div>評價 <strong>{stats.total}</strong></div>
-              <div>讚 <strong>{stats.total ? Math.round((stats.up / stats.total) * 100) : 0}%</strong></div>
-              <div className={stats.openDown > 0 ? 'badge badge-warn' : 'badge'}>{`待處理 ${stats.openDown}`}</div>
-              <div>
-                {Object.entries(stats.byService).map(([svc, c]) => (
-                  <span key={svc} style={{ marginRight: 12 }}>{`${serviceLabel(svc)} 👍${c.up} 👎${c.down}`}</span>
-                ))}
+            <div className="feedback-stats">
+              <div className="feedback-kpis">
+                <div className="usage-kpi">
+                  <div className="stat-label">評價數</div>
+                  <div className="usage-kpi-value">{stats.total}</div>
+                  <div className="stat-hint">{`讚 ${stats.up}・倒讚 ${stats.down}`}</div>
+                </div>
+                <div className="usage-kpi">
+                  <div className="stat-label">讚的比例</div>
+                  <div className="usage-kpi-value">{stats.total ? `${Math.round((stats.up / stats.total) * 100)}%` : '—'}</div>
+                  <div className="stat-hint">{stats.total ? `共 ${stats.total} 筆評價` : '尚無評價'}</div>
+                </div>
+                <div className={stats.openDown > 0 ? 'usage-kpi feedback-kpi-warn' : 'usage-kpi'}>
+                  <div className="stat-label">待處理倒讚</div>
+                  <div className="usage-kpi-value">{stats.openDown}</div>
+                  <div className="stat-hint">{stats.openDown > 0 ? '請到下方清單逐筆處理' : '目前沒有待處理'}</div>
+                </div>
               </div>
-              <div>
-                {(Object.keys(REASON_LABEL) as FeedbackReasonKey[]).map((r) => (
-                  <span key={r} style={{ marginRight: 12 }}>{`${REASON_LABEL[r]} ${stats.byReason[r]}`}</span>
-                ))}
+              <div className="feedback-breakdowns">
+                <section>
+                  <div className="feedback-section-head">
+                    <span className="usage-section-title">各服務評價</span>
+                    <span className="feedback-legend" aria-hidden>
+                      <span><i className="feedback-dot-up" />讚</span>
+                      <span><i className="feedback-dot-down" />倒讚</span>
+                    </span>
+                  </div>
+                  {Object.keys(stats.byService).length === 0 ? (
+                    <div className="row-sub">尚無資料</div>
+                  ) : (
+                    <ul className="feedback-bars">
+                      {Object.entries(stats.byService)
+                        .sort(([, x], [, y]) => y.up + y.down - (x.up + x.down))
+                        .map(([svc, c]) => {
+                          const sum = c.up + c.down;
+                          return (
+                            <li key={svc}>
+                              <span className="feedback-bar-label">{serviceLabel(svc)}</span>
+                              <span className="feedback-bar" aria-hidden>
+                                {c.up > 0 && <span className="feedback-bar-up" style={{ flex: c.up }} />}
+                                {c.down > 0 && <span className="feedback-bar-down" style={{ flex: c.down }} />}
+                              </span>
+                              <span className="feedback-bar-count">
+                                <b>{`${c.up} / ${c.down}`}</b>
+                                <span>{sum ? `${Math.round((c.up / sum) * 100)}% 讚` : '—'}</span>
+                              </span>
+                            </li>
+                          );
+                        })}
+                    </ul>
+                  )}
+                </section>
+                <section>
+                  <div className="feedback-section-head">
+                    <span className="usage-section-title">倒讚原因</span>
+                  </div>
+                  <ul className="feedback-bars">
+                    {(Object.keys(REASON_LABEL) as FeedbackReasonKey[])
+                      .sort((x, y) => stats.byReason[y] - stats.byReason[x])
+                      .map((r) => {
+                        const n = stats.byReason[r];
+                        const totalDown = Object.values(stats.byReason).reduce((acc, v) => acc + v, 0);
+                        return (
+                          <li key={r} className={n === 0 ? 'is-empty' : undefined}>
+                            <span className="feedback-bar-label">{REASON_LABEL[r]}</span>
+                            <span className="feedback-bar" aria-hidden>
+                              {n > 0 && <span className="feedback-bar-down" style={{ width: `${(n / totalDown) * 100}%` }} />}
+                            </span>
+                            <span className="feedback-bar-count">
+                              <b>{n}</b>
+                              <span>{totalDown ? `${Math.round((n / totalDown) * 100)}%` : '—'}</span>
+                            </span>
+                          </li>
+                        );
+                      })}
+                  </ul>
+                </section>
               </div>
             </div>
           )}
@@ -189,7 +253,7 @@ export default function FeedbackTab({
       <div className="card">
         <div className="card-head">
           <div className="card-title">回饋清單</div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          <div className="feedback-filters">
             <select className="input" aria-label="評價" value={rating} onChange={(e) => setRating(e.target.value as RatingFilter)}>
               <option value="">全部評價</option>
               <option value="down">倒讚</option>
