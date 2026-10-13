@@ -12,8 +12,5 @@
     "dev:space-me": "npm run dev -w apps/space-me",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm test --workspaces --if-present -- --ci"
-  },
-  "dependencies": {
-    "expo": "^57.0.28"
   }
 }
