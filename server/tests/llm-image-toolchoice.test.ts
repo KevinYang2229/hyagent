@@ -59,6 +59,15 @@ it('OpenAI：含圖片的 user 訊息改用 content parts，tool_choice 指定 f
   expect(r.toolCalls[0]).toEqual({ id: 'c1', name: 'report', input: { a: 1 } });
 });
 
+it("toolChoice 'none' → 兩家都帶「禁止呼叫工具」（tools 定義仍保留，歷史含 tool_use 時 Anthropic 要求）", async () => {
+  const noneParams: LLMCreateParams = { ...params, toolChoice: 'none' };
+  await getLLMProvider({ provider: 'anthropic' }).createMessage(noneParams);
+  expect(anthropicCreate.mock.calls[0][0].tool_choice).toEqual({ type: 'none' });
+  expect(anthropicCreate.mock.calls[0][0].tools).toHaveLength(1);
+  await getLLMProvider({ provider: 'openai' }).createMessage(noneParams);
+  expect(openaiCreate.mock.calls[0][0].tool_choice).toBe('none');
+});
+
 it('沒有 toolChoice、沒有圖片 → 請求不帶 tool_choice，user 內容仍是字串（行為不變）', async () => {
   await getLLMProvider({ provider: 'openai' }).createMessage({ system: 's', messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }] });
   const sent = openaiCreate.mock.calls[0][0];

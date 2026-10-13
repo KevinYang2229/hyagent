@@ -30,6 +30,9 @@ import {
 import { runConfirmedAction } from './pending-action.service';
 import { runToolLoop } from './tool-loop';
 
+/** 開放式多步驟任務（跨工具查詢、彙整、MCP、出錯重試）比填表需要更多往返。 */
+const AGENT_MAX_ITERATIONS = 10;
+
 /** Anthropic 上限 128、OpenAI 上限 64，取交集。 */
 const LLM_TOOL_NAME_RE = /^[a-zA-Z0-9_-]{1,64}$/;
 
@@ -144,6 +147,7 @@ export const agentAgentService: AgentService = {
     const reply = await runToolLoop(llm, session, {
       system: buildSystemPrompt(session.userId, session.locale, mcpPromptLines(session.tenantId, session.userId)),
       tools: llmTools,
+      maxIterations: AGENT_MAX_ITERATIONS,
       dispatchTool: async (name, input) => {
         // 安全邊界：只放行 availableFor 清單內的工具（映回真實 id），LLM 幻想出別的名字一律擋下
         const realId = idByLlmName.get(name);

@@ -91,7 +91,12 @@ export function createAnthropicProvider(settings: ResolvedLLMSettings): LLMProvi
           // 未指定就整個欄位不帶，沿用 provider 預設（見 LLMCreateParams.temperature）
           ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
           tools: tools.length > 0 ? tools : undefined,
-          ...(params.toolChoice ? { tool_choice: { type: 'tool', name: params.toolChoice.name } } : {}),
+          ...(params.toolChoice === 'none'
+            ? // API 已支援 type:'none'，但 SDK 0.32 型別尚未收錄；SDK 原樣轉送 body，執行期無礙
+              { tool_choice: { type: 'none' } as unknown as Anthropic.Messages.ToolChoice }
+            : params.toolChoice
+              ? { tool_choice: { type: 'tool' as const, name: params.toolChoice.name } }
+              : {}),
           messages: toMessageParams(params.messages),
         });
       } catch (err) {

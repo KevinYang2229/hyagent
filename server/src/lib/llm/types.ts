@@ -47,8 +47,12 @@ export interface LLMCreateParams {
    * 對話類呼叫維持不帶，避免回答變得呆板。
    */
   temperature?: number;
-  /** 強制 LLM 呼叫指定工具（取得固定格式的結構化輸出用）；省略＝由模型自行決定 */
-  toolChoice?: { name: string };
+  /**
+   * 強制 LLM 呼叫指定工具（取得固定格式的結構化輸出用）；'none'＝禁止呼叫任何工具
+   * （歷史含 tool_use 時 Anthropic 仍要求帶 tools 定義，不能靠拿掉 tools 來禁止）；
+   * 省略＝由模型自行決定。
+   */
+  toolChoice?: { name: string } | 'none';
 }
 
 export interface LLMUsage {

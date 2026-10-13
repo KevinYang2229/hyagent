@@ -128,7 +128,11 @@ export function createOpenAIProvider(settings: ResolvedLLMSettings): LLMProvider
           ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
           messages: toOpenAIMessages(params.system, params.messages),
           tools: tools.length > 0 ? tools : undefined,
-          ...(params.toolChoice ? { tool_choice: { type: 'function' as const, function: { name: params.toolChoice.name } } } : {}),
+          ...(params.toolChoice === 'none'
+            ? { tool_choice: 'none' as const }
+            : params.toolChoice
+              ? { tool_choice: { type: 'function' as const, function: { name: params.toolChoice.name } } }
+              : {}),
         });
       } catch (err) {
         throw mapProviderError(err, settings);
