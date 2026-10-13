@@ -21,6 +21,32 @@ export const IconTenants = (p: P) => (
   </svg>
 );
 
+export const IconSkills = (p: P) => (
+  <svg {...base(p)}>
+    <polygon points="12 2 2 7 12 12 22 7 12 2" />
+    <polyline points="2 17 12 22 22 17" />
+    <polyline points="2 12 12 17 22 12" />
+  </svg>
+);
+
+export const IconPlug = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M9 2v6" />
+    <path d="M15 2v6" />
+    <path d="M6 8h12v4a6 6 0 0 1-12 0z" />
+    <path d="M12 18v4" />
+  </svg>
+);
+
+export const IconAudit = (p: P) => (
+  <svg {...base(p)}>
+    <rect x="5" y="3" width="14" height="18" rx="2" />
+    <line x1="9" y1="8" x2="15" y2="8" />
+    <line x1="9" y1="12" x2="15" y2="12" />
+    <line x1="9" y1="16" x2="13" y2="16" />
+  </svg>
+);
+
 export const IconChevron = (p: P) => (
   <svg {...base(p)}>
     <polyline points="9 18 15 12 9 6" />

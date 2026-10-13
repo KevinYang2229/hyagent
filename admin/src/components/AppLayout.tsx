@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth";
 import { applyTheme, getTheme, type Theme } from "../theme";
-import { IconLogout, IconTenants } from "./icons";
+import { IconAudit, IconLogout, IconPlug, IconSkills, IconTenants } from "./icons";
 import pkg from "../../package.json";
 
 /**
@@ -23,9 +23,7 @@ export default function AppLayout({
   const { logout } = useAuth();
   const navigate = useNavigate();
   const loc = useLocation();
-  const onTenants =
-    (loc.pathname === "/" || loc.pathname.startsWith("/tenants")) &&
-    loc.pathname !== "/skills";
+  const onTenants = loc.pathname === "/" || loc.pathname.startsWith("/tenants");
   const [navOpen, setNavOpen] = useState(false);
   const [theme, setTheme] = useState<Theme>(getTheme());
 
@@ -81,7 +79,7 @@ export default function AppLayout({
             role="button"
             tabIndex={0}
           >
-            <IconTenants className="nav-ico" />
+            <IconSkills className="nav-ico" />
             Skill Library
           </div>
           <div
@@ -90,8 +88,17 @@ export default function AppLayout({
             role="button"
             tabIndex={0}
           >
-            <IconTenants className="nav-ico" />
+            <IconPlug className="nav-ico" />
             MCP 服務
+          </div>
+          <div
+            className={`nav-item${loc.pathname === "/audit" ? " active" : ""}`}
+            onClick={() => go("/audit")}
+            role="button"
+            tabIndex={0}
+          >
+            <IconAudit className="nav-ico" />
+            平台稽核紀錄
           </div>
         </nav>
 

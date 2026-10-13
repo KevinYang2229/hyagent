@@ -10,7 +10,16 @@ const tdNowrap: CSSProperties = { ...td, whiteSpace: 'nowrap' };
 const SCROLL_MAX_HEIGHT = 480;
 
 /** 帶 tenantId＝該租戶稽核；不帶＝平台層稽核（建立／刪除租戶、MCP 服務等） */
-export default function AuditTab({ tenantId, onError }: { tenantId?: string; onError: (e: unknown) => void }) {
+export default function AuditTab({
+  tenantId,
+  onError,
+  scrollMaxHeight = SCROLL_MAX_HEIGHT,
+}: {
+  tenantId?: string;
+  onError: (e: unknown) => void;
+  /** 捲動區高度上限；獨立頁面可撐到視窗高度 */
+  scrollMaxHeight?: number | string;
+}) {
   const [rows, setRows] = useState<AuditEntry[] | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -91,7 +100,7 @@ export default function AuditTab({ tenantId, onError }: { tenantId?: string; onE
         </div>
       </div>
       {/* 上方不留 padding：sticky 表頭只會貼到 padding 內緣，留著的話捲上去的列會從表頭上方露出來 */}
-      <div ref={scrollRef} className="card-body" style={{ overflow: 'auto', maxHeight: SCROLL_MAX_HEIGHT, paddingTop: 0 }}>
+      <div ref={scrollRef} className="card-body" style={{ overflow: 'auto', maxHeight: scrollMaxHeight, paddingTop: 0 }}>
         {rows.length === 0 ? (
           <div className="row-sub" style={{ paddingTop: 16 }}>尚無稽核紀錄。</div>
         ) : (
