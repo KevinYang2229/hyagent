@@ -183,6 +183,26 @@ export const envSchema = z.object({
           'AUTH_DEV_PASSWORD must be overridden when AUTH_PASSWORD_LOGIN=on in production (still using insecure dev default)',
       });
     }
+    // 未設加密金鑰時 BYO LLM key 與 Session 上的使用者識別碼會以明文落地，且照常啟動、毫無徵兆
+    if (!val.DATA_ENCRYPTION_KEY) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['DATA_ENCRYPTION_KEY'],
+        message:
+          'DATA_ENCRYPTION_KEY is required in production (openssl rand -hex 32); ' +
+          'without it secrets are stored in plaintext. Back it up: encrypted data cannot be read with a different key.',
+      });
+    }
+    // CORS 預設 '*' 會對任意來源反射 origin 並帶 credentials；正式環境必須列出 client／admin 網域
+    if (val.CORS_ORIGIN.split(',').some((s) => s.trim() === '*')) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['CORS_ORIGIN'],
+        message:
+          "CORS_ORIGIN must list explicit origins in production (comma-separated), not '*'. " +
+          'Tenant embed origins are configured per tenant (allowedOrigins), not here.',
+      });
+    }
     // file 模式的每一項機制都建立在「只有一個副本」上：記憶體 Map 即 primary、
     // 落檔用 `wx` 當鎖、auth session 與 jti 的索引開機才重建。多副本跑 file 不會報錯，
     // 只會安靜地各自為政——A 副本撤銷的公鑰，B 副本在重啟前仍繼續接受（規格 §2.6 的

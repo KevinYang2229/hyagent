@@ -11,6 +11,8 @@ const PROD = {
   JWT_ACCESS_SECRET: 'x'.repeat(32),
   JWT_REFRESH_SECRET: 'y'.repeat(32),
   ANTHROPIC_API_KEY: 'test-key',
+  DATA_ENCRYPTION_KEY: 'a'.repeat(64),
+  CORS_ORIGIN: 'https://app.example.com',
 } as const;
 
 /** 只挑本案關心的那條 issue，避免被其他欄位的驗證結果干擾 */

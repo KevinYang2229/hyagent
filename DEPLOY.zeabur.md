@@ -125,10 +125,11 @@ Zeabur 連上 GitHub repo 後，會 watch 指定分支；**每次 `git push` 到
 | `ANTHROPIC_API_KEY`  | ✅ 必填  | 沒填 server 啟動會直接 fail-fast 退出                                                                                                                                                                      |
 | `JWT_ACCESS_SECRET`  | ✅       | ≥32 字元隨機字串                                                                                                                                                                                           |
 | `JWT_REFRESH_SECRET` | ✅       | ≥32 字元隨機字串（與上者不同）                                                                                                                                                                             |
+| `DATA_ENCRYPTION_KEY` | ✅ 必填 | 64 hex（`openssl rand -hex 32`）。敏感欄位靜態加密金鑰；**未設時 `production` 下會 boot fail-fast**。務必備份，換了金鑰就讀不回既有密文 |
 | `MCP_SIGNING_KEY`    | 視需要   | 要讓 AI 呼叫自建 MCP 服務時必填：ES256 私鑰（PKCS#8 PEM，換行寫成 `\n`）。未設＝MCP 功能停用。產生方式見 `server/.env.example` |
 | `MCP_PREVIOUS_PUBLIC_KEY` | 選填 | 換鑰過渡期填上一把的公鑰（SPKI PEM），過渡結束後移除 |
 | `VISION_STORE_SERVER_ID` | 選填 | 影像辨識查詢門市資料的 MCP serverId，預設 `store-demo` |
-| `CORS_ORIGIN`        | 建議     | client 與 admin 的 Domain，**逗號分隔**：`https://hyagent.zeabur.app,https://hyagent-admin.zeabur.app`。**結尾不要加 `/`**（瀏覽器送的 Origin 不帶斜線，多打會比對不到而擋掉；程式已做容錯，但仍建議別加） |
+| `CORS_ORIGIN`        | ✅ 必填  | **未設（預設 `*`）或清單含 `*` 時，`production` 下會 boot fail-fast**。client 與 admin 的 Domain，**逗號分隔**：`https://hyagent.zeabur.app,https://hyagent-admin.zeabur.app`。**結尾不要加 `/`**（瀏覽器送的 Origin 不帶斜線，多打會比對不到而擋掉；程式已做容錯，但仍建議別加） |
 | `ADMIN_PASSWORD`     | 後台必填 | admin 後台登入密碼；**留空＝後台登入回 403**（停用）。與 `ADMIN_API_KEY` 分開                                                                                                                              |
 | `AUTH_DEV_PASSWORD`  | 視需要   | 帳密登入共用密碼，預設 `oa1234`；`AUTH_PASSWORD_LOGIN=on` 的正式環境必須改（否則 boot fail-fast）                                                                                                          |
 | `AUTH_PASSWORD_LOGIN`| 視需要   | 帳密登入開關：`auto`（預設，production 關）/ `on`（production 也開，需自訂密碼＋後台人員目錄）/ `off`                                                                                                      |
