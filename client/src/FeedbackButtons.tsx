@@ -33,6 +33,8 @@ export function FeedbackButtons({ convId, replyId, userId, value, onChange, onEr
   const [reason, setReason] = useState<FeedbackReason | undefined>();
   const [comment, setComment] = useState('');
   const [thanks, setThanks] = useState(false);
+  const [pending, setPending] = useState(false);
+  const pendingRef = useRef(false);
   const wrapRef = useRef<HTMLSpanElement>(null);
 
   // 點面板外＝略過
@@ -53,6 +55,8 @@ export function FeedbackButtons({ convId, replyId, userId, value, onChange, onEr
 
   async function apply(next: ReplyFeedbackInput | undefined): Promise<boolean> {
     const previous = value;
+    pendingRef.current = true;
+    setPending(true);
     onChange(next);
     try {
       if (next) await api.setFeedback(userId, convId, replyId, next);
@@ -62,10 +66,14 @@ export function FeedbackButtons({ convId, replyId, userId, value, onChange, onEr
       onChange(previous);
       onError(e instanceof Error ? e.message : String(e));
       return false;
+    } finally {
+      pendingRef.current = false;
+      setPending(false);
     }
   }
 
   async function clickUp() {
+    if (pendingRef.current) return;
     setPanelOpen(false);
     if (value?.rating === 'up') {
       await apply(undefined);
@@ -75,6 +83,7 @@ export function FeedbackButtons({ convId, replyId, userId, value, onChange, onEr
   }
 
   async function clickDown() {
+    if (pendingRef.current) return;
     if (value?.rating === 'down') {
       setPanelOpen(false);
       await apply(undefined);
@@ -86,6 +95,7 @@ export function FeedbackButtons({ convId, replyId, userId, value, onChange, onEr
   }
 
   async function submitDetail() {
+    if (pendingRef.current) return;
     const trimmed = comment.trim();
     const next: ReplyFeedbackInput = { rating: 'down', ...(reason ? { reason } : {}), ...(trimmed ? { comment: trimmed } : {}) };
     setPanelOpen(false);
@@ -100,6 +110,7 @@ export function FeedbackButtons({ convId, replyId, userId, value, onChange, onEr
         aria-label={t('app.feedbackUp')}
         title={t('app.feedbackUp')}
         aria-pressed={value?.rating === 'up'}
+        disabled={pending}
         onClick={() => void clickUp()}
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill={value?.rating === 'up' ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -113,6 +124,7 @@ export function FeedbackButtons({ convId, replyId, userId, value, onChange, onEr
         aria-label={t('app.feedbackDown')}
         title={t('app.feedbackDown')}
         aria-pressed={value?.rating === 'down'}
+        disabled={pending}
         onClick={() => void clickDown()}
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill={value?.rating === 'down' ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -149,7 +161,7 @@ export function FeedbackButtons({ convId, replyId, userId, value, onChange, onEr
           />
           <div className="feedback-panel-actions">
             <button type="button" className="feedback-skip" onClick={() => setPanelOpen(false)}>{t('app.feedbackSkip')}</button>
-            <button type="button" className="feedback-submit" onClick={() => void submitDetail()}>{t('app.feedbackSubmit')}</button>
+            <button type="button" className="feedback-submit" disabled={pending} onClick={() => void submitDetail()}>{t('app.feedbackSubmit')}</button>
           </div>
         </div>
       )}

@@ -227,7 +227,7 @@
   }
   /* 評價鈕：已評價的那顆固定顯示（帶狀態的元素不可隱藏，理由同報告入口） */
   .msg-action--active {
-    @apply text-[var(--primary-color)] opacity-100;
+    @apply text-[var(--primary-color)] opacity-100 disabled:opacity-100;
   }
   .feedback {
     @apply relative inline-flex items-center gap-1;

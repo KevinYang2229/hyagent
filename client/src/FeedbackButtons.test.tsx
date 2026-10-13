@@ -66,4 +66,39 @@ describe('FeedbackButtons', () => {
     expect(screen.getByTestId('value')).toHaveTextContent('null');
     expect(screen.getByRole('button', { name: '有幫助' })).toHaveAttribute('aria-pressed', 'false');
   });
+  it('點面板外視為略過：只保留倒讚，不再呼叫 API', async () => {
+    render(<Harness />);
+    fireEvent.click(screen.getByRole('button', { name: '沒有幫助' }));
+    await screen.findByRole('dialog');
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(api.setFeedback).toHaveBeenCalledTimes(1);
+    expect(api.clearFeedback).not.toHaveBeenCalled();
+    expect(screen.getByTestId('value')).toHaveTextContent('{"rating":"down"}');
+  });
+
+  it('再按一次倒讚：撤回並關閉面板', async () => {
+    render(<Harness />);
+    fireEvent.click(screen.getByRole('button', { name: '沒有幫助' }));
+    await screen.findByRole('dialog');
+    fireEvent.click(screen.getByRole('button', { name: '沒有幫助' }));
+    await waitFor(() => expect(api.clearFeedback).toHaveBeenCalledWith('kevin', 'c1', 'r1'));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByTestId('value')).toHaveTextContent('null');
+  });
+
+  it('請求未完成時忽略再次點擊', async () => {
+    let resolve!: () => void;
+    vi.mocked(api.setFeedback).mockImplementation((_u, _c, _r, input) => new Promise((r) => { resolve = () => r(input); }));
+    render(<Harness />);
+    const up = screen.getByRole('button', { name: '有幫助' });
+    fireEvent.click(up);
+    fireEvent.click(up);
+    fireEvent.click(screen.getByRole('button', { name: '沒有幫助' }));
+    expect(up).toBeDisabled();
+    expect(api.setFeedback).toHaveBeenCalledTimes(1);
+    expect(api.clearFeedback).not.toHaveBeenCalled();
+    await act(async () => { resolve(); });
+    await waitFor(() => expect(up).toBeEnabled());
+  });
 });
