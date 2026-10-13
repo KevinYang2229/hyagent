@@ -265,11 +265,20 @@ export const feedbackStore = {
     return stats;
   },
 
-  /** 刪除 updatedAt 早於保存期限者；回傳刪除筆數 */
+  /**
+   * 刪除 updatedAt 早於保存期限者；回傳記憶體內刪除筆數。
+   * db 後端另對整張表依 cutoff 刪除：服務停機期間到期的列開機時不會載入，只清記憶體會讓它永遠留在 db。
+   */
   cleanupExpired(now = Date.now()): number {
     const cutoff = now - env.FEEDBACK_RETENTION_DAYS * DAY_MS;
     const expired = [...items.values()].filter((f) => Date.parse(f.updatedAt) < cutoff);
     removeMany(expired);
+    if (env.DATA_BACKEND === 'db') {
+      const cutoffDate = new Date(cutoff);
+      writeQueue.enqueue(async (db) => {
+        await db.replyFeedbackRow.deleteMany({ where: { updatedAt: { lt: cutoffDate } } });
+      });
+    }
     return expired.length;
   },
 
