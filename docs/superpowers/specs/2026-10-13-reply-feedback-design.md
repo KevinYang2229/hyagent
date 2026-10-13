@@ -129,7 +129,8 @@ interface ReplyFeedback {
 
 - 新模組 `server/src/modules/feedback/`：`feedback.store.ts`、`feedback.routes.ts`（使用者端）、`feedback.admin.controller.ts`、`feedback.schema.ts`。
 - 沿用既有 store 模式：記憶體 Map ＋ `file`（JSON 檔）或 `db`（Postgres write-through，開機載回）。
-- db：新增 `server/db/migrations/0020_reply_feedback.sql` 與 `schema.prisma` 的 `ReplyFeedbackRow`；索引 `(tenant_id, created_at desc)`、`(tenant_id, status, rating)`，以及唯一索引 `(tenant_id, session_id, reply_id, user_id)`。
+- db：新增 `server/db/migrations/0020_reply_feedback.sql` 與 `schema.prisma` 的 `ReplyFeedbackRow`；每筆一列，整筆評價存於 jsonb `data`，另有 `tenant_id`、`updated_at` 兩欄供清除查詢，並各建一個單欄索引（`tenant_id`、`updated_at`）。唯一性（同一人對同一則回覆只有一筆）與篩選、統計都在記憶體內強制／計算（每個程序的記憶體為單一事實來源），db 不建唯一索引與篩選索引。
+- `updatedAt` 代表使用者最後一次評價時間，統計窗口與保存期限都以它為準；管理員處理（標為已處理／重開）不改它，另以 `resolvedAt` 記錄處理時間。
 - 保存期限：`FEEDBACK_RETENTION_DAYS`（預設 180，範圍 1–3650），每日清除 `updated_at` 早於期限者；file 模式同樣清除。
 - 刪除租戶時級聯清除（併入既有的租戶刪除清理流程）。
 
