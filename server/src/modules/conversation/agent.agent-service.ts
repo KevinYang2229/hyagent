@@ -141,6 +141,9 @@ export const agentAgentService: AgentService = {
 
     // 本輪是否已提議過寫入：上一輪遺留的 pendingAction 已在上方作廢，這裡只管同一輪內的第二筆
     let proposedThisTurn = false;
+    // 回饋診斷用：本輪依序呼叫的工具（只記名稱與成敗）與最後一次的模型
+    const toolTrace: { name: string; ok: boolean }[] = [];
+    let model: string | undefined;
     const blocks: DisplayBlock[] = [];
 
     await toolRegistry.prepare(ctx);
@@ -150,10 +153,12 @@ export const agentAgentService: AgentService = {
       system: buildSystemPrompt(session.userId, session.locale, mcpPromptLines(session.tenantId, session.userId)),
       tools: llmTools,
       maxIterations: AGENT_MAX_ITERATIONS,
+      onLLMResult: (r) => { model = r.model; },
       dispatchTool: async (name, input) => {
         // 安全邊界：只放行 availableFor 清單內的工具（映回真實 id），LLM 幻想出別的名字一律擋下
         const realId = idByLlmName.get(name);
         if (!realId) {
+          toolTrace.push({ name, ok: false });
           return JSON.stringify({ ok: false, error: `工具不可用：${name}` });
         }
         try {
@@ -163,11 +168,13 @@ export const agentAgentService: AgentService = {
             toolRegistry.assertInvocable(realId, input, ctx);
             if (proposedThisTurn) {
               // 一輪只能有一張確認卡片：後者不可悄悄覆蓋前者
+              toolTrace.push({ name: realId, ok: false });
               return JSON.stringify({ ok: false, error: '一次只能提議一個寫入動作，請先讓使用者確認上一筆，再提出下一筆。' });
             }
             proposedThisTurn = true;
             const action = createPendingAction(tool, input);
             session.pendingAction = action;
+            toolTrace.push({ name: realId, ok: true });
             return JSON.stringify({
               ok: true,
               proposed: true,
@@ -187,9 +194,11 @@ export const agentAgentService: AgentService = {
             }
           }
           // 附註放在資料前：模型先讀到「已顯示」才看到明細，較不會照抄
+          toolTrace.push({ name: realId, ok: true });
           return JSON.stringify(shown ? { ok: true, note: TABLE_SHOWN_NOTE, result: data } : { ok: true, result: data });
         } catch (err) {
           // 工具錯誤（權限/驗證/連接器/MCP）回傳給 LLM 自行修正，不中斷整輪
+          toolTrace.push({ name: realId, ok: false });
           return JSON.stringify(toolErrorResult(err));
         }
       },
@@ -200,6 +209,7 @@ export const agentAgentService: AgentService = {
       reply,
       ...(session.pendingAction ? { pendingAction: toPendingActionView(session.pendingAction) } : {}),
       ...(blocks.length > 0 ? { blocks } : {}),
+      trace: { ...(model ? { model } : {}), ...(toolTrace.length > 0 ? { tools: toolTrace } : {}) },
     };
   },
 };

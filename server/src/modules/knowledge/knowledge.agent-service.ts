@@ -17,6 +17,7 @@ import type {
   IntentDescriptor,
 } from '@/modules/conversation/agent-service.types';
 import type { Session } from '@/modules/conversation/conversation.types';
+import { traceChunks } from '@/modules/conversation/reply-record';
 import { usageStore } from '@/modules/usage/usage.store';
 import { rerankChunks } from './rerank';
 import { pickRetriever } from './retriever.pick';
@@ -198,6 +199,8 @@ export const knowledgeAgentService: AgentService = {
     const tableContext = await loadTableContext(principal, query);
 
     let reply: string;
+    // 回饋診斷用：實際作答的模型（查無資料時沒有呼叫 LLM，維持 undefined）
+    let model: string | undefined;
     if (chunks.length === 0 && tableContext === '') {
       reply =
         normalizeLocale(session.locale) === 'en'
@@ -235,6 +238,7 @@ export const knowledgeAgentService: AgentService = {
           maxTokens: env.KNOWLEDGE_ANSWER_MAX_TOKENS,
         });
         usageStore.recordLLMUsage(session.tenantId, result);
+        model = result.model;
         reply = result.text || fallbackReply(chunks, session.locale);
         // 仍然超過上限：明白告知被截斷，而不是讓回答停在半句
         if (result.text && result.stopReason === 'max_tokens') {
@@ -254,6 +258,12 @@ export const knowledgeAgentService: AgentService = {
       { sessionId: session.id, hits: chunks.length, retriever: retriever.name },
       'knowledge answer',
     );
-    return { reply };
+    return {
+      reply,
+      trace: {
+        ...(model ? { model } : {}),
+        retrieval: { query, poolSize: pool.length, usedTables: tableContext !== '', chunks: traceChunks(chunks) },
+      },
+    };
   },
 };

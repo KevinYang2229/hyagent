@@ -29,6 +29,8 @@ export interface ToolLoopConfig {
   dispatchTool(name: string, input: Record<string, unknown>): Promise<string>;
   /** 本輪最多幾次 LLM↔工具往返；預設 DEFAULT_MAX_ITERATIONS。 */
   maxIterations?: number;
+  /** 每次 LLM 呼叫完成後通知（含收尾呼叫）；服務據此記錄 trace 用的模型名稱 */
+  onLLMResult?(result: LLMResult): void;
 }
 
 export async function runToolLoop(
@@ -51,6 +53,7 @@ export async function runToolLoop(
       throw new AppError(502, 'LLM_ERROR', `LLM 呼叫失敗：${message}`);
     }
     usageStore.recordLLMUsage(session.tenantId, result);
+    cfg.onLLMResult?.(result);
 
     // 重建 assistant 訊息（text + tool_use），維持對話結構合法
     const assistantContent: LLMContentBlock[] = [];
@@ -89,6 +92,7 @@ async function wrapUp(llm: LLMProvider, session: Session, cfg: ToolLoopConfig): 
       toolChoice: 'none',
     });
     usageStore.recordLLMUsage(session.tenantId, result);
+    cfg.onLLMResult?.(result);
     // 模型若仍回工具呼叫一律忽略：不能寫入沒有對應 tool_result 的 tool_use
     return result.text || LIMIT_FALLBACK_REPLY;
   } catch (err) {
