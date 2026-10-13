@@ -43,9 +43,9 @@ export function MessageBubble({
   const canRate = message.role === 'agent' && !!message.replyId && !!chat;
 
   async function rateOrAlert(next: Parameters<NonNullable<typeof chat>['rate']>[1]): Promise<boolean> {
-    const ok = await chat!.rate(message.id, next);
-    if (!ok) Alert.alert('評價失敗', '請再試一次');
-    return ok;
+    const result = await chat!.rate(message.id, next);
+    if (!result.ok) Alert.alert('評價失敗', result.message);
+    return result.ok;
   }
   async function guarded(fn: () => Promise<void>) {
     if (ratingRef.current) return;

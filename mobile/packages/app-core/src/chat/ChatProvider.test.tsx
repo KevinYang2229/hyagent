@@ -64,7 +64,7 @@ describe('ChatProvider', () => {
     expect(result.current.chat.state.messages.find((m) => m.id === msg.id)).toMatchObject({ feedback: { rating: 'up' } });
   });
 
-  it('rate 失敗時還原並回 false', async () => {
+  it('rate 失敗時還原並回伺服器訊息', async () => {
     const api = fakeApi({
       sendMessage: jest.fn(async () => ({ status: 'collecting', reply: '答', replyId: 'r1' })),
       startConversation: jest.fn(async () => ({ id: 'c1', status: 'collecting', reply: null })),
@@ -74,9 +74,9 @@ describe('ChatProvider', () => {
     await act(async () => { await result.current.chat.send('你好'); });
     await act(async () => { await result.current.chat.send('再問'); });
     const msg = result.current.chat.state.messages.find((m) => m.role === 'agent' && 'replyId' in m && m.replyId)!;
-    let ok = true;
-    await act(async () => { ok = await result.current.chat.rate(msg.id, { rating: 'down' }); });
-    expect(ok).toBe(false);
+    let res: { ok: boolean; message?: string } = { ok: true };
+    await act(async () => { res = await result.current.chat.rate(msg.id, { rating: 'down' }); });
+    expect(res).toEqual({ ok: false, message: '這則回覆已無法評價' });
     expect(result.current.chat.state.messages.find((m) => m.id === msg.id)).not.toHaveProperty('feedback');
   });
 

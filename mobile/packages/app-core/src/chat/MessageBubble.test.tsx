@@ -24,7 +24,7 @@ it.each(messages)('$role 訊息可複製，也可帶回輸入框重新編輯', a
 });
 
 describe('評價按鈕', () => {
-  function renderWithChat(message: ChatMessage, rate = jest.fn().mockResolvedValue(true)) {
+  function renderWithChat(message: ChatMessage, rate = jest.fn().mockResolvedValue({ ok: true })) {
     return render(
       <ChatContextForTest.Provider value={{ rate } as never}>
         <MessageBubble message={message} showSuggestions={false} onSuggestion={jest.fn()} onEdit={jest.fn()} />
@@ -33,14 +33,14 @@ describe('評價按鈕', () => {
   }
 
   it('有 replyId 的 AI 回覆顯示讚／倒讚；按讚呼叫 rate', async () => {
-    const rate = jest.fn().mockResolvedValue(true);
+    const rate = jest.fn().mockResolvedValue({ ok: true });
     await renderWithChat({ id: 'a1', role: 'agent', text: '答', replyId: 'r1', conversationId: 'c1', at: 0 }, rate);
     await act(async () => { await fireEvent.press(screen.getByLabelText('有幫助')); });
     expect(rate).toHaveBeenCalledWith('a1', { rating: 'up' });
   });
 
   it('倒讚後開啟原因面板，送出補上原因', async () => {
-    const rate = jest.fn().mockResolvedValue(true);
+    const rate = jest.fn().mockResolvedValue({ ok: true });
     await renderWithChat({ id: 'a1', role: 'agent', text: '答', replyId: 'r1', conversationId: 'c1', at: 0 }, rate);
     await act(async () => { await fireEvent.press(screen.getByLabelText('沒有幫助')); });
     expect(rate).toHaveBeenLastCalledWith('a1', { rating: 'down' });
@@ -57,30 +57,30 @@ describe('評價按鈕', () => {
   });
 
   it('上一次評價尚未完成時，再按不會重複呼叫 rate', async () => {
-    let resolve!: (v: boolean) => void;
-    const rate = jest.fn().mockImplementation(() => new Promise<boolean>((r) => { resolve = r; }));
+    let resolve!: (v: { ok: true }) => void;
+    const rate = jest.fn().mockImplementation(() => new Promise<{ ok: true }>((r) => { resolve = r; }));
     await renderWithChat({ id: 'a1', role: 'agent', text: '答', replyId: 'r1', conversationId: 'c1', at: 0 }, rate);
     await act(async () => { await fireEvent.press(screen.getByLabelText('有幫助')); });
     await act(async () => { await fireEvent.press(screen.getByLabelText('有幫助')); });
     await act(async () => { await fireEvent.press(screen.getByLabelText('沒有幫助')); });
     expect(rate).toHaveBeenCalledTimes(1);
-    await act(async () => { resolve(true); });
+    await act(async () => { resolve({ ok: true }); });
     await act(async () => { await fireEvent.press(screen.getByLabelText('有幫助')); });
     expect(rate).toHaveBeenCalledTimes(2);
   });
 });
 
 describe('評價失敗提示', () => {
-  it('rate 回 false 時跳出提示', async () => {
+  it('rate 失敗時以回傳的訊息跳出提示', async () => {
     const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
-    const rate = jest.fn().mockResolvedValue(false);
+    const rate = jest.fn().mockResolvedValue({ ok: false, message: '這則回覆已無法評價' });
     await render(
       <ChatContextForTest.Provider value={{ rate } as never}>
         <MessageBubble message={{ id: 'a1', role: 'agent', text: '答', replyId: 'r1', conversationId: 'c1', at: 0 }} showSuggestions={false} onSuggestion={jest.fn()} onEdit={jest.fn()} />
       </ChatContextForTest.Provider>,
     );
     await act(async () => { await fireEvent.press(screen.getByLabelText('有幫助')); });
-    expect(alert).toHaveBeenCalledWith('評價失敗', '請再試一次');
+    expect(alert).toHaveBeenCalledWith('評價失敗', '這則回覆已無法評價');
     alert.mockRestore();
   });
 });

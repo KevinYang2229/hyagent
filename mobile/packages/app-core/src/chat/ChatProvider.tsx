@@ -26,9 +26,11 @@ interface ChatContextValue {
   propose(toolId: string, input: Record<string, unknown>): Promise<void>;
   confirm(input?: Record<string, unknown>): Promise<ConfirmOutcome>;
   cancel(): Promise<void>;
-  /** 評價 AI 回覆；undefined＝撤回。樂觀更新，失敗還原並回 false。 */
-  rate(messageId: string, next: ReplyFeedbackInput | undefined): Promise<boolean>;
+  /** 評價 AI 回覆；undefined＝撤回。樂觀更新，失敗還原並回 { ok: false, message }（message 供畫面提示，例如 404 的「這則回覆已無法評價」）。 */
+  rate(messageId: string, next: ReplyFeedbackInput | undefined): Promise<RateResult>;
 }
+
+export type RateResult = { ok: true } | { ok: false; message: string };
 
 const ChatContext = createContext<ChatContextValue | null>(null);
 
@@ -236,18 +238,18 @@ export function ChatProvider({
   }, [api]);
 
   const rate = useCallback(
-    async (messageId: string, next: ReplyFeedbackInput | undefined): Promise<boolean> => {
+    async (messageId: string, next: ReplyFeedbackInput | undefined): Promise<RateResult> => {
       const msg = stateRef.current.messages.find((m) => m.id === messageId);
-      if (!msg || msg.role !== 'agent' || !msg.replyId || !msg.conversationId) return false;
+      if (!msg || msg.role !== 'agent' || !msg.replyId || !msg.conversationId) return { ok: false, message: '這則回覆已無法評價' };
       const previous = msg.feedback;
       dispatch({ type: 'feedbackSet', messageId, feedback: next });
       try {
         if (next) await api.setFeedback(msg.conversationId, msg.replyId, next);
         else await api.clearFeedback(msg.conversationId, msg.replyId);
-        return true;
-      } catch {
+        return { ok: true };
+      } catch (e) {
         dispatch({ type: 'feedbackSet', messageId, feedback: previous });
-        return false;
+        return { ok: false, message: errorMessage(e) };
       }
     },
     [api],
