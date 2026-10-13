@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useChatTypography } from './ChatTypography';
 import { useEffect, useRef, useState } from 'react';
-import { Feather, Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useAppBranding } from '@hyagent/app-core/branding/AppBranding';
@@ -81,16 +81,12 @@ export function MessageBubble({
   });
   const rating = canRate ? (
     <>
-      {/* Feather 的讚／倒讚是單線條，與複製、編輯同風格（Ionicons 版手指線條過密）；Feather 沒有實心版，已評以主色實心圓底＋白色圖示標示 */}
+      {/* Material 的讚／倒讚線條粗細與複製、編輯一致（Ionicons 版手指線條過密），且有空心／實心一對：已評改用實心 */}
       <Pressable accessibilityRole="button" accessibilityLabel="有幫助" accessibilityState={{ selected: feedback?.rating === 'up', disabled: ratingBusy }} disabled={ratingBusy} style={styles.action} onPress={() => void rateUp()}>
-        <View style={[styles.rateIcon, feedback?.rating === 'up' && { backgroundColor: accent.primaryDark }]}>
-          <Feather name="thumbs-up" size={16} color={feedback?.rating === 'up' ? '#fff' : accent.primaryDark} />
-        </View>
+        <MaterialCommunityIcons name={feedback?.rating === 'up' ? 'thumb-up' : 'thumb-up-outline'} size={20} color={accent.primaryDark} />
       </Pressable>
       <Pressable accessibilityRole="button" accessibilityLabel="沒有幫助" accessibilityState={{ selected: feedback?.rating === 'down', disabled: ratingBusy }} disabled={ratingBusy} style={styles.action} onPress={() => void rateDown()}>
-        <View style={[styles.rateIcon, feedback?.rating === 'down' && { backgroundColor: accent.primaryDark }]}>
-          <Feather name="thumbs-down" size={16} color={feedback?.rating === 'down' ? '#fff' : accent.primaryDark} />
-        </View>
+        <MaterialCommunityIcons name={feedback?.rating === 'down' ? 'thumb-down' : 'thumb-down-outline'} size={20} color={accent.primaryDark} />
       </Pressable>
       <FeedbackSheet
         visible={sheetOpen}
@@ -184,7 +180,6 @@ function useStyles() {
   meta: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', justifyContent: 'flex-start', gap: space.sm, marginTop: -6, marginLeft: 8 },
   actions: { flexDirection: 'row' },
   action: { width: 28, minHeight: 44, justifyContent: 'center', alignItems: 'center' },
-  rateIcon: { width: 28, height: 28, borderRadius: radius.pill, justifyContent: 'center', alignItems: 'center' },
   thanks: { alignSelf: 'center', marginLeft: space.xs, fontSize: chatFont.caption, fontWeight: '500' },
   system: { alignSelf: 'center', fontSize: chatFont.label, fontWeight: '500', color: colors.textMuted, marginVertical: space.sm, textAlign: 'center' },
   userWrap: { alignItems: 'flex-end', marginVertical: space.sm },
