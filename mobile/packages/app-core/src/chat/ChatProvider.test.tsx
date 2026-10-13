@@ -42,6 +42,37 @@ async function setup(api: Endpoints) {
 }
 
 describe('ChatProvider', () => {
+  it('rate 以訊息自己的對話 id 送出；對話重開後評價舊訊息仍送到原對話', async () => {
+    const api = fakeApi({
+      sendMessage: jest.fn(async (_id: string, m: string) => ({ status: 'collecting', reply: `回覆：${m}`, replyId: 'r-old' })),
+      startConversation: jest.fn(async () => ({ id: 'c1', status: 'collecting', reply: null })),
+      setFeedback: jest.fn(async (_c: string, _r: string, input: unknown) => input),
+    } as never);
+    const { result } = await setup(api);
+    await act(async () => { await result.current.chat.send('你好'); });
+    await act(async () => { await result.current.chat.send('查庫存'); });
+    const msg = result.current.chat.state.messages.find((m) => m.role === 'agent' && 'replyId' in m && m.replyId === 'r-old')!;
+    await act(async () => { await result.current.chat.rate(msg.id, { rating: 'up' }); });
+    expect(api.setFeedback).toHaveBeenCalledWith('c1', 'r-old', { rating: 'up' });
+    expect(result.current.chat.state.messages.find((m) => m.id === msg.id)).toMatchObject({ feedback: { rating: 'up' } });
+  });
+
+  it('rate 失敗時還原並回 false', async () => {
+    const api = fakeApi({
+      sendMessage: jest.fn(async () => ({ status: 'collecting', reply: '答', replyId: 'r1' })),
+      startConversation: jest.fn(async () => ({ id: 'c1', status: 'collecting', reply: null })),
+      setFeedback: jest.fn(async () => { throw new ApiError('這則回覆已無法評價', 404); }),
+    } as never);
+    const { result } = await setup(api);
+    await act(async () => { await result.current.chat.send('你好'); });
+    await act(async () => { await result.current.chat.send('再問'); });
+    const msg = result.current.chat.state.messages.find((m) => m.role === 'agent' && 'replyId' in m && m.replyId)!;
+    let ok = true;
+    await act(async () => { ok = await result.current.chat.rate(msg.id, { rating: 'down' }); });
+    expect(ok).toBe(false);
+    expect(result.current.chat.state.messages.find((m) => m.id === msg.id)).not.toHaveProperty('feedback');
+  });
+
   it('第一句建立對話，之後用同一個對話送訊息', async () => {
     const api = fakeApi();
     const { result } = await setup(api);

@@ -1,11 +1,13 @@
 import { useMemo } from 'react';
 import { useChatTypography } from './ChatTypography';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useAppBranding } from '@hyagent/app-core/branding/AppBranding';
 import { colors, radius, shadow, space } from '@hyagent/app-core/theme/tokens';
+import { useChatOptional } from './ChatProvider';
+import { FeedbackSheet } from './FeedbackSheet';
 import { RichText } from './RichText';
 import { TableBlockView } from './TableBlockView';
 import type { ChatMessage } from './types';
@@ -31,6 +33,54 @@ export function MessageBubble({
   const styles = useStyles();
   const { Mascot, accent = colors } = useAppBranding();
   const [copied, setCopied] = useState(false);
+  const chat = useChatOptional();
+  const [sheetOpen, setSheetOpen] = useState(false);
+  // 評價請求進行中：快速連點不可讓 PUT／DELETE 亂序，ref 同步擋、state 讓按鈕 disabled
+  const ratingRef = useRef(false);
+  const [ratingBusy, setRatingBusy] = useState(false);
+  // 只有伺服器發了 replyId、且在 ChatProvider 內的 AI 回覆可以評價
+  const feedback = message.role === 'agent' && message.replyId && chat ? message.feedback : undefined;
+  const canRate = message.role === 'agent' && !!message.replyId && !!chat;
+
+  async function guarded(fn: () => Promise<void>) {
+    if (ratingRef.current) return;
+    ratingRef.current = true;
+    setRatingBusy(true);
+    try {
+      await fn();
+    } finally {
+      ratingRef.current = false;
+      setRatingBusy(false);
+    }
+  }
+  const rateUp = () => guarded(async () => {
+    await chat!.rate(message.id, feedback?.rating === 'up' ? undefined : { rating: 'up' });
+  });
+  const rateDown = () => guarded(async () => {
+    if (feedback?.rating === 'down') {
+      await chat!.rate(message.id, undefined);
+      return;
+    }
+    if (await chat!.rate(message.id, { rating: 'down' })) setSheetOpen(true);
+  });
+  const rating = canRate ? (
+    <>
+      <Pressable accessibilityRole="button" accessibilityLabel="有幫助" accessibilityState={{ selected: feedback?.rating === 'up', disabled: ratingBusy }} disabled={ratingBusy} style={styles.action} onPress={() => void rateUp()}>
+        <Ionicons name={feedback?.rating === 'up' ? 'thumbs-up' : 'thumbs-up-outline'} size={20} color={accent.primaryDark} />
+      </Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel="沒有幫助" accessibilityState={{ selected: feedback?.rating === 'down', disabled: ratingBusy }} disabled={ratingBusy} style={styles.action} onPress={() => void rateDown()}>
+        <Ionicons name={feedback?.rating === 'down' ? 'thumbs-down' : 'thumbs-down-outline'} size={20} color={accent.primaryDark} />
+      </Pressable>
+      <FeedbackSheet
+        visible={sheetOpen}
+        onSkip={() => setSheetOpen(false)}
+        onSubmit={(detail) => {
+          setSheetOpen(false);
+          void guarded(async () => { await chat!.rate(message.id, { rating: 'down', ...detail }); });
+        }}
+      />
+    </>
+  ) : null;
   const actions = (
     <View style={styles.actions}>
       <Pressable accessibilityRole="button" accessibilityLabel={copied ? '已複製訊息' : '複製訊息'} style={styles.action} onPress={async () => {
@@ -93,6 +143,7 @@ export function MessageBubble({
         <View style={styles.meta}>
           <Text style={styles.time}>{time(message.at)}</Text>
           {actions}
+          {rating}
         </View>
       </View>
     </View>

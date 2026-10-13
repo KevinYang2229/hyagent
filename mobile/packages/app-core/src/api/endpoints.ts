@@ -1,5 +1,5 @@
 /** 後端 API 函式：路徑一律不含 /api（由 client 補上）。 */
-import type { Applicant, NotificationFeed, PendingActionView } from '@hyagent/shared';
+import type { Applicant, NotificationFeed, PendingActionView, ReplyFeedbackInput } from '@hyagent/shared';
 import { Platform } from 'react-native';
 import { File } from 'expo-file-system';
 import { ApiError } from './errors';
@@ -61,6 +61,13 @@ export function createEndpoints(api: ApiClient) {
       }),
     cancelAction: (id: string, actionId: string) =>
       api.request<TurnData>(`/conversations/${id}/actions/${actionId}/cancel`, { method: 'POST', json: {} }),
+
+    /** 評價 AI 回覆（建立或更新）；伺服器依 replyId 取問答快照 */
+    setFeedback: (convId: string, replyId: string, input: ReplyFeedbackInput) =>
+      api.request<ReplyFeedbackInput>(`/conversations/${convId}/replies/${replyId}/feedback`, { method: 'PUT', json: input }),
+    /** 撤回評價（冪等，回 204） */
+    clearFeedback: (convId: string, replyId: string) =>
+      api.request<void>(`/conversations/${convId}/replies/${replyId}/feedback`, { method: 'DELETE' }),
 
     /** 影像辨識：mode 與回應格式由各 App 的領域決定（例如門市的 shelf／coupon）。 */
     analyzeImage: <T = unknown>(mode: string, file: UploadFile) =>

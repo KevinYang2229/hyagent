@@ -3,6 +3,7 @@
  * 寫入動作的確認／取消也在這裡；執行成功後呼叫 onActionConfirmed，讓 App 自己決定要刷新哪些資料。
  */
 import { createContext, useCallback, useContext, useMemo, useReducer, useRef, type ReactNode } from 'react';
+import type { ReplyFeedbackInput } from '@hyagent/shared';
 import type { Endpoints } from '@hyagent/app-core/api/endpoints';
 import { ApiError, errorMessage } from '@hyagent/app-core/api/errors';
 import { useApi } from '@hyagent/app-core/auth/AuthProvider';
@@ -25,6 +26,8 @@ interface ChatContextValue {
   propose(toolId: string, input: Record<string, unknown>): Promise<void>;
   confirm(input?: Record<string, unknown>): Promise<ConfirmOutcome>;
   cancel(): Promise<void>;
+  /** 評價 AI 回覆；undefined＝撤回。樂觀更新，失敗還原並回 false。 */
+  rate(messageId: string, next: ReplyFeedbackInput | undefined): Promise<boolean>;
 }
 
 const ChatContext = createContext<ChatContextValue | null>(null);
@@ -232,9 +235,27 @@ export function ChatProvider({
     }
   }, [api]);
 
+  const rate = useCallback(
+    async (messageId: string, next: ReplyFeedbackInput | undefined): Promise<boolean> => {
+      const msg = stateRef.current.messages.find((m) => m.id === messageId);
+      if (!msg || msg.role !== 'agent' || !msg.replyId || !msg.conversationId) return false;
+      const previous = msg.feedback;
+      dispatch({ type: 'feedbackSet', messageId, feedback: next });
+      try {
+        if (next) await api.setFeedback(msg.conversationId, msg.replyId, next);
+        else await api.clearFeedback(msg.conversationId, msg.replyId);
+        return true;
+      } catch {
+        dispatch({ type: 'feedbackSet', messageId, feedback: previous });
+        return false;
+      }
+    },
+    [api],
+  );
+
   const value = useMemo(
-    () => ({ state, send, cancelSend, newConversation, propose, confirm, cancel }),
-    [state, send, cancelSend, newConversation, propose, confirm, cancel],
+    () => ({ state, send, cancelSend, newConversation, propose, confirm, cancel, rate }),
+    [state, send, cancelSend, newConversation, propose, confirm, cancel, rate],
   );
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
 }
@@ -253,3 +274,11 @@ export function useChat(): ChatContextValue {
   if (!v) throw new Error('useChat 必須在 ChatProvider 內使用');
   return v;
 }
+
+/** MessageBubble 用：不在 ChatProvider 內（如預覽頁）時回 null，評價按鈕不顯示 */
+export function useChatOptional(): ChatContextValue | null {
+  return useContext(ChatContext);
+}
+
+/** 測試用：直接提供 context 值 */
+export const ChatContextForTest = ChatContext;

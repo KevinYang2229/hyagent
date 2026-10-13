@@ -1,8 +1,8 @@
-import type { DisplayBlock, PendingActionView } from '@hyagent/shared';
+import type { DisplayBlock, PendingActionView, ReplyFeedbackInput } from '@hyagent/shared';
 
 export type ChatMessage =
   | { id: string; role: 'user'; text: string; at: number }
-  | { id: string; role: 'agent'; text: string; blocks?: DisplayBlock[]; suggestions?: string[]; at: number }
+  | { id: string; role: 'agent'; text: string; blocks?: DisplayBlock[]; suggestions?: string[]; replyId?: string; conversationId?: string; feedback?: ReplyFeedbackInput; at: number }
   | { id: string; role: 'system'; text: string; tone: 'info' | 'error'; hideActions?: boolean; at: number };
 
 export interface ChatState {

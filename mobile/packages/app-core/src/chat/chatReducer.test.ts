@@ -42,3 +42,19 @@ describe('chatReducer', () => {
     expect(s).toEqual(initialChatState);
   });
 });
+
+describe('評價', () => {
+  it('turnReceived 帶入 replyId 與所屬對話 id', () => {
+    const s = chatReducer(initialChatState, { type: 'turnReceived', conversationId: 'c1', turn: { status: 'collecting', reply: '答', replyId: 'r1' } });
+    expect(s.messages[0]).toMatchObject({ role: 'agent', replyId: 'r1', conversationId: 'c1' });
+  });
+
+  it('feedbackSet 只改目標訊息；undefined 代表撤回', () => {
+    let s = chatReducer(initialChatState, { type: 'turnReceived', conversationId: 'c1', turn: { status: 'collecting', reply: '答', replyId: 'r1' } });
+    const id = s.messages[0].id;
+    s = chatReducer(s, { type: 'feedbackSet', messageId: id, feedback: { rating: 'down', reason: 'wrong' } });
+    expect(s.messages[0]).toMatchObject({ feedback: { rating: 'down', reason: 'wrong' } });
+    s = chatReducer(s, { type: 'feedbackSet', messageId: id, feedback: undefined });
+    expect(s.messages[0]).not.toHaveProperty('feedback');
+  });
+});

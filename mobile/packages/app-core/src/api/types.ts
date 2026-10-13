@@ -13,6 +13,8 @@ export interface TurnData {
   suggestions?: string[];
   pendingAction?: PendingActionView;
   blocks?: DisplayBlock[];
+  /** 本則回覆的編號（可評價） */
+  replyId?: string;
   /** 確認端點回傳：執行是否成功 */
   actionOk?: boolean;
 }

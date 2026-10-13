@@ -18,7 +18,7 @@ export interface TokenStore {
 }
 
 export interface RequestOptions {
-  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   json?: unknown;
   form?: () => FormData | Promise<FormData>;
   /** false：不帶 token、401 不換發（登入、換發本身） */
