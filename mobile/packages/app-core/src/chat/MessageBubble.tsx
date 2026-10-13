@@ -42,6 +42,11 @@ export function MessageBubble({
   const feedback = message.role === 'agent' && message.replyId && chat ? message.feedback : undefined;
   const canRate = message.role === 'agent' && !!message.replyId && !!chat;
 
+  async function rateOrAlert(next: Parameters<NonNullable<typeof chat>['rate']>[1]): Promise<boolean> {
+    const ok = await chat!.rate(message.id, next);
+    if (!ok) Alert.alert('評價失敗', '請再試一次');
+    return ok;
+  }
   async function guarded(fn: () => Promise<void>) {
     if (ratingRef.current) return;
     ratingRef.current = true;
@@ -54,14 +59,14 @@ export function MessageBubble({
     }
   }
   const rateUp = () => guarded(async () => {
-    await chat!.rate(message.id, feedback?.rating === 'up' ? undefined : { rating: 'up' });
+    await rateOrAlert(feedback?.rating === 'up' ? undefined : { rating: 'up' });
   });
   const rateDown = () => guarded(async () => {
     if (feedback?.rating === 'down') {
-      await chat!.rate(message.id, undefined);
+      await rateOrAlert(undefined);
       return;
     }
-    if (await chat!.rate(message.id, { rating: 'down' })) setSheetOpen(true);
+    if (await rateOrAlert({ rating: 'down' })) setSheetOpen(true);
   });
   const rating = canRate ? (
     <>
@@ -76,7 +81,7 @@ export function MessageBubble({
         onSkip={() => setSheetOpen(false)}
         onSubmit={(detail) => {
           setSheetOpen(false);
-          void guarded(async () => { await chat!.rate(message.id, { rating: 'down', ...detail }); });
+          void guarded(async () => { await rateOrAlert({ rating: 'down', ...detail }); });
         }}
       />
     </>

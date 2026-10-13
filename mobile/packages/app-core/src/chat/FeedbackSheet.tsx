@@ -1,6 +1,6 @@
 /** 倒讚後的原因面板（底部彈出）。原因與說明都可略過。 */
 import { useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { FeedbackReason } from '@hyagent/shared';
 import { useAppBranding } from '@hyagent/app-core/branding/AppBranding';
 import { colors, radius, space } from '@hyagent/app-core/theme/tokens';
@@ -36,6 +36,7 @@ export function FeedbackSheet({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={() => close(false)}>
+      <KeyboardAvoidingView style={styles.avoid} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Pressable style={styles.backdrop} onPress={() => close(false)} accessibilityLabel="略過回饋" />
       <View style={styles.sheet}>
         <Text style={styles.title}>哪裡不好？</Text>
@@ -73,11 +74,13 @@ export function FeedbackSheet({
           </Pressable>
         </View>
       </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  avoid: { flex: 1 },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.3)' },
   sheet: { backgroundColor: colors.surface, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: space.lg, gap: space.md },
   title: { fontSize: 17, fontWeight: '600', color: colors.text },

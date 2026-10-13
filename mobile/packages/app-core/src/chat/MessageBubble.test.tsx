@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { Alert } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { ChatContextForTest } from './ChatProvider';
 import { MessageBubble } from './MessageBubble';
@@ -66,5 +67,20 @@ describe('評價按鈕', () => {
     await act(async () => { resolve(true); });
     await act(async () => { await fireEvent.press(screen.getByLabelText('有幫助')); });
     expect(rate).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('評價失敗提示', () => {
+  it('rate 回 false 時跳出提示', async () => {
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    const rate = jest.fn().mockResolvedValue(false);
+    await render(
+      <ChatContextForTest.Provider value={{ rate } as never}>
+        <MessageBubble message={{ id: 'a1', role: 'agent', text: '答', replyId: 'r1', conversationId: 'c1', at: 0 }} showSuggestions={false} onSuggestion={jest.fn()} onEdit={jest.fn()} />
+      </ChatContextForTest.Provider>,
+    );
+    await act(async () => { await fireEvent.press(screen.getByLabelText('有幫助')); });
+    expect(alert).toHaveBeenCalledWith('評價失敗', '請再試一次');
+    alert.mockRestore();
   });
 });

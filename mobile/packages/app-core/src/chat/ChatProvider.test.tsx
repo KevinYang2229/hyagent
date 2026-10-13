@@ -44,14 +44,21 @@ async function setup(api: Endpoints) {
 describe('ChatProvider', () => {
   it('rate 以訊息自己的對話 id 送出；對話重開後評價舊訊息仍送到原對話', async () => {
     const api = fakeApi({
-      sendMessage: jest.fn(async (_id: string, m: string) => ({ status: 'collecting', reply: `回覆：${m}`, replyId: 'r-old' })),
-      startConversation: jest.fn(async () => ({ id: 'c1', status: 'collecting', reply: null })),
+      // 第二次送出時舊對話已不存在（404）→ 自動重開成 c2，訊息串保留
+      sendMessage: jest.fn()
+        .mockResolvedValueOnce({ status: 'collecting', reply: '舊回覆', replyId: 'r-old' })
+        .mockRejectedValueOnce(new ApiError('找不到對話', 404)),
+      startConversation: jest.fn()
+        .mockResolvedValueOnce({ id: 'c1', status: 'collecting', reply: null })
+        .mockResolvedValueOnce({ id: 'c2', status: 'collecting', reply: '新回覆', replyId: 'r-new' }),
       setFeedback: jest.fn(async (_c: string, _r: string, input: unknown) => input),
     } as never);
     const { result } = await setup(api);
     await act(async () => { await result.current.chat.send('你好'); });
     await act(async () => { await result.current.chat.send('查庫存'); });
     const msg = result.current.chat.state.messages.find((m) => m.role === 'agent' && 'replyId' in m && m.replyId === 'r-old')!;
+    await act(async () => { await result.current.chat.send('再問'); });
+    expect(result.current.chat.state.conversationId).toBe('c2');
     await act(async () => { await result.current.chat.rate(msg.id, { rating: 'up' }); });
     expect(api.setFeedback).toHaveBeenCalledWith('c1', 'r-old', { rating: 'up' });
     expect(result.current.chat.state.messages.find((m) => m.id === msg.id)).toMatchObject({ feedback: { rating: 'up' } });
