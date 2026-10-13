@@ -47,7 +47,7 @@ beforeEach(async () => {
   tenantId = t.id;
   tenantStore.updateTenant(tenantId, { grantedScopes: ['service:agent'] });
   scopePolicy.setPolicy(tenantId, { groups: {}, accounts: { kevin: ['mcp:rooms-e2e'] } });
-  mcpStore.create({ id: 'rooms-e2e', name: '會議室', url: fixture.url, ownerTenantId: tenantId, description: '查詢與預約會議室' });
+  mcpStore.create({ id: 'rooms-e2e', name: '會議室', url: fixture.url, ownerTenantId: tenantId, description: '查詢與預約會議室', toolOverrides: { rooms_availability: { approvedReadOnly: true } } });
 });
 
 afterEach(async () => {

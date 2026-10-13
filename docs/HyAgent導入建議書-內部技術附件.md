@@ -178,7 +178,7 @@ HyAgent Server 以 MCP Client 透過 Streamable HTTP 取得工具清單並呼叫
 
 每個 HTTP 請求由 HyAgent 簽發效期 60 秒的 ES256 JWT，audience 對應 serverId，攜帶租戶、使用者及權限。部署須設定 MCP_SIGNING_KEY，服務端透過 /.well-known/hyagent-mcp-jwks.json 取得公鑰驗章；mcp-kit 提供驗證與 callerFrom(extra)，服務端仍須依呼叫者執行資料授權與稽核。未設定簽章金鑰時不暴露 MCP 工具；目前僅支援 hyagent-jwt，使用者 OAuth 尚未實作。
 
-工具輸入依 JSON Schema 驗證；無效 schema 或工具名稱不暴露給模型。readOnlyHint=true 判定為唯讀，其他工具預設寫入；管理員可用 requireConfirm 強制確認，或 disabled 停用。工具接入共用執行與稽核機制，寫入須經使用者確認。hyagent/display 中繼資料支援表格呈現，欄位 schema 可描述可編輯確認卡片。
+工具輸入依 JSON Schema 驗證；無效 schema 或工具名稱不暴露給模型。readOnlyHint=true 且管理員於後台核准唯讀，才判定為唯讀，其他工具預設寫入；管理員可用 requireConfirm 強制確認，或 disabled 停用。工具接入共用執行與稽核機制，寫入須經使用者確認。hyagent/display 中繼資料支援表格呈現，欄位 schema 可描述可編輯確認卡片。
 
 現有服務範例：store-demo 提供 product_lookup、inventory_query、replenishment_create、promotion_list、coupon_check；rooms 提供 rooms_availability、rooms_book。兩者皆為示範資料與記憶體寫入，正式上線須接真實系統與持久化儲存。開發規範與範例見 mcp/store-demo/README.md、mcp/kit/README.md 及 mcp/kit/examples/rooms/server.ts。
 

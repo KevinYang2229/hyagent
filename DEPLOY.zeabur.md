@@ -142,7 +142,7 @@ Zeabur 連上 GitHub repo 後，會 watch 指定分支；**每次 `git push` 到
 > **多副本注意（含 `DATA_BACKEND=db`）：** server 仍須維持單一 replica，或在前面啟用 sticky sessions。對話 session 與寫入動作的一次性確認（pendingAction）都放在單一程序的記憶體裡，請求若被分到不同副本，會出現找不到 session 或確認失效。
 > 另外，在後台「MCP 服務」異動註冊資料（新增、修改、停用）後，其他副本不會即時同步，需重啟才看得到；單一副本則即時生效。
 
-> **門市 Demo MCP 服務：** `mcp/store-demo` 需另外部署為一個服務，環境變數 `HYAGENT_JWKS_URL`、`MCP_SERVER_ID`、`PUBLIC_BASE_URL`、`PORT`，啟動指令 `npm start -w mcp/store-demo`。部署後到後台「MCP 服務」登記（serverId 與 `VISION_STORE_SERVER_ID` 一致）。
+> **門市 Demo MCP 服務：** `mcp/store-demo` 需另外部署為一個服務，環境變數 `HYAGENT_JWKS_URL`、`MCP_SERVER_ID`、`PUBLIC_BASE_URL`、`PORT`，啟動指令 `npm start -w mcp/store-demo`。部署後到後台「MCP 服務」登記（serverId 與 `VISION_STORE_SERVER_ID` 一致），按重新整理後逐一勾選唯讀工具的「核准唯讀」。**未核准前這些工具都當寫入**：App 首頁摘要、掃條碼查券等直接查詢會被拒絕（422 `NOT_A_READ_TOOL`），AI 查庫存也會跳出確認卡片。
 
 ### client 服務
 

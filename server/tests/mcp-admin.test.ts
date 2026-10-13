@@ -43,9 +43,16 @@ describe('後台 MCP API', () => {
     const refreshed = await request(app).post('/api/admin/mcp-servers/rooms/refresh').set(admin);
     expect(refreshed.status).toBe(200);
     expect(refreshed.body.data.status.state).toBe('ok');
-    const tools = refreshed.body.data.tools as { name: string; effect: string }[];
-    expect(tools.find((t) => t.name === 'rooms_availability')?.effect).toBe('read');
-    expect(tools.find((t) => t.name === 'rooms_book')?.effect).toBe('write');
+    const tools = refreshed.body.data.tools as { name: string; effect: string; declaredReadOnly: boolean }[];
+    // 遠端宣告唯讀但尚未核准 → 仍是寫入
+    expect(tools.find((t) => t.name === 'rooms_availability')).toMatchObject({ effect: 'write', declaredReadOnly: true });
+    expect(tools.find((t) => t.name === 'rooms_book')).toMatchObject({ effect: 'write', declaredReadOnly: false });
+
+    const approved = await request(app).patch('/api/admin/mcp-servers/rooms').set(admin).send({
+      toolOverrides: { rooms_availability: { approvedReadOnly: true } },
+    });
+    expect(approved.status).toBe(200);
+    expect((approved.body.data.tools as { name: string; effect: string }[]).find((t) => t.name === 'rooms_availability')?.effect).toBe('read');
 
     const patched = await request(app).patch('/api/admin/mcp-servers/rooms').set(admin).send({
       toolOverrides: { rooms_availability: { requireConfirm: true } },

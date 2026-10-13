@@ -5,6 +5,7 @@ const toolOverride = z
   .object({
     disabled: z.boolean().optional(),
     requireConfirm: z.boolean().optional(),
+    approvedReadOnly: z.boolean().optional(),
     cardTitle: z.string().trim().max(60).optional(),
   })
   .strict();

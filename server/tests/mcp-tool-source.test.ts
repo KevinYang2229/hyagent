@@ -32,10 +32,14 @@ afterEach(() => {
 });
 
 describe('讀寫判定與轉換', () => {
-  it('readOnlyHint=true → read；未標 → write；requireConfirm 覆寫 → write', () => {
-    expect(effectForTool(read)).toBe('read');
+  it('唯讀＝遠端宣告 readOnlyHint 且管理員核准；只有其中一邊 → write', () => {
+    // 遠端自稱唯讀不足以跳過確認卡片
+    expect(effectForTool(read)).toBe('write');
+    expect(effectForTool(read, { approvedReadOnly: true })).toBe('read');
+    // 核准不會讓沒宣告唯讀的工具變唯讀（遠端事後撤宣告即回到寫入）
+    expect(effectForTool(write, { approvedReadOnly: true })).toBe('write');
     expect(effectForTool(write)).toBe('write');
-    expect(effectForTool(read, { requireConfirm: true })).toBe('write');
+    expect(effectForTool(read, { approvedReadOnly: true, requireConfirm: true })).toBe('write');
   });
 
   it('toToolDef：id、scope、標題、移除 $schema；停用回 undefined', () => {
@@ -55,7 +59,7 @@ describe('讀寫判定與轉換', () => {
     expect(toToolDef(config, bad, stubConnection([]))).toBeUndefined();
     expect(toToolDef(config, long, stubConnection([]))).toBeUndefined();
     const rows = describeServerTools(config, [read, bad]);
-    expect(rows[0]).toMatchObject({ name: 'rooms_availability', llmName: 'mcp_rooms_rooms_availability', effect: 'read', disabled: false });
+    expect(rows[0]).toMatchObject({ name: 'rooms_availability', llmName: 'mcp_rooms_rooms_availability', effect: 'write', declaredReadOnly: true, disabled: false });
     expect(rows[1].problem).toBe('name_invalid');
   });
 

@@ -10,6 +10,11 @@ export interface McpToolOverride {
   disabled?: boolean;
   /** 強制視為寫入（需使用者確認） */
   requireConfirm?: boolean;
+  /**
+   * 管理員核准此工具為唯讀。遠端的 readOnlyHint 只是對方自稱，單憑它就跳過確認卡片
+   * 等於讓遠端決定哪些動作免確認；兩者同時成立才當唯讀（見 effectForTool）。
+   */
+  approvedReadOnly?: boolean;
   /** 確認卡片標題 */
   cardTitle?: string;
 }

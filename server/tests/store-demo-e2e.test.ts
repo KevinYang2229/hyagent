@@ -42,7 +42,11 @@ beforeEach(async () => {
   tenantId = t.id;
   tenantStore.updateTenant(tenantId, { grantedScopes: ['service:agent'] });
   scopePolicy.setPolicy(tenantId, { groups: {}, accounts: { kevin: ['mcp:store-demo'] } });
-  mcpStore.create({ id: 'store-demo', name: '門市', url: `http://127.0.0.1:${port}/mcp`, ownerTenantId: tenantId, description: '門市庫存與補貨' });
+  mcpStore.create({ id: 'store-demo', name: '門市', url: `http://127.0.0.1:${port}/mcp`, ownerTenantId: tenantId, description: '門市庫存與補貨',
+    toolOverrides: Object.fromEntries(
+      ['product_lookup', 'inventory_query', 'promotion_list', 'coupon_check', 'store_today_summary', 'replenishment_list'].map((n) => [n, { approvedReadOnly: true }]),
+    ),
+  });
 });
 
 afterEach(async () => {

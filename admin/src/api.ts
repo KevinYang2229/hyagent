@@ -373,6 +373,7 @@ export interface SkillLibraryView {
 export interface McpToolOverride {
   disabled?: boolean;
   requireConfirm?: boolean;
+  approvedReadOnly?: boolean;
   cardTitle?: string;
 }
 
@@ -402,6 +403,7 @@ export interface McpToolRow {
   title?: string;
   llmName: string;
   effect: 'read' | 'write';
+  declaredReadOnly: boolean;
   disabled: boolean;
   problem?: 'name_invalid' | 'schema_invalid';
 }

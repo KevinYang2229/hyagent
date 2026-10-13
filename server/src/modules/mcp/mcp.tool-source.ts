@@ -30,9 +30,17 @@ export function mcpLlmName(serverId: string, toolName: string): string {
   return `mcp_${serverId}_${toolName}`;
 }
 
+export function declaresReadOnly(remote: McpRemoteTool): boolean {
+  return remote.annotations?.readOnlyHint === true;
+}
+
+/**
+ * 唯讀＝遠端宣告 readOnlyHint 且管理員核准；其餘一律當寫入（需使用者確認）。
+ * 遠端事後撤掉宣告即自動回到寫入，核准不會讓沒宣告的工具變唯讀。
+ */
 export function effectForTool(remote: McpRemoteTool, override?: McpToolOverride): ToolEffect {
   if (override?.requireConfirm) return 'write';
-  return remote.annotations?.readOnlyHint === true ? 'read' : 'write';
+  return declaresReadOnly(remote) && override?.approvedReadOnly === true ? 'read' : 'write';
 }
 
 export type McpToolProblem = 'name_invalid' | 'schema_invalid';
@@ -106,6 +114,8 @@ export interface McpToolRow {
   title?: string;
   llmName: string;
   effect: ToolEffect;
+  /** 遠端宣告 readOnlyHint（後台據此顯示「待核准」與核准開關） */
+  declaredReadOnly: boolean;
   disabled: boolean;
   problem?: McpToolProblem;
 }
@@ -120,6 +130,7 @@ export function describeServerTools(config: McpServerConfig, remotes: McpRemoteT
       title: r.title,
       llmName: mcpLlmName(config.id, r.name),
       effect: effectForTool(r, override),
+      declaredReadOnly: declaresReadOnly(r),
       disabled: override?.disabled === true,
       ...(problem ? { problem } : {}),
     };

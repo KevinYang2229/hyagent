@@ -87,7 +87,7 @@ export default function McpServersPage() {
     }
   }
 
-  async function setOverride(server: McpServerView, tool: string, patch: { disabled?: boolean; requireConfirm?: boolean; cardTitle?: string }) {
+  async function setOverride(server: McpServerView, tool: string, patch: { disabled?: boolean; requireConfirm?: boolean; approvedReadOnly?: boolean; cardTitle?: string }) {
     const cur = server.config.toolOverrides[tool] ?? {};
     try {
       replaceServer(
@@ -212,7 +212,7 @@ export default function McpServersPage() {
                   <div className="mcp-tools-wrap">
                     <table className="mcp-tools">
                       <thead>
-                        <tr><th>工具</th><th>判定</th><th className="center">停用</th><th className="center">強制確認</th><th>卡片標題</th></tr>
+                        <tr><th>工具</th><th>判定</th><th className="center">停用</th><th className="center">核准唯讀</th><th className="center">強制確認</th><th>卡片標題</th></tr>
                       </thead>
                       <tbody>
                         {s.tools.map((t) => (
@@ -228,9 +228,26 @@ export default function McpServersPage() {
                             </td>
                             <td>
                               <span className={`badge ${t.effect === 'read' ? 'badge-on' : 'badge-warn'}`}>{t.effect === 'read' ? '唯讀' : '寫入・需確認'}</span>
+                              {t.declaredReadOnly && t.effect === 'write' && !s.config.toolOverrides[t.name]?.approvedReadOnly && (
+                                <div className="row-sub">服務宣告唯讀，待核准</div>
+                              )}
                             </td>
                             <td className="center">
                               <input type="checkbox" aria-label={`停用 ${t.name}`} checked={t.disabled} onChange={(e) => void setOverride(s, t.name, { disabled: e.target.checked })} />
+                            </td>
+                            <td className="center">
+                              {/* 只有遠端宣告唯讀的工具能核准：核准不會讓沒宣告的工具變唯讀 */}
+                              {t.declaredReadOnly ? (
+                                <input
+                                  type="checkbox"
+                                  aria-label={`核准唯讀 ${t.name}`}
+                                  title="確認此工具只讀取資料、不會修改任何東西後再核准；核准後 AI 呼叫不再經使用者確認"
+                                  checked={s.config.toolOverrides[t.name]?.approvedReadOnly === true}
+                                  onChange={(e) => void setOverride(s, t.name, { approvedReadOnly: e.target.checked })}
+                                />
+                              ) : (
+                                <span className="muted">—</span>
+                              )}
                             </td>
                             <td className="center">
                               <input
