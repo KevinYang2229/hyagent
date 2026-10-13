@@ -307,6 +307,10 @@
   .md-body a {
     @apply text-[var(--primary-color)] underline underline-offset-2;
   }
+  /* 回覆中的圖片不載入（見 SafeMarkdown.tsx），以 alt 文字代替 */
+  .md-body .md-img-alt {
+    @apply italic opacity-70;
+  }
   .md-body strong {
     @apply font-semibold;
   }
