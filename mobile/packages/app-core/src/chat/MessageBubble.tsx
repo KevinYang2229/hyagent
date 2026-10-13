@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useChatTypography } from './ChatTypography';
-import { useRef, useState } from 'react';
-import { Ionicons } from '@expo/vector-icons';
+import { useEffect, useRef, useState } from 'react';
+import { Feather, Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useAppBranding } from '@hyagent/app-core/branding/AppBranding';
@@ -11,6 +11,9 @@ import { FeedbackSheet } from './FeedbackSheet';
 import { RichText } from './RichText';
 import { TableBlockView } from './TableBlockView';
 import type { ChatMessage } from './types';
+
+/** 「感謝回饋」顯示多久（毫秒） */
+const THANKS_MS = 2000;
 
 function time(at: number): string {
   const d = new Date(at);
@@ -41,6 +44,13 @@ export function MessageBubble({
   // 只有伺服器發了 replyId、且在 ChatProvider 內的 AI 回覆可以評價
   const feedback = message.role === 'agent' && message.replyId && chat ? message.feedback : undefined;
   const canRate = message.role === 'agent' && !!message.replyId && !!chat;
+  // 評價成功後在動作列尾端短暫顯示「感謝回饋」
+  const [thanks, setThanks] = useState(false);
+  useEffect(() => {
+    if (!thanks) return;
+    const timer = setTimeout(() => setThanks(false), THANKS_MS);
+    return () => clearTimeout(timer);
+  }, [thanks]);
 
   async function rateOrAlert(next: Parameters<NonNullable<typeof chat>['rate']>[1]): Promise<boolean> {
     const result = await chat!.rate(message.id, next);
@@ -59,7 +69,8 @@ export function MessageBubble({
     }
   }
   const rateUp = () => guarded(async () => {
-    await rateOrAlert(feedback?.rating === 'up' ? undefined : { rating: 'up' });
+    const withdraw = feedback?.rating === 'up';
+    if (await rateOrAlert(withdraw ? undefined : { rating: 'up' })) setThanks(!withdraw);
   });
   const rateDown = () => guarded(async () => {
     if (feedback?.rating === 'down') {
@@ -70,18 +81,28 @@ export function MessageBubble({
   });
   const rating = canRate ? (
     <>
+      {/* Feather 的讚／倒讚是單線條，與複製、編輯同風格（Ionicons 版手指線條過密）；Feather 沒有實心版，已評以主色實心圓底＋白色圖示標示 */}
       <Pressable accessibilityRole="button" accessibilityLabel="有幫助" accessibilityState={{ selected: feedback?.rating === 'up', disabled: ratingBusy }} disabled={ratingBusy} style={styles.action} onPress={() => void rateUp()}>
-        <Ionicons name={feedback?.rating === 'up' ? 'thumbs-up' : 'thumbs-up-outline'} size={20} color={accent.primaryDark} />
+        <View style={[styles.rateIcon, feedback?.rating === 'up' && { backgroundColor: accent.primaryDark }]}>
+          <Feather name="thumbs-up" size={16} color={feedback?.rating === 'up' ? '#fff' : accent.primaryDark} />
+        </View>
       </Pressable>
       <Pressable accessibilityRole="button" accessibilityLabel="沒有幫助" accessibilityState={{ selected: feedback?.rating === 'down', disabled: ratingBusy }} disabled={ratingBusy} style={styles.action} onPress={() => void rateDown()}>
-        <Ionicons name={feedback?.rating === 'down' ? 'thumbs-down' : 'thumbs-down-outline'} size={20} color={accent.primaryDark} />
+        <View style={[styles.rateIcon, feedback?.rating === 'down' && { backgroundColor: accent.primaryDark }]}>
+          <Feather name="thumbs-down" size={16} color={feedback?.rating === 'down' ? '#fff' : accent.primaryDark} />
+        </View>
       </Pressable>
       <FeedbackSheet
         visible={sheetOpen}
-        onSkip={() => setSheetOpen(false)}
+        onSkip={() => {
+          setSheetOpen(false);
+          setThanks(true);
+        }}
         onSubmit={(detail) => {
           setSheetOpen(false);
-          void guarded(async () => { await rateOrAlert({ rating: 'down', ...detail }); });
+          void guarded(async () => {
+            if (await rateOrAlert({ rating: 'down', ...detail })) setThanks(true);
+          });
         }}
       />
     </>
@@ -101,6 +122,9 @@ export function MessageBubble({
       <Pressable accessibilityRole="button" accessibilityLabel="重新編輯訊息" style={styles.action} onPress={() => onEdit(message.text)}>
         <Ionicons name="create-outline" size={20} color={accent.primaryDark} />
       </Pressable>
+      {/* 評價鈕放在同一個動作列：間距與複製／編輯一致（放在 meta 列會多出 gap） */}
+      {rating}
+      {thanks ? <Text style={[styles.thanks, { color: accent.primaryDark }]} accessibilityLiveRegion="polite">感謝回饋</Text> : null}
     </View>
   );
   if (message.role === 'system') {
@@ -148,7 +172,6 @@ export function MessageBubble({
         <View style={styles.meta}>
           <Text style={styles.time}>{time(message.at)}</Text>
           {actions}
-          {rating}
         </View>
       </View>
     </View>
@@ -161,6 +184,8 @@ function useStyles() {
   meta: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', justifyContent: 'flex-start', gap: space.sm, marginTop: -6, marginLeft: 8 },
   actions: { flexDirection: 'row' },
   action: { width: 28, minHeight: 44, justifyContent: 'center', alignItems: 'center' },
+  rateIcon: { width: 28, height: 28, borderRadius: radius.pill, justifyContent: 'center', alignItems: 'center' },
+  thanks: { alignSelf: 'center', marginLeft: space.xs, fontSize: chatFont.caption, fontWeight: '500' },
   system: { alignSelf: 'center', fontSize: chatFont.label, fontWeight: '500', color: colors.textMuted, marginVertical: space.sm, textAlign: 'center' },
   userWrap: { alignItems: 'flex-end', marginVertical: space.sm },
   userMessage: { maxWidth: '80%' },

@@ -84,3 +84,46 @@ describe('評價失敗提示', () => {
     alert.mockRestore();
   });
 });
+
+describe('感謝回饋', () => {
+  function renderWithChat(message: ChatMessage, rate = jest.fn().mockResolvedValue({ ok: true })) {
+    return render(
+      <ChatContextForTest.Provider value={{ rate } as never}>
+        <MessageBubble message={message} showSuggestions={false} onSuggestion={jest.fn()} onEdit={jest.fn()} />
+      </ChatContextForTest.Provider>,
+    );
+  }
+
+  it('按讚成功後在動作列尾端顯示「感謝回饋」；撤回不顯示', async () => {
+    const agent: ChatMessage = { id: 'a1', role: 'agent', text: '答', replyId: 'r1', conversationId: 'c1', at: 0 };
+    await renderWithChat(agent);
+    expect(screen.queryByText('感謝回饋')).toBeNull();
+    await act(async () => { await fireEvent.press(screen.getByLabelText('有幫助')); });
+    expect(screen.getByText('感謝回饋')).toBeTruthy();
+  });
+
+  it('已讚再按（撤回）不顯示「感謝回饋」', async () => {
+    await renderWithChat({ id: 'a1', role: 'agent', text: '答', replyId: 'r1', conversationId: 'c1', feedback: { rating: 'up' }, at: 0 });
+    await act(async () => { await fireEvent.press(screen.getByLabelText('有幫助')); });
+    expect(screen.queryByText('感謝回饋')).toBeNull();
+  });
+
+  it('倒讚後略過面板也顯示「感謝回饋」', async () => {
+    await renderWithChat({ id: 'a1', role: 'agent', text: '答', replyId: 'r1', conversationId: 'c1', at: 0 });
+    await act(async () => { await fireEvent.press(screen.getByLabelText('沒有幫助')); });
+    expect(screen.queryByText('感謝回饋')).toBeNull();
+    await act(async () => { await fireEvent.press(screen.getByLabelText('略過')); });
+    expect(screen.getByText('感謝回饋')).toBeTruthy();
+  });
+
+  it('評價失敗不顯示「感謝回饋」', async () => {
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    try {
+      await renderWithChat({ id: 'a1', role: 'agent', text: '答', replyId: 'r1', conversationId: 'c1', at: 0 }, jest.fn().mockResolvedValue({ ok: false, message: 'x' }));
+      await act(async () => { await fireEvent.press(screen.getByLabelText('有幫助')); });
+      expect(screen.queryByText('感謝回饋')).toBeNull();
+    } finally {
+      alert.mockRestore();
+    }
+  });
+});
