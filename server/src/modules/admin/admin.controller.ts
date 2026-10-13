@@ -49,6 +49,7 @@ import type {
   ToggleWebhookInput,
 } from './admin.schema';
 import type { AdminReportQuery, PutPolicyInput } from './admin.schema';
+import { auditPageQuerySchema } from './admin.schema';
 
 /**
  * 把 HyAgentTokenError 轉成規格 §9 的管理端回應（KEY_LIMIT_EXCEEDED / LAST_ACTIVE_KEY
@@ -62,6 +63,14 @@ async function withAssertionErrors(res: Response, fn: () => Promise<void>): Prom
     if (status >= 500) throw err;
     res.status(status).json(body);
   }
+}
+
+/** 游標對外是不透明字串（實為絕對序號）：前端只回傳、不解讀 */
+function auditPage(tenantId: string, query: unknown) {
+  // 路由已驗過；這裡再 parse 一次取得型別與預設值（直接呼叫 controller 時也有 limit）
+  const { before, limit } = auditPageQuerySchema.parse(query ?? {});
+  const page = auditStore.listPage(tenantId, { before, limit });
+  return { items: page.items, nextCursor: page.nextCursor === null ? null : String(page.nextCursor) };
 }
 
 function ensureTenant(id: string) {
@@ -298,11 +307,11 @@ export const adminController = {
 
   async getAudit(req: Request, res: Response): Promise<void> {
     const tenant = ensureTenant(String(req.params.id));
-    res.status(200).json({ data: auditStore.list(tenant.id, 200) });
+    res.status(200).json({ data: auditPage(tenant.id, req.query) });
   },
 
-  async getPlatformAudit(_req: Request, res: Response): Promise<void> {
-    res.status(200).json({ data: auditStore.list(PLATFORM_AUDIT_TENANT, 200) });
+  async getPlatformAudit(req: Request, res: Response): Promise<void> {
+    res.status(200).json({ data: auditPage(PLATFORM_AUDIT_TENANT, req.query) });
   },
 
   /** 後台報告清單：只回 metadata，不含內容 */

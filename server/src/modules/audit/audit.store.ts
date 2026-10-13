@@ -24,6 +24,19 @@ export interface AuditEntry {
 const MAX_PER_TENANT = 500;
 const STORE_FILE = dataFile('oa-agent-audit.json');
 const logs = new Map<string, AuditEntry[]>();
+/**
+ * 每租戶已從記憶體捨棄的最舊筆數。絕對序號＝捨棄數＋陣列索引，作為分頁游標：
+ * 新紀錄進來不會讓既有序號位移（offset 會），舊紀錄被擠出時序號也不會重用。
+ * 只存在記憶體，重啟後歸零——游標跨重啟不保證有效，前端重新載入即可。
+ */
+const trimmed = new Map<string, number>();
+
+export interface AuditPage {
+  /** 新→舊 */
+  items: AuditEntry[];
+  /** 下一頁（更舊）的游標；null＝已到記憶體保留的最舊一筆 */
+  nextCursor: number | null;
+}
 
 // ---- row 映射（db 後端用；pure，供測試 round-trip）----
 
@@ -112,7 +125,11 @@ export const auditStore = {
   record(tenantId: string, entry: AuditEntry): void {
     const arr = logs.get(tenantId) ?? [];
     arr.push(entry);
-    if (arr.length > MAX_PER_TENANT) arr.splice(0, arr.length - MAX_PER_TENANT); // 捨最舊
+    if (arr.length > MAX_PER_TENANT) {
+      const dropped = arr.length - MAX_PER_TENANT;
+      arr.splice(0, dropped); // 捨最舊
+      trimmed.set(tenantId, (trimmed.get(tenantId) ?? 0) + dropped);
+    }
     logs.set(tenantId, arr);
     if (env.DATA_BACKEND === 'db') {
       // append-only：DB 不截尾、留全史
@@ -131,8 +148,25 @@ export const auditStore = {
     return [...arr].reverse().slice(0, limit);
   },
 
+  /**
+   * 游標分頁（新→舊）：before 為上一頁回傳的 nextCursor，不帶＝從最新開始。
+   * 範圍限於記憶體保留的最近 MAX_PER_TENANT 筆；db 後端的更早全史不在此列。
+   */
+  listPage(tenantId: string, { before, limit }: { before?: number; limit: number }): AuditPage {
+    const arr = logs.get(tenantId) ?? [];
+    const base = trimmed.get(tenantId) ?? 0;
+    const end = Math.min(before ?? Number.POSITIVE_INFINITY, base + arr.length);
+    if (end <= base) return { items: [], nextCursor: null };
+    const start = Math.max(base, end - limit);
+    return {
+      items: arr.slice(start - base, end - base).reverse(),
+      nextCursor: start > base ? start : null,
+    };
+  },
+
   clear(): void {
     logs.clear();
+    trimmed.clear();
     if (env.DATA_BACKEND === 'db') {
       writeQueue.enqueue(async (db) => {
         await db.auditLogRow.deleteMany({});
@@ -145,6 +179,7 @@ export const auditStore = {
   /** 移除某租戶所有稽核紀錄（刪租戶級聯清理用） */
   purgeTenant(tenantId: string): void {
     logs.delete(tenantId);
+    trimmed.delete(tenantId);
     if (env.DATA_BACKEND === 'db') {
       writeQueue.enqueue(async (db) => {
         await db.auditLogRow.deleteMany({ where: { tenantId } });

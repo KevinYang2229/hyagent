@@ -15,8 +15,8 @@ describe('admin 稽核 API', () => {
     auditStore.record(t.id, { toolId: 'email.send', userId: 'kevin', at: new Date().toISOString(), ok: true, summary: 'a' });
     auditStore.record(t.id, { toolId: 'email.send', userId: 'kevin', at: new Date().toISOString(), ok: false, summary: 'b', error: '權限不足' });
     const res = mockRes();
-    await adminController.getAudit({ params: { id: t.id } } as never, res as never);
-    const data = (res.body as { data: { summary: string; ok: boolean }[] }).data;
+    await adminController.getAudit({ params: { id: t.id }, query: {} } as never, res as never);
+    const data = (res.body as { data: { items: { summary: string; ok: boolean }[] } }).data.items;
     expect(data.map((e) => e.summary)).toEqual(['b', 'a']);
     expect(data[0].ok).toBe(false);
   });

@@ -47,6 +47,7 @@ import {
   setPublicKeyStatusSchema,
   tenantKeyParamSchema,
   adminReportQuerySchema,
+  auditPageQuerySchema,
   createWebhookSchema,
   patchTenantSchema,
   putPolicySchema,
@@ -92,7 +93,7 @@ router.use(adminAuditTrail);
 router.use('/tenants/:id/users', userAdminRouter);
 
 // 平台層稽核（建立／刪除租戶、MCP 服務等）；租戶層稽核見 /tenants/:id/audit
-router.get('/audit', asyncHandler(adminController.getPlatformAudit));
+router.get('/audit', validate({ query: auditPageQuerySchema }), asyncHandler(adminController.getPlatformAudit));
 
 // Skill Library（唯讀）：平台所有 skill 的正式描述 + 各租戶啟用狀態
 router.get('/skills', asyncHandler(adminController.listSkills));
@@ -197,7 +198,7 @@ router.get(
 
 router.get(
   '/tenants/:id/audit',
-  validate({ params: tenantParamSchema }),
+  validate({ params: tenantParamSchema, query: auditPageQuerySchema }),
   asyncHandler(adminController.getAudit),
 );
 

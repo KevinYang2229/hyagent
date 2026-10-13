@@ -66,7 +66,7 @@ describe('後台設定變更稽核', () => {
     await flush();
     const list = await request(app).get('/api/admin/audit').set(admin);
     expect(list.status).toBe(200);
-    expect(list.body.data[0].summary).toContain('POST /tenants');
+    expect(list.body.data.items[0].summary).toContain('POST /tenants');
   });
 
   it('讀取不記錄', async () => {

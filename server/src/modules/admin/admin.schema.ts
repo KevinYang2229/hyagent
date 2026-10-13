@@ -178,6 +178,14 @@ export type CreateWebhookInput = z.infer<typeof createWebhookSchema>;
 export type ToggleWebhookInput = z.infer<typeof toggleWebhookSchema>;
 
 /** 後台報告查詢：時間區間（ISO）與關鍵字皆為選填 */
+/** 稽核分頁：before 為上一頁的 nextCursor（不透明字串，實為絕對序號） */
+export const auditPageQuerySchema = z.object({
+  before: z.coerce.number().int().min(0).optional(),
+  limit: z.coerce.number().int().min(1).max(50).default(10),
+});
+
+export type AuditPageQuery = z.infer<typeof auditPageQuerySchema>;
+
 export const adminReportQuerySchema = z.object({
   from: z.string().datetime().optional(),
   to: z.string().datetime().optional(),

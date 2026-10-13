@@ -133,6 +133,16 @@ export interface AuditEntry {
   error?: string;
 }
 
+export interface AuditPage {
+  items: AuditEntry[];
+  /** 更舊一頁的游標；null＝沒有更多 */
+  nextCursor: string | null;
+}
+
+function auditQuery(before?: string): string {
+  return before ? `?before=${encodeURIComponent(before)}` : '';
+}
+
 /** 401 時拋出，UI 攔截導回登入 */
 export class UnauthorizedError extends Error {}
 
@@ -512,8 +522,10 @@ export const api = {
     req<{ id: string }>('DELETE', `/admin/tenants/${id}/webhooks/${webhookId}`),
 
   getUsage: (id: string) => req<Usage>('GET', `/admin/tenants/${id}/usage`),
-  getTenantAudit: (id: string) => req<AuditEntry[]>('GET', `/admin/tenants/${id}/audit`),
-  getPlatformAudit: () => req<AuditEntry[]>('GET', '/admin/audit'),
+  // 游標分頁（新→舊）：before 帶上一頁的 nextCursor
+  getTenantAudit: (id: string, before?: string) =>
+    req<AuditPage>('GET', `/admin/tenants/${id}/audit${auditQuery(before)}`),
+  getPlatformAudit: (before?: string) => req<AuditPage>('GET', `/admin/audit${auditQuery(before)}`),
 
   // ---- 報告 ----
   listReports: (id: string, filter: ReportListFilter = {}) => {
