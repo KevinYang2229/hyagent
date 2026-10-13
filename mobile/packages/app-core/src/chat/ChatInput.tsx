@@ -91,6 +91,7 @@ export function ChatInput({
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         multiline
+        scrollEnabled
         submitBehavior="newline"
         returnKeyType="default"
       />
@@ -105,13 +106,16 @@ export function ChatInput({
   );
 }
 
+const INPUT_PADDING_V = 10;
+
 function useStyles() {
   const chatFont = useChatTypography();
   return useMemo(() => StyleSheet.create({
   bar: { flexDirection: 'row', alignItems: 'center', gap: space.sm, backgroundColor: colors.surface, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, padding: 6 },
   mic: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   largeControl: { width: 56, height: 56, borderRadius: 28 },
-  input: { flex: 1, minWidth: 0, maxHeight: 120, fontSize: chatFont.body, lineHeight: chatFont.lineHeight, fontWeight: '500', color: colors.text, paddingHorizontal: space.sm, paddingVertical: 10 },
+  // 固定一行高：內容變多不撐高輸入框（避免擠壓對話區），多行時在框內捲動
+  input: { flex: 1, minWidth: 0, height: chatFont.lineHeight + INPUT_PADDING_V * 2, fontSize: chatFont.body, lineHeight: chatFont.lineHeight, fontWeight: '500', color: colors.text, paddingHorizontal: space.sm, paddingVertical: INPUT_PADDING_V, textAlignVertical: 'top' },
   send: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
 }), [chatFont]);
 }
