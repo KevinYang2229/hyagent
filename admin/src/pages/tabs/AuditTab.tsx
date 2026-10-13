@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { api, type AuditEntry, type AuditPage } from '../../api';
 
-const th: CSSProperties = { textAlign: 'left', padding: '8px 10px', borderBottom: '1px solid var(--border-color)', fontWeight: 500, whiteSpace: 'nowrap', position: 'sticky', top: 0, background: 'var(--card-bg)' };
+// 固定表頭：border-collapse 下的 border 會跟著內容捲走，底線改用 inset 陰影畫
+const th: CSSProperties = { textAlign: 'left', padding: '8px 10px', boxShadow: 'inset 0 -1px 0 var(--border-color)', fontWeight: 500, whiteSpace: 'nowrap', position: 'sticky', top: 0, zIndex: 1, background: 'var(--card-bg)' };
 const td: CSSProperties = { padding: '6px 10px', borderBottom: '1px solid var(--border-color)', verticalAlign: 'top' };
+const tdNowrap: CSSProperties = { ...td, whiteSpace: 'nowrap' };
 
 /** 捲動區高度：一次只載 10 筆，捲到底再接下一頁 */
 const SCROLL_MAX_HEIGHT = 480;
@@ -88,9 +90,10 @@ export default function AuditTab({ tenantId, onError }: { tenantId?: string; onE
           </div>
         </div>
       </div>
-      <div ref={scrollRef} className="card-body" style={{ overflow: 'auto', maxHeight: SCROLL_MAX_HEIGHT }}>
+      {/* 上方不留 padding：sticky 表頭只會貼到 padding 內緣，留著的話捲上去的列會從表頭上方露出來 */}
+      <div ref={scrollRef} className="card-body" style={{ overflow: 'auto', maxHeight: SCROLL_MAX_HEIGHT, paddingTop: 0 }}>
         {rows.length === 0 ? (
-          <div className="row-sub">尚無稽核紀錄。</div>
+          <div className="row-sub" style={{ paddingTop: 16 }}>尚無稽核紀錄。</div>
         ) : (
           <>
             <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 13.5 }}>
@@ -106,11 +109,11 @@ export default function AuditTab({ tenantId, onError }: { tenantId?: string; onE
               <tbody>
                 {rows.map((e, i) => (
                   <tr key={i}>
-                    <td style={td}>{new Date(e.at).toLocaleString()}</td>
+                    <td style={tdNowrap}>{new Date(e.at).toLocaleString()}</td>
                     <td style={td}>{e.toolId}</td>
                     <td style={td}>{e.userId}</td>
                     <td style={td}>{e.summary}</td>
-                    <td style={td}>{e.ok ? '✅ 成功' : `⛔ ${e.error ?? '失敗'}`}</td>
+                    <td style={tdNowrap}>{e.ok ? '✅ 成功' : `⛔ ${e.error ?? '失敗'}`}</td>
                   </tr>
                 ))}
               </tbody>
