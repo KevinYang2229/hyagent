@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { validate } from '@/middlewares/validate';
 import { singleFileUpload } from '@/middlewares/upload';
 import { asyncHandler } from '@/utils/async-handler';
+import { feedbackController } from '@/modules/feedback/feedback.controller';
+import { putFeedbackSchema, replyParamSchema } from '@/modules/feedback/feedback.schema';
 import { conversationController } from './conversation.controller';
 import {
   attachmentParamSchema,
@@ -83,6 +85,18 @@ router.delete(
   '/:id/attachments/:attachmentId',
   validate({ params: attachmentParamSchema }),
   asyncHandler(conversationController.deleteAttachment),
+);
+
+// AI 回覆評價：不呼叫 LLM，app.ts 掛載的 tenantRateLimit 已涵蓋；月配額只算對話輪次，不影響
+router.put(
+  '/:id/replies/:replyId/feedback',
+  validate({ params: replyParamSchema, body: putFeedbackSchema }),
+  asyncHandler(feedbackController.put),
+);
+router.delete(
+  '/:id/replies/:replyId/feedback',
+  validate({ params: replyParamSchema }),
+  asyncHandler(feedbackController.remove),
 );
 
 export const conversationRouter = router;
