@@ -4,12 +4,13 @@ import { api, type AuditEntry } from '../../api';
 const th: CSSProperties = { textAlign: 'left', padding: '8px 10px', borderBottom: '1px solid var(--border-color)', fontWeight: 500, whiteSpace: 'nowrap' };
 const td: CSSProperties = { padding: '6px 10px', borderBottom: '1px solid var(--border-color)', verticalAlign: 'top' };
 
-export default function AuditTab({ tenantId, onError }: { tenantId: string; onError: (e: unknown) => void }) {
+/** 帶 tenantId＝該租戶稽核；不帶＝平台層稽核（建立／刪除租戶、MCP 服務等） */
+export default function AuditTab({ tenantId, onError }: { tenantId?: string; onError: (e: unknown) => void }) {
   const [rows, setRows] = useState<AuditEntry[] | null>(null);
 
   const load = useCallback(async () => {
     try {
-      setRows(await api.getTenantAudit(tenantId));
+      setRows(await (tenantId ? api.getTenantAudit(tenantId) : api.getPlatformAudit()));
     } catch (e) {
       onError(e);
     }
@@ -25,8 +26,12 @@ export default function AuditTab({ tenantId, onError }: { tenantId: string; onEr
     <div className="card">
       <div className="card-head">
         <div>
-          <div className="card-title">稽核紀錄</div>
-          <div className="card-desc">有副作用的動作（寄信、送單）的軌跡：誰、何時、做了什麼、成功與否。只顯示安全摘要，不含信件內容。</div>
+          <div className="card-title">{tenantId ? '稽核紀錄' : '平台稽核紀錄'}</div>
+          <div className="card-desc">
+            {tenantId
+              ? '有副作用的動作（寄信、送單、後台設定變更）的軌跡：誰、何時、做了什麼、成功與否。只顯示安全摘要（路徑、欄位名），不含內容。'
+              : '平台層的後台變更（建立／刪除租戶、MCP 服務）。租戶內的變更請到各租戶的稽核紀錄查看。'}
+          </div>
         </div>
       </div>
       <div className="card-body" style={{ overflowX: 'auto' }}>

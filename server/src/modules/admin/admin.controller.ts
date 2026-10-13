@@ -10,6 +10,7 @@ import { webhookStore } from '@/modules/webhook/webhook.store';
 import { mcpStore } from '@/modules/mcp/mcp.store';
 import { usageStore } from '@/modules/usage/usage.store';
 import { auditStore } from '@/modules/audit/audit.store';
+import { PLATFORM_AUDIT_TENANT } from '@/modules/audit/admin-audit';
 import { reportStore } from '@/modules/report/report.store';
 import { DEFAULT_REPORT_FORMAT, isReportFormat, renderers } from '@/modules/report/report.render';
 import { contentDispositionHeader } from '@/modules/report/report.http';
@@ -298,6 +299,10 @@ export const adminController = {
   async getAudit(req: Request, res: Response): Promise<void> {
     const tenant = ensureTenant(String(req.params.id));
     res.status(200).json({ data: auditStore.list(tenant.id, 200) });
+  },
+
+  async getPlatformAudit(_req: Request, res: Response): Promise<void> {
+    res.status(200).json({ data: auditStore.list(PLATFORM_AUDIT_TENANT, 200) });
   },
 
   /** 後台報告清單：只回 metadata，不含內容 */

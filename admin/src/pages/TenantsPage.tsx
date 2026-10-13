@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, UnauthorizedError, type Tenant } from '../api';
 import { useAuth } from '../auth';
 import AppLayout from '../components/AppLayout';
+import AuditTab from './tabs/AuditTab';
 import { IconChevron, IconInfo, IconPlus } from '../components/icons';
 import { Checkbox } from '@hyagent/ui';
 
@@ -17,14 +18,18 @@ export default function TenantsPage() {
   const [err, setErr] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
-  function handleErr(e: unknown) {
-    if (e instanceof UnauthorizedError) {
-      logout();
-      navigate('/login', { replace: true });
-      return;
-    }
-    setErr(e instanceof Error ? e.message : '發生錯誤');
-  }
+  // 穩定參照：AuditTab 以 onError 為 load 的相依，每次 render 換新函式會造成重複載入
+  const handleErr = useCallback(
+    (e: unknown) => {
+      if (e instanceof UnauthorizedError) {
+        logout();
+        navigate('/login', { replace: true });
+        return;
+      }
+      setErr(e instanceof Error ? e.message : '發生錯誤');
+    },
+    [logout, navigate],
+  );
 
   async function load() {
     try {
@@ -184,6 +189,9 @@ export default function TenantsPage() {
           ))}
           {tenants.length === 0 && <li className="empty">尚無租戶，點右上「新增租戶」開始。</li>}
         </ul>
+      </div>
+      <div style={{ marginTop: 16 }}>
+        <AuditTab onError={handleErr} />
       </div>
     </AppLayout>
   );

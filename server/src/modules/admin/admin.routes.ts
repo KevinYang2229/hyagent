@@ -6,6 +6,7 @@ import type { NextFunction, Request, Response } from 'express';
 import multer, { MulterError } from 'multer';
 import { validate } from '@/middlewares/validate';
 import { requireAdmin } from '@/middlewares/require-admin';
+import { adminAuditTrail } from '@/modules/audit/admin-audit';
 import { asyncHandler } from '@/utils/async-handler';
 import { AppError } from '@/utils/app-error';
 import { formAdminController } from '@/modules/form/form.admin.controller';
@@ -86,7 +87,12 @@ router.post('/auth/login', adminLoginRateLimit, validate({ body: adminLoginSchem
 
 // 以下全部管理端點都需 x-admin-key 或 admin JWT
 router.use(requireAdmin);
+// 設定變更稽核：在所有管理端點之前掛上，新增端點不會漏記（見 audit/admin-audit.ts）
+router.use(adminAuditTrail);
 router.use('/tenants/:id/users', userAdminRouter);
+
+// 平台層稽核（建立／刪除租戶、MCP 服務等）；租戶層稽核見 /tenants/:id/audit
+router.get('/audit', asyncHandler(adminController.getPlatformAudit));
 
 // Skill Library（唯讀）：平台所有 skill 的正式描述 + 各租戶啟用狀態
 router.get('/skills', asyncHandler(adminController.listSkills));

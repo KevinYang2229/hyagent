@@ -7,10 +7,11 @@
  */
 import type { NextFunction, Request, Response } from 'express';
 import { env } from '@/config/env';
+import type { AdminActor } from '@/modules/audit/admin-audit';
 import { AppError } from '@/utils/app-error';
 import { verifyAdminToken } from '@/utils/jwt';
 
-export function requireAdmin(req: Request, _res: Response, next: NextFunction): void {
+export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
   if (!env.ADMIN_API_KEY && !env.ADMIN_PASSWORD) {
     throw AppError.forbidden('管理 API 未啟用（未設定 ADMIN_API_KEY / ADMIN_PASSWORD）');
   }
@@ -18,6 +19,7 @@ export function requireAdmin(req: Request, _res: Response, next: NextFunction): 
   // 模式 1：x-admin-key
   const key = req.header('x-admin-key');
   if (key && env.ADMIN_API_KEY && key === env.ADMIN_API_KEY) {
+    res.locals.adminActor = 'admin-api-key' satisfies AdminActor;
     next();
     return;
   }
@@ -29,6 +31,7 @@ export function requireAdmin(req: Request, _res: Response, next: NextFunction): 
     try {
       const payload = verifyAdminToken(token);
       if (payload.role === 'admin' && payload.via === 'password' && !payload.tenantId) {
+        res.locals.adminActor = 'admin' satisfies AdminActor;
         next();
         return;
       }

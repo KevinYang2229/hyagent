@@ -513,6 +513,7 @@ export const api = {
 
   getUsage: (id: string) => req<Usage>('GET', `/admin/tenants/${id}/usage`),
   getTenantAudit: (id: string) => req<AuditEntry[]>('GET', `/admin/tenants/${id}/audit`),
+  getPlatformAudit: () => req<AuditEntry[]>('GET', '/admin/audit'),
 
   // ---- 報告 ----
   listReports: (id: string, filter: ReportListFilter = {}) => {
