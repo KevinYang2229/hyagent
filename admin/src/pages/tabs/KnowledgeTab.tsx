@@ -59,9 +59,10 @@ export default function KnowledgeTab({
   const [question, setQuestion] = useState(searchParams.get("q") ?? "");
   const [asUserId, setAsUserId] = useState(searchParams.get("as") ?? ""); // 試查身分：留空＝以管理者身分（見 test()）
   const testCardRef = useRef<HTMLDivElement>(null);
+  const loaded = !!src && !!meta; // 載入完成前卡片還沒渲染，ref 是空的
   useEffect(() => {
-    if (searchParams.get("q")) testCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [searchParams]);
+    if (loaded && searchParams.get("q")) testCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [searchParams, loaded]);
   const [hits, setHits] = useState<QueryHit[]>([]);
   const [fileSearch, setFileSearch] = useState("");
   const [fileFilter, setFileFilter] = useState("all");

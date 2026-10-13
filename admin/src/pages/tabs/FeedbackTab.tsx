@@ -129,11 +129,16 @@ export default function FeedbackTab({
       const trimmed = note.trim();
       const updated = await api.updateFeedback(tenantId, f.id, { status: next, ...(trimmed ? { resolutionNote: trimmed } : {}) });
       setRows((prev) => prev?.map((r) => (r.id === updated.id ? updated : r)) ?? prev);
-      setNote('');
+      setNote(updated.resolutionNote ?? '');
       api.getFeedbackStats(tenantId, days).then(setStats).catch(onError);
     } catch (e) {
       onError(e);
     }
+  }
+
+  function toggleRow(f: FeedbackItem) {
+    setOpenId(f.id === openId ? null : f.id);
+    setNote(f.resolutionNote ?? '');
   }
 
   const open = rows?.find((r) => r.id === openId);
@@ -220,12 +225,21 @@ export default function FeedbackTab({
                 </thead>
                 <tbody>
                   {rows.map((f) => (
-                    <tr key={f.id} onClick={() => { setOpenId(f.id === openId ? null : f.id); setNote(f.resolutionNote ?? ''); }} style={{ cursor: 'pointer', background: f.id === openId ? 'var(--hover-bg, rgba(0,0,0,0.03))' : undefined }}>
+                    <tr key={f.id} onClick={() => toggleRow(f)} style={{ cursor: 'pointer', background: f.id === openId ? 'var(--hover-bg, rgba(0,0,0,0.03))' : undefined }}>
                       <td style={tdNowrap}>{new Date(f.createdAt).toLocaleString()}</td>
                       <td style={tdNowrap}>{f.userId}</td>
                       <td style={tdNowrap}>{serviceLabel(f.serviceId)}</td>
                       <td style={tdNowrap}>{f.rating === 'up' ? '👍' : `👎 ${f.reason ? REASON_LABEL[f.reason] : ''}`}</td>
-                      <td style={{ ...td, maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.question}</td>
+                      <td style={{ ...td, maxWidth: 360 }}>
+                        <button
+                          type="button"
+                          aria-expanded={f.id === openId}
+                          onClick={(e) => { e.stopPropagation(); toggleRow(f); }}
+                          style={{ all: 'unset', cursor: 'pointer', display: 'block', width: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                        >
+                          {f.question}
+                        </button>
+                      </td>
                       <td style={tdNowrap}>{f.status === 'open' ? '待處理' : '已處理'}</td>
                     </tr>
                   ))}

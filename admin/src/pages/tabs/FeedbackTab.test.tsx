@@ -92,4 +92,41 @@ describe('FeedbackTab', () => {
     fireEvent.change(screen.getByLabelText('評價'), { target: { value: '' } });
     await waitFor(() => expect(api.listFeedback).toHaveBeenLastCalledWith('t1', { status: 'open' }, undefined));
   });
+
+  it('標為已處理後列顯示已處理、重新統計並保留說明', async () => {
+    vi.mocked(api.listFeedback).mockResolvedValue({ items: [item()], nextCursor: null });
+    vi.mocked(api.updateFeedback).mockResolvedValue(item({ status: 'resolved', resolutionNote: '已補文件' }));
+    render(<FeedbackTab tenantId="t1" onError={vi.fn()} onTestRetrieval={vi.fn()} />);
+    fireEvent.click(await screen.findByText('特休幾天？'));
+    await waitFor(() => expect(api.getFeedbackStats).toHaveBeenCalledTimes(1));
+    fireEvent.change(screen.getByLabelText('處理說明'), { target: { value: '已補文件' } });
+    fireEvent.click(screen.getByRole('button', { name: '標為已處理' }));
+    expect(await screen.findByRole('button', { name: '重新開啟' })).toBeInTheDocument();
+    expect(screen.getByRole('cell', { name: '已處理' })).toBeInTheDocument();
+    expect(api.getFeedbackStats).toHaveBeenCalledTimes(2);
+    expect(screen.getByLabelText('處理說明')).toHaveValue('已補文件');
+  });
+
+  it('舊請求晚到不會覆蓋新篩選的清單', async () => {
+    let resolveOld: (v: { items: FeedbackItem[]; nextCursor: string | null }) => void = () => {};
+    vi.mocked(api.listFeedback)
+      .mockReturnValueOnce(new Promise((r) => { resolveOld = r; }))
+      .mockResolvedValueOnce({ items: [item({ id: 'f9', question: '新篩選的問題' })], nextCursor: null });
+    render(<FeedbackTab tenantId="t1" onError={vi.fn()} onTestRetrieval={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('評價'), { target: { value: '' } });
+    await screen.findByText('新篩選的問題');
+    await act(async () => resolveOld({ items: [item({ id: 'f0', question: '舊請求的問題' })], nextCursor: null }));
+    expect(screen.queryByText('舊請求的問題')).not.toBeInTheDocument();
+    expect(screen.getByText('新篩選的問題')).toBeInTheDocument();
+  });
+
+  it('鍵盤：問題欄的按鈕可展開詳情', async () => {
+    vi.mocked(api.listFeedback).mockResolvedValue({ items: [item()], nextCursor: null });
+    render(<FeedbackTab tenantId="t1" onError={vi.fn()} onTestRetrieval={vi.fn()} />);
+    const btn = await screen.findByRole('button', { name: '特休幾天？' });
+    expect(btn).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(btn);
+    expect(screen.getByText('回饋詳情')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '特休幾天？' })).toHaveAttribute('aria-expanded', 'true');
+  });
 });
