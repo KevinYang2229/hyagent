@@ -134,6 +134,7 @@ Zeabur 連上 GitHub repo 後，會 watch 指定分支；**每次 `git push` 到
 | `AUTH_DEV_PASSWORD`  | 視需要   | 帳密登入共用密碼，預設 `oa1234`；`AUTH_PASSWORD_LOGIN=on` 的正式環境必須改（否則 boot fail-fast）                                                                                                          |
 | `AUTH_PASSWORD_LOGIN`| 視需要   | 帳密登入開關：`auto`（預設，production 關）/ `on`（production 也開，需自訂密碼＋後台人員目錄）/ `off`                                                                                                      |
 | `LLM_MODEL`          | 選填     | 預設 `claude-sonnet-4-5`                                                                                                                                                                                   |
+| `FEEDBACK_RETENTION_DAYS` | 選填 | AI 回覆評價（含問答快照，可能含個資）的保存天數，預設 `180`。db 模式需先套用 `0020_reply_feedback.sql` |
 | `REPORT_PDF_BROWSER` | 不用填   | Dockerfile 已設為 `/usr/bin/chromium`（報告的 PDF 輸出）。**探測不到瀏覽器時 pdf 不會出現在下載格式裡**，md 與 html 照常產出；指到不存在的路徑會留一筆警告並停用 pdf                                       |
 | `PORT`               | 不用填   | Zeabur 自動注入，server 會自動聽                                                                                                                                                                           |
 

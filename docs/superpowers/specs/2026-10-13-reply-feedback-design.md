@@ -41,7 +41,7 @@ interface ReplyRecord {
 }
 ```
 
-- 只有 `POST /conversations/:id/messages` 產生的回覆會建立紀錄並在回應帶 `replyId`。
+- `POST /conversations/:id/messages` 與建立對話時帶的第一則訊息（`POST /conversations` 的 `message`）產生的回覆會建立紀錄並在回應帶 `replyId`。
 - 不建立紀錄的：開場問候、系統訊息、確認卡片執行結果（`/actions/:id/confirm`）、取消與表單送出結果。
 - 20 則而非更多：回覆含 trace，對話資料以 JSON 整包存放，需控制大小。
 
@@ -207,7 +207,7 @@ GET   /api/admin/tenants/:id/feedback/stats?days=7|30|90
 PATCH /api/admin/tenants/:id/feedback/:feedbackId   { status, resolutionNote? }
 ```
 
-- 清單回傳 `{ items, nextCursor }`，`limit` 預設 10、上限 50。游標為 `(updatedAt, id)` 編碼的不透明字串，依 `updatedAt desc, id desc` 排序，翻頁中有新評價不重複不漏。
+- 清單回傳 `{ items, nextCursor }`，`limit` 預設 10、上限 50。游標為 `(createdAt, id)` 編碼的不透明字串，依 `createdAt desc, id desc` 排序（改評不會讓項目在翻頁中跳位），翻頁中有新評價不重複不漏。
 - PATCH 屬後台變更，由既有的 `adminAuditTrail` 自動寫入稽核紀錄。
 - 統計在記憶體中依期間計算（每租戶資料量在保存期限內可控）；db 模式同樣以記憶體資料計算，開機載回期限內全部資料。
 
@@ -215,7 +215,8 @@ PATCH /api/admin/tenants/:id/feedback/:feedbackId   { status, resolutionNote? }
 
 | 情況 | 回應 |
 |---|---|
-| 對話不存在、不屬於本人或租戶不符 | 404 |
+| 對話不存在或租戶不符 | 404 |
+| 對話屬於他人 | 403（與既有對話 API 一致） |
 | replyId 不在對話的回覆紀錄中（含已被擠出最近 20 則） | 404，前台提示「這則回覆已無法評價」 |
 | `up` 帶 reason／comment、欄位格式錯誤 | 422 |
 | 超過限流 | 429（既有） |

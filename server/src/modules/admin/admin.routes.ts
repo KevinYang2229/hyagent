@@ -14,6 +14,13 @@ import {
   definitionBodySchema,
   tenantFormParamSchema,
 } from '@/modules/form/form.admin.schema';
+import { feedbackAdminController } from '@/modules/feedback/feedback.admin.controller';
+import {
+  adminFeedbackListQuerySchema,
+  adminFeedbackParamSchema,
+  adminFeedbackStatsQuerySchema,
+  patchFeedbackSchema,
+} from '@/modules/feedback/feedback.schema';
 import { knowledgeAdminController } from '@/modules/knowledge/knowledge.admin.controller';
 import {
   fileParamSchema,
@@ -200,6 +207,23 @@ router.get(
   '/tenants/:id/audit',
   validate({ params: tenantParamSchema, query: auditPageQuerySchema }),
   asyncHandler(adminController.getAudit),
+);
+
+// AI 回覆回饋：統計、清單（游標分頁）、處理狀態
+router.get(
+  '/tenants/:id/feedback/stats',
+  validate({ params: tenantParamSchema, query: adminFeedbackStatsQuerySchema }),
+  asyncHandler(feedbackAdminController.stats),
+);
+router.get(
+  '/tenants/:id/feedback',
+  validate({ params: tenantParamSchema, query: adminFeedbackListQuerySchema }),
+  asyncHandler(feedbackAdminController.list),
+);
+router.patch(
+  '/tenants/:id/feedback/:feedbackId',
+  validate({ params: adminFeedbackParamSchema, body: patchFeedbackSchema }),
+  asyncHandler(feedbackAdminController.update),
 );
 
 // AI 模型設定（BYO key）：admin 代租戶讀寫，與 sk_ 自助端點共用 llmConfigService
