@@ -2,8 +2,6 @@ import { Router } from 'express';
 import { validate } from '@/middlewares/validate';
 import { singleFileUpload } from '@/middlewares/upload';
 import { asyncHandler } from '@/utils/async-handler';
-import { feedbackController } from '@/modules/feedback/feedback.controller';
-import { putFeedbackSchema, replyParamSchema } from '@/modules/feedback/feedback.schema';
 import { conversationController } from './conversation.controller';
 import {
   attachmentParamSchema,
@@ -85,18 +83,6 @@ router.delete(
   '/:id/attachments/:attachmentId',
   validate({ params: attachmentParamSchema }),
   asyncHandler(conversationController.deleteAttachment),
-);
-
-// AI 回覆評價：不呼叫 LLM、不計入用量；但掛在 /api/conversations 下，租戶超過月配額時與對話一樣回 429
-router.put(
-  '/:id/replies/:replyId/feedback',
-  validate({ params: replyParamSchema, body: putFeedbackSchema }),
-  asyncHandler(feedbackController.put),
-);
-router.delete(
-  '/:id/replies/:replyId/feedback',
-  validate({ params: replyParamSchema }),
-  asyncHandler(feedbackController.remove),
 );
 
 export const conversationRouter = router;

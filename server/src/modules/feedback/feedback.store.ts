@@ -187,7 +187,7 @@ export const feedbackStore = {
       createdAt: nextCreatedAt(),
       updatedAt: now,
     };
-    const { reason: _r, comment: _c, resolutionNote: _n, ...rest } = base;
+    const { reason: _r, comment: _c, resolutionNote: _n, resolvedAt: _v, ...rest } = base;
     const next: ReplyFeedback = {
       ...rest,
       rating: input.rating,
@@ -214,12 +214,13 @@ export const feedbackStore = {
   setStatus(tenantId: string, id: string, status: FeedbackStatus, resolutionNote?: string): ReplyFeedback | undefined {
     const f = feedbackStore.getById(tenantId, id);
     if (!f) return undefined;
-    const { resolutionNote: _n, ...rest } = f;
+    const { resolutionNote: _n, resolvedAt: _v, ...rest } = f;
+    // updatedAt 代表使用者最後評價時間，管理員處理不動它（否則統計窗口與保存期限會被處理動作改寫）
     const next: ReplyFeedback = {
       ...rest,
       status,
       ...(resolutionNote ? { resolutionNote } : {}),
-      updatedAt: new Date().toISOString(),
+      ...(status === 'resolved' ? { resolvedAt: new Date().toISOString() } : {}),
     };
     save(next);
     return next;

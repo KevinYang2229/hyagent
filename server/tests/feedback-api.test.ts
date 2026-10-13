@@ -3,6 +3,8 @@ import { createApp } from '@/app';
 import { env } from '@/config/env';
 import { conversationStore } from '@/modules/conversation/conversation.store';
 import { recordReply } from '@/modules/conversation/reply-record';
+import { tenantStore } from '@/modules/tenant/tenant.store';
+import { usageStore } from '@/modules/usage/usage.store';
 import { feedbackStore } from '@/modules/feedback/feedback.store';
 
 const app = createApp();
@@ -76,4 +78,18 @@ it('撤回：204，重複撤回也 204', async () => {
 it('未登入 → 401', async () => {
   const { url } = await setup();
   expect((await request(app).put(url).send({ rating: 'up' })).status).toBe(401);
+});
+
+it('租戶月配額用盡：評價仍 200（不掛配額），對話訊息 429', async () => {
+  const { token, sessionId, url } = await setup();
+  try {
+    tenantStore.updateTenant('default', { quotaMonthlyLlmTokens: 10 });
+    usageStore.recordLLMUsage('default', { usage: { inputTokens: 8, outputTokens: 4 }, model: 'claude-sonnet-4-5', keySource: 'platform' });
+    const fb = await request(app).put(url).set('Authorization', `Bearer ${token}`).send({ rating: 'up' });
+    expect(fb.status).toBe(200);
+    const msg = await request(app).post(`/api/conversations/${sessionId}/messages`).set('Authorization', `Bearer ${token}`).send({ message: 'hi' });
+    expect(msg.status).toBe(429);
+  } finally {
+    tenantStore.updateTenant('default', { quotaMonthlyLlmTokens: 0 });
+  }
 });

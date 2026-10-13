@@ -9,6 +9,8 @@ import type { ReplyRecord, ReplyTrace, ReplyTraceChunk, Session } from './conver
 
 export const MAX_REPLY_RECORDS = 20;
 export const TRACE_EXCERPT_CHARS = 300;
+/** 問答快照各自上限：快照會進 session 與評價 store，不讓超長輸入撐大 */
+export const MAX_SNAPSHOT_CHARS = 4000;
 
 export function recordReply(
   session: Session,
@@ -16,8 +18,8 @@ export function recordReply(
 ): ReplyRecord {
   const record: ReplyRecord = {
     id: randomUUID(),
-    question: input.question,
-    answer: input.answer,
+    question: input.question.slice(0, MAX_SNAPSHOT_CHARS),
+    answer: input.answer.slice(0, MAX_SNAPSHOT_CHARS),
     serviceId: input.serviceId,
     at: new Date().toISOString(),
     ...(input.trace ? { trace: input.trace } : {}),

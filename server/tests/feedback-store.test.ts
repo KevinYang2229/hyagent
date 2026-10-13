@@ -109,6 +109,38 @@ describe('stats', () => {
   });
 });
 
+describe('管理員處理不改變 updatedAt', () => {
+  it('setStatus 保留 updatedAt、resolved 設 resolvedAt、重開移除', () => {
+    const f = feedbackStore.upsert({ ...base, reply: reply('a'), rating: 'down', reason: 'wrong' });
+    const done = feedbackStore.setStatus('t1', f.id, 'resolved', '已修正')!;
+    expect(done.updatedAt).toBe(f.updatedAt);
+    expect(done.resolvedAt).toEqual(expect.any(String));
+    const reopened = feedbackStore.setStatus('t1', f.id, 'open')!;
+    expect(reopened.updatedAt).toBe(f.updatedAt);
+    expect(reopened.resolvedAt).toBeUndefined();
+  });
+
+  it('處理舊倒讚不會讓它進入近期統計窗口', () => {
+    const f = feedbackStore.upsert({ ...base, reply: reply('a'), rating: 'down', reason: 'wrong' });
+    const in40days = Date.now() + 40 * 86_400_000;
+    expect(feedbackStore.stats('t1', 30, in40days).total).toBe(0);
+    feedbackStore.setStatus('t1', f.id, 'resolved');
+    expect(feedbackStore.stats('t1', 30, in40days).total).toBe(0);
+  });
+
+  it('已處理但過期的項目仍被保存期限清除', () => {
+    const f = feedbackStore.upsert({ ...base, reply: reply('a'), rating: 'down', reason: 'wrong' });
+    feedbackStore.setStatus('t1', f.id, 'resolved');
+    expect(feedbackStore.cleanupExpired(Date.now() + 181 * 86_400_000)).toBe(1);
+  });
+
+  it('改評會清掉 resolvedAt', () => {
+    const f = feedbackStore.upsert({ ...base, reply: reply('a'), rating: 'down', reason: 'wrong' });
+    feedbackStore.setStatus('t1', f.id, 'resolved');
+    expect(feedbackStore.upsert({ ...base, reply: reply('a'), rating: 'up' }).resolvedAt).toBeUndefined();
+  });
+});
+
 describe('保存期限與級聯', () => {
   it('cleanupExpired 刪除 updatedAt 早於保存期限者', () => {
     feedbackStore.upsert({ ...base, reply: reply('a'), rating: 'up' });

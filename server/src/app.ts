@@ -14,6 +14,7 @@ import { tenantMonthlyQuota } from '@/middlewares/tenant-quota';
 import { tenantService } from '@/modules/tenant/tenant.service';
 import { authRouter } from '@/modules/auth/auth.routes';
 import { mcpPublicRouter } from '@/modules/mcp/mcp.routes';
+import { feedbackRouter } from '@/modules/feedback/feedback.routes';
 import { conversationRouter } from '@/modules/conversation/conversation.routes';
 import { visionRouter } from '@/modules/vision/vision.routes';
 import { formRouter } from '@/modules/form/form.routes';
@@ -115,6 +116,8 @@ export function createApp(): Express {
   // resolveTenant 先解析 API Key → 租戶（未帶 key 落到預設租戶，向後相容），
   // requireAuth 驗證使用者身分後 tenantRateLimit 依「租戶＋使用者」限流；
   // conversations 會觸發 LLM 計費，再加 tenantMonthlyQuota 月配額守門
+  // AI 回覆評價不呼叫 LLM，不掛月配額（spec §2.3）：須在 conversations 之前掛；只掛 replies 子路徑，其他請求不會重複經過限流
+  app.use('/api/conversations/:id/replies', resolveTenant, requireAuth, tenantRateLimit, feedbackRouter);
   app.use('/api/conversations', resolveTenant, requireAuth, tenantRateLimit, tenantMonthlyQuota, conversationRouter);
   // 影像辨識（貨架／優惠券）：呼叫 LLM 計費，與對話同樣套月配額
   app.use('/api/vision', resolveTenant, requireAuth, tenantRateLimit, tenantMonthlyQuota, visionRouter);

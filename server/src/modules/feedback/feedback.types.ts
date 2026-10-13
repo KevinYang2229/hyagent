@@ -24,7 +24,10 @@ export interface ReplyFeedback {
   comment?: string;
   status: FeedbackStatus;
   resolutionNote?: string;
+  /** 管理員標記已處理的時間；重開後移除。與 updatedAt 分開：處理動作不能改變統計窗口與保存期限 */
+  resolvedAt?: string;
   createdAt: string;
+  /** 使用者最後一次評價（建立或改評）的時間；統計與保存期限都以它為準 */
   updatedAt: string;
 }
 

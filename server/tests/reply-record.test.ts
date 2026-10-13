@@ -7,7 +7,7 @@ import * as agent from '@/modules/conversation/conversation.agent';
 import { conversationStore } from '@/modules/conversation/conversation.store';
 import type { TurnResult } from '@/modules/conversation/conversation.types';
 import { intentRouter } from '@/modules/conversation/intent-router';
-import { findReply, MAX_REPLY_RECORDS, recordReply, traceChunks } from '@/modules/conversation/reply-record';
+import { findReply, MAX_REPLY_RECORDS, MAX_SNAPSHOT_CHARS, recordReply, traceChunks } from '@/modules/conversation/reply-record';
 import { serviceRegistry } from '@/modules/conversation/service.registry';
 
 afterEach(() => jest.restoreAllMocks());
@@ -21,6 +21,13 @@ describe('recordReply / findReply', () => {
     expect(session.replies).toHaveLength(MAX_REPLY_RECORDS);
     expect(findReply(session, ids[0])).toBeUndefined();
     expect(findReply(session, ids.at(-1)!)?.answer).toBe(`a${MAX_REPLY_RECORDS + 1}`);
+  });
+
+  it('question／answer 各自截到 MAX_SNAPSHOT_CHARS', () => {
+    const session = conversationStore.create('default', 'kevin', 'leave-request');
+    const r = recordReply(session, { question: 'q'.repeat(MAX_SNAPSHOT_CHARS + 50), answer: 'a'.repeat(MAX_SNAPSHOT_CHARS + 50), serviceId: 'knowledge' });
+    expect(r.question).toHaveLength(MAX_SNAPSHOT_CHARS);
+    expect(r.answer).toHaveLength(MAX_SNAPSHOT_CHARS);
   });
 
   it('traceChunks 標名次並把內容截成 300 字節錄', () => {
