@@ -214,20 +214,16 @@
   .msg-body .bubble {
     @apply max-w-full;
   }
-  /* 時間 + 訊息動作列：動作預設隱藏，hover / 鍵盤聚焦該則訊息時顯示 */
+  /* 時間 + 訊息動作列：動作常駐顯示（不靠 hover 浮現，觸控裝置也找得到） */
   .msg-meta {
     @apply flex items-center gap-1;
   }
   .msg-action {
-    @apply inline-flex cursor-pointer items-center rounded p-0.5 text-[var(--text-secondary)] opacity-0 transition-opacity hover:text-[var(--text-primary)] disabled:cursor-default disabled:opacity-0;
+    @apply inline-flex cursor-pointer items-center rounded p-0.5 text-[var(--text-secondary)] transition-opacity hover:text-[var(--text-primary)] disabled:cursor-default disabled:opacity-40;
   }
-  .msg:hover .msg-action,
-  .msg:focus-within .msg-action {
-    @apply opacity-100 disabled:opacity-40;
-  }
-  /* 評價鈕：已評價的那顆固定顯示（帶狀態的元素不可隱藏，理由同報告入口） */
+  /* 評價鈕：已評價的那顆以主色標示；送出中也不淡化，避免看起來像被取消 */
   .msg-action--active {
-    @apply text-[var(--primary-color)] opacity-100 disabled:opacity-100;
+    @apply text-[var(--primary-color)] disabled:opacity-100;
   }
   .feedback {
     @apply relative inline-flex items-center gap-1;
@@ -430,14 +426,7 @@
   }
 
   /* ---- 報告入口（訊息動作列的圖示按鈕；ReportStatus.tsx） ---- */
-  /*
-   * 沿用 .msg-action 的尺寸與配色（同一列視覺一致），但覆寫 opacity：
-   * 複製鈕 hover 才浮現是合理的（想複製時才去找它），報告鈕卻帶狀態——
-   * 產生中／已完成／失敗都要讓使用者一眼看到，藏起來就失去意義。
-   */
-  .report-action {
-    @apply opacity-100;
-  }
+  /* 沿用 .msg-action 的尺寸與配色（同一列視覺一致）；產生中／已完成／失敗以圖示與顏色區分 */
   .report-action--error {
     @apply text-[var(--status-danger)] hover:text-[var(--status-danger)];
   }
