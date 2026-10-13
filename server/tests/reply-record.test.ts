@@ -63,6 +63,30 @@ describe('runTurn', () => {
     });
   });
 
+  it('服務沒有回報 trace（如表單）時，補上作答用的模型', async () => {
+    const createMessage = jest.fn().mockResolvedValue({ text: '[]', toolCalls: [], stopReason: 'end_turn', model: 'form-model', keySource: 'platform' });
+    jest.spyOn(llmModule, 'getLLMProvider').mockReturnValue({ name: 'mock', createMessage } as never);
+    jest.spyOn(intentRouter, 'route').mockResolvedValue({ serviceId: 'form', viaLLM: false } as never);
+    jest.spyOn(serviceRegistry, 'get').mockReturnValue({
+      id: 'form',
+      sticky: true,
+      handleTurn: jest.fn(async (_s: unknown, _t: string, llm: { createMessage: typeof createMessage }) => {
+        await llm.createMessage({});
+        return { reply: '請問外出時間？' };
+      }),
+    } as never);
+    const session = conversationStore.create('default', 'kevin', 'leave-request');
+    const turn = await agent.runTurn(session, '我要登記外出');
+    expect(findReply(session, turn.replyId!)?.trace).toEqual({ model: 'form-model' });
+  });
+
+  it('服務自己回報的 trace 優先，不被作答模型覆寫', async () => {
+    stubTurn('答');
+    const session = conversationStore.create('default', 'kevin', 'leave-request');
+    const turn = await agent.runTurn(session, '問');
+    expect(findReply(session, turn.replyId!)?.trace).toEqual({ model: 'test-model' });
+  });
+
   it('沒有回覆文字時不記錄、不帶 replyId', async () => {
     stubTurn('');
     const session = conversationStore.create('default', 'kevin', 'leave-request');

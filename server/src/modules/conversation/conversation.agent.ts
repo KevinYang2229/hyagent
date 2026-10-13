@@ -91,7 +91,17 @@ export async function runTurn(session: Session, userText: string): Promise<TurnR
   // 路由：判斷本輪指派哪個服務（填表點黏、知識可旁路插入）
   const route = await intentRouter.route(session, userText);
   const service = serviceRegistry.get(route.serviceId);
-  const { reply, report, pendingAction, blocks, trace } = await service.handleTurn(session, userText, llm);
+  // 記下服務作答時最後一次用的模型：表單、報告等服務不回報 trace，後台回饋仍要看得到模型
+  let answerModel: string | undefined;
+  const trackedLLM: LLMProvider = {
+    name: llm.name,
+    async createMessage(params) {
+      const result = await llm.createMessage(params);
+      answerModel = result.model;
+      return result;
+    },
+  };
+  const { reply, report, pendingAction, blocks, trace } = await service.handleTurn(session, userText, trackedLLM);
 
   // 只有點黏服務（form）成為 activeService；旁路服務（knowledge）不奪走流程擁有權
   if (service.sticky) session.activeServiceId = service.id;
@@ -102,8 +112,11 @@ export async function runTurn(session: Session, userText: string): Promise<TurnR
   );
 
   const suggestions = await generateSuggestions(llm, session, reply);
-  // 有回覆文字才可評價；報告 id 併進 trace，後台從回饋可追到那份報告
-  const replyTrace = report ? { ...(trace ?? {}), reportId: report.id } : trace;
+  // 有回覆文字才可評價；報告 id 併進 trace，後台從回饋可追到那份報告。
+  // 知識庫／代理自己回報 trace（知識庫查無資料時刻意不帶模型，不能拿改寫或重排的模型冒充）；
+  // 沒有回報 trace 的服務才補上作答模型
+  const serviceTrace = trace ?? (answerModel ? { model: answerModel } : undefined);
+  const replyTrace = report ? { ...(serviceTrace ?? {}), reportId: report.id } : serviceTrace;
   const record = reply
     ? recordReply(session, { question: userText, answer: reply, serviceId: service.id, trace: replyTrace })
     : undefined;
