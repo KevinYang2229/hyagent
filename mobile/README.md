@@ -21,7 +21,7 @@ mobile/
     npm run dev:lib-one    # 啟動 LIB ONE
     npm run dev:space-me   # 啟動 SpaceMe
 
-根目錄的 `npm run typecheck`、`npm test`、`npm run dev:app` 會轉呼叫這裡。
+根目錄的 `npm run typecheck`、`npm test`、`npm run dev:store`、`npm run dev:space-me` 會轉呼叫這裡。
 
 ## 什麼放 core、什麼放 App
 
