@@ -11,12 +11,14 @@
  * sticky=true：Agent 常是多輪任務，需點黏才不會在蒐集資訊途中被沖回 form。
  */
 import type { DisplayBlock } from '@hyagent/shared';
+import type { ErrorObject } from 'ajv';
 import type { LLMProvider, LLMTool } from '@/lib/llm/types';
 import { languageDirective } from '@/lib/locale';
 import { logger } from '@/lib/logger';
 import { buildDisplayBlock, TABLE_SHOWN_NOTE } from '@/modules/display/display-block';
 import { mcpIntentsFor, mcpPromptLines } from '@/modules/mcp/mcp.intents';
 import { isWriteTool, makeToolContext, toolRegistry, unwrapToolOutput } from '@/modules/tools';
+import { AppError } from '@/utils/app-error';
 import type { AgentService, AgentTurnResult, IntentDescriptor } from './agent-service.types';
 import type { Session } from './conversation.types';
 import {
@@ -64,6 +66,23 @@ function exposeTools(tools: LLMTool[]): { llmTools: LLMTool[]; idByLlmName: Map<
     llmTools.push({ ...t, name: llmName });
   }
   return { llmTools, idByLlmName };
+}
+
+/**
+ * 工具錯誤轉成 tool_result。輸入驗證失敗（ajv）時附上逐欄明細，否則 LLM 只看到
+ * 「輸入驗證失敗」，不知道哪個欄位錯、只能盲猜重試。只留 path/message/params 以省 token。
+ */
+function toolErrorResult(err: unknown): { ok: false; error: string; details?: unknown } {
+  const error = (err as Error).message;
+  if (!(err instanceof AppError) || err.details === undefined) return { ok: false, error };
+  const details = Array.isArray(err.details)
+    ? (err.details as ErrorObject[]).map(({ instancePath, message, params }) => ({
+        path: instancePath || '/',
+        message,
+        params,
+      }))
+    : err.details;
+  return { ok: false, error, details };
 }
 
 export const agentAgentService: AgentService = {
@@ -165,7 +184,7 @@ export const agentAgentService: AgentService = {
           return JSON.stringify(shown ? { ok: true, note: TABLE_SHOWN_NOTE, result: data } : { ok: true, result: data });
         } catch (err) {
           // 工具錯誤（權限/驗證/連接器/MCP）回傳給 LLM 自行修正，不中斷整輪
-          return JSON.stringify({ ok: false, error: (err as Error).message });
+          return JSON.stringify(toolErrorResult(err));
         }
       },
     });

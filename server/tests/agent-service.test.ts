@@ -62,6 +62,22 @@ describe('agentAgentService', () => {
     expect(res.reply).toBe('抱歉，我無法直接送出表單。');
   });
 
+  it('工具輸入驗證失敗時，tool_result 帶出哪個欄位錯、錯在哪，供 LLM 自行修正', async () => {
+    const llm = scriptedLLM([
+      { text: '', toolCalls: [{ id: 't1', name: 'oa_listMyRequests', input: { bogus: 1 } }], stopReason: 'tool_use', usage, model: 'test-model', keySource: 'platform' },
+      { text: '已修正。', toolCalls: [], stopReason: 'end_turn', usage, model: 'test-model', keySource: 'platform' },
+    ]);
+    const session = makeSession();
+    await agentAgentService.handleTurn(session, '我的申請進度', llm);
+
+    const out = JSON.parse(lastToolResult(session) ?? '{}');
+    expect(out.ok).toBe(false);
+    expect(out.error).toContain('輸入驗證失敗');
+    expect(out.details).toEqual([
+      expect.objectContaining({ message: 'must NOT have additional properties', params: { additionalProperty: 'bogus' } }),
+    ]);
+  });
+
   it('已註冊為服務且提供 agent.task 意圖（含精準寄信關鍵字）', () => {
     expect(serviceRegistry.get('agent')).toBe(agentAgentService);
     const intents = agentAgentService.intents(makeSession());
