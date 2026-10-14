@@ -191,6 +191,7 @@ Zeabur 連上 GitHub repo 後，會 watch 指定分支；**每次 `git push` 到
 以 `pg_dump`（custom format、postgres:17 對齊伺服器版本）備份整個 Supabase DB，
 上傳為私有 repo 的 workflow artifact，保留 30 天。也可到 Actions 頁面手動觸發（workflow_dispatch）。
 需要 repo secret `SUPABASE_DB_URL`（= server 的 `DATABASE_URL`，session pooler 連線字串）。
+備份流程會自動移除 `pgbouncer`、`connection_limit`、`pool_timeout`、`schema`、`socket_timeout`、`sslaccept`、`sslidentity` 等已列明的 Prisma 專用參數，保留 `sslmode` 與其他 libpq 參數。應用程式的 `DATABASE_URL` 不需因此修改；仍須使用 Session pooler，移除 `pgbouncer=true` 不會將 Transaction pooler 轉成 Session pooler。
 
 **還原步驟**：
 

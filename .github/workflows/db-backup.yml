@@ -54,6 +54,20 @@ jobs:
         env:
           DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
+          # Prisma 專用參數不是 libpq 參數；只移除已知項目，保留 sslmode 等原始編碼。
+          DB_URL=$(python3 - <<'PY'
+          import os
+          from urllib.parse import unquote_plus
+
+          url = os.environ['DB_URL']
+          base, separator, query = url.partition('?')
+          prisma_only = {'pgbouncer', 'connection_limit', 'pool_timeout', 'schema', 'socket_timeout', 'sslaccept', 'sslidentity'}
+          remaining = [part for part in query.split('&') if part and unquote_plus(part.split('=', 1)[0]) not in prisma_only]
+          print(base + ('?' + '&'.join(remaining) if separator and remaining else ''))
+          PY
+          )
+          echo "::add-mask::$DB_URL"
+          export DB_URL
           docker run --rm -e DB_URL postgres:17-alpine \
             sh -c 'pg_dump "$DB_URL" --format=custom --no-owner' > backup.dump
           ls -la backup.dump
