@@ -31,6 +31,7 @@ export interface LLMMessage {
 }
 
 export interface LLMCreateParams {
+  signal?: AbortSignal;
   system: string;
   messages: LLMMessage[];
   tools?: LLMTool[];

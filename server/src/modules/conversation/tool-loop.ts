@@ -7,6 +7,7 @@
  * 撞上限時再做一次 toolChoice='none' 的收尾呼叫：最後一圈的工具結果已寫入歷史，
  * 若直接回固定話術，那些結果 LLM 永遠讀不到、使用者也不知道進度到哪。
  */
+import { throwIfQueryCancelled } from '@/lib/query-cancellation';
 import type { LLMContentBlock, LLMProvider, LLMResult, LLMTool } from '@/lib/llm/types';
 import { logger } from '@/lib/logger';
 import { usageStore } from '@/modules/usage/usage.store';
@@ -40,6 +41,7 @@ export async function runToolLoop(
 ): Promise<string> {
   const maxIterations = cfg.maxIterations ?? DEFAULT_MAX_ITERATIONS;
   for (let i = 0; i < maxIterations; i++) {
+    throwIfQueryCancelled();
     let result: LLMResult;
     try {
       result = await llm.createMessage({
@@ -49,10 +51,12 @@ export async function runToolLoop(
         cache: true,
       });
     } catch (err) {
+      throwIfQueryCancelled();
       if (err instanceof AppError && err.code === 'EGRESS_BLOCKED') throw err;
       const message = err instanceof Error ? err.message : 'LLM request failed';
       throw new AppError(502, 'LLM_ERROR', `LLM 呼叫失敗：${message}`);
     }
+    throwIfQueryCancelled();
     usageStore.recordLLMUsage(session.tenantId, result);
     cfg.onLLMResult?.(result);
 
@@ -71,14 +75,17 @@ export async function runToolLoop(
 
     const toolResults: LLMContentBlock[] = [];
     for (const call of result.toolCalls) {
+      throwIfQueryCancelled();
       const out = await cfg.dispatchTool(call.name, call.input);
       toolResults.push({ type: 'tool_result', toolUseId: call.id, content: out });
     }
     session.messages.push({ role: 'user', content: toolResults });
   }
 
+  throwIfQueryCancelled();
   logLoop(session, maxIterations, true);
   const reply = await wrapUp(llm, session, cfg);
+  throwIfQueryCancelled();
   session.messages.push({ role: 'assistant', content: [{ type: 'text', text: reply }] });
   return reply;
 }
@@ -92,11 +99,13 @@ async function wrapUp(llm: LLMProvider, session: Session, cfg: ToolLoopConfig): 
       tools: cfg.tools, // 歷史含 tool_use，Anthropic 要求仍帶 tools 定義
       toolChoice: 'none',
     });
+    throwIfQueryCancelled();
     usageStore.recordLLMUsage(session.tenantId, result);
     cfg.onLLMResult?.(result);
     // 模型若仍回工具呼叫一律忽略：不能寫入沒有對應 tool_result 的 tool_use
     return result.text || LIMIT_FALLBACK_REPLY;
   } catch (err) {
+    throwIfQueryCancelled();
     logger.warn({ sessionId: session.id, err: (err as Error).message }, 'tool loop wrap-up failed');
     return LIMIT_FALLBACK_REPLY;
   }

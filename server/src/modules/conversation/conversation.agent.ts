@@ -1,3 +1,4 @@
+import { querySignal, throwIfQueryCancelled } from '@/lib/query-cancellation';
 /**
  * 對話 turn 編排（路由 + 建議回覆）。
  *
@@ -84,12 +85,14 @@ async function generateSuggestions(
   }
 }
 
-export async function runTurn(session: Session, userText: string): Promise<TurnResult> {
+async function performTurn(session: Session, userText: string): Promise<TurnResult> {
+  throwIfQueryCancelled();
   const llm = getLLMProvider(tenantStore.getTenant(session.tenantId)?.llmConfig, session.tenantId);
   session.messages.push({ role: 'user', content: [{ type: 'text', text: userText }] });
 
   // 路由：判斷本輪指派哪個服務（填表點黏、知識可旁路插入）
   const route = await intentRouter.route(session, userText);
+  throwIfQueryCancelled();
   const service = serviceRegistry.get(route.serviceId);
   // 記下服務作答時最後一次用的模型：表單、報告等服務不回報 trace，後台回饋仍要看得到模型
   let answerModel: string | undefined;
@@ -103,6 +106,7 @@ export async function runTurn(session: Session, userText: string): Promise<TurnR
   };
   const { reply, report, pendingAction, blocks, trace } = await service.handleTurn(session, userText, trackedLLM);
 
+  throwIfQueryCancelled();
   // 只有點黏服務（form）成為 activeService；旁路服務（knowledge）不奪走流程擁有權
   if (service.sticky) session.activeServiceId = service.id;
 
@@ -115,6 +119,7 @@ export async function runTurn(session: Session, userText: string): Promise<TurnR
   // 有回覆文字才可評價；報告 id 併進 trace，後台從回饋可追到那份報告。
   // 知識庫／代理自己回報 trace（知識庫查無資料時刻意不帶模型，不能拿改寫或重排的模型冒充）；
   // 沒有回報 trace 的服務才補上作答模型
+  throwIfQueryCancelled();
   const serviceTrace = trace ?? (answerModel ? { model: answerModel } : undefined);
   const replyTrace = report ? { ...(serviceTrace ?? {}), reportId: report.id } : serviceTrace;
   const record = reply
@@ -132,4 +137,42 @@ export async function runTurn(session: Session, userText: string): Promise<TurnR
     ...(pendingAction ? { pendingAction } : {}),
     ...(blocks && blocks.length > 0 ? { blocks } : {}),
   };
+}
+
+
+const runningTurns = new Map<string, Promise<TurnResult>>();
+
+/** 同一對話依序執行；停止後補齊工具訊息配對，下一則可安全繼續。 */
+export function runTurn(session: Session, userText: string): Promise<TurnResult> {
+  const previous = runningTurns.get(session.id);
+  const turn = (async () => {
+    if (previous) await previous.catch(() => undefined);
+    throwIfQueryCancelled();
+    const messageStart = session.messages.length;
+    const pendingId = session.pendingAction?.id;
+    try {
+      return await performTurn(session, userText);
+    } catch (err) {
+      if (querySignal()?.aborted) {
+        const completed = new Set(session.messages.slice(messageStart).flatMap((m) => m.content)
+          .filter((b) => b.type === 'tool_result').map((b) => b.toolUseId));
+        // API 要求每個 tool_use 都有對應 tool_result，取消不能留下破損歷史。
+        const missing = session.messages.slice(messageStart).flatMap((m) => m.content)
+          .filter((b) => b.type === 'tool_use' && !completed.has(b.id));
+        if (missing.length) session.messages.push({ role: 'user', content: missing.map((b) => ({
+          type: 'tool_result' as const, toolUseId: b.type === 'tool_use' ? b.id : '',
+          content: '查詢已停止；未取得結果，請勿推定操作成功或自動重試。', isError: true,
+        })) });
+        if (session.pendingAction?.id !== pendingId) session.pendingAction = undefined;
+        session.messages.push({ role: 'assistant', content: [{ type: 'text', text:
+          session.locale === 'en' ? 'Query stopped.' : '查詢已停止。' }] });
+        conversationStore.save(session);
+        throwIfQueryCancelled();
+      }
+      throw err;
+    }
+  })();
+  runningTurns.set(session.id, turn);
+  void turn.finally(() => { if (runningTurns.get(session.id) === turn) runningTurns.delete(session.id); }).catch(() => undefined);
+  return turn;
 }

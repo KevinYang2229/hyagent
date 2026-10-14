@@ -7,6 +7,7 @@
  * 端點、送出欄位映射、回應解析全由各表單的 oa.schema.json 驅動（見 oa.mapper）。
  * 真 OA 規格到位後只需改 schemas/<formId>/oa.schema.json，不必動本檔。
  */
+import { querySignal, throwIfQueryCancelled } from '@/lib/query-cancellation';
 import { env } from '@/config/env';
 import { logger } from '@/lib/logger';
 import { AppError } from '@/utils/app-error';
@@ -60,15 +61,17 @@ export const httpOAConnector: OAConnector = {
   },
 
   async getLeaveBalance(userId: string): Promise<LeaveBalance[]> {
+    throwIfQueryCancelled();
     const url = `${baseUrl()}${LEAVE_BALANCE_PATH}?userId=${encodeURIComponent(userId)}`;
     try {
       const res = await fetch(url, {
         headers: authHeaders(),
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        signal: querySignal() ? AbortSignal.any([querySignal()!, AbortSignal.timeout(REQUEST_TIMEOUT_MS)]) : AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return (await res.json()) as LeaveBalance[];
     } catch (err) {
+      throwIfQueryCancelled();
       // 降級：查不到額度不應阻斷對話，回空陣列（畫面則不顯示剩餘時數）
       logger.error({ err, url }, '[oa:http] getLeaveBalance failed; degrading to empty');
       return [];

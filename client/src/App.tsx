@@ -188,6 +188,18 @@ export default function App() {
   const [input, setInput] = useState('');
   const imeSubmit = useImeSubmit(submitForm);
   const [busy, setBusy] = useState(false);
+  const [queryRunning, setQueryRunning] = useState(false);
+  const queryRef = useRef<{ controller: AbortController; id: string } | null>(null);
+  useEffect(() => () => {
+    const query = queryRef.current;
+    if (query) {
+      query.controller.abort();
+      void api.stopQuery(userId, query.id).catch(() => undefined);
+      queryRef.current = null;
+      setQueryRunning(false);
+      setBusy(false);
+    }
+  }, [userId]);
   const [conn, setConn] = useState<Conn>('checking');
   const [formDef, setFormDef] = useState<Definition | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -660,13 +672,29 @@ export default function App() {
     }
   }
 
+  /** 中止 HTTP 與後端查詢；舊請求的回應與 finally 不可覆蓋新查詢。 */
+  function stopQuery() {
+    const query = queryRef.current;
+    if (!query) return;
+    queryRef.current = null;
+    query.controller.abort();
+    void api.stopQuery(userId, query.id).catch(() => undefined);
+    setQueryRunning(false);
+    setBusy(false);
+    pushMsg('sys', t('app.queryStopped'));
+    taRef.current?.focus();
+  }
+
   async function send(message: string) {
-    if (busy) return;
+    if (busy || queryRef.current) return;
     // 純外觀預覽：不連後端，回一則本地示範回覆即可（避免 401 被踢回登入）。
     if (PREVIEW) {
       pushMsg('agent', greetingText);
       return;
     }
+    const query = { controller: new AbortController(), id: crypto.randomUUID() };
+    queryRef.current = query;
+    setQueryRunning(true);
     setBusy(true);
     try {
       // 一個 session 一張表單：上一張已送出／取消後，下一則訊息自動開新對話（而非送進已結束的 session）
@@ -674,11 +702,13 @@ export default function App() {
       if (terminal) resetSessionState();
       const data =
         convId && !terminal
-          ? await api.sendMessage(userId, convId, message)
-          : await api.start(userId, message, selectedFormId ?? undefined);
+          ? await api.sendMessage(userId, convId, message, query.controller.signal, query.id)
+          : await api.start(userId, message, selectedFormId ?? undefined, query.controller.signal, query.id);
+      if (queryRef.current !== query || query.controller.signal.aborted) return;
       applyTurn(data, terminal ? null : convId);
       setConn('online'); // 成功通一輪＝確定連線正常
     } catch (e) {
+      if (queryRef.current !== query || query.controller.signal.aborted) return;
       if (isSessionGone(e)) {
         resetSessionState();
         pushMsg('sys', t('app.sessionExpired'));
@@ -688,8 +718,12 @@ export default function App() {
         pushMsg('sys', '⚠️ ' + (e instanceof Error ? e.message : t('app.requestFailed')));
       }
     } finally {
-      setBusy(false);
-      taRef.current?.focus();
+      if (queryRef.current === query) {
+        queryRef.current = null;
+        setQueryRunning(false);
+        setBusy(false);
+        taRef.current?.focus();
+      }
     }
   }
 
@@ -1298,9 +1332,25 @@ export default function App() {
                 onKeyUp={imeSubmit.onKeyUp}
               />
             </span>
-            <Button variant="confirm" size="md" type="submit" disabled={busy}>
-              {t('app.send')}
-            </Button>
+            {queryRunning ? (
+              <Button
+                variant="cancel"
+                size="md"
+                type="button"
+                className="!h-11 !w-11 !rounded-full !p-0"
+                aria-label={t('app.stopQuery')}
+                title={t('app.stopQuery')}
+                onClick={stopQuery}
+              >
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="currentColor" aria-hidden="true" focusable="false">
+                  <rect x="3" y="3" width="12" height="12" rx="1.5" />
+                </svg>
+              </Button>
+            ) : (
+              <Button variant="confirm" size="md" type="submit" disabled={busy}>
+                {t('app.send')}
+              </Button>
+            )}
           </form>
         </div>
 

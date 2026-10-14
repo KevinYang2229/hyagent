@@ -6,6 +6,7 @@
  * 回傳含 tokens 供成本歸戶；索引與查詢共用同一模型/維度。
  */
 import OpenAI from 'openai';
+import { querySignal, throwIfQueryCancelled } from '@/lib/query-cancellation';
 import { assertSafeEgress } from '@/lib/egress-policy';
 import { env } from '@/config/env';
 import { mapProviderError } from '@/lib/llm/provider-error';
@@ -42,6 +43,7 @@ function createProvider(apiKey: string, keySource: LLMKeySource, baseURL?: strin
     model: env.EMBEDDING_MODEL,
     keySource,
     async embed(texts: string[], model?: string): Promise<EmbedResult> {
+      throwIfQueryCancelled();
       assertSafeEgress(texts, tenantId);
       if (texts.length === 0) return { vectors: [], tokens: 0 };
       let resp: OpenAI.Embeddings.CreateEmbeddingResponse;
@@ -49,7 +51,8 @@ function createProvider(apiKey: string, keySource: LLMKeySource, baseURL?: strin
         resp = await getClient(apiKey, baseURL).embeddings.create({
           model: model ?? env.EMBEDDING_MODEL,
           input: texts,
-        });
+        }, { signal: querySignal() });
+        throwIfQueryCancelled();
       } catch (err) {
         // 租戶 key 失效比照 D6 明確歸因 502；平台 key 原樣拋出（現行行為）
         throw mapProviderError(err, { keySource });

@@ -98,7 +98,7 @@ export function createAnthropicProvider(settings: ResolvedLLMSettings): LLMProvi
               ? { tool_choice: { type: 'tool' as const, name: params.toolChoice.name } }
               : {}),
           messages: toMessageParams(params.messages),
-        });
+        }, { signal: params.signal });
       } catch (err) {
         throw mapProviderError(err, settings);
       }

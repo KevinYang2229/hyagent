@@ -10,6 +10,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport, StreamableHTTPError } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
+import { querySignal, throwIfQueryCancelled } from '@/lib/query-cancellation';
 import { assertSafeEgress } from '@/lib/egress-policy';
 import { mcpSecureFetch } from './mcp.network';
 import { logger } from '@/lib/logger';
@@ -124,7 +125,8 @@ export class McpConnection {
     }
     try {
       const client = await this.ensureClient();
-      const res = await callerStore.run('system', () => client.listTools(undefined, { timeout: MCP_LIST_TIMEOUT_MS }));
+      const res = await callerStore.run('system', () => client.listTools(undefined, { timeout: MCP_LIST_TIMEOUT_MS, signal: querySignal() }));
+      throwIfQueryCancelled();
       this.tools = res.tools.map((t) => ({
         name: t.name,
         title: t.title,
@@ -137,6 +139,7 @@ export class McpConnection {
       this.st.toolsFetchedAt = new Date(this.toolsAt).toISOString();
       return this.tools;
     } catch (err) {
+      throwIfQueryCancelled();
       await this.markFailed(err);
       throw err;
     }
@@ -152,12 +155,14 @@ export class McpConnection {
     args: Record<string, unknown>,
     caller: McpCaller,
   ): Promise<{ data: unknown; meta?: Record<string, unknown> }> {
+    throwIfQueryCancelled();
     assertSafeEgress(args, caller.tenantId);
     this.assertNotBackingOff();
     let client: Client;
     try {
       client = await this.ensureClient();
     } catch (err) {
+      throwIfQueryCancelled();
       // 連線階段的任何錯誤（含逾時）都代表連不上
       await this.markFailed(err);
       throw new McpToolCallError(`${this.config.name} 暫時無法使用：${(err as Error).message}`);
@@ -166,10 +171,11 @@ export class McpConnection {
     try {
       // SDK 回傳型別含舊版相容的 { toolResult } 分支，這裡只取現行欄位
       res = (await callerStore.run(caller, () =>
-        client.callTool({ name, arguments: args }, undefined, { timeout: this.config.timeoutMs }),
+        client.callTool({ name, arguments: args }, undefined, { timeout: this.config.timeoutMs, signal: querySignal() }),
       )) as typeof res;
       this.markOk();
     } catch (err) {
+      throwIfQueryCancelled();
       if (isTimeout(err)) throw new McpToolCallError(`${this.config.name} 回應逾時，請稍後再試`);
       if (!isConnectionFailure(err)) throw new McpToolCallError(`${this.config.name} 呼叫失敗：${(err as Error).message}`);
       await this.markFailed(err);
@@ -193,11 +199,15 @@ export class McpConnection {
   }
 
   private readonly signedFetch = (url: string | URL, init?: RequestInit): Promise<Response> => {
+    throwIfQueryCancelled();
     const headers = new Headers(init?.headers);
     const who = callerStore.getStore();
     if (!who) throw new Error('MCP 請求缺少呼叫者身分（fail closed）');
     headers.set('Authorization', `Bearer ${signMcpToken(this.config.id, who)}`);
-    return mcpSecureFetch(this.config.url, url, { ...init, headers });
+    const signal = querySignal();
+    return mcpSecureFetch(this.config.url, url, { ...init, headers,
+      ...(signal ? { signal: init?.signal ? AbortSignal.any([signal, init.signal]) : signal } : {}),
+    });
   };
 
   private async ensureClient(): Promise<Client> {

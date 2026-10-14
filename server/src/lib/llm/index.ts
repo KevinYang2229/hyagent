@@ -2,6 +2,7 @@
  * LLM provider 工廠：依「租戶 llmConfig → resolveLLMSettings」選擇實作與金鑰。
  * 未帶 config（或租戶未設定）＝現行 env 行為，預設租戶零改變。
  */
+import { querySignal, throwIfQueryCancelled } from '@/lib/query-cancellation';
 import { assertSafeEgress } from '@/lib/egress-policy';
 import { createAnthropicProvider } from './anthropic.provider';
 import { createOpenAIProvider } from './openai.provider';
@@ -17,8 +18,11 @@ export function getLLMProvider(config?: TenantLLMConfig, tenantId?: string): LLM
   return {
     name: provider.name,
     async createMessage(params) {
+      throwIfQueryCancelled();
       assertSafeEgress(params, tenantId);
-      return provider.createMessage(params);
+      const result = await provider.createMessage({ ...params, signal: params.signal ?? querySignal() });
+      throwIfQueryCancelled();
+      return result;
     },
   };
 }

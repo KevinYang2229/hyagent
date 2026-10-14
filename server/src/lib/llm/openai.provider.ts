@@ -133,7 +133,7 @@ export function createOpenAIProvider(settings: ResolvedLLMSettings): LLMProvider
             : params.toolChoice
               ? { tool_choice: { type: 'function' as const, function: { name: params.toolChoice.name } } }
               : {}),
-        });
+        }, { signal: params.signal });
       } catch (err) {
         throw mapProviderError(err, settings);
       }

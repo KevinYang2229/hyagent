@@ -7,6 +7,7 @@
  * 工具有兩種來源：registerTool 的靜態表，以及 registerToolSource 的動態來源（如 MCP）；
  * 同 id 時靜態優先，動態來源不得冒名頂替既有工具。
  */
+import { throwIfQueryCancelled } from '@/lib/query-cancellation';
 import Ajv, { type ValidateFunction } from 'ajv';
 import addFormats from 'ajv-formats';
 import type { LLMTool } from '@/lib/llm/types';
@@ -128,6 +129,7 @@ export const toolRegistry = {
    * 避免高頻讀取塞滿每租戶的稽核環、擠掉真正的寫入稽核；Agent 路徑不傳，照舊依 tool.audit 稽核。
    */
   async invoke(id: string, input: unknown, ctx: ToolContext, options: { audit?: boolean } = {}): Promise<unknown> {
+    throwIfQueryCancelled();
     const entry = lookup(id, ctx);
     const { tool } = entry;
     const audit = (ok: boolean, extra: { summary?: string; error?: string }): void => {

@@ -260,6 +260,7 @@ function withAuth(init: RequestInit): RequestInit {
 }
 
 async function unwrap<T>(res: Response): Promise<T> {
+  if (res.status === 204) return undefined as T;
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
     throw new ApiError(
@@ -311,11 +312,13 @@ async function performRefresh(): Promise<boolean> {
 
 /** 受保護請求：自動帶憑證；Session 快到期先續期，遇 401 依憑證形式各重試一次，仍失敗則登出 */
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  init.signal?.throwIfAborted();
   // 續期的主要機制是 scheduleRenewal() 的定時器，這裡是補網：背景分頁的 setTimeout 會被
   // 瀏覽器節流到分鐘級，筆電闔上更是整段不跑——醒來時定時器還沒燒到，Session 卻早就過期了。
   if (sessionToken && identityProvider && sessionExpiresAt !== null && Date.now() >= sessionExpiresAt - RENEW_LEAD_MS) {
     await renewSession();
   }
+  init.signal?.throwIfAborted();
   const sentToken = accessToken;
   const sentSession = sessionToken;
   let res = await fetch(path, withAuth(init));
@@ -329,6 +332,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (res.status === 401 && sessionToken && identityProvider) {
     if (sessionToken !== sentSession || await renewSession()) res = await fetch(path, withAuth(init));
   }
+  init.signal?.throwIfAborted();
   if (res.status === 401) {
     clearTokens();
     onUnauthorized();
@@ -451,11 +455,12 @@ export const api = {
   },
 
   /** 建立對話並起首輪；formId 省略時由 server 依首句意圖路由 */
-  start(userId: string, message: string, formId?: string): Promise<TurnData> {
+  start(userId: string, message: string, formId?: string, signal?: AbortSignal, queryId?: string): Promise<TurnData> {
     const lang = i18n.language;
     return request<TurnData>(BASE, {
       method: 'POST',
-      headers: headers(userId),
+      headers: { ...headers(userId), ...(queryId ? { 'x-query-id': queryId } : {}) },
+      signal,
       body: JSON.stringify(formId ? { message, formId, lang } : { message, lang }),
     });
   },
@@ -466,12 +471,20 @@ export const api = {
   },
 
   /** 在既有對話送一則訊息，跑一輪 */
-  sendMessage(userId: string, convId: string, message: string): Promise<TurnData> {
+  sendMessage(userId: string, convId: string, message: string, signal?: AbortSignal, queryId?: string): Promise<TurnData> {
     return request<TurnData>(`${BASE}/${convId}/messages`, {
       method: 'POST',
-      headers: headers(userId),
+      headers: { ...headers(userId), ...(queryId ? { 'x-query-id': queryId } : {}) },
+      signal,
       body: JSON.stringify({ message, lang: i18n.language }),
     });
+  },
+
+  /** 明確停止目前查詢，避免代理伺服器延遲傳遞瀏覽器斷線。 */
+  async stopQuery(userId: string, queryId: string): Promise<void> {
+    // 取消是盡力通知；舊身分已登出時的 401 不應把新身分也登出。
+    const res = await fetch(`${BASE}/queries/${encodeURIComponent(queryId)}/stop`, withAuth({ method: 'POST', headers: headers(userId) }));
+    if (!res.ok) await unwrap(res);
   },
 
   /** 確認送出（不經 LLM，確認畫面按「送出」用）；回傳含 submission 的 turn */

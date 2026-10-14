@@ -1,3 +1,4 @@
+import { runHttpQuery, stopQuery } from '@/lib/query-cancellation';
 import type { Request, Response } from 'express';
 import { AppError } from '@/utils/app-error';
 import { conversationService } from './conversation.service';
@@ -17,47 +18,57 @@ function resolveTenantId(req: Request): string {
 }
 
 export const conversationController = {
+  async stopQuery(req: Request, res: Response): Promise<void> {
+    const id = String(req.params.queryId);
+    if (!/^[a-f0-9-]{36}$/i.test(id)) throw AppError.badRequest('無效的查詢識別碼');
+    stopQuery(resolveTenantId(req), resolveUserId(req), id);
+    res.status(204).end();
+  },
   async start(req: Request, res: Response): Promise<void> {
-    const tenantId = resolveTenantId(req);
-    const userId = resolveUserId(req);
-    const { message, formId, lang } = req.body as StartInput;
-    const { session, turn } = await conversationService.start(
-      tenantId,
-      userId,
-      message,
-      formId,
-      lang,
-    );
-    res.status(201).json({
-      data: {
-        id: session.id,
-        formId: session.formId,
-        status: session.status,
-        values: session.values,
-        reply: turn?.reply ?? null,
-        suggestions: turn?.suggestions ?? [],
-        ...(turn?.replyId ? { replyId: turn.replyId } : {}),
-        ...(turn?.report ? { report: turn.report } : {}),
-        // 第一則訊息就可能查出表格或提議寫入：與 sendMessage 一樣帶回，否則前端看不到
-        ...(turn?.pendingAction ? { pendingAction: turn.pendingAction } : {}),
-        ...(turn?.blocks ? { blocks: turn.blocks } : {}),
-      },
+    return runHttpQuery(req, res, async () => {
+      const tenantId = resolveTenantId(req);
+      const userId = resolveUserId(req);
+      const { message, formId, lang } = req.body as StartInput;
+      const { session, turn } = await conversationService.start(
+        tenantId,
+        userId,
+        message,
+        formId,
+        lang,
+      );
+      res.status(201).json({
+        data: {
+          id: session.id,
+          formId: session.formId,
+          status: session.status,
+          values: session.values,
+          reply: turn?.reply ?? null,
+          suggestions: turn?.suggestions ?? [],
+          ...(turn?.replyId ? { replyId: turn.replyId } : {}),
+          ...(turn?.report ? { report: turn.report } : {}),
+          // 第一則訊息就可能查出表格或提議寫入：與 sendMessage 一樣帶回，否則前端看不到
+          ...(turn?.pendingAction ? { pendingAction: turn.pendingAction } : {}),
+          ...(turn?.blocks ? { blocks: turn.blocks } : {}),
+        },
+      });
     });
   },
 
   async sendMessage(req: Request, res: Response): Promise<void> {
-    const tenantId = resolveTenantId(req);
-    const userId = resolveUserId(req);
-    const { message, lang } = req.body as MessageInput;
-    const turn = await conversationService.sendMessage(
-      tenantId,
-      userId,
-      String(req.params.id),
-      message,
-      lang,
-    );
-    // turn 已是 runTurn 回傳的完整 TurnResult，report 若有值已隨物件帶入，這裡不需另外挑欄位
-    res.status(200).json({ data: turn });
+    return runHttpQuery(req, res, async () => {
+      const tenantId = resolveTenantId(req);
+      const userId = resolveUserId(req);
+      const { message, lang } = req.body as MessageInput;
+      const turn = await conversationService.sendMessage(
+        tenantId,
+        userId,
+        String(req.params.id),
+        message,
+        lang,
+      );
+      // turn 已是 runTurn 回傳的完整 TurnResult，report 若有值已隨物件帶入，這裡不需另外挑欄位
+      res.status(200).json({ data: turn });
+    });
   },
 
   /** 確認送出（不經 LLM，確認畫面按「送出」用）；回傳含 submission 的 turn */

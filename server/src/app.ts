@@ -1,3 +1,5 @@
+import { asyncHandler } from '@/utils/async-handler';
+import { conversationController } from '@/modules/conversation/conversation.controller';
 import express, { type Express } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -118,6 +120,7 @@ export function createApp(): Express {
   // conversations 會觸發 LLM 計費，再加 tenantMonthlyQuota 月配額守門
   // AI 回覆評價不呼叫 LLM，不掛月配額（spec §2.3）：須在 conversations 之前掛；只掛 replies 子路徑，其他請求不會重複經過限流
   app.use('/api/conversations/:id/replies', resolveTenant, requireAuth, tenantRateLimit, feedbackRouter);
+  app.post('/api/conversations/queries/:queryId/stop', resolveTenant, requireAuth, tenantRateLimit, asyncHandler(conversationController.stopQuery));
   app.use('/api/conversations', resolveTenant, requireAuth, tenantRateLimit, tenantMonthlyQuota, conversationRouter);
   // 影像辨識（貨架／優惠券）：呼叫 LLM 計費，與對話同樣套月配額
   app.use('/api/vision', resolveTenant, requireAuth, tenantRateLimit, tenantMonthlyQuota, visionRouter);
