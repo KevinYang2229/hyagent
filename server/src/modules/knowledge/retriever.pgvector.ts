@@ -88,7 +88,7 @@ export const pgvectorRetriever: KnowledgeRetriever = {
     const model = await indexModelOf(tenantId);
     if (!model) return [];
 
-    const embedder = getEmbeddingProvider(tenantStore.getTenant(tenantId)?.llmConfig);
+    const embedder = getEmbeddingProvider(tenantStore.getTenant(tenantId)?.llmConfig, tenantId);
     const { vectors: [queryVec], tokens } = await embedder.embed([q], model);
     usageStore.recordEmbeddingUsage(tenantId, tokens, model, embedder.keySource);
     if (!queryVec) return [];

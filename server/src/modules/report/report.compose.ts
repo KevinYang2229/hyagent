@@ -1140,7 +1140,7 @@ export async function composeSection(
   let semantic: TableCatalogEntry[] = [];
   try {
     const model = knowledgeStore.getSource(tenantId).embeddingModel;
-    const embedder = getEmbeddingProvider(tenantStore.getTenant(tenantId)?.llmConfig);
+    const embedder = getEmbeddingProvider(tenantStore.getTenant(tenantId)?.llmConfig, tenantId);
     const { vectors, tokens } = await embedder.embed([intent], model);
     usageStore.recordEmbeddingUsage(tenantId, tokens, model, embedder.keySource);
     semantic = await searchTableCatalog({ tenantId, userId }, vectors[0], CATALOG_LIMIT * 6);

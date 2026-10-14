@@ -17,6 +17,7 @@ import { agentAgentService } from '@/modules/conversation/agent.agent-service';
 import type { Session } from '@/modules/conversation/conversation.types';
 import { conversationService } from '@/modules/conversation/conversation.service';
 import { conversationStore } from '@/modules/conversation/conversation.store';
+import { mcpToolFingerprint } from '@/modules/mcp/mcp.fingerprint';
 import { mcpConnections } from '@/modules/mcp/mcp.connection';
 import { configureMcpSigningKey, mcpJwks } from '@/modules/mcp/mcp.identity';
 import { mcpStore } from '@/modules/mcp/mcp.store';
@@ -47,6 +48,11 @@ beforeEach(async () => {
       ['product_lookup', 'inventory_query', 'promotion_list', 'coupon_check', 'store_today_summary', 'replenishment_list'].map((n) => [n, { approvedReadOnly: true }]),
     ),
   });
+  const config = mcpStore.get('store-demo')!;
+  const tools = await mcpConnections.get(config).listTools();
+  mcpStore.update(config.id, { toolOverrides: Object.fromEntries(
+    Object.keys(config.toolOverrides).map((name) => [name, { approvedReadOnly: true, approvedFingerprint: mcpToolFingerprint(config.url, tools.find((t) => t.name === name)!) }]),
+  ) });
 });
 
 afterEach(async () => {

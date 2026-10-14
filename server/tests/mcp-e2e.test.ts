@@ -9,6 +9,7 @@ import type { LLMProvider, LLMResult } from '@/lib/llm/types';
 import { agentAgentService } from '@/modules/conversation/agent.agent-service';
 import type { Session } from '@/modules/conversation/conversation.types';
 import { runConfirmedAction } from '@/modules/conversation/pending-action.service';
+import { mcpToolFingerprint } from '@/modules/mcp/mcp.fingerprint';
 import { mcpConnections } from '@/modules/mcp/mcp.connection';
 import { configureMcpSigningKey } from '@/modules/mcp/mcp.identity';
 import { mcpStore } from '@/modules/mcp/mcp.store';
@@ -48,6 +49,8 @@ beforeEach(async () => {
   tenantStore.updateTenant(tenantId, { grantedScopes: ['service:agent'] });
   scopePolicy.setPolicy(tenantId, { groups: {}, accounts: { kevin: ['mcp:rooms-e2e'] } });
   mcpStore.create({ id: 'rooms-e2e', name: '會議室', url: fixture.url, ownerTenantId: tenantId, description: '查詢與預約會議室', toolOverrides: { rooms_availability: { approvedReadOnly: true } } });
+  const tools = await mcpConnections.get(mcpStore.get('rooms-e2e')!).listTools();
+  mcpStore.update('rooms-e2e', { toolOverrides: { rooms_availability: { approvedReadOnly: true, approvedFingerprint: mcpToolFingerprint(fixture.url, tools.find((t) => t.name === 'rooms_availability')!) } } });
 });
 
 afterEach(async () => {

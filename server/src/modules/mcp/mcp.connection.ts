@@ -10,6 +10,8 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport, StreamableHTTPError } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
+import { assertSafeEgress } from '@/lib/egress-policy';
+import { mcpSecureFetch } from './mcp.network';
 import { logger } from '@/lib/logger';
 import { signMcpToken, type McpCaller } from './mcp.identity';
 import type { McpServerConfig } from './mcp.types';
@@ -150,6 +152,7 @@ export class McpConnection {
     args: Record<string, unknown>,
     caller: McpCaller,
   ): Promise<{ data: unknown; meta?: Record<string, unknown> }> {
+    assertSafeEgress(args, caller.tenantId);
     this.assertNotBackingOff();
     let client: Client;
     try {
@@ -194,7 +197,7 @@ export class McpConnection {
     const who = callerStore.getStore();
     if (!who) throw new Error('MCP 請求缺少呼叫者身分（fail closed）');
     headers.set('Authorization', `Bearer ${signMcpToken(this.config.id, who)}`);
-    return fetch(url, { ...init, headers });
+    return mcpSecureFetch(this.config.url, url, { ...init, headers });
   };
 
   private async ensureClient(): Promise<Client> {

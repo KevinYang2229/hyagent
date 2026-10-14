@@ -155,6 +155,8 @@ export const envSchema = z.object({
   OA_API_KEY: z.string().optional(),
   // MCP 呼叫簽章私鑰（ES256 / PKCS#8 PEM，可用 \n 跳脫換行）；未設＝MCP 功能整體停用
   MCP_SIGNING_KEY: z.string().default(''),
+  // Exact origins permitted to resolve to private networks; production still requires HTTPS.
+  MCP_ALLOWED_PRIVATE_ORIGINS: z.string().default(''),
   // 換鑰過渡：上一把公鑰（SPKI PEM），仍列在 JWKS 讓 MCP server 驗得過換鑰前簽的 token
   MCP_PREVIOUS_PUBLIC_KEY: z.string().default(''),
   // 影像辨識查詢門市資料用的 MCP serverId（product_lookup／inventory_query／coupon_check 所在服務）

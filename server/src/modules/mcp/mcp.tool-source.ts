@@ -4,6 +4,7 @@
  * ToolDef 依（server 設定版本, 工具清單抓取時間）快取，避免每次 invoke 重編 Ajv。
  */
 import Ajv from 'ajv';
+import { mcpToolFingerprint } from './mcp.fingerprint';
 import addFormats from 'ajv-formats';
 import { logger } from '@/lib/logger';
 import { sanitizeExternalText } from '@/lib/untrusted-content';
@@ -41,9 +42,9 @@ export function declaresReadOnly(remote: McpRemoteTool): boolean {
  * 唯讀＝遠端宣告 readOnlyHint 且管理員核准；其餘一律當寫入（需使用者確認）。
  * 遠端事後撤掉宣告即自動回到寫入，核准不會讓沒宣告的工具變唯讀。
  */
-export function effectForTool(remote: McpRemoteTool, override?: McpToolOverride): ToolEffect {
+export function effectForTool(remote: McpRemoteTool, override?: McpToolOverride, url = ''): ToolEffect {
   if (override?.requireConfirm) return 'write';
-  return declaresReadOnly(remote) && override?.approvedReadOnly === true ? 'read' : 'write';
+  return declaresReadOnly(remote) && override?.approvedReadOnly === true && override.approvedFingerprint === mcpToolFingerprint(url, remote) ? 'read' : 'write';
 }
 
 export type McpToolProblem = 'name_invalid' | 'schema_invalid';
@@ -97,7 +98,7 @@ export function toToolDef(
     inputSchema: normalizeSchema(remote.inputSchema),
     scopes: [mcpScopeId(config.id)],
     agentExposed: true,
-    effect: effectForTool(remote, override),
+    effect: effectForTool(remote, override, config.url),
     audit: true,
     auditSummary: () => `${config.name}｜${remote.title ?? remote.name}`,
     handler: async (input, ctx) => {
@@ -120,6 +121,8 @@ export interface McpToolRow {
   effect: ToolEffect;
   /** 遠端宣告 readOnlyHint（後台據此顯示「待核准」與核准開關） */
   declaredReadOnly: boolean;
+  fingerprint: string;
+  approvalValid: boolean;
   disabled: boolean;
   problem?: McpToolProblem;
 }
@@ -133,8 +136,10 @@ export function describeServerTools(config: McpServerConfig, remotes: McpRemoteT
       name: r.name,
       title: r.title,
       llmName: mcpLlmName(config.id, r.name),
-      effect: effectForTool(r, override),
+      effect: effectForTool(r, override, config.url),
       declaredReadOnly: declaresReadOnly(r),
+      fingerprint: mcpToolFingerprint(config.url, r),
+      approvalValid: override?.approvedReadOnly === true && override.approvedFingerprint === mcpToolFingerprint(config.url, r),
       disabled: override?.disabled === true,
       ...(problem ? { problem } : {}),
     };

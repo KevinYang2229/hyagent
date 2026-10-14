@@ -440,6 +440,7 @@ export interface McpToolOverride {
   disabled?: boolean;
   requireConfirm?: boolean;
   approvedReadOnly?: boolean;
+  approvedFingerprint?: string;
   cardTitle?: string;
 }
 
@@ -470,6 +471,8 @@ export interface McpToolRow {
   llmName: string;
   effect: 'read' | 'write';
   declaredReadOnly: boolean;
+  fingerprint: string;
+  approvalValid: boolean;
   disabled: boolean;
   problem?: 'name_invalid' | 'schema_invalid';
 }

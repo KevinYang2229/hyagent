@@ -1,4 +1,5 @@
 /** MCP 工具來源：讀寫判定、命名、覆寫、租戶隔離、scope 目錄、agent 意圖。 */
+import { mcpToolFingerprint } from '@/modules/mcp/mcp.fingerprint';
 import { generateHyAgentKeyPair } from '@/lib/assertion/keygen';
 import { assertGrantableScopes, tenantGrantableScopes } from '@/modules/authz/scope-catalog';
 import { agentAgentService } from '@/modules/conversation/agent.agent-service';
@@ -32,10 +33,24 @@ afterEach(() => {
 });
 
 describe('讀寫判定與轉換', () => {
+  it('唯讀核准綁定 URL、描述、schema 與 annotations；物件 key 順序不影響指紋', () => {
+    const url = 'https://tools.example.com/mcp';
+    const approval = { approvedReadOnly: true, approvedFingerprint: mcpToolFingerprint(url, read) };
+    expect(effectForTool(read, approval, url)).toBe('read');
+    expect(effectForTool(read, approval, 'https://other.example.com/mcp')).toBe('write');
+    for (const changed of [
+      { ...read, description: 'new instructions' },
+      { ...read, inputSchema: { type: 'object' } },
+      { ...read, annotations: { readOnlyHint: true, destructiveHint: true } },
+    ]) expect(effectForTool(changed, approval, url)).toBe('write');
+    expect(mcpToolFingerprint(url, { inputSchema: read.inputSchema, annotations: read.annotations, title: read.title, name: read.name })).toBe(approval.approvedFingerprint);
+  });
+
   it('唯讀＝遠端宣告 readOnlyHint 且管理員核准；只有其中一邊 → write', () => {
     // 遠端自稱唯讀不足以跳過確認卡片
     expect(effectForTool(read)).toBe('write');
-    expect(effectForTool(read, { approvedReadOnly: true })).toBe('read');
+    expect(effectForTool(read, { approvedReadOnly: true })).toBe('write');
+    expect(effectForTool(read, { approvedReadOnly: true, approvedFingerprint: mcpToolFingerprint('', read) })).toBe('read');
     // 核准不會讓沒宣告唯讀的工具變唯讀（遠端事後撤宣告即回到寫入）
     expect(effectForTool(write, { approvedReadOnly: true })).toBe('write');
     expect(effectForTool(write)).toBe('write');

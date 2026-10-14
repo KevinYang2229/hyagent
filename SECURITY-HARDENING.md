@@ -48,3 +48,44 @@ id 不可重複，代理人必須存在於同一份目錄。另支援 title、re
 ## 部署
 
 本批目錄與 ACL 快取欄位存於既有 JSON config/meta，不新增資料庫 migration。後續清理移除三態旗標與 shadow 統計時新增 `0014_drop_knowledge_acl_shadow.sql`，刪除已無程式碼讀寫的 `knowledge_acl_shadow` 表；該步驟不可逆，套用前請先 `pg_dump` 備份。前一批 `SECURITY-FIXES.md` 要求的 migration、SDK 更新與重新登入仍適用。本批未對正式資料庫執行遷移或修改既有租戶授權。
+
+## AI Agent 高優先防護（2026-10-14）
+
+### 敏感文字外傳與 Email 網域
+
+LLM 對話（含 system、工具定義、工具結果與歷史）、embedding 文字、MCP 工具參數，以及 Agent Email 執行前，統一檢查已知平台／租戶憑證、私鑰標記、常見 API key／JWT 格式與租戶指定的敏感文字。命中回 `EGRESS_BLOCKED`，不將命中文字帶入錯誤訊息。Email 稽核不再記錄收件人或主旨，避免被阻擋內容落入稽核。
+
+由平台管理 API `PATCH /api/admin/tenants/:id` 設定：
+
+```json
+{
+  "egressPolicy": {
+    "allowedEmailDomains": ["example.com"],
+    "sensitiveTerms": ["公司機密文件標記"]
+  }
+}
+```
+
+網域採完整比對，不隱含子網域、不支援萬用字元；收件人僅接受單一純 Email 位址。production 未設定允許網域即拒絕 Agent 寄信；開發／測試只有未設定此欄位時保留原先行為，明確設定空陣列仍拒絕全部網域。政策於每次執行重新讀取，使用者確認不會繞過政策。政策更新為整包取代，欲清除敏感文字請設 `sensitiveTerms: []`。
+
+這是文字規則防護，並非完整 DLP：不辨識圖片、語音、任意編碼／拆分的內容，也不能推斷所有個資與商業機密。`sensitiveTerms` 應填保密標記或需阻擋的文字，不應用作憑證儲存庫。沒有自動掃描既有知識庫；後續 embedding 與模型傳送才套用檢查。
+
+### MCP 目的地政策
+
+production 的 MCP URL 必須為 HTTPS，禁止 URL 帳密與 fragment。每次 HTTP 請求驗證來源與 DNS 所有解析結果，實際 socket 固定連到已檢查 IP，避免 DNS rebinding。禁止 HTTP 重新導向與跨 origin 的 transport 請求，JWT 不會跟隨重新導向外傳。
+
+私有網路預設拒絕。確有內網 MCP 需求時，在伺服器環境變數設定完整 origin（包含非預設 port）：
+
+```dotenv
+MCP_ALLOWED_PRIVATE_ORIGINS=https://mcp.internal.example.com:8443
+```
+
+例外只允許 RFC1918／loopback／IPv6 ULA，metadata、link-local、IPv4-mapped IPv6、multicast 等仍拒絕。開發／測試可使用 loopback HTTP 跑本機 demo；production 即使有例外仍要求 HTTPS。既有不符政策的 MCP 會連線失敗，部署前先調整 URL／網路設定。
+
+### MCP 唯讀工具版本核准
+
+核准以 SHA-256 綁定 endpoint URL 與完整工具定義（名稱、描述、schema、annotations）。舊的 `approvedReadOnly: true` 沒有指紋時，一律退回寫入確認流程。URL 或定義改變也不沿用核准；後台顯示待核准目前版本，須重新整理清單並審查後再核准。
+
+API：先 `POST /api/admin/mcp-servers/:id/refresh`，取得工具列的 `fingerprint`，再 PATCH `toolOverrides.<toolName>` 帶 `approvedReadOnly: true` 與 `approvedFingerprint`。後端驗證該指紋符合目前快取，缺少或不符回 409；建立服務時不可預先核准。前後端須一併部署，不需新增 DB migration。
+
+工具指紋只能偵測宣告的改變，不能驗證遠端程式行為；不可信服務即使宣告唯讀也不應核准。既有工具清單快取為 10 分鐘，可用後台重新整理立即取得新版本。

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { validateMcpUrl } from './mcp.network';
 import { MCP_SERVER_ID_RE } from './mcp.types';
 
 const toolOverride = z
@@ -6,6 +7,7 @@ const toolOverride = z
     disabled: z.boolean().optional(),
     requireConfirm: z.boolean().optional(),
     approvedReadOnly: z.boolean().optional(),
+    approvedFingerprint: z.string().regex(/^[a-f0-9]{64}$/).optional(),
     cardTitle: z.string().trim().max(60).optional(),
   })
   .strict();
@@ -16,7 +18,7 @@ const fields = {
     .string()
     .trim()
     .url()
-    .refine((u) => /^https?:\/\//.test(u), '只接受 http(s) URL'),
+    .refine((u) => { try { validateMcpUrl(u); return true; } catch { return false; } }, 'MCP URL 不符合連線安全政策'),
   ownerTenantId: z.string().trim().min(1).nullable(),
   description: z.string().trim().max(500),
   keywords: z.array(z.string().trim().min(1).max(20)).max(20),

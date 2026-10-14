@@ -363,6 +363,7 @@ export const tenantStore = {
         | 'llmConfig'
         | 'quotaMonthlyLlmTokens'
         | 'guestAccess'
+        | 'egressPolicy'
       >
     >,
   ): Tenant | undefined {
@@ -387,6 +388,7 @@ export const tenantStore = {
       ...(patch.quotaMonthlyLlmTokens !== undefined
         ? { quotaMonthlyLlmTokens: patch.quotaMonthlyLlmTokens }
         : {}),
+      ...(patch.egressPolicy !== undefined ? { egressPolicy: structuredClone(patch.egressPolicy) } : {}),
       ...(patch.guestAccess !== undefined ? { guestAccess: patch.guestAccess } : {}),
     };
     tenants.set(id, next);

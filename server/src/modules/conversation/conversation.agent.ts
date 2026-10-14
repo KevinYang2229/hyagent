@@ -85,7 +85,7 @@ async function generateSuggestions(
 }
 
 export async function runTurn(session: Session, userText: string): Promise<TurnResult> {
-  const llm = getLLMProvider(tenantStore.getTenant(session.tenantId)?.llmConfig);
+  const llm = getLLMProvider(tenantStore.getTenant(session.tenantId)?.llmConfig, session.tenantId);
   session.messages.push({ role: 'user', content: [{ type: 'text', text: userText }] });
 
   // 路由：判斷本輪指派哪個服務（填表點黏、知識可旁路插入）

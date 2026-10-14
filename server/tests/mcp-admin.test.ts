@@ -25,6 +25,37 @@ afterEach(async () => {
 });
 
 describe('後台 MCP API', () => {
+  it('核准單一工具時，其他未變更的舊核准不會阻擋，且仍須確認', async () => {
+    mcpStore.create({ id: 'rooms', name: 'rooms', url: fixture.url, toolOverrides: {
+      rooms_availability: { approvedReadOnly: true },
+      stock_table: { approvedReadOnly: true },
+    } });
+    const refreshed = await request(app).post('/api/admin/mcp-servers/rooms/refresh').set(admin);
+    expect(refreshed.body.data.status.state).toBe('ok');
+    const fingerprint = refreshed.body.data.tools.find((t: { name: string }) => t.name === 'rooms_availability').fingerprint;
+    const approved = await request(app).patch('/api/admin/mcp-servers/rooms').set(admin).send({
+      toolOverrides: {
+        rooms_availability: { approvedReadOnly: true, approvedFingerprint: fingerprint },
+        stock_table: { approvedReadOnly: true },
+      },
+    });
+    expect(approved.status).toBe(200);
+    expect(approved.body.data.tools.find((t: { name: string }) => t.name === 'rooms_availability')).toMatchObject({ effect: 'read', approvalValid: true });
+    expect(approved.body.data.tools.find((t: { name: string }) => t.name === 'stock_table')).toMatchObject({ effect: 'write', approvalValid: false });
+  });
+
+  it('核准前需取得目前工具指紋；缺少或偽造指紋一律拒絕', async () => {
+    await request(app).post('/api/admin/mcp-servers').set(admin).send({ id: 'rooms', name: 'rooms', url: fixture.url });
+    const approve = (approvedFingerprint?: string) => request(app).patch('/api/admin/mcp-servers/rooms').set(admin).send({
+      toolOverrides: { rooms_availability: { approvedReadOnly: true, approvedFingerprint } },
+    });
+    expect((await approve()).status).toBe(409);
+    await request(app).post('/api/admin/mcp-servers/rooms/refresh').set(admin);
+    expect((await approve()).status).toBe(409);
+    expect((await approve('a'.repeat(64))).status).toBe(409);
+    expect(mcpStore.get('rooms')?.toolOverrides.rooms_availability).toBeUndefined();
+  });
+
   it('未帶管理金鑰 → 401', async () => {
     expect((await request(app).get('/api/admin/mcp-servers')).status).toBe(401);
   });
@@ -49,7 +80,7 @@ describe('後台 MCP API', () => {
     expect(tools.find((t) => t.name === 'rooms_book')).toMatchObject({ effect: 'write', declaredReadOnly: false });
 
     const approved = await request(app).patch('/api/admin/mcp-servers/rooms').set(admin).send({
-      toolOverrides: { rooms_availability: { approvedReadOnly: true } },
+      toolOverrides: { rooms_availability: { approvedReadOnly: true, approvedFingerprint: refreshed.body.data.tools.find((t: {name: string}) => t.name === 'rooms_availability').fingerprint } },
     });
     expect(approved.status).toBe(200);
     expect((approved.body.data.tools as { name: string; effect: string }[]).find((t) => t.name === 'rooms_availability')?.effect).toBe('read');

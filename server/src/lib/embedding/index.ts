@@ -6,6 +6,7 @@
  * 回傳含 tokens 供成本歸戶；索引與查詢共用同一模型/維度。
  */
 import OpenAI from 'openai';
+import { assertSafeEgress } from '@/lib/egress-policy';
 import { env } from '@/config/env';
 import { mapProviderError } from '@/lib/llm/provider-error';
 import { AppError } from '@/utils/app-error';
@@ -36,11 +37,12 @@ function getClient(apiKey: string, baseURL?: string): OpenAI {
   return c;
 }
 
-function createProvider(apiKey: string, keySource: LLMKeySource, baseURL?: string): EmbeddingProvider {
+function createProvider(apiKey: string, keySource: LLMKeySource, baseURL?: string, tenantId?: string): EmbeddingProvider {
   return {
     model: env.EMBEDDING_MODEL,
     keySource,
     async embed(texts: string[], model?: string): Promise<EmbedResult> {
+      assertSafeEgress(texts, tenantId);
       if (texts.length === 0) return { vectors: [], tokens: 0 };
       let resp: OpenAI.Embeddings.CreateEmbeddingResponse;
       try {
@@ -57,17 +59,17 @@ function createProvider(apiKey: string, keySource: LLMKeySource, baseURL?: strin
   };
 }
 
-export function getEmbeddingProvider(config?: TenantLLMConfig): EmbeddingProvider {
+export function getEmbeddingProvider(config?: TenantLLMConfig, tenantId?: string): EmbeddingProvider {
   // 地端：走部署層 embedding 端點，不涉租戶 key。
   // 端點缺失即丟錯（防禦性第二層；boot superRefine 已擋，比照 resolve-settings 不靜默改打雲端）
   if (env.EMBEDDING_PROVIDER === 'local') {
     if (!env.EMBEDDING_BASE_URL) {
       throw AppError.badGateway('平台未設定地端 embedding 端點（EMBEDDING_BASE_URL），無法使用地端 embedding');
     }
-    return createProvider(env.LLM_API_KEY, 'platform', env.EMBEDDING_BASE_URL);
+    return createProvider(env.LLM_API_KEY, 'platform', env.EMBEDDING_BASE_URL, tenantId);
   }
   const tenantKey = config?.openaiApiKey?.trim();
   return tenantKey
-    ? createProvider(tenantKey, 'tenant')
-    : createProvider(env.OPENAI_API_KEY, 'platform');
+    ? createProvider(tenantKey, 'tenant', undefined, tenantId)
+    : createProvider(env.OPENAI_API_KEY, 'platform', undefined, tenantId);
 }

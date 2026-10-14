@@ -89,7 +89,7 @@ async function classify(session: Session, text: string): Promise<string | null> 
     '只輸出 {"intent":"<id、off-topic 或 none>","confidence":0~1}，不要任何其他文字。',
   ].join('\n');
   try {
-    const result = await getLLMProvider(tenantStore.getTenant(session.tenantId)?.llmConfig).createMessage({
+    const result = await getLLMProvider(tenantStore.getTenant(session.tenantId)?.llmConfig, session.tenantId).createMessage({
       system,
       messages: [{ role: 'user', content: [{ type: 'text', text }] }],
       model: env.LLM_ROUTER_MODEL,

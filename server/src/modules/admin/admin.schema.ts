@@ -110,6 +110,10 @@ export const patchTenantSchema = z
     appearance: appearanceSchema.optional(),
     // 月度 LLM token 配額；0 = 不限
     quotaMonthlyLlmTokens: z.number().int().min(0).optional(),
+    egressPolicy: z.object({
+      allowedEmailDomains: z.array(z.string().trim().toLowerCase().regex(/^[a-z0-9-]+(?:\.[a-z0-9-]+)+$/)).max(100).optional(),
+      sensitiveTerms: z.array(z.string().min(4).max(500)).max(100).optional(),
+    }).strict().optional(),
     // 允許免登入訪客 Session（POST /api/auth/guest）
     guestAccess: z.boolean().optional(),
   })

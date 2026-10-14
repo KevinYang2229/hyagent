@@ -69,7 +69,7 @@ async function report<T>(
   instruction: string,
   schema: z.ZodType<T>,
 ): Promise<T> {
-  const llm: LLMProvider = getLLMProvider(tenantStore.getTenant(principal.tenantId)?.llmConfig);
+  const llm: LLMProvider = getLLMProvider(tenantStore.getTenant(principal.tenantId)?.llmConfig, principal.tenantId);
   let result: LLMResult;
   try {
     result = await llm.createMessage({

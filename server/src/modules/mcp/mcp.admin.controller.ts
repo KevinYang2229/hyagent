@@ -1,4 +1,5 @@
 /** 後台 MCP 服務管理（平台管理員）。工具清單只讀快取；「重新整理」才實際連線。 */
+import { mcpToolFingerprint } from './mcp.fingerprint';
 import type { Request, Response } from 'express';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 import { AppError } from '@/utils/app-error';
@@ -44,6 +45,9 @@ export const mcpAdminController = {
   async create(req: Request, res: Response): Promise<void> {
     const input = req.body as CreateMcpServerInput;
     assertOwnerExists(input.ownerTenantId);
+    if (Object.values(input.toolOverrides ?? {}).some((o) => o.approvedReadOnly)) {
+      throw AppError.conflict('請先建立服務並重新整理工具清單，再核准唯讀工具。');
+    }
     res.status(201).json({ data: view(mcpStore.create(input)) });
   },
 
@@ -52,6 +56,24 @@ export const mcpAdminController = {
     const before = serverOr404(id);
     const patch = req.body as PatchMcpServerInput;
     assertOwnerExists(patch.ownerTenantId);
+    // Bind every new approval to the currently cached definition. Verify the client fingerprint against the server snapshot.
+    if (patch.toolOverrides) {
+      const remotes = mcpConnections.peek(id)?.cachedTools() ?? [];
+      for (const [name, override] of Object.entries(patch.toolOverrides)) {
+        if (override.approvedReadOnly) {
+          const remote = remotes.find((t) => t.name === name);
+          const previous = before.toolOverrides[name];
+          // The UI sends all overrides. Unchanged legacy approvals have no fingerprint;
+          // preserve them without granting read access, rather than blocking another tool's approval.
+          if (previous?.approvedReadOnly && override.approvedFingerprint === previous.approvedFingerprint) continue;
+          if (!remote || (patch.url && patch.url !== before.url) ||
+              override.approvedFingerprint !== mcpToolFingerprint(before.url, remote)) {
+            throw AppError.conflict('請先重新整理工具清單，再核准唯讀工具。');
+          }
+          Object.assign(override, { approvedFingerprint: mcpToolFingerprint(before.url, remote) });
+        }
+      }
+    }
     const after = mcpStore.update(id, patch);
     if (after.url !== before.url || after.timeoutMs !== before.timeoutMs) await mcpConnections.drop(id);
     res.json({ data: view(after) });

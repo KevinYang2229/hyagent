@@ -49,6 +49,7 @@ export async function runToolLoop(
         cache: true,
       });
     } catch (err) {
+      if (err instanceof AppError && err.code === 'EGRESS_BLOCKED') throw err;
       const message = err instanceof Error ? err.message : 'LLM request failed';
       throw new AppError(502, 'LLM_ERROR', `LLM 呼叫失敗：${message}`);
     }

@@ -259,7 +259,7 @@ async function generateOne(tenantId: string, material: string, previous: Suggest
     : material;
   let text = input;
   for (let attempt = 1; attempt <= MAX_GENERATE_ATTEMPTS; attempt++) {
-    const result = await getLLMProvider(tenantStore.getTenant(tenantId)?.llmConfig).createMessage({
+    const result = await getLLMProvider(tenantStore.getTenant(tenantId)?.llmConfig, tenantId).createMessage({
       system: SUGGESTION_SYSTEM_PROMPT,
       messages: [{ role: 'user', content: [{ type: 'text', text }] }],
       // 與 intent-router、rerank 同級的輔助任務，用 Haiku 即可；

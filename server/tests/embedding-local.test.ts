@@ -44,6 +44,7 @@ describe('embedding 地端', () => {
     jest.isolateModules(() => {
       jest.doMock('@/config/env', () => ({
         env: {
+          ...jest.requireActual('@/config/env').env,
           NODE_ENV: 'test',
           EMBEDDING_PROVIDER: 'local',
           EMBEDDING_BASE_URL: undefined,

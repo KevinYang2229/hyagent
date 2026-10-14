@@ -118,5 +118,6 @@ export interface Tenant {
   llmConfig?: TenantLLMConfig;
   /** 月度 LLM token 配額（LLM+embedding 合計）；0 或未設＝不限。超過由 tenant-quota middleware 回 429。 */
   quotaMonthlyLlmTokens?: number;
+  egressPolicy?: import('@/lib/egress-policy').EgressPolicy;
   createdAt: string;
 }

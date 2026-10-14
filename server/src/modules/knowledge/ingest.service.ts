@@ -376,7 +376,7 @@ export async function runIngest(
     }
   }
 
-  const embedder = getEmbeddingProvider(tenantStore.getTenant(params.tenantId)?.llmConfig);
+  const embedder = getEmbeddingProvider(tenantStore.getTenant(params.tenantId)?.llmConfig, params.tenantId);
   const vectors = await embedInBatches(
     embedder,
     pending.map((c) => c.text),

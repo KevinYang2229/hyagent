@@ -15,6 +15,8 @@ export interface McpToolOverride {
    * 等於讓遠端決定哪些動作免確認；兩者同時成立才當唯讀（見 effectForTool）。
    */
   approvedReadOnly?: boolean;
+  /** Server-generated binding; legacy approvals without a fingerprint fail closed. */
+  approvedFingerprint?: string;
   /** 確認卡片標題 */
   cardTitle?: string;
 }

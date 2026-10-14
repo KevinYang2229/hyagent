@@ -69,7 +69,7 @@ export const staticIndexRetriever: KnowledgeRetriever = {
     const q = query.trim();
     if (!idx || idx.chunks.length === 0 || !q) return [];
     // 查詢向量必須用「索引建立時的模型」，避免維度/語意不一致
-    const embedder = getEmbeddingProvider(tenantStore.getTenant(tenantId)?.llmConfig);
+    const embedder = getEmbeddingProvider(tenantStore.getTenant(tenantId)?.llmConfig, tenantId);
     const { vectors: [queryVec], tokens } = await embedder.embed([q], idx.model);
     usageStore.recordEmbeddingUsage(tenantId, tokens, idx.model, embedder.keySource);
     if (!queryVec) return [];

@@ -76,7 +76,7 @@ const SUMMARY_MAX_INPUT_CHARS = 24000;
  */
 async function summarizeText(tenantId: string, name: string, text: string): Promise<string | null> {
   try {
-    const result = await getLLMProvider(tenantStore.getTenant(tenantId)?.llmConfig).createMessage({
+    const result = await getLLMProvider(tenantStore.getTenant(tenantId)?.llmConfig, tenantId).createMessage({
       system: [
         '你是文件摘要員。將使用者提供的文件濃縮成 150~250 字的繁體中文摘要。',
         '只能濃縮原文內容，嚴禁補充原文沒有的資訊；專有名詞、代號、網址保留原文寫法。',
@@ -139,7 +139,7 @@ export async function ingestFile(
   const existing = await loadIndexMeta(tenantId);
   // 模型一致性：同一份索引只能用同一個 embedding 模型
   const model = existing?.model ?? source.embeddingModel;
-  const embedder = getEmbeddingProvider(tenantStore.getTenant(tenantId)?.llmConfig);
+  const embedder = getEmbeddingProvider(tenantStore.getTenant(tenantId)?.llmConfig, tenantId);
 
   const fileId = randomUUID();
   const scopes = opts?.visibilityScopes;

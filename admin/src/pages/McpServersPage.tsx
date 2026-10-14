@@ -70,6 +70,7 @@ export default function McpServersPage() {
     setBusyId(id);
     try {
       replaceServer(await api.refreshMcpServer(id));
+      setErr(null);
     } catch (e) {
       handle(e);
     } finally {
@@ -87,7 +88,7 @@ export default function McpServersPage() {
     }
   }
 
-  async function setOverride(server: McpServerView, tool: string, patch: { disabled?: boolean; requireConfirm?: boolean; approvedReadOnly?: boolean; cardTitle?: string }) {
+  async function setOverride(server: McpServerView, tool: string, patch: { disabled?: boolean; requireConfirm?: boolean; approvedReadOnly?: boolean; approvedFingerprint?: string; cardTitle?: string }) {
     const cur = server.config.toolOverrides[tool] ?? {};
     try {
       replaceServer(
@@ -95,6 +96,7 @@ export default function McpServersPage() {
           toolOverrides: { ...server.config.toolOverrides, [tool]: { ...cur, ...patch } },
         }),
       );
+      setErr(null);
     } catch (e) {
       handle(e);
     }
@@ -202,7 +204,7 @@ export default function McpServersPage() {
                   </div>
                   <div className="row-actions">
                     <button type="button" className="btn btn-sm" disabled={busyId === s.config.id} onClick={() => void refresh(s.config.id)}>
-                      {busyId === s.config.id ? '連線中…' : '測試連線'}
+                      {busyId === s.config.id ? '重新整理中…' : '重新整理工具清單'}
                     </button>
                     <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setFormErrors([]); setErr(null); setEditing({ isNew: false, values: toFormValues(s.config) }); }}>編輯</button>
                     <button type="button" className="btn btn-danger btn-sm" onClick={() => void remove(s.config.id)}>刪除</button>
@@ -210,6 +212,7 @@ export default function McpServersPage() {
                 </div>
                 {s.tools.length > 0 ? (
                   <div className="mcp-tools-wrap">
+                    <div className="field-hint">核准唯讀前，請先按「重新整理工具清單」，確認工具只查詢資料、不會修改資料後再勾選。</div>
                     <table className="mcp-tools">
                       <thead>
                         <tr><th>工具</th><th>判定</th><th className="center">停用</th><th className="center">核准唯讀</th><th className="center">強制確認</th><th>卡片標題</th></tr>
@@ -228,8 +231,8 @@ export default function McpServersPage() {
                             </td>
                             <td>
                               <span className={`badge ${t.effect === 'read' ? 'badge-on' : 'badge-warn'}`}>{t.effect === 'read' ? '唯讀' : '寫入・需確認'}</span>
-                              {t.declaredReadOnly && t.effect === 'write' && !s.config.toolOverrides[t.name]?.approvedReadOnly && (
-                                <div className="row-sub">服務宣告唯讀，待核准</div>
+                              {t.declaredReadOnly && !t.approvalValid && (
+                                <div className="row-sub">服務宣告唯讀，待核准目前版本</div>
                               )}
                             </td>
                             <td className="center">
@@ -242,8 +245,8 @@ export default function McpServersPage() {
                                   type="checkbox"
                                   aria-label={`核准唯讀 ${t.name}`}
                                   title="確認此工具只讀取資料、不會修改任何東西後再核准；核准後 AI 呼叫不再經使用者確認"
-                                  checked={s.config.toolOverrides[t.name]?.approvedReadOnly === true}
-                                  onChange={(e) => void setOverride(s, t.name, { approvedReadOnly: e.target.checked })}
+                                  checked={t.approvalValid}
+                                  onChange={(e) => void setOverride(s, t.name, { approvedReadOnly: e.target.checked, approvedFingerprint: t.fingerprint })}
                                 />
                               ) : (
                                 <span className="muted">—</span>
@@ -303,8 +306,8 @@ const STATUS_BADGE: Record<McpServerView['status']['state'], string> = {
 
 /** 沒有工具清單時的提示：依連線狀態說明原因，避免把「連線失敗」誤讀成「還沒連過」。 */
 const EMPTY_TOOLS_HINT: Record<McpServerView['status']['state'], string> = {
-  idle: '尚未取得工具清單，按「測試連線」連線並列出工具。',
+  idle: '尚未取得工具清單，按「重新整理工具清單」連線並列出工具。',
   ok: '這個服務目前沒有提供任何工具。',
-  unreachable: '連線失敗，工具暫不提供給 AI 使用。確認服務已啟動、URL 正確後再按「測試連線」。',
+  unreachable: '連線失敗，工具暫不提供給 AI 使用。確認服務已啟動、URL 正確後再按「重新整理工具清單」。',
   auth_failed: '身分驗證失敗，工具暫不提供給 AI 使用。請確認 MCP 服務的 JWKS URL 指向本平台，且 serverId 一致。',
 };
