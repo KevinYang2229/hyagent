@@ -1,0 +1,203 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 1000" width="1440" height="1000" font-family="'Noto Sans TC','PingFang TC','Microsoft JhengHei',sans-serif">
+  <defs>
+    <marker id="ah-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2F5D8A"/>
+    </marker>
+    <marker id="ah-orange" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#C2571A"/>
+    </marker>
+    <marker id="ah-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#7A8794"/>
+    </marker>
+  </defs>
+
+  <rect width="1440" height="1000" fill="#FFFFFF"/>
+
+  <!-- 標題 -->
+  <text x="40" y="52" font-size="26" font-weight="700" fill="#1D2B3A">HyAgent 系統架構與資料流</text>
+  <text x="40" y="82" font-size="15" fill="#5B6875">雲端大型語言模型 × 地端伺服器：哪些資料離開機房、哪些始終留在地端</text>
+
+  <!-- ===== 使用者 ===== -->
+  <rect x="30" y="200" width="170" height="200" rx="12" fill="#F4F6F8" stroke="#B8C2CC"/>
+  <text x="115" y="236" font-size="17" font-weight="700" fill="#1D2B3A" text-anchor="middle">使用者端</text>
+  <text x="115" y="272" font-size="14" fill="#3D4A57" text-anchor="middle">企業入口嵌入元件</text>
+  <text x="115" y="298" font-size="14" fill="#3D4A57" text-anchor="middle">獨立前台</text>
+  <text x="115" y="324" font-size="14" fill="#3D4A57" text-anchor="middle">管理後台</text>
+  <text x="115" y="366" font-size="12" fill="#7A8794" text-anchor="middle">瀏覽器／行動裝置</text>
+
+  <!-- ===== 地端區 ===== -->
+  <rect x="230" y="110" width="770" height="600" rx="16" fill="#EEF4FA" stroke="#2F5D8A" stroke-width="1.5" stroke-dasharray="8 5"/>
+  <text x="252" y="140" font-size="16" font-weight="700" fill="#2F5D8A">企業機房／地端環境</text>
+
+  <!-- HyAgent 應用服務層 -->
+  <rect x="260" y="160" width="500" height="290" rx="12" fill="#FFFFFF" stroke="#2F5D8A" stroke-width="1.5"/>
+  <text x="510" y="194" font-size="18" font-weight="700" fill="#1D2B3A" text-anchor="middle">HyAgent 應用服務層</text>
+  <text x="510" y="216" font-size="13" fill="#5B6875" text-anchor="middle">平台核心：所有存取統一由伺服器端把關</text>
+  <g font-size="14" fill="#1D2B3A" text-anchor="middle">
+    <rect x="282" y="236" width="146" height="54" rx="8" fill="#E3EDF7"/>
+    <text x="355" y="268">身分驗證・權限</text>
+    <rect x="437" y="236" width="146" height="54" rx="8" fill="#E3EDF7"/>
+    <text x="510" y="268">對話與意圖編排</text>
+    <rect x="592" y="236" width="146" height="54" rx="8" fill="#E3EDF7"/>
+    <text x="665" y="268">表單引擎・送出把關</text>
+    <rect x="282" y="302" width="146" height="54" rx="8" fill="#E3EDF7"/>
+    <text x="355" y="334">知識檢索・重排</text>
+    <rect x="437" y="302" width="146" height="54" rx="8" fill="#E3EDF7"/>
+    <text x="510" y="334">工具執行・報告產生</text>
+    <rect x="592" y="302" width="146" height="54" rx="8" fill="#E3EDF7"/>
+    <text x="665" y="334">稽核・用量配額</text>
+  </g>
+  <text x="510" y="392" font-size="13" fill="#5B6875" text-anchor="middle">模型只產生文字與「建議動作」；</text>
+  <text x="510" y="414" font-size="13" fill="#5B6875" text-anchor="middle">實際查詢、寫入與權限判斷都在這一層執行</text>
+
+  <!-- 出口把關 -->
+  <rect x="800" y="160" width="175" height="290" rx="12" fill="#FFF7EF" stroke="#C2571A" stroke-width="1.5"/>
+  <text x="887" y="194" font-size="17" font-weight="700" fill="#8A3B10" text-anchor="middle">對外出口把關</text>
+  <g font-size="13" fill="#3D4A57">
+    <text x="818" y="234">・攔截金鑰、憑證與</text>
+    <text x="832" y="254">自訂敏感字詞</text>
+    <text x="818" y="284">・外部資料加標記，</text>
+    <text x="832" y="304">防範間接指令注入</text>
+    <text x="818" y="334">・月配額與速率限制</text>
+    <text x="818" y="364">・僅由內向外連線，</text>
+    <text x="832" y="384">雲端無法主動連入</text>
+  </g>
+  <line x1="760" y1="300" x2="798" y2="300" stroke="#2F5D8A" stroke-width="2" marker-end="url(#ah-blue)"/>
+
+  <!-- 資料庫 -->
+  <rect x="260" y="510" width="240" height="175" rx="12" fill="#FFFFFF" stroke="#2F5D8A" stroke-width="1.5"/>
+  <text x="380" y="542" font-size="17" font-weight="700" fill="#1D2B3A" text-anchor="middle">資料庫</text>
+  <text x="380" y="564" font-size="12" fill="#5B6875" text-anchor="middle">PostgreSQL＋向量檢索</text>
+  <g font-size="14" fill="#3D4A57">
+    <text x="282" y="598">・知識庫原文與向量</text>
+    <text x="282" y="624">・對話與回饋紀錄</text>
+    <text x="282" y="650">・權限設定、稽核紀錄</text>
+    <text x="282" y="676">・加密保存的金鑰</text>
+  </g>
+
+  <!-- 企業既有系統 -->
+  <rect x="520" y="510" width="240" height="175" rx="12" fill="#FFFFFF" stroke="#2F5D8A" stroke-width="1.5"/>
+  <text x="640" y="542" font-size="17" font-weight="700" fill="#1D2B3A" text-anchor="middle">企業既有系統</text>
+  <text x="640" y="564" font-size="12" fill="#5B6875" text-anchor="middle">可位於內網，前端不直接連線</text>
+  <g font-size="14" fill="#3D4A57">
+    <text x="542" y="598">・OA／HR／ERP／CRM</text>
+    <text x="542" y="624">・ITSM 與自訂內部服務</text>
+    <text x="542" y="650">・MCP 服務</text>
+    <text x="542" y="676">　（查詢與操作工具）</text>
+  </g>
+
+  <!-- 地端模型（選配） -->
+  <rect x="790" y="510" width="185" height="175" rx="12" fill="#F7F9FB" stroke="#7A8794" stroke-width="1.5" stroke-dasharray="6 4"/>
+  <text x="882" y="542" font-size="17" font-weight="700" fill="#3D4A57" text-anchor="middle">地端模型（選配）</text>
+  <g font-size="13" fill="#5B6875">
+    <text x="806" y="578">・自架模型與向量化</text>
+    <text x="806" y="604">・改用時 3 與 E 改送</text>
+    <text x="820" y="624">此處，資料不出機房</text>
+    <text x="806" y="650">・選用後不會回退</text>
+    <text x="820" y="670">至雲端</text>
+  </g>
+  <line x1="887" y1="452" x2="887" y2="507" stroke="#7A8794" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#ah-gray)"/>
+  <text x="896" y="486" font-size="12" fill="#7A8794">或改送地端</text>
+
+  <!-- 地端內部箭頭 -->
+  <line x1="380" y1="453" x2="380" y2="507" stroke="#2F5D8A" stroke-width="2" marker-start="url(#ah-blue)" marker-end="url(#ah-blue)"/>
+  <circle cx="404" cy="480" r="12" fill="#2F5D8A"/>
+  <text x="404" y="485" font-size="14" font-weight="700" fill="#FFFFFF" text-anchor="middle">2</text>
+  <text x="422" y="485" font-size="13" fill="#2F5D8A">依權限檢索</text>
+
+  <line x1="640" y1="453" x2="640" y2="507" stroke="#2F5D8A" stroke-width="2" marker-start="url(#ah-blue)" marker-end="url(#ah-blue)"/>
+  <circle cx="664" cy="480" r="12" fill="#2F5D8A"/>
+  <text x="664" y="485" font-size="14" font-weight="700" fill="#FFFFFF" text-anchor="middle">5</text>
+  <text x="682" y="485" font-size="13" fill="#2F5D8A">執行工具</text>
+
+  <!-- 使用者 ↔ HyAgent -->
+  <line x1="202" y1="262" x2="257" y2="262" stroke="#2F5D8A" stroke-width="2" marker-end="url(#ah-blue)"/>
+  <circle cx="229" cy="242" r="12" fill="#2F5D8A"/>
+  <text x="229" y="247" font-size="14" font-weight="700" fill="#FFFFFF" text-anchor="middle">1</text>
+  <line x1="257" y1="338" x2="202" y2="338" stroke="#2F5D8A" stroke-width="2" marker-end="url(#ah-blue)"/>
+  <circle cx="229" cy="358" r="12" fill="#2F5D8A"/>
+  <text x="229" y="363" font-size="14" font-weight="700" fill="#FFFFFF" text-anchor="middle">6</text>
+  <text x="115" y="430" font-size="12" fill="#2F5D8A" text-anchor="middle">HTTPS 加密連線</text>
+
+  <!-- ===== 邊界 ===== -->
+  <line x1="1032" y1="100" x2="1032" y2="720" stroke="#B23A3A" stroke-width="3" stroke-dasharray="10 6"/>
+  <text x="1032" y="94" font-size="13" font-weight="700" fill="#B23A3A" text-anchor="middle">防火牆</text>
+  <text x="1032" y="742" font-size="12" fill="#B23A3A" text-anchor="middle">僅開放對外 HTTPS（TLS）</text>
+
+  <!-- ===== 雲端區 ===== -->
+  <rect x="1065" y="110" width="345" height="600" rx="16" fill="#FDF3EA" stroke="#C2571A" stroke-width="1.5" stroke-dasharray="8 5"/>
+  <text x="1087" y="140" font-size="16" font-weight="700" fill="#C2571A">雲端 AI 服務</text>
+
+  <rect x="1150" y="160" width="235" height="170" rx="12" fill="#FFFFFF" stroke="#C2571A" stroke-width="1.5"/>
+  <text x="1267" y="194" font-size="18" font-weight="700" fill="#1D2B3A" text-anchor="middle">大型語言模型</text>
+  <g font-size="14" fill="#3D4A57" text-anchor="middle">
+    <text x="1267" y="228">Anthropic Claude</text>
+    <text x="1267" y="252">OpenAI GPT</text>
+  </g>
+  <text x="1267" y="288" font-size="12" fill="#5B6875" text-anchor="middle">平台帳號，或客戶自帶帳號與金鑰</text>
+  <text x="1267" y="308" font-size="12" fill="#5B6875" text-anchor="middle">可依需求抽換模型與供應商</text>
+
+  <rect x="1150" y="360" width="235" height="120" rx="12" fill="#FFFFFF" stroke="#C2571A" stroke-width="1.5"/>
+  <text x="1267" y="394" font-size="17" font-weight="700" fill="#1D2B3A" text-anchor="middle">向量化服務</text>
+  <text x="1267" y="420" font-size="13" fill="#5B6875" text-anchor="middle">Embedding：將文字轉成</text>
+  <text x="1267" y="440" font-size="13" fill="#5B6875" text-anchor="middle">語意向量，供地端檢索使用</text>
+
+  <rect x="1090" y="510" width="295" height="175" rx="12" fill="#FFFFFF" stroke="#E2B48F"/>
+  <text x="1110" y="542" font-size="15" font-weight="700" fill="#8A3B10">選用雲端時建議的服務條款</text>
+  <g font-size="13" fill="#3D4A57">
+    <text x="1110" y="574">・不以客戶資料訓練模型</text>
+    <text x="1110" y="600">・資料保存期限明確</text>
+    <text x="1110" y="626">・可指定資料處理區域</text>
+    <text x="1110" y="652">・採客戶自帶帳號，自管合約、</text>
+    <text x="1124" y="672">費用與金鑰輪替</text>
+  </g>
+
+  <!-- 跨邊界箭頭：LLM -->
+  <line x1="977" y1="215" x2="1147" y2="215" stroke="#C2571A" stroke-width="2.5" marker-end="url(#ah-orange)"/>
+  <circle cx="1013" cy="196" r="12" fill="#C2571A"/>
+  <text x="1013" y="201" font-size="14" font-weight="700" fill="#FFFFFF" text-anchor="middle">3</text>
+  <text x="1108" y="204" font-size="13" fill="#8A3B10" text-anchor="middle">提示內容</text>
+  <line x1="1147" y1="280" x2="977" y2="280" stroke="#C2571A" stroke-width="2.5" marker-end="url(#ah-orange)"/>
+  <circle cx="1013" cy="300" r="12" fill="#C2571A"/>
+  <text x="1013" y="305" font-size="14" font-weight="700" fill="#FFFFFF" text-anchor="middle">4</text>
+  <text x="1108" y="305" font-size="13" fill="#8A3B10" text-anchor="middle">回答／建議</text>
+
+  <!-- 跨邊界箭頭：Embedding -->
+  <line x1="977" y1="395" x2="1147" y2="395" stroke="#C2571A" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#ah-orange)"/>
+  <circle cx="1013" cy="376" r="12" fill="#FFFFFF" stroke="#C2571A" stroke-width="2"/>
+  <text x="1013" y="381" font-size="14" font-weight="700" fill="#C2571A" text-anchor="middle">E</text>
+  <text x="1108" y="384" font-size="13" fill="#8A3B10" text-anchor="middle">文字片段</text>
+  <line x1="1147" y1="440" x2="977" y2="440" stroke="#C2571A" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#ah-orange)"/>
+  <text x="1108" y="460" font-size="13" fill="#8A3B10" text-anchor="middle">向量</text>
+
+  <!-- ===== 下方說明 ===== -->
+  <text x="40" y="790" font-size="16" font-weight="700" fill="#1D2B3A">資料流步驟</text>
+  <g font-size="14" fill="#3D4A57">
+    <text x="40" y="820"><tspan font-weight="700" fill="#2F5D8A">1</tspan>　使用者經 HTTPS 提問，HyAgent 驗證身分與權限</text>
+    <text x="40" y="846"><tspan font-weight="700" fill="#2F5D8A">2</tspan>　只在使用者有權限的範圍內檢索知識庫與對話紀錄</text>
+    <text x="40" y="872"><tspan font-weight="700" fill="#C2571A">3</tspan>　組成提示（問題＋授權內的知識片段＋工具結果），經出口把關後送往雲端模型</text>
+    <text x="40" y="898"><tspan font-weight="700" fill="#C2571A">4</tspan>　模型回傳回答文字或建議呼叫的工具；模型不直接連線任何地端系統</text>
+    <text x="40" y="924"><tspan font-weight="700" fill="#2F5D8A">5</tspan>　HyAgent 在地端執行工具並再次檢查權限；寫入操作須使用者確認</text>
+    <text x="40" y="950"><tspan font-weight="700" fill="#2F5D8A">6</tspan>　回覆使用者，全程寫入稽核紀錄</text>
+    <text x="40" y="976"><tspan font-weight="700" fill="#C2571A">E</tspan>　建置知識庫與檢索時，文字片段送往雲端轉成向量，向量存回地端資料庫</text>
+  </g>
+
+  <rect x="800" y="770" width="290" height="210" rx="12" fill="#FDF3EA" stroke="#C2571A"/>
+  <text x="820" y="802" font-size="15" font-weight="700" fill="#C2571A">會送往雲端（TLS 加密）</text>
+  <g font-size="14" fill="#3D4A57">
+    <text x="820" y="836">・使用者問題與對話脈絡</text>
+    <text x="820" y="864">・授權範圍內的知識片段</text>
+    <text x="820" y="892">・工具查詢結果</text>
+    <text x="820" y="920">・待轉向量的文字片段</text>
+  </g>
+
+  <rect x="1110" y="770" width="300" height="210" rx="12" fill="#EEF4FA" stroke="#2F5D8A"/>
+  <text x="1130" y="802" font-size="15" font-weight="700" fill="#2F5D8A">始終留在地端</text>
+  <g font-size="14" fill="#3D4A57">
+    <text x="1130" y="836">・原始文件與完整資料庫</text>
+    <text x="1130" y="864">・帳密、金鑰與連線憑證</text>
+    <text x="1130" y="892">・權限設定與稽核紀錄</text>
+    <text x="1130" y="920">・企業系統的連線與寫入</text>
+    <text x="1130" y="948">・權限判斷與送出把關</text>
+  </g>
+</svg>
