@@ -202,6 +202,26 @@ function auditQuery(before?: string): string {
 /** 401 時拋出，UI 攔截導回登入 */
 export class UnauthorizedError extends Error {}
 
+/** 後端錯誤回應的兩種形狀，見 {@link errorMessage}。 */
+interface ErrorBody {
+  error?: string | { message?: string };
+  message?: string;
+}
+
+/**
+ * 從錯誤回應取出給人看的訊息。
+ *
+ * 後端有兩種形狀：一般管理 API 走 error-handler 的 `{ error: { code, message } }`；
+ * Assertion 公鑰與逐租戶設定沿用規格 §7.5 的 `{ error: 'CODE', message }`（error 是字串）。
+ * 只認前者時後者全部退化成「HTTP 400」——誤貼私鑰、格式不符這些後端寫得很清楚的原因，
+ * 到了畫面上一個字都沒有，而那正是最需要看懂的時候。
+ */
+export function errorMessage(json: ErrorBody, status: number): string {
+  if (typeof json.error === 'object' && json.error?.message) return json.error.message;
+  if (json.message) return json.message;
+  return `HTTP ${status}`;
+}
+
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
   const token = tokenStore.get();
   const res = await fetch(`${API_ORIGIN}/api${path}`, {
@@ -216,8 +236,8 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
     tokenStore.clear();
     throw new UnauthorizedError('未授權');
   }
-  const json = (await res.json().catch(() => ({}))) as { data?: T; error?: { message?: string } };
-  if (!res.ok) throw new Error(json.error?.message ?? `HTTP ${res.status}`);
+  const json = (await res.json().catch(() => ({}))) as { data?: T } & ErrorBody;
+  if (!res.ok) throw new Error(errorMessage(json, res.status));
   return json.data as T;
 }
 
@@ -235,8 +255,8 @@ async function reqUpload<T>(method: string, path: string, formData: FormData): P
     tokenStore.clear();
     throw new UnauthorizedError('未授權');
   }
-  const json = (await res.json().catch(() => ({}))) as { data?: T; error?: { message?: string } };
-  if (!res.ok) throw new Error(json.error?.message ?? `HTTP ${res.status}`);
+  const json = (await res.json().catch(() => ({}))) as { data?: T } & ErrorBody;
+  if (!res.ok) throw new Error(errorMessage(json, res.status));
   return json.data as T;
 }
 
