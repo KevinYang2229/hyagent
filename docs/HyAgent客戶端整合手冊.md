@@ -518,7 +518,7 @@ context 切到面板那個 frame，或勾選 selected context only 以外的顯�
 2. 請 HyAgent 上傳公鑰 B      ← 此時 A、B 並存
 3. 後端切換為以私鑰 B 簽發
 4. 觀察 ≥ 24 小時，確認沒有 UNKNOWN_KID / INVALID_SIGNATURE
-5. 請 HyAgent 停用公鑰 A
+5. 請 HyAgent 完成輪替（撤銷公鑰 A）
 6. 銷毀私鑰 A
 ```
 

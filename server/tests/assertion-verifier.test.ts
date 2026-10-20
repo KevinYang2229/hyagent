@@ -280,16 +280,14 @@ it('拿 Tenant A 的 kid 去冒充 Tenant B 回 UNKNOWN_KID（規格 §10.6 跨 
   );
 });
 
-it('撤銷與停用的公鑰都不可再使用（規格 §2.6）', () => {
-  for (const action of ['revoke', 'disable'] as const) {
-    const { registry, verifier } = makeVerifier();
-    const token = issueAssertion({ privateKey: rsa.privateKeyPem, tenant: TENANT, subject: 507, now: NOW });
-    registry[action](TENANT, rsa.kid);
-    expectRejected(
-      () => verifier.verify(token, { tenant: TENANT, clockTimestamp: NOW }),
-      ERROR_CODES.KEY_REVOKED,
-    );
-  }
+it('撤銷的公鑰不可再使用（規格 §2.6）', () => {
+  const { registry, verifier } = makeVerifier();
+  const token = issueAssertion({ privateKey: rsa.privateKeyPem, tenant: TENANT, subject: 507, now: NOW });
+  registry.revoke(TENANT, rsa.kid);
+  expectRejected(
+    () => verifier.verify(token, { tenant: TENANT, clockTimestamp: NOW }),
+    ERROR_CODES.KEY_REVOKED,
+  );
 });
 
 it('輪替期間新舊公鑰可同時有效（規格 §2.5）', () => {

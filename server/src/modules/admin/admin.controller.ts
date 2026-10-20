@@ -11,7 +11,8 @@ import { feedbackStore } from '@/modules/feedback/feedback.store';
 import { mcpStore } from '@/modules/mcp/mcp.store';
 import { usageStore } from '@/modules/usage/usage.store';
 import { auditStore } from '@/modules/audit/audit.store';
-import { PLATFORM_AUDIT_TENANT } from '@/modules/audit/admin-audit';
+import { PLATFORM_AUDIT_TENANT, type AdminActor } from '@/modules/audit/admin-audit';
+import type { KeyOperator } from '@/modules/tenant/tenant.types';
 import { reportStore } from '@/modules/report/report.store';
 import { DEFAULT_REPORT_FORMAT, isReportFormat, renderers } from '@/modules/report/report.render';
 import { contentDispositionHeader } from '@/modules/report/report.http';
@@ -45,8 +46,8 @@ import type {
   ListSessionsQuery,
   PatchAssertionSettingsInput,
   PatchTenantInput,
+  RevokePublicKeyInput,
   RevokeSessionsInput,
-  SetPublicKeyStatusInput,
   ToggleWebhookInput,
 } from './admin.schema';
 import type { AdminReportQuery, PutPolicyInput } from './admin.schema';
@@ -64,6 +65,17 @@ async function withAssertionErrors(res: Response, fn: () => Promise<void>): Prom
     if (status >= 500) throw err;
     res.status(status).json(body);
   }
+}
+
+/**
+ * 公鑰紀錄上的操作者（規格 §7.3）：requireAdmin 判定的管道＋來源 IP。
+ * 與 adminAuditTrail 取同一組值，兩邊的紀錄才對得起來。
+ */
+function keyOperator(req: Request, res: Response): KeyOperator {
+  return {
+    via: (res.locals.adminActor as AdminActor | undefined) ?? 'admin',
+    ...(req.ip ? { ip: req.ip } : {}),
+  };
 }
 
 /** 游標對外是不透明字串（實為絕對序號）：前端只回傳、不解讀 */
@@ -127,7 +139,7 @@ export const adminController = {
     const tenant = ensureTenant(String(req.params.id));
     const body = req.body as AddPublicKeyInput;
     await withAssertionErrors(res, async () => {
-      const result = tenantStore.addPublicKey(tenant.id, body)!;
+      const result = tenantStore.addPublicKey(tenant.id, body, keyOperator(req, res))!;
       await tenantStore.persistCritical();
       // 冪等：同一把公鑰重複上傳回 200 + created:false，而不是再建一筆（§7.3）
       res.status(result.created ? 201 : 200).json({ data: result });
@@ -135,19 +147,23 @@ export const adminController = {
   },
 
   /**
-   * 變更公鑰狀態。**撤銷會連帶作廢以該 kid 建立的所有 Session**（規格 §2.6）——
+   * 撤銷公鑰。**會連帶作廢以該 kid 建立的所有 Session**（規格 §2.6）——
    * 兩件事必須一起做完才算撤銷，只改狀態的話已經拿到 Session 的人會用到自然過期。
+   * 輪替汰換也一樣：照流程觀察期滿才收尾的話，舊 kid 底下早已沒有有效 Session。
    */
-  async setPublicKeyStatus(req: Request, res: Response): Promise<void> {
+  async revokePublicKey(req: Request, res: Response): Promise<void> {
     const tenant = ensureTenant(String(req.params.id));
     const kid = String(req.params.kid);
-    const { status } = req.body as SetPublicKeyStatusInput;
+    const { reason } = req.body as RevokePublicKeyInput;
     await withAssertionErrors(res, async () => {
-      const key = tenantStore.setPublicKeyStatus(tenant.id, kid, status);
+      const operator = keyOperator(req, res);
+      const key = tenantStore.revokePublicKey(tenant.id, kid, reason, operator);
       await tenantStore.persistCritical();
-      const revokedSessions =
-        status === 'active' ? 0 : await authSessionStore.revokeByKid(tenant.id, kid);
-      logger.info({ tenantId: tenant.id, kid, status, revokedSessions }, 'tenant public key status changed');
+      const revokedSessions = await authSessionStore.revokeByKid(tenant.id, kid);
+      logger.info(
+        { tenantId: tenant.id, kid, reason, operator, revokedSessions },
+        'tenant public key revoked',
+      );
       res.status(200).json({ data: { key, revokedSessions } });
     });
   },

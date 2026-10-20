@@ -181,7 +181,7 @@ server 只存金鑰的 sha256，**pk 原文只在下列時機回傳一次，事�
 | `run_sdk_ui.bat` 說 `TENANT_ID` 是空的 | 沒填租戶 id；server 照樣會啟動，但每張 Assertion 的 `iss` 都是空字串，換發必失敗 |
 | 初始化失敗：`Failed to fetch`（Chrome / Edge 的網路錯誤訊息） | 被 CORS 擋：租戶 `allowedOrigins` 沒含 `http://localhost:4200`，或 `OA_ORIGIN` 不是 server（3000）、server 沒啟動 |
 | 初始化失敗：查無此 Tenant 對應的 kid | 後台沒登記 `.env` 私鑰對應的公鑰，或 `TENANT_PRIVATE_KEY` 留空、重啟後換了一組 |
-| 初始化失敗：公鑰狀態為 … 已不可使用 | 該公鑰在後台被停用或撤銷，改回 active 或換一把 |
+| 初始化失敗：公鑰狀態為 … 已不可使用 | 該公鑰已在後台撤銷（撤銷不可復原），產生一組新的金鑰對並登記公鑰 |
 | 初始化失敗：此來源不在該 Tenant 的允許清單內 | CORS 過了（別的租戶放行了 4200），但 `TENANT_ID` 指的租戶沒放行，兩者要是同一個租戶 |
 | `run_sdk_ui.bat` 說埠 4200 已被占用 | 上一次的 server 還開著，關掉那個視窗，或改 `.env` 的 `PORT` |
 

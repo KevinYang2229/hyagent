@@ -6,9 +6,11 @@
 import request from 'supertest';
 import { createApp } from '@/app';
 import { env } from '@/config/env';
+import { generateHyAgentKeyPair } from '@/lib/assertion';
 import { PLATFORM_AUDIT_TENANT } from '@/modules/audit/admin-audit';
 import { auditStore } from '@/modules/audit/audit.store';
 import { tenantStore } from '@/modules/tenant/tenant.store';
+import { signAdminToken } from '@/utils/jwt';
 
 const app = createApp();
 const ADMIN_KEY = 'test-admin-key-for-config-audit';
@@ -90,5 +92,47 @@ describe('後台設定變更稽核', () => {
     expect(res.status).toBe(401);
     await flush();
     expect(auditStore.list(t.id)).toEqual([]);
+  });
+});
+
+describe('公鑰紀錄上的操作者（規格 §7.3）', () => {
+  const rsa = generateHyAgentKeyPair('RS256');
+  const ec = generateHyAgentKeyPair('ES256');
+
+  it('上傳與撤銷各自記下管道與來源 IP，與設定變更稽核的操作者一致', async () => {
+    const t = tenantStore.createTenant('cfg-audit-key-operator');
+    const bearer = { authorization: `Bearer ${signAdminToken()}` };
+
+    // 後台登入上傳第一把、機器對機器上傳第二把，再由後台登入撤銷第一把
+    expect(
+      (await request(app).post(`/api/admin/tenants/${t.id}/assertion-keys`).set(bearer).send({ publicKey: rsa.publicKeyPem }))
+        .status,
+    ).toBe(201);
+    await request(app).post(`/api/admin/tenants/${t.id}/assertion-keys`).set(admin).send({ publicKey: ec.publicKeyPem });
+    const revoked = await request(app)
+      .post(`/api/admin/tenants/${t.id}/assertion-keys/${encodeURIComponent(rsa.kid)}/revoke`)
+      .set(bearer)
+      .send({ reason: 'rotated' });
+    expect(revoked.status).toBe(200);
+    await flush();
+
+    const keys = tenantStore.listPublicKeys(t.id);
+    const first = keys.find((k) => k.kid === rsa.kid);
+    expect(first?.createdBy).toEqual({ via: 'admin', ip: expect.any(String) });
+    expect(first?.revokedBy).toEqual({ via: 'admin', ip: expect.any(String) });
+    expect(keys.find((k) => k.kid === ec.kid)?.createdBy?.via).toBe('admin-api-key');
+    expect(auditStore.list(t.id).find((e) => e.summary.includes('/revoke'))?.userId).toBe('admin');
+  });
+
+  it('重複上傳同一把（冪等）不覆寫原本的操作者', async () => {
+    const t = tenantStore.createTenant('cfg-audit-key-idempotent');
+    await request(app)
+      .post(`/api/admin/tenants/${t.id}/assertion-keys`)
+      .set({ authorization: `Bearer ${signAdminToken()}` })
+      .send({ publicKey: rsa.publicKeyPem });
+    const again = await request(app).post(`/api/admin/tenants/${t.id}/assertion-keys`).set(admin).send({ publicKey: rsa.publicKeyPem });
+
+    expect(again.status).toBe(200);
+    expect(tenantStore.listPublicKeys(t.id)[0].createdBy?.via).toBe('admin');
   });
 });

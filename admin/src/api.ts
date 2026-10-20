@@ -403,15 +403,31 @@ export interface SkillDescriptor {
   requiredScope?: string;
   intents: SkillIntentSummary[];
 }
+/** 撤銷原因（規格 §7.3）：輪替汰換、放棄輪替、私鑰外洩或疑似外洩、其他。只供稽核，不影響驗證。 */
+export type KeyRevocationReason = 'rotated' | 'aborted' | 'compromised' | 'other';
+
+/** 公鑰的操作者：後台沒有個人帳號，只有登入管道與來源 IP（規格 §7.3）。 */
+export interface KeyOperator {
+  /** `admin`＝後台密碼登入；`admin-api-key`＝機器對機器的管理 API 金鑰 */
+  via: 'admin' | 'admin-api-key';
+  ip?: string;
+}
+
 /** 租戶的 Assertion 簽章公鑰（規格 §2.5、§7.3）。公鑰可公開，不需遮罩。 */
 export interface TenantPublicKey {
   kid: string;
   alg: 'RS256' | 'ES256';
   publicKey: string;
-  status: 'active' | 'disabled' | 'revoked';
+  /** 只有 active → revoked 一條路，撤銷不可逆 */
+  status: 'active' | 'revoked';
   label?: string;
   createdAt: string;
-  statusChangedAt?: string;
+  /** 舊紀錄、或非經管理 API 寫入的沒有 */
+  createdBy?: KeyOperator;
+  revokedAt?: string;
+  /** 改版前撤銷的舊紀錄沒有 */
+  revokedReason?: KeyRevocationReason;
+  revokedBy?: KeyOperator;
 }
 
 /** 逐租戶設定（規格 §4.3、§7.1、§10.4）。 */
@@ -531,11 +547,11 @@ export const api = {
     req<AssertionKeysView>('GET', `/admin/tenants/${id}/assertion-keys`),
   addAssertionKey: (id: string, input: { publicKey: string; label?: string }) =>
     req<{ key: TenantPublicKey; created: boolean }>('POST', `/admin/tenants/${id}/assertion-keys`, input),
-  setAssertionKeyStatus: (id: string, kid: string, status: TenantPublicKey['status']) =>
+  revokeAssertionKey: (id: string, kid: string, reason: KeyRevocationReason) =>
     req<{ key: TenantPublicKey; revokedSessions: number }>(
-      'PATCH',
-      `/admin/tenants/${id}/assertion-keys/${encodeURIComponent(kid)}`,
-      { status },
+      'POST',
+      `/admin/tenants/${id}/assertion-keys/${encodeURIComponent(kid)}/revoke`,
+      { reason },
     ),
   updateAssertionSettings: (id: string, patch: Partial<AssertionSettings>) =>
     req<AssertionSettings>('PATCH', `/admin/tenants/${id}/assertion-settings`, patch),

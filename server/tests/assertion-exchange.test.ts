@@ -94,15 +94,15 @@ describe('公鑰狀態即時生效（規格 §2.6）', () => {
   it('撤銷後以該 kid 簽的 Assertion 立刻被拒', async () => {
     const { tenant, sign } = fixture();
     tenantStore.addPublicKey(tenant.id, { publicKey: otherPair.publicKeyPem });
-    tenantStore.setPublicKeyStatus(tenant.id, keyPair.kid, 'revoked');
+    tenantStore.revokePublicKey(tenant.id, keyPair.kid, 'compromised');
 
     expect(await codeOf(() => assertionExchange.exchange({ assertion: sign() }))).toBe('KEY_REVOKED');
   });
 
-  it('停用中的公鑰同樣不可用', async () => {
+  it('輪替汰換的舊公鑰同樣不可用——撤銷原因只供稽核，不影響驗證', async () => {
     const { tenant, sign } = fixture();
     tenantStore.addPublicKey(tenant.id, { publicKey: otherPair.publicKeyPem });
-    tenantStore.setPublicKeyStatus(tenant.id, keyPair.kid, 'disabled');
+    tenantStore.revokePublicKey(tenant.id, keyPair.kid, 'rotated');
 
     expect(await codeOf(() => assertionExchange.exchange({ assertion: sign() }))).toBe('KEY_REVOKED');
   });

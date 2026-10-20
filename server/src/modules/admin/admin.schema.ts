@@ -21,13 +21,13 @@ export const addPublicKeySchema = z.object({
   label: z.string().trim().max(60).optional(),
 });
 
-/** 公鑰狀態變更（規格 §7.3）。不變條件由 store 強制，這裡只驗形狀。 */
-export const setPublicKeyStatusSchema = z.object({
-  status: z.enum(['active', 'disabled', 'revoked']),
+/** 撤銷公鑰（規格 §7.3）。原因必填——稽核要分得出例行輪替與外洩；不變條件由 store 強制，這裡只驗形狀。 */
+export const revokePublicKeySchema = z.object({
+  reason: z.enum(['rotated', 'aborted', 'compromised', 'other']),
 });
 
 /**
- * 公鑰狀態變更的路由參數。
+ * 撤銷公鑰的路由參數。
  *
  * **必須把 `kid` 一起列出來**：validate 中介層會用解析結果整個取代 `req.params`，
  * 而 zod 預設會剝掉未宣告的鍵——只放 `id` 的話 `req.params.kid` 會變成 undefined，
@@ -170,7 +170,7 @@ export type PutPolicyInput = z.infer<typeof putPolicySchema>;
 export type AdminLoginInput = z.infer<typeof adminLoginSchema>;
 export type CreateTenantInput = z.infer<typeof createTenantSchema>;
 export type AddPublicKeyInput = z.infer<typeof addPublicKeySchema>;
-export type SetPublicKeyStatusInput = z.infer<typeof setPublicKeyStatusSchema>;
+export type RevokePublicKeyInput = z.infer<typeof revokePublicKeySchema>;
 export type TenantKeyParam = z.infer<typeof tenantKeyParamSchema>;
 export type PatchAssertionSettingsInput = z.infer<typeof patchAssertionSettingsSchema>;
 export type RevokeSessionsInput = z.infer<typeof revokeSessionsSchema>;

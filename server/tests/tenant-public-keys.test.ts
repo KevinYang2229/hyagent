@@ -11,8 +11,10 @@ import {
   DEFAULT_CLOCK_SKEW_SECONDS,
   DEFAULT_SESSION_EXPIRES_IN,
   MAX_ACTIVE_KEYS,
+  migrateLegacyKey,
   parsePublicKey,
 } from '@/modules/tenant/tenant-keys';
+import type { TenantPublicKey } from '@/modules/tenant/tenant.types';
 
 // RSA 金鑰產生很慢（2048 bits），整支測試共用同一批
 const rsa = generateHyAgentKeyPair('RS256');
@@ -98,7 +100,7 @@ describe('公鑰上限與冪等（規格 §7.3）', () => {
     const id = newTenant();
     tenantStore.addPublicKey(id, { publicKey: rsa.publicKeyPem });
     tenantStore.addPublicKey(id, { publicKey: ec.publicKeyPem });
-    tenantStore.setPublicKeyStatus(id, rsa.kid, 'revoked');
+    tenantStore.revokePublicKey(id, rsa.kid, 'compromised');
 
     const again = tenantStore.addPublicKey(id, { publicKey: rsa.publicKeyPem });
     expect(again).toEqual({ key: expect.objectContaining({ status: 'revoked' }), created: false });
@@ -118,70 +120,114 @@ describe('公鑰上限與冪等（規格 §7.3）', () => {
     const id = newTenant();
     tenantStore.addPublicKey(id, { publicKey: rsa.publicKeyPem });
     tenantStore.addPublicKey(id, { publicKey: ec.publicKeyPem });
-    tenantStore.setPublicKeyStatus(id, rsa.kid, 'revoked');
+    tenantStore.revokePublicKey(id, rsa.kid, 'rotated');
 
     expect(tenantStore.addPublicKey(id, { publicKey: rsa2.publicKeyPem })?.created).toBe(true);
   });
 });
 
-describe('公鑰狀態機（規格 §7.3、§2.6）', () => {
-  it('停用最後一把 active → LAST_ACTIVE_KEY（租戶會立刻無法登入）', () => {
-    const id = newTenant();
-    tenantStore.addPublicKey(id, { publicKey: rsa.publicKeyPem });
+describe('公鑰撤銷與撤銷原因（規格 §7.3、§2.6）', () => {
+  it.each(['rotated', 'aborted'] as const)(
+    '以 %s 撤銷最後一把 active → LAST_ACTIVE_KEY（輪替相關的撤銷都預設另一把繼續用）',
+    (reason) => {
+      const id = newTenant();
+      tenantStore.addPublicKey(id, { publicKey: rsa.publicKeyPem });
 
-    expect(codeOf(() => tenantStore.setPublicKeyStatus(id, rsa.kid, 'disabled'))).toBe(
-      ERROR_CODES.LAST_ACTIVE_KEY,
-    );
-    expect(tenantStore.listPublicKeys(id)[0].status).toBe('active');
-  });
+      expect(codeOf(() => tenantStore.revokePublicKey(id, rsa.kid, reason))).toBe(
+        ERROR_CODES.LAST_ACTIVE_KEY,
+      );
+      expect(tenantStore.listPublicKeys(id)[0].status).toBe('active');
+    },
+  );
 
-  it('撤銷最後一把 active → 允許（私鑰外洩時安全優先於可用性）', () => {
-    const id = newTenant();
-    tenantStore.addPublicKey(id, { publicKey: rsa.publicKeyPem });
-
-    const revoked = tenantStore.setPublicKeyStatus(id, rsa.kid, 'revoked');
-    expect(revoked?.status).toBe('revoked');
-    expect(revoked?.statusChangedAt).toEqual(expect.any(String));
-  });
-
-  it('還有另一把 active 時可以停用', () => {
+  it('放棄輪替：撤銷新金鑰、舊金鑰留著，原因記為 aborted', () => {
     const id = newTenant();
     tenantStore.addPublicKey(id, { publicKey: rsa.publicKeyPem });
     tenantStore.addPublicKey(id, { publicKey: ec.publicKeyPem });
 
-    expect(tenantStore.setPublicKeyStatus(id, rsa.kid, 'disabled')?.status).toBe('disabled');
+    tenantStore.revokePublicKey(id, ec.kid, 'aborted');
+    const keys = tenantStore.listPublicKeys(id);
+    expect(keys.find((k) => k.kid === ec.kid)).toMatchObject({ status: 'revoked', revokedReason: 'aborted' });
+    expect(keys.find((k) => k.kid === rsa.kid)?.status).toBe('active');
   });
 
-  it('已撤銷的公鑰不可復原', () => {
+  it.each(['compromised', 'other'] as const)(
+    '以 %s 撤銷最後一把 active → 允許（外洩時安全優先於可用性；停止服務也是合法需求）',
+    (reason) => {
+      const id = newTenant();
+      tenantStore.addPublicKey(id, { publicKey: rsa.publicKeyPem });
+
+      const revoked = tenantStore.revokePublicKey(id, rsa.kid, reason);
+      expect(revoked).toMatchObject({ status: 'revoked', revokedReason: reason, revokedAt: expect.any(String) });
+    },
+  );
+
+  it('還有另一把 active 時可以輪替汰換，原因會留下供稽核', () => {
     const id = newTenant();
     tenantStore.addPublicKey(id, { publicKey: rsa.publicKeyPem });
     tenantStore.addPublicKey(id, { publicKey: ec.publicKeyPem });
-    tenantStore.setPublicKeyStatus(id, rsa.kid, 'revoked');
 
-    expect(codeOf(() => tenantStore.setPublicKeyStatus(id, rsa.kid, 'active'))).toBe(
+    tenantStore.revokePublicKey(id, rsa.kid, 'rotated');
+    expect(tenantStore.listPublicKeys(id).find((k) => k.kid === rsa.kid)).toMatchObject({
+      status: 'revoked',
+      revokedReason: 'rotated',
+    });
+  });
+
+  it('已撤銷的公鑰不可再撤銷一次——避免事後覆寫掉原本的撤銷原因與時間', () => {
+    const id = newTenant();
+    tenantStore.addPublicKey(id, { publicKey: rsa.publicKeyPem });
+    tenantStore.addPublicKey(id, { publicKey: ec.publicKeyPem });
+    tenantStore.revokePublicKey(id, rsa.kid, 'rotated');
+
+    expect(codeOf(() => tenantStore.revokePublicKey(id, rsa.kid, 'compromised'))).toBe(
       ERROR_CODES.INVALID_REQUEST,
     );
+    expect(tenantStore.listPublicKeys(id).find((k) => k.kid === rsa.kid)?.revokedReason).toBe('rotated');
   });
 
   it('查無 kid → INVALID_REQUEST', () => {
     const id = newTenant();
-    expect(codeOf(() => tenantStore.setPublicKeyStatus(id, 'no-such-kid', 'revoked'))).toBe(
+    expect(codeOf(() => tenantStore.revokePublicKey(id, 'no-such-kid', 'compromised'))).toBe(
       ERROR_CODES.INVALID_REQUEST,
     );
   });
+});
 
-  it('停用後重新啟用，仍受 2 把上限約束', () => {
-    const id = newTenant();
-    tenantStore.addPublicKey(id, { publicKey: rsa.publicKeyPem });
-    tenantStore.addPublicKey(id, { publicKey: ec.publicKeyPem });
-    tenantStore.setPublicKeyStatus(id, rsa.kid, 'disabled');
-    tenantStore.addPublicKey(id, { publicKey: rsa2.publicKeyPem });
+describe('舊資料轉換：改版前的 disabled（migrateLegacyKey）', () => {
+  const base = { kid: 'k', alg: 'RS256' as const, publicKey: 'pem', createdAt: '2026-01-01T00:00:00.000Z' };
+  const legacy = (fields: Record<string, unknown>) => ({ ...base, ...fields }) as unknown as TenantPublicKey;
 
-    expect(codeOf(() => tenantStore.setPublicKeyStatus(id, rsa.kid, 'active'))).toBe(
-      ERROR_CODES.KEY_LIMIT_EXCEEDED,
-    );
+  it('disabled → revoked + rotated，變更時間改名 revokedAt（舊版只有輪替期間才停用得了）', () => {
+    expect(migrateLegacyKey(legacy({ status: 'disabled', statusChangedAt: '2026-02-01T00:00:00.000Z' }))).toEqual({
+      ...base,
+      status: 'revoked',
+      revokedAt: '2026-02-01T00:00:00.000Z',
+      revokedReason: 'rotated',
+    });
   });
 
+  it('舊的 revoked 只改欄位名，不替它編一個原因', () => {
+    expect(migrateLegacyKey(legacy({ status: 'revoked', statusChangedAt: '2026-02-01T00:00:00.000Z' }))).toEqual({
+      ...base,
+      status: 'revoked',
+      revokedAt: '2026-02-01T00:00:00.000Z',
+    });
+  });
+
+  it('重新啟用過的 active 只拿掉 statusChangedAt；新格式資料不需轉換', () => {
+    expect(migrateLegacyKey(legacy({ status: 'active', statusChangedAt: '2026-02-01T00:00:00.000Z' }))).toEqual({
+      ...base,
+      status: 'active',
+    });
+    expect(migrateLegacyKey(legacy({ status: 'active' }))).toBeUndefined();
+    expect(
+      migrateLegacyKey(legacy({ status: 'revoked', revokedAt: '2026-02-01T00:00:00.000Z', revokedReason: 'other' })),
+    ).toBeUndefined();
+  });
+});
+
+describe('落地加密範圍', () => {
   it('公鑰不進落地加密範圍——它本來就可公開，加密只會製造受保護的錯覺', () => {
     const id = newTenant();
     tenantStore.addPublicKey(id, { publicKey: rsa.publicKeyPem });

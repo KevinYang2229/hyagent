@@ -8,6 +8,7 @@
 import type { Applicant, TenantAppearance } from '@hyagent/shared';
 import type { TenantLLMConfig } from '@/lib/llm/types';
 import type { AssertionAlgorithm } from '@/lib/assertion';
+import type { AdminActor } from '@/modules/audit/admin-audit';
 
 /** 公開金鑰（pk_）可放瀏覽器；秘密金鑰（sk_）只在伺服器端用。 */
 export type ApiKeyType = 'publishable' | 'secret';
@@ -33,8 +34,38 @@ export interface KnowledgeLabel {
   label: string;
 }
 
-/** 公鑰狀態機（規格 §7.3）。撤銷不可逆；停用可再啟用。 */
-export type TenantPublicKeyStatus = 'active' | 'disabled' | 'revoked';
+/**
+ * 公鑰狀態機（規格 §7.3）：只有 active → revoked 一條路，撤銷不可逆。
+ *
+ * 改版前另有可再啟用的 `disabled`，但它與撤銷的效果完全相同（憑證一律被拒、Session 一併
+ * 作廢），唯一差別是「能救回來」——而輪替完成後舊私鑰應已銷毀（§2.5 步驟 6），救回來
+ * 只是多開一條沒人記得的路。「正常退役」與「外洩」的區別改記在 {@link KeyRevocationReason}。
+ */
+export type TenantPublicKeyStatus = 'active' | 'revoked';
+
+/**
+ * 撤銷原因（規格 §7.3）。不影響驗證行為，只供稽核：事後回頭查時，「這把是例行輪替退掉的，
+ * 還是私鑰外洩被撤的」是第一個要回答的問題。
+ *
+ * - `rotated`：輪替汰換（撤舊的）。必須還有另一把 active 接手，否則等於停止服務（LAST_ACTIVE_KEY）
+ * - `aborted`：放棄輪替（撤新的）。同樣必須還有另一把 active——放棄輪替的前提就是舊金鑰繼續用
+ * - `compromised`：私鑰外洩或疑似外洩。允許撤銷最後一把——安全優先於可用性
+ * - `other`：其他，例如上傳錯誤、停止服務
+ */
+export type KeyRevocationReason = 'rotated' | 'aborted' | 'compromised' | 'other';
+
+/**
+ * 公鑰的操作者（規格 §7.3 稽核欄位）。
+ *
+ * 後台沒有個人帳號（共用一組 ADMIN_PASSWORD，JWT 的 sub 一律是 admin），因此只記系統
+ * **確實驗證得了**的部分：從哪個管道進來、來源 IP。不收自填姓名——驗證不了的欄位放進
+ * 稽核紀錄，事後反而會被當成證據引用。
+ */
+export interface KeyOperator {
+  /** `admin`＝後台密碼登入；`admin-api-key`＝機器對機器的 x-admin-key */
+  via: AdminActor;
+  ip?: string;
+}
 
 /**
  * 租戶註冊的 Assertion 簽章公鑰（規格 §2.5、§7.3）。
@@ -53,8 +84,12 @@ export interface TenantPublicKey {
   /** 後台顯示用備註，例如「2026 正式環境」 */
   label?: string;
   createdAt: string;
-  /** 最後一次狀態變更時間（停用 / 撤銷 / 重新啟用） */
-  statusChangedAt?: string;
+  /** 改版前的舊紀錄、以及非經管理 API 寫入的（測試、維運腳本）沒有操作者 */
+  createdBy?: KeyOperator;
+  revokedAt?: string;
+  /** 改版前撤銷的舊紀錄沒有這個欄位，後台顯示為「未記錄」 */
+  revokedReason?: KeyRevocationReason;
+  revokedBy?: KeyOperator;
 }
 
 export interface Tenant {

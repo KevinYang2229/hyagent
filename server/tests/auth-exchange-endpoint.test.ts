@@ -153,9 +153,9 @@ it('撤銷公鑰後，既有 Session 立刻失效（規格 §2.6）', async () =
   expect((await request(app).get('/api/auth/me').auth(token, { type: 'bearer' })).status).toBe(200);
 
   await request(app)
-    .patch(`/api/admin/tenants/${tenant.id}/assertion-keys/${encodeURIComponent(keyPair.kid)}`)
+    .post(`/api/admin/tenants/${tenant.id}/assertion-keys/${encodeURIComponent(keyPair.kid)}/revoke`)
     .set('x-admin-key', 'test-admin-key')
-    .send({ status: 'revoked' });
+    .send({ reason: 'compromised' });
 
   expect((await request(app).get('/api/auth/me').auth(token, { type: 'bearer' })).status).toBe(401);
 });

@@ -17,10 +17,18 @@ import { dataFile } from '@/lib/data-dir';
 import { connectDb, DbWriteQueue } from '@/lib/db';
 import { env } from '@/config/env';
 import { logger } from '@/lib/logger';
-import type { ApiKey, ApiKeyType, Tenant, TenantPublicKey, TenantPublicKeyStatus } from './tenant.types';
+import type {
+  ApiKey,
+  ApiKeyType,
+  KeyOperator,
+  KeyRevocationReason,
+  Tenant,
+  TenantPublicKey,
+} from './tenant.types';
 import {
   checkCanAddKey,
-  checkCanSetStatus,
+  checkCanRevoke,
+  migrateLegacyKey,
   parsePublicKey,
   resolveAssertionSettings,
   validateAssertionSettings,
@@ -105,6 +113,27 @@ function rehashLegacyKeys(): boolean {
     }
   }
   if (changed) logger.info('legacy plaintext api keys rehashed');
+  return changed;
+}
+
+/** 舊資料的公鑰 `disabled` 狀態 → `revoked` + 撤銷原因（一次性轉換，見 migrateLegacyKey）。回傳是否有轉換。 */
+function migrateLegacyKeyStatus(): boolean {
+  let changed = false;
+  for (const [id, t] of tenants) {
+    if (!t.publicKeys?.length) continue;
+    let touched = false;
+    const publicKeys = t.publicKeys.map((k) => {
+      const next = migrateLegacyKey(k);
+      if (!next) return k;
+      touched = true;
+      return next;
+    });
+    if (touched) {
+      tenants.set(id, { ...t, publicKeys });
+      changed = true;
+    }
+  }
+  if (changed) logger.info('legacy disabled public keys migrated to revoked');
   return changed;
 }
 
@@ -254,9 +283,10 @@ if (env.DATA_BACKEND !== 'db') {
   } catch (err) {
     logger.warn({ err, file: STORE_FILE }, 'failed to restore tenants; starting empty');
   }
-  // 舊資料一次性轉換：明文金鑰→雜湊、明文敏感欄位→補加密（有變動才重寫）
+  // 舊資料一次性轉換：明文金鑰→雜湊、停用公鑰→撤銷、明文敏感欄位→補加密（有變動才重寫）
   const rehashed = rehashLegacyKeys();
-  if (rehashed || needsResealing()) persist();
+  const migrated = migrateLegacyKeyStatus();
+  if (rehashed || migrated || needsResealing()) persist();
   seedDefaults();
 }
 
@@ -281,9 +311,10 @@ export async function initTenantStore(): Promise<void> {
     apiKeys.set(k.key, k);
   }
   logger.info({ tenants: tenants.size, keys: apiKeys.size }, 'tenants restored from db');
-  // 舊資料一次性轉換：明文金鑰→雜湊、明文敏感欄位→補加密（快照重寫會順帶清掉明文舊列）
+  // 舊資料一次性轉換：明文金鑰→雜湊、停用公鑰→撤銷、明文敏感欄位→補加密（快照重寫會順帶清掉明文舊列）
   const rehashed = rehashLegacyKeys();
-  if (rehashed || needsResealing()) persist();
+  const migrated = migrateLegacyKeyStatus();
+  if (rehashed || migrated || needsResealing()) persist();
   seedDefaults();
 }
 
@@ -406,11 +437,13 @@ export const tenantStore = {
   /**
    * 上傳一把公鑰。kid 由後端依 RFC 7638 算出（規格 §2.4）。
    *
-   * 同一 kid 重複上傳為**冪等**：回既有那筆、`created: false`，不新增也不改狀態（§7.3）。
+   * 同一 kid 重複上傳為**冪等**：回既有那筆、`created: false`，不新增也不改狀態（§7.3）——
+   * 操作者同樣不覆寫，`createdBy` 恆指第一次登記它的那次操作。
    */
   addPublicKey(
     tenantId: string,
     input: { publicKey: string; label?: string },
+    operator?: KeyOperator,
   ): { key: TenantPublicKey; created: boolean } | undefined {
     const tenant = tenants.get(tenantId);
     if (!tenant) return undefined;
@@ -426,6 +459,7 @@ export const tenantStore = {
       status: 'active',
       ...(input.label?.trim() ? { label: input.label.trim() } : {}),
       createdAt: now,
+      ...(operator ? { createdBy: operator } : {}),
     };
     tenants.set(tenantId, { ...tenant, publicKeys: [...(tenant.publicKeys ?? []), key] });
     persist();
@@ -433,24 +467,31 @@ export const tenantStore = {
   },
 
   /**
-   * 變更公鑰狀態（停用 / 撤銷 / 重新啟用）。不變條件見 tenant-keys.ts。
+   * 撤銷公鑰（輪替汰換、外洩或其他原因）。不變條件見 tenant-keys.ts。
    *
    * 注意：撤銷**只**改這裡的狀態。以該 kid 建立的既有 Session 由 auth session store
    * 依 kid 批次作廢（規格 §2.6），呼叫端必須把兩件事一起做完才算撤銷完成。
    */
-  setPublicKeyStatus(
+  revokePublicKey(
     tenantId: string,
     kid: string,
-    status: TenantPublicKeyStatus,
+    reason: KeyRevocationReason,
+    operator?: KeyOperator,
   ): TenantPublicKey | undefined {
     const tenant = tenants.get(tenantId);
     if (!tenant) return undefined;
-    checkCanSetStatus(tenant.publicKeys, kid, status);
+    checkCanRevoke(tenant.publicKeys, kid, reason);
     const now = new Date().toISOString();
     let updated: TenantPublicKey | undefined;
     const publicKeys = (tenant.publicKeys ?? []).map((k) => {
       if (k.kid !== kid) return k;
-      updated = { ...k, status, statusChangedAt: now };
+      updated = {
+        ...k,
+        status: 'revoked',
+        revokedAt: now,
+        revokedReason: reason,
+        ...(operator ? { revokedBy: operator } : {}),
+      };
       return updated;
     });
     tenants.set(tenantId, { ...tenant, publicKeys });

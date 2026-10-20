@@ -107,7 +107,7 @@ npm run dev:admin    # 後台 5174
 - **登入**：`POST /api/admin/auth/login`（密碼比對 `ADMIN_PASSWORD`）換發 admin JWT；`require-admin` 同時接受 `x-admin-key` 或此 JWT（既有腳本不受影響）。
 - **分頁**：
   - **外觀** — 主色 / 主題 / 按鈕位置 / logo / 歡迎語 / 預設語言，存於租戶，widget 載入時讀 `GET /api/widget/config` 套用（`data-*` 參數仍優先）。
-  - **設定** — 名稱、允許嵌入來源、Assertion 公鑰清單（上傳 / 停用 / 撤銷，`kid` 由系統自公鑰算出）、API Keys（產生 pk_/sk_）。
+  - **設定** — 名稱、允許嵌入來源、Assertion 公鑰清單（上傳 / 輪替 / 撤銷並記錄原因，`kid` 由系統自公鑰算出）、API Keys（產生 pk_/sk_）。
   - **Webhook** — 端點列表 / 新增 / 啟用停用 / 刪除。
   - **用量** — 對話 / 訊息 / 送出計數（唯讀）。
 

@@ -148,7 +148,7 @@ sequenceDiagram
 | 客戶後端：實作 Identity Endpoint | `presale/widge-tenant/server.mjs` → `sdk/src/assertion.ts` | §4、§5.2 |
 | 客戶前端：掛上 Widget、接登出 | `presale/widge-tenant/index.html`（widget）、`presale/sdk-custom-ui/`（自建 UI） | §5.3、§5.5、§6 |
 | HyAgent 後端：驗證 Assertion 並發 Session | `server/src/modules/auth/assertion-exchange.ts` → `server/src/lib/assertion/verifier.ts` | §7.1、§8 |
-| HyAgent 後台：上傳／撤銷公鑰、作廢 Session | `admin/src/pages/tabs/AssertionKeysPanel.tsx` → `server/src/modules/admin/admin.controller.ts` | §7.3、§7.4 |
+| HyAgent 後台：上傳／輪替／撤銷公鑰、作廢 Session | `admin/src/pages/tabs/SsoTab.tsx` → `server/src/modules/admin/admin.controller.ts` | §7.3、§7.4 |
 | 整合卡住，要查為何被拒 | `server/src/lib/assertion/errors.ts` | §9 |
 
 #### 依檔案查
@@ -269,12 +269,12 @@ alg = ES256   kid = JIyMfVT7Az-6tEPXT8S10ZIdKL7K_nhi9WEqsiqdYI8
 ### 2.5 金鑰輪替（Key Rotation）
 
 - 一個 Tenant **得**同時註冊**最多 2 把**有效（`active`）公鑰，以支援零停機輪替。常態為 1 把，第 2 把僅在輪替期間存在。
-- 一個 Tenant **必須**恆保有至少 1 把 `active` 公鑰；停用最後一把 `active` 公鑰的請求**必須**被拒絕（§7.3）。
-- `active` 公鑰已達 2 把時再上傳新公鑰**必須**被拒絕；`disabled` 與 `revoked` 的公鑰不計入上限。
+- 一個 Tenant **必須**恆保有至少 1 把 `active` 公鑰；以「輪替汰換」或「放棄輪替」為由撤銷最後一把 `active` 公鑰的請求**必須**被拒絕（§7.3）。
+- `active` 公鑰已達 2 把時再上傳新公鑰**必須**被拒絕；`revoked` 的公鑰不計入上限。
 - Assertion 的 JWT header **必須**帶 `kid`，HyAgent 據此直接定位公鑰，不做嘗試性驗章。
 - **建議**每 **12 個月**輪替一次，並在下列情形立即輪替：人員異動、私鑰疑似外洩、保管環境變更。
 
-> **為何上限訂為 2**：2 是零停機輪替的下限——新舊公鑰並存，Customer Backend 才能滾動更新而不中斷，新金鑰若有問題也能立即切回舊私鑰。上限訂為 2 可維持「平常只有一把」的單純心智模型，避免輪替時誤停用錯誤的金鑰。
+> **為何上限訂為 2**：2 是零停機輪替的下限——新舊公鑰並存，Customer Backend 才能滾動更新而不中斷，新金鑰若有問題也能立即切回舊私鑰。上限訂為 2 可維持「平常只有一把」的單純心智模型，避免輪替時誤撤銷錯誤的金鑰。
 
 建議輪替步驟：
 
@@ -283,11 +283,11 @@ alg = ES256   kid = JIyMfVT7Az-6tEPXT8S10ZIdKL7K_nhi9WEqsiqdYI8
 2. 上傳公鑰 B → Tenant 同時有 A、B 兩把有效公鑰
 3. Customer Backend 切換為以私鑰 B 簽發
 4. 觀察期 ≥ 24 小時，確認無 UNKNOWN_KID / INVALID_SIGNATURE 錯誤
-5. 於 HyAgent 後台停用公鑰 A
+5. 於 HyAgent 後台完成輪替（以「輪替汰換」撤銷公鑰 A）
 6. 銷毀私鑰 A
 ```
 
-輪替期間 Tenant 會達到 2 把上限，**必須**完成步驟 5（停用公鑰 A）後才能開始下一輪輪替。若輪替期間發生私鑰外洩而已無名額，**必須**先撤銷外洩的 `kid`（§2.6）釋出名額，再上傳新公鑰。
+輪替期間 Tenant 會達到 2 把上限，**必須**完成步驟 5（撤銷公鑰 A）後才能開始下一輪輪替。若輪替期間發生私鑰外洩而已無名額，**必須**先撤銷外洩的 `kid`（§2.6）釋出名額，再上傳新公鑰。
 
 ### 2.6 金鑰撤銷（Revocation）
 
@@ -364,7 +364,7 @@ QedC5HKYzO0vo42SSt5zm8YDbhKItNfI4GOy7kNgX9gBH603o1MYzjLUjQ==
 | 參數 | `[RS256\|ES256] [輸出目錄]`。演算法預設 `ES256`（§2.1 建議），輸出目錄預設 `./keys` |
 | `--modulus <bits>` | RS256 的 modulus 長度，預設 2048；低於 2048 直接拒絕（§2.1） |
 | `--kid <PEM 檔>` | 只計算既有金鑰的 `kid` 與演算法，不產生新金鑰。以 OpenSSL 產生時、或要與後台核對時用（§3.4） |
-| 檔名 | 內含 `kid`。輪替期間會有兩把金鑰並存（§2.5），檔名認得出誰是誰才不會停用錯的那把 |
+| 檔名 | 內含 `kid`。輪替期間會有兩把金鑰並存（§2.5），檔名認得出誰是誰才不會撤銷錯的那把 |
 | 檔案權限 | 私鑰以 `0600` 建立（§2.2）。Windows 無 POSIX 權限位元，CLI 會提示改以 NTFS ACL 限制 |
 | 需求 | Node.js 18 以上。**無任何相依套件**，不需 `npm install` |
 
@@ -1129,11 +1129,11 @@ Authorization: Bearer <sessionToken>
 
 ### 7.3 公鑰管理
 
-> **▶ 實作**：`admin/src/pages/tabs/AssertionKeysPanel.tsx`（後台 UI）→
+> **▶ 實作**：`admin/src/pages/tabs/SsoTab.tsx`（後台 UI）→
 > `server/src/modules/admin/admin.routes.ts` / `admin.controller.ts` →
 > `server/src/modules/tenant/tenant-keys.ts`（不變條件）；測試 `server/tests/tenant-public-keys.test.ts`
 
-公鑰管理**僅**經 **HyAgent 後台 UI** 操作，**不對外開放 API**。公鑰的上傳、查詢與停用 / 撤銷一律在後台進行，HyAgent **不得**對外提供等效端點。
+公鑰管理**僅**經 **HyAgent 後台 UI** 操作，**不對外開放 API**。公鑰的上傳、查詢與撤銷一律在後台進行，HyAgent **不得**對外提供等效端點。
 
 > **理由**：公鑰是 Tenant 的信任根，但管理動作屬低頻操作——只在導入、§2.5 輪替與 §2.6 撤銷時發生。對外開放等於為了省下少數幾次操作，換來一組必須長期保管與輪替的管理憑證，攻擊面（憑證外洩即可置換信任根）遠大於效益。後台介面另可在撤銷等破壞性操作前強制二次確認（§2.6），這是 API 給不了的。
 
@@ -1142,8 +1142,8 @@ Authorization: Bearer <sessionToken>
 | 操作 | 內部端點 | 說明 |
 | --- | --- | --- |
 | 上傳公鑰 | `POST /api/admin/tenants/{tenant}/assertion-keys` | body 含 `publicKey`（SPKI PEM 或 JWK）與選填 `label`。`alg` 與 `kid` **一律由後端算出**，不接受呼叫端指定 |
-| 列出公鑰 | `GET /api/admin/tenants/{tenant}/assertion-keys` | 公鑰與狀態（`active` / `disabled` / `revoked`）、逐租戶設定、近期時鐘偏移統計（§10.4） |
-| 變更狀態 | `PATCH /api/admin/tenants/{tenant}/assertion-keys/{kid}` | body `{ status }`。撤銷會**連帶作廢**以該 `kid` 建立的所有 Session，回應帶 `revokedSessions` 筆數 |
+| 列出公鑰 | `GET /api/admin/tenants/{tenant}/assertion-keys` | 公鑰與狀態（`active` / `revoked`，後者含撤銷原因與時間）、逐租戶設定、近期時鐘偏移統計（§10.4） |
+| 撤銷公鑰 | `POST /api/admin/tenants/{tenant}/assertion-keys/{kid}/revoke` | body `{ reason }`，必填：`rotated`（輪替汰換，撤舊的）／`aborted`（放棄輪替，撤新的）／`compromised`（私鑰外洩或疑似外洩）／`other`（其他，如上傳錯誤、停止服務）。會**連帶作廢**以該 `kid` 建立的所有 Session，回應帶 `revokedSessions` 筆數 |
 | 逐租戶設定 | `PATCH /api/admin/tenants/{tenant}/assertion-settings` | `clockSkewSeconds`、`assertionLifetimeSeconds`、`sessionExpiresIn`（§4.3、§7.1、§10.4） |
 
 後台操作**必須**以 HyAgent 管理者帳號認證，**不得**使用 Identity Assertion 或 `sessionToken`。
@@ -1157,12 +1157,16 @@ Authorization: Bearer <sessionToken>
 | 條件 | 行為 |
 | --- | --- |
 | `active` 公鑰已達 2 把時再上傳 | 拒絕，回傳 `KEY_LIMIT_EXCEEDED`（409） |
-| **停用**（`disabled`）最後一把 `active` 公鑰 | 拒絕，回傳 `LAST_ACTIVE_KEY`（409）；**應該**先上傳新公鑰再停用舊的 |
-| **撤銷**（`revoked`）最後一把 `active` 公鑰 | **允許**（安全優先於可用性），但**必須**要求二次確認；此後該 Tenant 在上傳新公鑰前無法建立 Session |
+| 以 `rotated`（輪替汰換）或 `aborted`（放棄輪替）撤銷最後一把 `active` 公鑰 | 拒絕，回傳 `LAST_ACTIVE_KEY`（409）。兩者都預設另一把繼續使用：輪替要有新金鑰接手，放棄輪替要有舊金鑰留著；**應該**先上傳新公鑰再汰換舊的 |
+| 以 `compromised` 或 `other` 撤銷最後一把 `active` 公鑰 | **允許**（外洩時安全優先於可用性；停止服務也是合法需求），但**必須**要求二次確認；此後該 Tenant 在上傳新公鑰前無法建立 Session |
 | 上傳的公鑰其 `kid` 已存在於同一 Tenant | 視為冪等，回傳既有 `kid` 與狀態，不新增一筆，**也不改變其現有狀態**（否則重新上傳一把已撤銷的公鑰就成了繞過撤銷的後門） |
-| 已撤銷（`revoked`）的公鑰要求改回可用 | 拒絕：撤銷不可逆，請重新產生並上傳一把新的 |
+| 已撤銷的公鑰再次撤銷 | 拒絕，回傳 `INVALID_REQUEST`（400），避免覆寫原本的撤銷原因與時間。撤銷不可逆，沒有改回可用的操作；請重新產生並上傳一把新的 |
 
-`disabled` 與 `revoked` 的公鑰不計入 2 把上限，但**應該**保留紀錄供稽核（`kid`、狀態、變更時間、操作者）。
+`revoked` 的公鑰不計入 2 把上限，但**應該**保留紀錄供稽核（`kid`、撤銷原因、撤銷時間、操作者）。上傳與撤銷時各記一次操作者（`createdBy` / `revokedBy`）。
+
+> **操作者記到什麼程度**：後台目前沒有個人帳號（共用一組管理密碼），因此操作者只記系統確實驗證得了的部分——登入管道（`admin` 後台登入／`admin-api-key` 管理 API 金鑰）與來源 IP，與後台設定變更稽核取同一組值。不收自填姓名：驗證不了的欄位放進稽核紀錄，事後反而會被當成證據引用。要記到「哪一個人」，前提是先有個人管理者帳號。
+
+> **為何沒有「停用」**：早期版本另有可再啟用的 `disabled`，用於輪替收尾。但它與撤銷的效果完全相同——憑證一律回 `KEY_REVOKED`、以該 `kid` 建立的 Session 一併作廢——唯一差別是「能救回來」，而輪替完成後舊私鑰應已銷毀（§2.5 步驟 6），重新信任它只是多開一條沒人記得的路。兩者真正需要區分的是**稽核上的原因**（例行退役還是外洩），因此改以撤銷原因記錄。既有的 `disabled` 紀錄於啟動時轉為 `revoked` + `rotated`（舊版不允許停用最後一把，停用只會發生在新舊並存的輪替期間）。
 
 ### 7.4 Session 管理（管理端）
 
@@ -1404,7 +1408,7 @@ Widget 端另有兩個本地代碼（不對應 HTTP，出現在 `identity:respon
 `NO_TOKEN_PROVIDER`（未設 `data-token-url`）、`TOKEN_PROVIDER_FAILED`（含逾時與重試用盡）。
 兩者都不會擋住面板，使用者改為自行登入。
 
-管理端操作（§7.3、§7.4）另有：`KEY_LIMIT_EXCEEDED`（409，已達 2 把上限）、`LAST_ACTIVE_KEY`（409，不得停用最後一把有效公鑰）、`INVALID_REQUEST`（400，參數缺漏或格式錯誤）。
+管理端操作（§7.3、§7.4）另有：`KEY_LIMIT_EXCEEDED`（409，已達 2 把上限）、`LAST_ACTIVE_KEY`（409，輪替汰換或放棄輪替不得撤銷最後一把有效公鑰）、`INVALID_REQUEST`（400，參數缺漏或格式錯誤）。
 
 **安全考量（定稿：正式環境保留細分代碼）**
 
@@ -1648,7 +1652,7 @@ Widget），需先啟動 `npm run dev:server` 與 `npm run dev:client`，詳見�
 | `kid` 不存在或缺漏 | `UNKNOWN_KID` | ✅ |
 | 使用 Tenant A 的 `kid` 搭配 Tenant B 的 `iss` | `UNKNOWN_KID` | ✅ |
 | `header.alg` 與該 `kid` 註冊的演算法不符 | `INVALID_ALGORITHM` | ✅ |
-| 公鑰已撤銷或停用 | `KEY_REVOKED` | ✅ |
+| 公鑰已撤銷 | `KEY_REVOKED` | ✅ |
 | 輪替期間新舊公鑰皆可用 | 通過 | ✅ |
 | 同一 `jti` 連送兩次 | 第二次 `TOKEN_REPLAYED` | ✅ |
 | ES256 簽章以 DER 編碼 | `INVALID_SIGNATURE` | ✅ |

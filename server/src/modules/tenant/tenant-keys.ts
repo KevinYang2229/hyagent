@@ -16,7 +16,7 @@ import {
   detectAlgorithm,
   type AssertionAlgorithm,
 } from '@/lib/assertion';
-import type { TenantPublicKey, TenantPublicKeyStatus } from './tenant.types';
+import type { KeyRevocationReason, TenantPublicKey } from './tenant.types';
 
 /** 規格 §2.5：每租戶最多 2 把 active。 */
 export const MAX_ACTIVE_KEYS = 2;
@@ -127,41 +127,56 @@ export function checkCanAddKey(
   if (activeKeys(keys).length >= MAX_ACTIVE_KEYS) {
     throw new HyAgentTokenError(
       ERROR_CODES.KEY_LIMIT_EXCEEDED,
-      `每個 Tenant 最多 ${MAX_ACTIVE_KEYS} 把 active 公鑰，請先停用或撤銷其中一把`,
+      `每個 Tenant 最多 ${MAX_ACTIVE_KEYS} 把 active 公鑰，請先完成輪替或撤銷其中一把`,
     );
   }
   return {};
 }
 
 /**
- * 狀態變更前檢查（規格 §7.3）。
+ * 撤銷前檢查（規格 §7.3）。
  *
- * 停用最後一把 active → 拒絕：租戶會立刻無法登入，而這不是任何人想要的結果。
- * 撤銷最後一把 active → 允許：私鑰已外洩時，安全優先於可用性。二次確認由 UI 負責（§2.6）。
+ * 「至少保留 1 把 active」掛在**原因**上，而不是一律擋或一律放：
+ * - 輪替汰換（`rotated`）或放棄輪替（`aborted`）撤掉最後一把 → 拒絕。這兩個原因都預設
+ *   「另一把繼續用」：輪替要有新金鑰接手，放棄輪替要有舊金鑰留著。沒有另一把就不是輪替，
+ *   而是讓租戶立刻無法登入——這不是按下「完成／放棄輪替」的人想要的結果。
+ * - 外洩（`compromised`）或其他原因撤掉最後一把 → 允許。私鑰已外洩時安全優先於可用性；
+ *   停止服務也是合法需求。二次確認由 UI 負責（§2.6）。
  */
-export function checkCanSetStatus(
+export function checkCanRevoke(
   keys: readonly TenantPublicKey[] = [],
   kid: string,
-  next: TenantPublicKeyStatus,
+  reason: KeyRevocationReason,
 ): TenantPublicKey {
   const target = keys.find((k) => k.kid === kid);
   if (!target) invalid('查無此 kid');
-  if (target.status === 'revoked' && next !== 'revoked') {
-    invalid('已撤銷的公鑰不可復原，請重新上傳一把新的');
-  }
-  if (next === 'disabled' && target.status === 'active' && activeKeys(keys).length <= 1) {
+  if (target.status === 'revoked') invalid('這把公鑰已經撤銷');
+  if ((reason === 'rotated' || reason === 'aborted') && !activeKeys(keys).some((k) => k.kid !== kid)) {
     throw new HyAgentTokenError(
       ERROR_CODES.LAST_ACTIVE_KEY,
-      '不可停用最後一把 active 公鑰；若確定要停止服務，請改用撤銷',
-    );
-  }
-  if (next === 'active' && target.status !== 'active' && activeKeys(keys).length >= MAX_ACTIVE_KEYS) {
-    throw new HyAgentTokenError(
-      ERROR_CODES.KEY_LIMIT_EXCEEDED,
-      `每個 Tenant 最多 ${MAX_ACTIVE_KEYS} 把 active 公鑰`,
+      '輪替相關的撤銷必須還有另一把 active 公鑰繼續使用；若確定要停止服務，請改選其他撤銷原因',
     );
   }
   return target;
+}
+
+/**
+ * 改版前的 `disabled` 一律轉為 `revoked` + `rotated`，`statusChangedAt` 改名 `revokedAt`。
+ *
+ * 原因推定為輪替並非猜測：舊版後端不允許停用最後一把 active，停用只可能發生在新舊並存的
+ * 輪替期間。回傳 undefined＝這把不需轉換，呼叫端據此判斷要不要重寫持久層。
+ */
+export function migrateLegacyKey(key: TenantPublicKey): TenantPublicKey | undefined {
+  const legacy = key as Omit<TenantPublicKey, 'status'> & { status: string; statusChangedAt?: string };
+  if (legacy.status !== 'disabled' && legacy.statusChangedAt === undefined) return undefined;
+  const { statusChangedAt, status, ...rest } = legacy;
+  if (status === 'active') return { ...rest, status };
+  return {
+    ...rest,
+    status: 'revoked',
+    ...(statusChangedAt ? { revokedAt: statusChangedAt } : {}),
+    ...(status === 'disabled' ? { revokedReason: 'rotated' as const } : {}),
+  };
 }
 
 function requireIntegerInRange(value: unknown, min: number, max: number, field: string): number {

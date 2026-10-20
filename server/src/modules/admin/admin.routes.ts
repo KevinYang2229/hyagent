@@ -51,7 +51,7 @@ import {
   patchAssertionSettingsSchema,
   revokeSessionsSchema,
   sessionParamSchema,
-  setPublicKeyStatusSchema,
+  revokePublicKeySchema,
   tenantKeyParamSchema,
   adminReportQuerySchema,
   auditPageQuerySchema,
@@ -142,10 +142,10 @@ router.post(
   validate({ params: tenantParamSchema, body: addPublicKeySchema }),
   asyncHandler(adminController.addPublicKey),
 );
-router.patch(
-  '/tenants/:id/assertion-keys/:kid',
-  validate({ params: tenantKeyParamSchema, body: setPublicKeyStatusSchema }),
-  asyncHandler(adminController.setPublicKeyStatus),
+router.post(
+  '/tenants/:id/assertion-keys/:kid/revoke',
+  validate({ params: tenantKeyParamSchema, body: revokePublicKeySchema }),
+  asyncHandler(adminController.revokePublicKey),
 );
 router.patch(
   '/tenants/:id/assertion-settings',

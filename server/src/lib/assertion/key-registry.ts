@@ -16,8 +16,8 @@ import { ERROR_CODES, fail } from './errors';
 import { ALGORITHMS, isAssertionAlgorithm, toPublicKey, type AssertionAlgorithm } from './jose';
 import { computeKid, detectAlgorithm } from './keygen';
 
-/** 規格 §7.3 的公鑰狀態機。 */
-export type PublicKeyStatus = 'active' | 'disabled' | 'revoked';
+/** 規格 §7.3 的公鑰狀態機：只有 active → revoked，撤銷不可逆（輪替汰換也走撤銷）。 */
+export type PublicKeyStatus = 'active' | 'revoked';
 
 export interface RegisteredKey {
   tenant: string;
@@ -82,21 +82,12 @@ export class InMemoryKeyRegistry implements AssertionKeyRegistry {
     return entry;
   }
 
-  /** 撤銷公鑰（規格 §2.6）。撤銷後以該 kid 簽發的 Assertion 一律被拒。 */
+  /** 撤銷公鑰（規格 §2.5 輪替流程第 5 步、§2.6）。撤銷後以該 kid 簽發的 Assertion 一律被拒。 */
   revoke(tenant: string, kid: string): void {
-    this.setStatus(tenant, kid, 'revoked');
-  }
-
-  /** 停用公鑰（規格 §2.5 輪替流程第 5 步）。 */
-  disable(tenant: string, kid: string): void {
-    this.setStatus(tenant, kid, 'disabled');
-  }
-
-  private setStatus(tenant: string, kid: string, status: PublicKeyStatus): void {
     const entryKey = InMemoryKeyRegistry.entryKey(tenant, kid);
     const entry = this.keys.get(entryKey);
     if (!entry) throw new Error(`查無公鑰：${tenant}/${kid}`);
-    this.keys.set(entryKey, Object.freeze({ ...entry, status }));
+    this.keys.set(entryKey, Object.freeze({ ...entry, status: 'revoked' }));
   }
 
   /** 列出某 Tenant 的所有公鑰與狀態（規格 §7.3）。 */
