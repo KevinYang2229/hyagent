@@ -28,9 +28,10 @@ const run = promisify(execFile);
 
 /** 未設定 REPORT_PDF_BROWSER 時依序探測的位置：容器在前，開發機在後 */
 const CANDIDATES = [
+  // Ubuntu 的 Chromium 可能是 Snap 包裝器，其 /tmp 與主機不同；優先使用原生 Chrome。
+  '/usr/bin/google-chrome',
   '/usr/bin/chromium',
   '/usr/bin/chromium-browser',
-  '/usr/bin/google-chrome',
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
   '/Applications/Chromium.app/Contents/MacOS/Chromium',
 ];
@@ -75,6 +76,9 @@ export async function renderPdf(doc: ReportDoc): Promise<Buffer> {
       [
         '--headless',
         '--disable-gpu',
+        // 每次使用獨立 profile，避免把列印命令轉交既有 Chrome 行程後提早結束。
+        // 放在同一個暫存目錄，成功與失敗都由 finally 一起清除。
+        `--user-data-dir=${join(dir, 'profile')}`,
         // 容器裡以 root 執行時沒有 user namespace 可用。內容是自家產生的 HTML、
         // 不含腳本且網路已封死，關掉沙箱換得起
         '--no-sandbox',
@@ -89,7 +93,16 @@ export async function renderPdf(doc: ReportDoc): Promise<Buffer> {
       ],
       { timeout: PRINT_TIMEOUT_MS, maxBuffer: 1024 * 1024 },
     );
-    return await readFile(out);
+    let pdf: Buffer;
+    try {
+      pdf = await readFile(out);
+    } catch (cause) {
+      throw new Error('Chromium 已結束但無法讀取 PDF 產出，請檢查瀏覽器執行環境與暫存目錄存取權限', { cause });
+    }
+    if (pdf.subarray(0, 5).toString() !== '%PDF-') {
+      throw new Error('Chromium 未產生有效的 PDF 檔案');
+    }
+    return pdf;
   } finally {
     // 報告內容不留在磁碟上：暫存目錄無論成敗都要清掉
     await rm(dir, { recursive: true, force: true });

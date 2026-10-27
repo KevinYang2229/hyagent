@@ -10,6 +10,9 @@
  * 所以要驗真實輸出的案例得自己探測並暫時覆寫 env。
  */
 import { existsSync } from 'node:fs';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { env } from '@/config/env';
 import { probeBrowserPath, renderPdf, resolveBrowserPath } from '@/modules/report/renderers/pdf';
 import type { ReportDoc } from '@/modules/report/report.types';
@@ -63,6 +66,58 @@ describe('renderPdf', () => {
   it('找不到瀏覽器時丟出指名原因的錯誤，而不是產出壞檔', async () => {
     writable.REPORT_PDF_BROWSER = '/definitely/not/a/browser';
     await expect(renderPdf(doc)).rejects.toThrow('找不到 Chromium');
+  });
+
+  it('並行列印使用獨立 profile，且成功後清除各自的暫存檔', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'oa-pdf-test-'));
+    try {
+      const browser = join(dir, 'browser.cjs');
+      const calls = join(dir, 'calls.jsonl');
+      await writeFile(browser, String.raw`#!${process.execPath}
+const fs = require('node:fs');
+const path = require('node:path');
+const args = process.argv.slice(2);
+const out = args.find(a => a.startsWith('--print-to-pdf=')).split('=').slice(1).join('=');
+const profile = args.find(a => a.startsWith('--user-data-dir='))?.split('=').slice(1).join('=');
+fs.appendFileSync(${JSON.stringify(calls)}, JSON.stringify({ out, profile }) + '\n');
+if (!profile || path.dirname(profile) !== path.dirname(out)) process.exit(1);
+fs.mkdirSync(profile);
+fs.writeFileSync(out, '%PDF-test');
+`, { mode: 0o700 });
+      writable.REPORT_PDF_BROWSER = browser;
+      const results = await Promise.all([renderPdf(doc), renderPdf(doc)]);
+      expect(results.map(buf => buf.toString())).toEqual(['%PDF-test', '%PDF-test']);
+      const callsText = await readFile(calls, 'utf8');
+      const paths = callsText.trim().split('\n').map(line => JSON.parse(line) as { out: string; profile: string });
+      expect(paths).toHaveLength(2);
+      expect(new Set(paths.map(p => p.profile)).size).toBe(2);
+      for (const { out, profile } of paths) {
+        expect(existsSync(out)).toBe(false);
+        expect(existsSync(profile)).toBe(false);
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it.each(['missing', 'invalid'])('程序成功退出但產出 %s 時明確報錯並清理暫存檔', async (mode) => {
+    const dir = await mkdtemp(join(tmpdir(), 'oa-pdf-test-'));
+    try {
+      const browser = join(dir, 'browser.cjs');
+      const recorded = join(dir, 'output-path');
+      await writeFile(browser, String.raw`#!${process.execPath}
+const fs = require('node:fs');
+const out = process.argv.find(a => a.startsWith('--print-to-pdf=')).split('=').slice(1).join('=');
+fs.writeFileSync(${JSON.stringify(recorded)}, out);
+if (${JSON.stringify(mode)} === 'invalid') fs.writeFileSync(out, 'not a PDF');
+`, { mode: 0o700 });
+      writable.REPORT_PDF_BROWSER = browser;
+      await expect(renderPdf(doc)).rejects.toThrow(mode === 'missing' ? '無法讀取 PDF 產出' : '未產生有效的 PDF');
+      const out = await readFile(recorded, 'utf8');
+      expect(existsSync(join(out, '..'))).toBe(false);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 
   const browser = probeBrowserPath();
