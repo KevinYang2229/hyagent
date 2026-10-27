@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import AuditTab from './AuditTab';
 import { api, type AuditEntry } from '../../api';
@@ -10,17 +10,20 @@ vi.mock('../../api', () => ({ api: { getTenantAudit: vi.fn(), getPlatformAudit: 
 const entry = (summary: string): AuditEntry => ({ toolId: 'admin.config', userId: 'admin', at: '2026-10-13T00:00:00.000Z', ok: true, summary });
 
 // jsdom 沒有 IntersectionObserver：記下回呼，由測試手動模擬「捲到底」
-let fireIntersect: () => void = () => {};
+let fireIntersect: (() => void) | undefined;
 class FakeObserver {
   constructor(private cb: IntersectionObserverCallback) {}
   observe() {
     fireIntersect = () => this.cb([{ isIntersecting: true } as IntersectionObserverEntry], this as never);
   }
-  disconnect() {}
+  disconnect() {
+    fireIntersect = undefined;
+  }
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
+  fireIntersect = undefined;
   vi.stubGlobal('IntersectionObserver', FakeObserver);
 });
 afterEach(() => {
@@ -39,9 +42,13 @@ it('先載 10 筆，捲到底才帶游標載下一頁，載完顯示已顯示全
   expect(api.getTenantAudit).toHaveBeenCalledTimes(1);
   expect(api.getTenantAudit).toHaveBeenCalledWith('t1', undefined);
 
-  await act(async () => fireIntersect());
+  // 資料列出現時，建立 observer 的 effect 可能尚未執行；等到開始監看再模擬捲動。
+  await waitFor(() => expect(fireIntersect).toBeDefined());
+  await act(async () => fireIntersect!());
   await screen.findByText('older');
+  expect(api.getTenantAudit).toHaveBeenCalledTimes(2);
   expect(api.getTenantAudit).toHaveBeenLastCalledWith('t1', '5');
+  expect(screen.getAllByRole('row')).toHaveLength(12);
   expect(screen.getByText('已顯示全部紀錄')).toBeInTheDocument();
 });
 
