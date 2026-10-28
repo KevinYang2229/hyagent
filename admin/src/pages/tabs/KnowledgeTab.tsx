@@ -156,7 +156,7 @@ export default function KnowledgeTab({
       const saved = await api.saveKnowledgeSource(tenantId, src);
       setSrc(saved);
       await loadAcl();
-      toast.success("已儲存網站設定，可直接重新生成推薦詞");
+      toast.success("已儲存網站設定");
     } catch (e) {
       onError(e);
     } finally {
@@ -607,6 +607,23 @@ export default function KnowledgeTab({
                     disabled={parsing}
                   />
                 </div>
+                <div className="field">
+                  <label className="field-label" htmlFor="website-render-javascript">
+                    <Checkbox id="website-render-javascript" checked={src.renderJavaScript ?? false}
+                      disabled={parsing || savingSource}
+                      onChange={(e) => update({ renderJavaScript: e.target.checked })} />
+                    瀏覽器渲染後解析
+                  </label>
+                  <span className="field-hint">適用於以 JavaScript 載入內容的網站，解析時間較長。僅讀取未登入即可瀏覽的內容，不會沿用你的登入狀態。變更後需重新解析。</span>
+                </div>
+                {src.renderJavaScript && <div className="field">
+                  <label className="field-label">內容載入等待時間（毫秒）
+                  <NumberField value={src.renderWaitMs ?? 1500}
+                    min={0} max={10000} disabled={parsing || savingSource}
+                    onChange={(renderWaitMs) => update({ renderWaitMs })} />
+                  </label>
+                  <span className="field-hint">頁面載入後額外等待動態資料，預設 1500 毫秒，最多 10000 毫秒。</span>
+                </div>}
                 <div className="field">
                   <label className="field-label">路徑前綴（選填）</label>
                   <input

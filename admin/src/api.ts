@@ -265,6 +265,8 @@ export interface KnowledgeSource {
   /** 整個網站來源的可見性標籤 */
   visibilityScopes?: string[];
   startUrl: string;
+  renderJavaScript?: boolean;
+  renderWaitMs?: number;
   maxPages: number;
   pathPrefix?: string;
   includePatterns?: string[];

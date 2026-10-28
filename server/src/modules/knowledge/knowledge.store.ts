@@ -15,6 +15,10 @@ export interface KnowledgeSource {
   audience?: { mode: 'public' | 'departments' | 'disabled' | 'labels'; departments?: string[] };
   /** 爬取起點 URL */
   startUrl: string;
+  /** 使用瀏覽器執行 JavaScript 後再解析，舊設定預設關閉。 */
+  renderJavaScript?: boolean;
+  /** DOM 載入後額外等待時間（毫秒）。 */
+  renderWaitMs?: number;
   /** 最大爬取頁數 */
   maxPages: number;
   /** 只爬取此路徑前綴（選填） */

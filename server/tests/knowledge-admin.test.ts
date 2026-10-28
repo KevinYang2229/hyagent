@@ -47,6 +47,8 @@ describe('admin knowledge API', () => {
       .set(auth)
       .send({
         startUrl: 'https://x.com',
+        renderJavaScript: true,
+        renderWaitMs: 2200,
         maxPages: 30,
         chunkChars: 600,
         embeddingModel: 'text-embedding-3-large',
@@ -56,7 +58,14 @@ describe('admin knowledge API', () => {
 
     const res = await request(app).get('/api/admin/tenants/default/knowledge').set(auth).expect(200);
     expect(res.body.data.source.startUrl).toBe('https://x.com');
+    expect(res.body.data.source.renderJavaScript).toBe(true);
+    expect(res.body.data.source.renderWaitMs).toBe(2200);
     expect(res.body.data.meta.status).toBeDefined();
+  });
+
+  it.each([-1, 10001, 1.5])('拒絕不合法的瀏覽器等待時間 %s', async (renderWaitMs) => {
+    await request(app).put('/api/admin/tenants/default/knowledge/source').set(auth)
+      .send({ startUrl: 'https://example.com', renderJavaScript: true, renderWaitMs }).expect(422);
   });
 
   it('檔案 RAG 可在未設定網站時儲存共用解析設定', async () => {

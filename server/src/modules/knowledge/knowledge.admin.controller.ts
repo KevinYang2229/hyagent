@@ -86,6 +86,8 @@ function ingestParamsFor(tenantId: string): IngestParams {
   return {
     tenantId,
     startUrl: s.startUrl,
+    renderJavaScript: s.renderJavaScript,
+    renderWaitMs: s.renderWaitMs,
     maxPages: s.maxPages,
     pathPrefix: s.pathPrefix,
     includePatterns: s.includePatterns,

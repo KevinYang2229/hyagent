@@ -8,6 +8,7 @@ import { usageStore } from '@/modules/usage/usage.store';
 import { replaceWebsiteChunks } from './knowledge.index.repo';
 import type { IndexedChunk, KnowledgeIndexFile } from './knowledge-index.types';
 import { knowledgeStore } from './knowledge.store';
+import { WebsiteBrowser } from './website-browser';
 
 // 注意：carryOverFileChunks 定義於本檔（而非 knowledge-file.service.ts），
 // 是為了維持單向依賴——knowledge-file.service 已經需要 import 本檔的 chunkText/squash，
@@ -16,6 +17,8 @@ import { knowledgeStore } from './knowledge.store';
 export interface IngestParams {
   tenantId: string;
   startUrl: string;
+  renderJavaScript?: boolean;
+  renderWaitMs?: number;
   maxPages: number;
   pathPrefix?: string;
   includePatterns?: string[];
@@ -343,23 +346,41 @@ export async function runIngest(
   const queue: string[] = [start];
   const pages: { url: string; title: string; sections: { heading: string; text: string }[] }[] = [];
 
-  while (queue.length && pages.length < params.maxPages) {
-    const url = queue.shift() as string;
-    if (seen.has(url) || !allowed(url, params)) continue;
-    seen.add(url);
-    try {
-      const resp = await fetch(url, { headers: { 'user-agent': 'oa-agent-knowledge-ingest' } });
-      const ct = resp.headers.get('content-type') ?? '';
-      if (!resp.ok || !ct.includes('text/html')) continue;
-      const html = await resp.text();
-      const { title, sections } = extractPage(html);
-      if (sections.length) pages.push({ url, title: title || url, sections });
-      for (const link of extractLinks(html, url, origin)) if (!seen.has(link)) queue.push(link);
-      onProgress?.({ phase: 'crawling', pagesCrawled: pages.length, chunks: 0, embedded: 0 });
-    } catch (err) {
-      logger.warn({ err, url }, 'ingest page failed');
+  const browser = params.renderJavaScript ? new WebsiteBrowser() : undefined;
+  try {
+    if (browser) await browser.open();
+    while (queue.length && pages.length < params.maxPages) {
+      const url = queue.shift() as string;
+      if (seen.has(url) || !allowed(url, params)) continue;
+      seen.add(url);
+      try {
+        let html: string;
+        let pageUrl = url;
+        if (browser) {
+          const rendered = await browser.load(url, params.renderWaitMs ?? 1500);
+          html = rendered.html;
+          pageUrl = rendered.url;
+          if (!allowed(pageUrl, params)) throw new Error('網站跳轉至解析範圍之外');
+        } else {
+          const resp = await fetch(url, { headers: { 'user-agent': 'oa-agent-knowledge-ingest' } });
+          const ct = resp.headers.get('content-type') ?? '';
+          if (!resp.ok || !ct.includes('text/html')) continue;
+          html = await resp.text();
+        }
+        const { title, sections } = extractPage(html);
+        if (sections.length) pages.push({ url: pageUrl, title: title || pageUrl, sections });
+        for (const link of extractLinks(html, pageUrl, origin)) if (!seen.has(link)) queue.push(link);
+        onProgress?.({ phase: 'crawling', pagesCrawled: pages.length, chunks: 0, embedded: 0 });
+      } catch (err) {
+        // 起始頁渲染失敗時直接回報，避免把登入頁或空內容寫成成功索引。
+        if (browser && url === start) throw err;
+        logger.warn({ err, url }, 'ingest page failed');
+      }
     }
+  } finally {
+    await browser?.close();
   }
+  if (browser && pages.length === 0) throw new Error('瀏覽器渲染後沒有可解析的文字內容，原有索引未變更');
 
   const seenHash = new Set<string>();
   const pending: Omit<IndexedChunk, 'vector'>[] = [];

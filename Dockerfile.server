@@ -37,6 +37,7 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends openssl chromium fonts-noto-cjk \
   && rm -rf /var/lib/apt/lists/*
 ENV REPORT_PDF_BROWSER=/usr/bin/chromium
+ENV KNOWLEDGE_BROWSER_EXECUTABLE=/usr/bin/chromium
 # Zeabur 的 Git/Dockerfile 服務只路由「一個」埠＝Dockerfile EXPOSE。
 # server 讀 env.PORT，所以讓 PORT 與 EXPOSE 對齊到 3000，兩邊一致才路由得到。
 # 註：若 Zeabur 後台另外注入了 PORT，會蓋掉這裡的 ENV；那就把後台的 PORT 也設成 3000。
