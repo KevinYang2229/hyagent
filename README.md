@@ -19,7 +19,8 @@
 | [`DEPLOY.zeabur.md`](DEPLOY.zeabur.md) | 部署：Zeabur 前後端分服務、四個 Dockerfile、環境變數清單 |
 | [`docs/LOCAL-SETUP.md`](docs/LOCAL-SETUP.md) | 本機架設：file 模式（零資料庫）跑起來的完整步驟、SSO demo 與疑難排解 |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | 目標架構、現況對照、演進觸發點——決定「要不要做某個平台機制」時查它 |
-| [`docs/PRODUCT_SPEC.md`](docs/PRODUCT_SPEC.md) | 產品規格（To-Be）：通用表單與外部系統整合的目標規格 |
+| [`docs/HyAgent產品規格書-對外版.md`](docs/HyAgent產品規格書-對外版.md) | 對外產品規格：功能、整合條件、導入範圍與驗收項目 |
+| [`docs/PRODUCT_SPEC.md`](docs/PRODUCT_SPEC.md) | 內部產品規格（As-Is）：目前實作、API、部署設定與已知缺口 |
 | [`docs/SYSTEM_ANALYSIS.md`](docs/SYSTEM_ANALYSIS.md) | 系統分析（As-Is）：現況系統規格 |
 | [`docs/HANDOFF-OA-HTTP.md`](docs/HANDOFF-OA-HTTP.md) | 交接：把表單送進真 OA（`OA_CONNECTOR=http`）的待辦與驗收 |
 | [`docs/HANDOFF-SSO.md`](docs/HANDOFF-SSO.md) | 對外契約：Identity Assertion 的金鑰、簽章、換發、續期與撤銷 |
