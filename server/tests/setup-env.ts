@@ -38,10 +38,10 @@ process.env.OPENAI_API_KEY ??= 'test-openai-key';
 // 啟用管理 API（Form Designer 端點測試用）
 process.env.ADMIN_API_KEY ??= 'test-admin-key';
 // 知識庫索引/設定寫檔隔離到暫存目錄，避免污染 repo 的 server/data。
-// 目錄須依 worker 分開：knowledge.store 會整份覆寫 knowledge-config.json，refreshKnowledgeStore
-// 又會從檔案重讀並刪掉檔案裡沒有的租戶；多個 worker 共用同一檔時，別的 worker 的快照會把
-// 本 worker 剛建立的租戶資料清掉，完整測試因而隨機失敗（--runInBand 則全過）。
-process.env.KNOWLEDGE_INDEX_DIR ??= join(tmpdir(), `oa-agent-test-knowledge-${process.env.JEST_WORKER_ID ?? '0'}`);
+// 每個測試檔使用獨立目錄，不只按 worker 分開：同一 worker 先前測試留下的非同步工作
+// 仍可能覆寫整份 knowledge-config.json；重用目錄也會在每個測試檔反覆還原累積的所有資料。
+// setupFiles 在各測試環境各自執行，因此 mkdtemp 同時隔離跨檔、worker 重啟及不同測試批次。
+process.env.KNOWLEDGE_INDEX_DIR ??= mkdtempSync(join(tmpdir(), 'oa-agent-test-knowledge-'));
 
 // LLM 設定測試與本機 server/.env 脫鉤：setupFiles 先佔住的值 dotenv 不會覆蓋
 process.env.LLM_PROVIDER ??= 'anthropic';

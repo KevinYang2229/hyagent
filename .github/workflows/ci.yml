@@ -38,6 +38,9 @@ jobs:
         run: npm run typecheck
 
       - name: 測試（server jest + admin/client vitest + mobile jest）
+        env:
+          # 每個 Node 程序固定 heap 預算；server 的兩個 worker 另於 512MB 後回收。
+          NODE_OPTIONS: --max-old-space-size=2048
         run: npm test
 
       - name: Lint

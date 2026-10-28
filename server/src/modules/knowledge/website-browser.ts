@@ -1,6 +1,6 @@
 /** 網站動態解析：每次爬取使用獨立瀏覽器，不沿用管理者或其他租戶的登入狀態。 */
 import { existsSync } from 'node:fs';
-import { chromium, type Browser, type BrowserContext } from 'playwright-core';
+import type { Browser, BrowserContext } from 'playwright-core';
 import { MAX_WEBSITE_HTML_BYTES, WebsiteIngestLimitError } from './website-limits';
 
 export interface RenderedWebsitePage {
@@ -30,6 +30,8 @@ export class WebsiteBrowser {
   /** 啟動獨立的無痕環境；啟動失敗時仍釋放已建立的程序。 */
   async open(): Promise<void> {
     try {
+      // 一般 API 與非瀏覽器測試不需載入 Playwright 的執行期模組。
+      const { chromium } = await import('playwright-core');
       this.browser = await chromium.launch({
         executablePath: browserExecutable(),
         headless: true,

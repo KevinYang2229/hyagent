@@ -9,6 +9,10 @@
  * @type {import('ts-jest').JestConfigWithTsJest}
  */
 module.exports = {
+  // 固定兩個子程序，避免依 runner CPU 數放大記憶體；不使用 runInBand，讓 worker 可回收。
+  maxWorkers: 2,
+  // 多個測試檔反覆載入 Express／ts-jest 模組後，超過預算就於檔案結束後重啟 worker。
+  workerIdleMemoryLimit: '512MB',
   testEnvironment: 'node',
   roots: ['<rootDir>/src', '<rootDir>/tests'],
   testMatch: ['**/*.test.ts'],
