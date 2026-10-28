@@ -36,7 +36,7 @@ describe('FeedbackButtons', () => {
     expect(screen.getByTestId('value')).toHaveTextContent('null');
   });
 
-  it('倒讚立即記錄並展開原因面板；送出補上原因與說明', async () => {
+  it('倒讚立即記錄並以彈窗呈現問卷；送出補上原因與說明', async () => {
     render(<Harness />);
     fireEvent.click(screen.getByRole('button', { name: '沒有幫助' }));
     await waitFor(() => expect(api.setFeedback).toHaveBeenCalledWith('kevin', 'c1', 'r1', { rating: 'down' }));
@@ -80,21 +80,44 @@ describe('FeedbackButtons', () => {
     expect(screen.getByTestId('value')).toHaveTextContent('null');
     expect(screen.getByRole('button', { name: '有幫助' })).toHaveAttribute('aria-pressed', 'false');
   });
-  it('點面板外視為略過：只保留倒讚，不再呼叫 API', async () => {
+  it('點彈窗遮罩視為略過：只保留倒讚，不再呼叫 API', async () => {
     render(<Harness />);
     fireEvent.click(screen.getByRole('button', { name: '沒有幫助' }));
-    await screen.findByRole('dialog');
-    fireEvent.mouseDown(document.body);
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    expect(dialog.parentElement).toBe(document.body);
+    fireEvent.click(dialog);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(api.setFeedback).toHaveBeenCalledTimes(1);
     expect(api.clearFeedback).not.toHaveBeenCalled();
     expect(screen.getByTestId('value')).toHaveTextContent('{"rating":"down"}');
   });
 
-  it('再按一次倒讚：撤回並關閉面板', async () => {
+  it('彈窗限制鍵盤焦點，Escape 關閉後回到倒讚鈕並恢復捲動', async () => {
+    render(<Harness />);
+    const down = screen.getByRole('button', { name: '沒有幫助' });
+    fireEvent.click(down);
+    await screen.findByRole('dialog');
+    const first = screen.getByRole('radio', { name: '答錯了' });
+    expect(first).toHaveFocus();
+    expect(document.body.style.overflow).toBe('hidden');
+    fireEvent.keyDown(first, { key: 'Tab', shiftKey: true });
+    const submit = screen.getByRole('button', { name: '送出' });
+    expect(submit).toHaveFocus();
+    fireEvent.keyDown(submit, { key: 'Tab' });
+    expect(first).toHaveFocus();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(down).toHaveFocus();
+    expect(document.body.style.overflow).toBe('');
+    expect(api.clearFeedback).not.toHaveBeenCalled();
+  });
+
+  it('略過問卷後再按一次倒讚可撤回', async () => {
     render(<Harness />);
     fireEvent.click(screen.getByRole('button', { name: '沒有幫助' }));
     await screen.findByRole('dialog');
+    fireEvent.click(screen.getByRole('button', { name: '略過' }));
     fireEvent.click(screen.getByRole('button', { name: '沒有幫助' }));
     await waitFor(() => expect(api.clearFeedback).toHaveBeenCalledWith('kevin', 'c1', 'r1'));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();

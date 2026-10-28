@@ -204,38 +204,40 @@
   }
   /* 時間貼齊容器左緣（不加水平內縮）＝與輸入框、氣泡左緣同一直線 */
   .msg-time {
-    @apply text-[11px] tabular-nums text-[var(--text-secondary)] ml-2;
+    @apply shrink-0 whitespace-nowrap text-[11px] tabular-nums text-[var(--text-secondary)] ml-2;
   }
   /* 泡泡＋時間動作列的一組容器：寬度貼合泡泡（上限沿用 72%），
      內部靠左 → 時間列對齊泡泡左緣（使用者訊息隨泡泡靠右、時間仍貼其左緣） */
   .msg-body {
-    @apply flex max-w-[72%] flex-col items-start gap-1;
+    @apply flex min-w-0 max-w-[72%] flex-col items-start gap-1;
   }
   .msg-body .bubble {
     @apply max-w-full;
   }
   /* 時間 + 訊息動作列：動作常駐顯示（不靠 hover 浮現，觸控裝置也找得到） */
   .msg-meta {
-    @apply flex items-center gap-1;
+    @apply flex max-w-full flex-wrap items-center gap-1;
+  }
+  .msg-actions {
+    display: contents;
   }
   .msg-action {
-    @apply inline-flex cursor-pointer items-center rounded p-0.5 text-[var(--text-secondary)] transition-opacity hover:text-[var(--text-primary)] disabled:cursor-default disabled:opacity-40;
+    @apply inline-flex shrink-0 cursor-pointer items-center rounded p-0.5 text-[var(--text-secondary)] transition-opacity hover:text-[var(--text-primary)] disabled:cursor-default disabled:opacity-40;
   }
   /* 評價鈕：已評價的那顆以主色標示；送出中也不淡化，避免看起來像被取消 */
   .msg-action--active {
     @apply text-[var(--primary-color)] disabled:opacity-100;
   }
   .feedback {
-    @apply relative inline-flex items-center gap-1;
+    display: contents;
   }
   .feedback-thanks {
-    @apply text-xs text-[var(--text-secondary)];
+    @apply whitespace-nowrap text-xs text-[var(--text-secondary)];
   }
-  .feedback-panel {
-    @apply absolute left-0 top-full z-20 mt-1 w-72 rounded-xl border border-[var(--border-color)] bg-[var(--bg-color)] p-3 text-sm shadow-lg;
-  }
-  .feedback-panel-title {
-    @apply mb-2 font-medium text-[var(--text-primary)];
+  .modal-container.hy-dialog:has(.feedback-questionnaire) {
+    max-height: calc(100dvh - 2rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
   .feedback-reasons {
     @apply mb-2 flex flex-wrap gap-1.5;
@@ -249,17 +251,11 @@
   .feedback-reason.is-selected {
     @apply border-[var(--primary-color)] text-[var(--primary-color)];
   }
+  .feedback-reason:focus-within {
+    @apply outline-2 outline-offset-2 outline-[var(--primary-color)];
+  }
   .feedback-comment {
     @apply mb-2 w-full rounded-lg border border-[var(--border-color)] bg-transparent px-2.5 py-1.5 text-sm text-[var(--text-primary)];
-  }
-  .feedback-panel-actions {
-    @apply flex justify-end gap-2;
-  }
-  .feedback-skip {
-    @apply cursor-pointer rounded-lg px-3 py-1 text-[var(--text-secondary)];
-  }
-  .feedback-submit {
-    @apply cursor-pointer rounded-lg bg-[var(--primary-color)] px-3 py-1 text-white;
   }
   .bubble {
     @apply max-w-[72%] whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2.5 leading-relaxed;

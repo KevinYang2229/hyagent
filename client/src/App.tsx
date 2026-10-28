@@ -1145,62 +1145,64 @@ export default function App() {
                       onCancel={() => cancelPendingAction(m.pendingAction!)}
                     />
                   )}
-                  {/* 送出日期時間 + 訊息動作（hover 顯示 icon：複製；使用者訊息另有編輯。tooltip/aria 保留文字語意） */}
-                  <span className="msg-meta">
+                  {/* 日期時間與動作維持同列；感謝回饋文字空間不足時自行換行。 */}
+                  <div className="msg-meta">
                     <span className="msg-time">{formatTime(m.at)}</span>
                     {/* 報告入口：本則回覆啟動了報告產生時顯示，點開彈窗選格式下載。
                         與複製鈕同列同風格，但不隨 hover 隱藏——它帶狀態，藏起來使用者不會知道報告好了 */}
                     {m.reportId && <ReportStatus reportId={m.reportId} />}
-                    <button
-                      type="button"
-                      className="msg-action"
-                      title={copiedId === String(m.id) ? t('app.copiedMsg') : t('app.copyMsg')}
-                      aria-label={t('app.copyMsg')}
-                      onClick={() =>
-                        void copyMsg(
-                          String(m.id),
-                          m.role === 'agent' && m.greeting ? greetingText : m.text,
-                        )
-                      }
-                    >
-                      {copiedId === String(m.id) ? (
-                        /* 已複製：打勾 */
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                          <polyline points="20 6 9 17 4 12" />
-                        </svg>
-                      ) : (
-                        /* 複製：兩張疊起來的方框 */
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                          <rect x="9" y="9" width="13" height="13" rx="2" />
-                          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                        </svg>
-                      )}
-                    </button>
-                    {m.role === 'agent' && m.replyId && m.convId && (
-                      <FeedbackButtons
-                        convId={m.convId}
-                        replyId={m.replyId}
-                        userId={userId}
-                        value={m.feedback}
-                        onChange={(next) => setMsgFeedback(m.id, next)}
-                        onError={(message) => pushMsg('sys', '⚠️ ' + message)}
-                      />
-                    )}
-                    {m.role === 'user' && (
+                    <div className="msg-actions">
                       <button
                         type="button"
                         className="msg-action"
-                        title={t('app.editMsg')}
-                        aria-label={t('app.editMsg')}
-                        onClick={() => editMsg(m.text)}
+                        title={copiedId === String(m.id) ? t('app.copiedMsg') : t('app.copyMsg')}
+                        aria-label={t('app.copyMsg')}
+                        onClick={() =>
+                          void copyMsg(
+                            String(m.id),
+                            m.role === 'agent' && m.greeting ? greetingText : m.text,
+                          )
+                        }
                       >
-                        {/* 編輯：鉛筆（帶入輸入框，改完再送） */}
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                          <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
-                        </svg>
+                        {copiedId === String(m.id) ? (
+                          /* 已複製：打勾 */
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <polyline points="20 6 9 17 4 12" />
+                          </svg>
+                        ) : (
+                          /* 複製：兩張疊起來的方框 */
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <rect x="9" y="9" width="13" height="13" rx="2" />
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                          </svg>
+                        )}
                       </button>
-                    )}
-                  </span>
+                      {m.role === 'agent' && m.replyId && m.convId && (
+                        <FeedbackButtons
+                          convId={m.convId}
+                          replyId={m.replyId}
+                          userId={userId}
+                          value={m.feedback}
+                          onChange={(next) => setMsgFeedback(m.id, next)}
+                          onError={(message) => pushMsg('sys', '⚠️ ' + message)}
+                        />
+                      )}
+                      {m.role === 'user' && (
+                        <button
+                          type="button"
+                          className="msg-action"
+                          title={t('app.editMsg')}
+                          aria-label={t('app.editMsg')}
+                          onClick={() => editMsg(m.text)}
+                        >
+                          {/* 編輯：鉛筆（帶入輸入框，改完再送） */}
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                  </div>
                   </div>
                 </div>
               ),

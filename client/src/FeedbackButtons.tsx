@@ -1,10 +1,11 @@
 /**
  * AI 回覆的讚／倒讚。樂觀更新：先改畫面再送，失敗還原並回報。
- * 倒讚立即記錄，再展開原因面板；送出把原因與說明補進同一筆，略過只保留倒讚。
+ * 倒讚立即記錄，再以彈窗填寫原因；送出把原因與說明補進同一筆，略過只保留倒讚。
  */
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { FeedbackReason, ReplyFeedbackInput } from '@hyagent/shared';
+import { Dialog } from '@hyagent/ui';
 import { api } from './api';
 import { useImeSubmit } from './useImeSubmit';
 
@@ -36,16 +37,38 @@ export function FeedbackButtons({ convId, replyId, userId, value, onChange, onEr
   const [thanks, setThanks] = useState(false);
   const [pending, setPending] = useState(false);
   const pendingRef = useRef(false);
-  const wrapRef = useRef<HTMLSpanElement>(null);
+  const downRef = useRef<HTMLButtonElement>(null);
+  const questionnaireRef = useRef<HTMLDivElement>(null);
 
-  // 點面板外＝略過
+  // 彈窗內循環鍵盤焦點，關閉後回到倒讚鈕；背景訊息不跟著捲動。
   useEffect(() => {
     if (!panelOpen) return;
-    const onDown = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setPanelOpen(false);
+    const dialog = questionnaireRef.current?.closest<HTMLElement>('[role="dialog"]');
+    const trigger = downRef.current;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    questionnaireRef.current?.querySelector<HTMLInputElement>('input')?.focus();
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab' || !dialog) return;
+      const selectedRadio = dialog.querySelector('input[type="radio"]:checked')
+        ?? dialog.querySelector('input[type="radio"]');
+      const controls = Array.from(dialog.querySelectorAll<HTMLElement>('input, button'))
+        .filter((control) => !control.matches(':disabled')
+          && (!(control instanceof HTMLInputElement) || control.type !== 'radio' || control === selectedRadio));
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault(); last?.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault(); first?.focus();
+      }
     };
-    document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
+    dialog?.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      dialog?.removeEventListener('keydown', onKeyDown);
+      if (trigger?.isConnected) trigger.focus();
+    };
   }, [panelOpen]);
 
   useEffect(() => {
@@ -107,40 +130,44 @@ export function FeedbackButtons({ convId, replyId, userId, value, onChange, onEr
   const ime = useImeSubmit(() => void submitDetail());
 
   return (
-    <span ref={wrapRef} className="feedback">
-      <button
-        type="button"
-        className={`msg-action${value?.rating === 'up' ? ' msg-action--active' : ''}`}
-        aria-label={t('app.feedbackUp')}
-        title={t('app.feedbackUp')}
-        aria-pressed={value?.rating === 'up'}
-        disabled={pending}
-        onClick={() => void clickUp()}
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill={value?.rating === 'up' ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <path d="M7 10v12" />
-          <path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z" />
-        </svg>
-      </button>
-      <button
-        type="button"
-        className={`msg-action${value?.rating === 'down' ? ' msg-action--active' : ''}`}
-        aria-label={t('app.feedbackDown')}
-        title={t('app.feedbackDown')}
-        aria-pressed={value?.rating === 'down'}
-        disabled={pending}
-        onClick={() => void clickDown()}
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill={value?.rating === 'down' ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <path d="M17 14V2" />
-          <path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z" />
-        </svg>
-      </button>
-      {thanks && <span className="feedback-thanks" role="status">{t('app.feedbackThanks')}</span>}
-      {panelOpen && (
-        <div className="feedback-panel" role="dialog" aria-label={t('app.feedbackPanelTitle')}>
-          <div className="feedback-panel-title">{t('app.feedbackPanelTitle')}</div>
-          <div className="feedback-reasons" role="radiogroup">
+    <>
+      <span className="feedback">
+        <button
+          type="button"
+          className={`msg-action${value?.rating === 'up' ? ' msg-action--active' : ''}`}
+          aria-label={t('app.feedbackUp')}
+          title={t('app.feedbackUp')}
+          aria-pressed={value?.rating === 'up'}
+          disabled={pending}
+          onClick={() => void clickUp()}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill={value?.rating === 'up' ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M7 10v12" />
+            <path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z" />
+          </svg>
+        </button>
+        <button
+          ref={downRef}
+          type="button"
+          className={`msg-action${value?.rating === 'down' ? ' msg-action--active' : ''}`}
+          aria-label={t('app.feedbackDown')}
+          title={t('app.feedbackDown')}
+          aria-pressed={value?.rating === 'down'}
+          disabled={pending}
+          onClick={() => void clickDown()}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill={value?.rating === 'down' ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M17 14V2" />
+            <path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z" />
+          </svg>
+        </button>
+        {thanks && <span className="feedback-thanks" role="status">{t('app.feedbackThanks')}</span>}
+      </span>
+      <Dialog isOpen={panelOpen} title={t('app.feedbackPanelTitle')}
+        cancelText={t('app.feedbackSkip')} confirmText={t('app.feedbackSubmit')}
+        onClose={() => setPanelOpen(false)} onConfirm={() => void submitDetail()}>
+        <div ref={questionnaireRef} className="feedback-questionnaire">
+          <div className="feedback-reasons" role="radiogroup" aria-label={t('app.feedbackPanelTitle')}>
             {REASONS.map((r) => (
               <label key={r.value} className={`feedback-reason${reason === r.value ? ' is-selected' : ''}`}>
                 <input
@@ -166,12 +193,8 @@ export function FeedbackButtons({ convId, replyId, userId, value, onChange, onEr
             onKeyDown={ime.onKeyDown}
             onKeyUp={ime.onKeyUp}
           />
-          <div className="feedback-panel-actions">
-            <button type="button" className="feedback-skip" onClick={() => setPanelOpen(false)}>{t('app.feedbackSkip')}</button>
-            <button type="button" className="feedback-submit" disabled={pending} onClick={() => void submitDetail()}>{t('app.feedbackSubmit')}</button>
-          </div>
         </div>
-      )}
-    </span>
+      </Dialog>
+    </>
   );
 }
