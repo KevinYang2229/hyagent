@@ -1,60 +1,59 @@
-# HyAgent — server 服務（Express API）
-# build context = repo 根目錄（monorepo workspaces 需從 root 安裝才解析得到 @hyagent/*）
-
-# ---- build stage：裝全部依賴 + 編譯 TS ----
-# 基底映像走 Google 的 Docker Hub 快取（mirror.gcr.io），不直接拉 docker.io。
-# Zeabur 的 build 節點是共用出口 IP，匿名拉取很容易撞上 Docker Hub 的速率限制而
-# 整個 build 掛掉（429 Too Many Requests）。mirror.gcr.io 是透通快取，digest 與
-# Docker Hub 上的同一個 tag 完全相同，換的只是拉取來源，不是映像本身。
-FROM mirror.gcr.io/library/node:20-slim AS build
+# HyAgent server；build context 為 repo 根目錄，需要 BuildKit 的 npm 快取掛載。
+# 使用 Docker Hub 的 Google 快取，降低共用出口 IP 遇到限流的機會。
+FROM mirror.gcr.io/library/node:20-slim AS manifests
 WORKDIR /app
 RUN apt-get update \
   && apt-get install -y --no-install-recommends openssl \
   && rm -rf /var/lib/apt/lists/*
 
-# 先複製各 workspace 的 manifest，最大化 layer cache
 COPY package.json package-lock.json ./
-COPY shared/package.json ./shared/
-COPY ui/package.json ./ui/
 COPY server/package.json ./server/
-COPY client/package.json ./client/
-# --include=dev：Zeabur build 環境預設 NODE_ENV=production，會讓 npm 跳過 devDependencies
-# （tsc / tsc-alias 在 devDeps），強制裝進來才 build 得了
-RUN npm ci --include=dev
+COPY shared/package.json ./shared/
+# server 的開發依賴含這兩個本地 workspace，npm 解析時需要 manifest。
+COPY mcp/kit/package.json ./mcp/kit/
+COPY mcp/store-demo/package.json ./mcp/store-demo/
 
-COPY . .
-RUN npm run build -w server
+FROM manifests AS build-deps
+# 不在安裝時重複產生 Prisma client；下個獨立快取層會依 schema 明確產生。
+RUN --mount=type=cache,target=/root/.npm,sharing=locked \
+  PRISMA_SKIP_POSTINSTALL_GENERATE=true npm ci --include=dev \
+    --workspace=server --include-workspace-root=false --no-audit --no-fund
 
-# ---- runtime stage：只裝 production 依賴 + 帶編譯產物 ----
+FROM build-deps AS build
+# schema 未變時可重用 Prisma client，不因一般 TS／前端／文件修改而重新產生。
+COPY server/prisma ./server/prisma
+RUN npm run db:generate -w server
+COPY server/tsconfig.json server/tsconfig.build.json ./server/
+COPY shared/src ./shared/src
+COPY server/src ./server/src
+RUN npm exec --workspace=server -- tsc -p tsconfig.build.json \
+  && npm exec --workspace=server -- tsc-alias -p tsconfig.build.json
+
+FROM manifests AS production-deps
+RUN --mount=type=cache,target=/root/.npm,sharing=locked \
+  PRISMA_SKIP_POSTINSTALL_GENERATE=true npm ci --omit=dev \
+    --workspace=server --include-workspace-root=false --no-audit --no-fund
+
 FROM mirror.gcr.io/library/node:20-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
-# chromium：報告的 PDF 輸出（server 直接叫執行檔印，沒有 puppeteer 依賴）。
-# fonts-noto-cjk 不能省——slim 映像不含任何中日韓字體，缺了它整份 PDF 會印成一排豆腐字。
-# 這兩個套件讓映像大上約 400MB；不裝也跑得起來，只是 pdf 格式不會出現在白名單裡
-# （見 report.render.ts：探測不到瀏覽器就不登錄該格式），md 與 html 照常產出。
+# Chromium 同時用於報告 PDF 與動態網站解析；CJK 字型支援中文 PDF。
+# 系統套件層獨立於 npm 與原始碼，變更程式時可沿用快取。
 RUN apt-get update \
   && apt-get install -y --no-install-recommends openssl chromium fonts-noto-cjk \
   && rm -rf /var/lib/apt/lists/*
 ENV REPORT_PDF_BROWSER=/usr/bin/chromium
 ENV KNOWLEDGE_BROWSER_EXECUTABLE=/usr/bin/chromium
-# Zeabur 的 Git/Dockerfile 服務只路由「一個」埠＝Dockerfile EXPOSE。
-# server 讀 env.PORT，所以讓 PORT 與 EXPOSE 對齊到 3000，兩邊一致才路由得到。
-# 註：若 Zeabur 後台另外注入了 PORT，會蓋掉這裡的 ENV；那就把後台的 PORT 也設成 3000。
 ENV PORT=3000
 
-COPY package.json package-lock.json ./
-COPY shared/package.json ./shared/
-COPY ui/package.json ./ui/
-COPY server/package.json ./server/
-COPY client/package.json ./client/
-RUN npm ci --omit=dev
-
+COPY --from=production-deps /app/package.json /app/package-lock.json ./
+COPY --from=production-deps /app/node_modules ./node_modules
+# 保留 workspace 層級的巢狀 production 依賴與 package.json。
+COPY --from=production-deps /app/server ./server
+COPY --from=production-deps /app/shared ./shared
 COPY --from=build /app/server/dist ./server/dist
-COPY --from=build /app/schemas ./schemas
-# Prisma client 於 build stage 由 `npm run build -w server` 的 prisma generate 產出；
-# runtime 無 prisma CLI（devDep），直接帶生成物（DATA_BACKEND=db 時 @prisma/client 才會被載入）
 COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
+COPY schemas ./schemas
 
 EXPOSE 3000
 CMD ["node", "server/dist/index.js"]

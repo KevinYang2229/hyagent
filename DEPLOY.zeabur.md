@@ -216,6 +216,14 @@ docker run --rm -v "$PWD:/backup" -e DB_URL postgres:17-alpine \
 
 ## 六、本機驗證（可選，需裝 Docker）
 
+### server 建置快取
+
+`Dockerfile.server` 使用 BuildKit，僅安裝 server workspace 所需的編譯／正式依賴，並以 npm cache mount 重用下載。`Dockerfile.server.dockerignore` 是 server 專用的輸入清單，排除前後台、文件、測試及本機 `server/data`，不影響其他服務的 Dockerfile。
+
+依賴安裝、Prisma client 產生、TypeScript 編譯及 Chromium 系統套件各自分層。只改 server 原始碼時，依賴與 Prisma schema 層可以重用；只改文件或前端時，不會使 server 的編譯輸入失效。Chromium 仍提供動態網頁解析與 PDF 輸出。
+
+第一次採用新 Dockerfile 需建立新快取，耗時未必較短。後續部署速度仍取決於平台是否保留 BuildKit 層／套件快取；若建置紀錄沒有 `CACHED`，應先確認建置平台的快取狀態。若長時間卡在映像上傳或服務啟動，需另檢查該階段，不能只用總部署時間判定編譯變慢。
+
 ```bash
 # server
 docker build -f Dockerfile.server -t oa-server .
