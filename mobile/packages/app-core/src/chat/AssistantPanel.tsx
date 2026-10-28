@@ -25,6 +25,7 @@ export function AssistantPanel({
   hint,
   compact,
   micAvailable,
+  busy = false,
   onMicPress,
   onStopPress,
   onKeyboard,
@@ -37,6 +38,8 @@ export function AssistantPanel({
   hint?: string | null;
   compact: boolean;
   micAvailable: boolean;
+  /** AI 回覆中：麥克風照樣顯示但停用（暫時狀態，與「沒有麥克風」區分） */
+  busy?: boolean;
   onMicPress(): void;
   onStopPress(): void;
   onKeyboard(): void;
@@ -50,7 +53,7 @@ export function AssistantPanel({
     </Pressable>)}
   </View>;
   const title = micAvailable ? TITLE[mode] : '用打字或拍照問我';
-  const description = interaction === 'dictation' ? '辨識後顯示文字，可修改再手動送出' : '辨識完成後自動送出';
+  const description = busy ? '回覆完成後就能再說話' : interaction === 'dictation' ? '辨識後顯示文字，可修改再手動送出' : '辨識完成後自動送出';
   const center =
     mode === 'recording' ? (
       <RoundButton compact={compact} label={stopLabel} color={colors.danger} icon="stop" onPress={onStopPress} />
@@ -59,7 +62,7 @@ export function AssistantPanel({
         <ActivityIndicator color={colors.primary} />
       </View>
     ) : micAvailable ? (
-      <RoundButton compact={compact} label="開始說話" color={colors.primary} icon="mic" onPress={onMicPress} />
+      <RoundButton compact={compact} label={busy ? '回覆中' : '開始說話'} color={colors.primary} icon="mic" disabled={busy} onPress={onMicPress} />
     ) : null;
 
   if (compact) {
@@ -120,10 +123,10 @@ function VoiceLevel({ metering, compact }: { metering?: number; compact: boolean
   </View>;
 }
 
-function RoundButton({ compact = false, label, color, icon, onPress }: { compact?: boolean; label: string; color: string; icon: 'mic' | 'stop'; onPress(): void }) {
+function RoundButton({ compact = false, label, color, icon, disabled = false, onPress }: { compact?: boolean; label: string; color: string; icon: 'mic' | 'stop'; disabled?: boolean; onPress(): void }) {
   return (
-    <Pressable onPress={onPress} accessibilityLabel={label} accessibilityRole="button" style={[styles.actionButton, compact && styles.compactActionButton]}>
-      <View style={[styles.round, !compact && styles.largeRound, { backgroundColor: color }]}>
+    <Pressable onPress={onPress} disabled={disabled} accessibilityLabel={label} accessibilityRole="button" accessibilityState={{ disabled }} style={[styles.actionButton, compact && styles.compactActionButton]}>
+      <View style={[styles.round, !compact && styles.largeRound, { backgroundColor: color }, disabled && { opacity: 0.4 }]}>
         <Ionicons name={icon} size={compact ? 36 : 48} color="#fff" />
       </View>
       <Text style={[styles.btnLabel, !compact && styles.largeButtonLabel]}>{label}</Text>

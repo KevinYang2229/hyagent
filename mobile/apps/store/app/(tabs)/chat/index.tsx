@@ -94,8 +94,9 @@ export default function ChatScreen() {
         metering={recorder.metering}
         hint={hint}
         compact={!wide}
-        // 回覆中先停用麥克風（錄到一半的仍可停止；送出的句子會排隊）
-        micAvailable={voice.available && !sending}
+        micAvailable={voice.available}
+        // 回覆中先停用麥克風（按鈕保留、變灰；錄到一半的仍可停止）
+        busy={sending}
         onMicPress={() => void startVoice()}
         onStopPress={() => void voice.stop()}
         onKeyboard={() => inputRef.current?.focus()}

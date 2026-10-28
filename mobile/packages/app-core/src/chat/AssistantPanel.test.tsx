@@ -20,3 +20,14 @@ it.each([false, true])('錄音中禁止切換，語音輸入顯示轉文字與�
   await fireEvent.press(screen.getByLabelText('停止並轉文字'));
   expect(props.onStopPress).toHaveBeenCalled();
 });
+
+it.each([false, true])('回覆中麥克風保留但停用，不切到「無麥克風」文案（compact=%s）', async (compact) => {
+  const onMicPress = jest.fn();
+  await render(<AssistantPanel {...props} compact={compact} busy onMicPress={onMicPress} />);
+  const mic = screen.getByLabelText('回覆中');
+  expect(mic.props.accessibilityState).toMatchObject({ disabled: true });
+  await fireEvent.press(mic);
+  expect(onMicPress).not.toHaveBeenCalled();
+  expect(screen.queryByText('用打字或拍照問我')).toBeNull();
+  expect(screen.getByText('回覆完成後就能再說話')).toBeTruthy();
+});
