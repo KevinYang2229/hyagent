@@ -10,6 +10,7 @@ jest.mock('@/modules/knowledge/knowledge.index.repo', () => ({ replaceWebsiteChu
 import { WebsiteBrowser } from '@/modules/knowledge/website-browser';
 import { runIngest } from '@/modules/knowledge/ingest.service';
 import { replaceWebsiteChunks } from '@/modules/knowledge/knowledge.index.repo';
+import { MAX_WEBSITE_CHUNKS, WebsiteIngestLimitError } from '@/modules/knowledge/website-limits';
 
 const params = {
   tenantId: 'browser-ingest-test', startUrl: 'https://example.com/dashboard',
@@ -55,5 +56,39 @@ it('渲染後仍無正文時不清除原有索引', async () => {
 it('啟動瀏覽器失敗時不覆寫索引', async () => {
   jest.mocked(WebsiteBrowser.prototype.open).mockRejectedValueOnce(new Error('找不到 Chromium'));
   await expect(runIngest({ ...params, renderJavaScript: true })).rejects.toThrow('找不到 Chromium');
+  expect(replaceWebsiteChunks).not.toHaveBeenCalled();
+});
+
+it('重複連結僅入列一次，無正文頁也計入最大造訪頁數', async () => {
+  const load = jest.mocked(WebsiteBrowser.prototype.load);
+  load.mockResolvedValueOnce({ html: '<nav><a href="/a">A</a><a href="/a">A</a><a href="/b">B</a></nav>', url: params.startUrl })
+    .mockResolvedValueOnce({ html: '<nav><a href="/b">B</a></nav>', url: 'https://example.com/a' });
+  await expect(runIngest({ ...params, renderJavaScript: true })).rejects.toThrow('沒有可解析的文字內容');
+  expect(load).toHaveBeenCalledTimes(2);
+  expect(load).toHaveBeenNthCalledWith(2, 'https://example.com/a', 1500);
+  expect(replaceWebsiteChunks).not.toHaveBeenCalled();
+});
+
+it('網站超過片段預算時終止且關閉瀏覽器，不覆寫索引', async () => {
+  const largeHtml = '<main>' + Array.from({ length: MAX_WEBSITE_CHUNKS + 1 }, (_, i) =>
+    `<h2>統計項目 ${i}</h2><p>第 ${i} 項預登人數為 360 人，台灣 128 人與海外 232 人，模擬測試。</p>`).join('') + '</main>';
+  jest.mocked(WebsiteBrowser.prototype.load).mockResolvedValueOnce({ html: largeHtml, url: params.startUrl });
+  await expect(runIngest({ ...params, renderJavaScript: true })).rejects.toThrow('網站片段超過');
+  expect(WebsiteBrowser.prototype.close).toHaveBeenCalledTimes(1);
+  expect(replaceWebsiteChunks).not.toHaveBeenCalled();
+});
+
+it('第二頁文字超過累積預算時不提交第一頁的殘缺索引', async () => {
+  const largeHtml = `<main><p>${'A'.repeat(1_100_000)}</p></main><a href="/a">下一頁</a>`;
+  jest.mocked(WebsiteBrowser.prototype.load).mockResolvedValueOnce({ html: largeHtml, url: params.startUrl })
+    .mockResolvedValueOnce({ html: largeHtml, url: 'https://example.com/a' });
+  await expect(runIngest({ ...params, chunkChars: 4000, renderJavaScript: true })).rejects.toThrow('文字總量超過');
+  expect(replaceWebsiteChunks).not.toHaveBeenCalled();
+});
+
+it('非起始頁超量也必須終止，不被逐頁錯誤處理略過', async () => {
+  jest.mocked(WebsiteBrowser.prototype.load).mockResolvedValueOnce({ html: `${html}<a href="/a">更多</a>`, url: params.startUrl })
+    .mockRejectedValueOnce(new WebsiteIngestLimitError('渲染後單頁 HTML 超過 2 MiB'));
+  await expect(runIngest({ ...params, renderJavaScript: true })).rejects.toThrow('單頁 HTML 超過');
   expect(replaceWebsiteChunks).not.toHaveBeenCalled();
 });

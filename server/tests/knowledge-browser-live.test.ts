@@ -34,6 +34,10 @@ liveDescribe('實際瀏覽器動態解析', () => {
       } else if (req.url === '/session') {
         if (!req.headers.cookie) res.setHeader('set-cookie', 'test-session=first; Path=/');
         res.end(`<main>${req.headers.cookie ? '已有登入 cookie' : '沒有登入 cookie'}</main>`);
+      } else if (req.url === '/large-script') {
+        res.end(`<main><h1>統計資訊</h1><p>今年參觀者預登人數為 360 人，包含台灣與海外參觀者，此為測試資料。</p></main><script type="application/json">"${'X'.repeat(3_000_000)}"</script>`);
+      } else if (req.url === '/large-dom') {
+        res.end(`<main>${'X'.repeat(3_000_000)}</main>`);
       } else {
         res.end('<main><h1>統計說明</h1><p>本頁為動態插入連結的子頁，說明參觀者預登總數包括台灣及海外人數，統計僅供示意。</p></main>');
       }
@@ -74,6 +78,19 @@ liveDescribe('實際瀏覽器動態解析', () => {
     } finally {
       await first.close();
       await second.close();
+    }
+  }, 30_000);
+
+  it('在瀏覽器端去掉大型 script，正文仍可索引；超量 DOM 則拒絕傳入 Node', async () => {
+    const browser = new WebsiteBrowser();
+    try {
+      await browser.open();
+      const page = await browser.load(`${origin}/large-script`, 0);
+      expect(page.html).toContain('360 人');
+      expect(page.html.length).toBeLessThan(1000);
+      await expect(browser.load(`${origin}/large-dom`, 0)).rejects.toThrow('渲染後單頁 HTML 超過');
+    } finally {
+      await browser.close();
     }
   }, 30_000);
 });

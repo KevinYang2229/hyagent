@@ -1,6 +1,7 @@
 /** 網站動態解析：每次爬取使用獨立瀏覽器，不沿用管理者或其他租戶的登入狀態。 */
 import { existsSync } from 'node:fs';
 import { chromium, type Browser, type BrowserContext } from 'playwright-core';
+import { MAX_WEBSITE_HTML_BYTES, WebsiteIngestLimitError } from './website-limits';
 
 export interface RenderedWebsitePage {
   html: string;
@@ -75,7 +76,15 @@ export class WebsiteBrowser {
         && /(?:^|\/)(?:login|sign-in|signin|auth)(?:[/.]|$)/i.test(new URL(finalUrl).pathname)) {
         throw new Error('網站需要登入，瀏覽器渲染不會沿用管理者的登入狀態；請提供可直接讀取的頁面或上傳資料檔案');
       }
-      return { html: await page.content(), url: finalUrl };
+      // 在瀏覽器端先去掉不入索引的大型程式與圖形，避免整份 DOM 複製進 Node heap。
+      // 使用字串形式執行，server TypeScript 不需引入 DOM 型別。
+      const html = await page.evaluate<string | null>(`(() => {
+        document.querySelectorAll('script, style, noscript, svg, iframe').forEach(el => el.remove());
+        const html = document.documentElement.outerHTML;
+        return new Blob([html]).size <= ${MAX_WEBSITE_HTML_BYTES} ? html : null;
+      })()`);
+      if (html === null) throw new WebsiteIngestLimitError('渲染後單頁 HTML 超過 2 MiB');
+      return { html, url: finalUrl };
     } finally {
       await page.close();
     }
