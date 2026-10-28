@@ -421,7 +421,14 @@ export const api = {
    * 免登入的 /widget/config 只能用訪客部門判斷開關，指派給一般部門的授權它看不到；
    * 登入後改用這支覆蓋，判準與對話守門同一套。
    */
-  knowledgeFeed: () => request<KnowledgeFeed>(`${API_ORIGIN}/api/knowledge/suggested-prompts`),
+  async knowledgeFeed(): Promise<KnowledgeFeed> {
+    const feed = await request<{
+      knowledgeEnabled: boolean;
+      suggestedPrompts: NonNullable<KnowledgeFeed['suggested']>;
+    }>(`${API_ORIGIN}/api/knowledge/suggested-prompts`);
+    // API 使用 suggestedPrompts，轉為前端開場資料的 suggested，避免登入後覆蓋成空白。
+    return { knowledgeEnabled: feed.knowledgeEnabled, suggested: feed.suggestedPrompts };
+  },
   listNotifications(): Promise<NotificationFeed> {
     return request<NotificationFeed>(`${API_ORIGIN}/api/notifications`);
   },
