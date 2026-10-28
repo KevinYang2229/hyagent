@@ -113,7 +113,7 @@ export default function ChatScreen() {
   const conversation = (
     <View style={[styles.chatCard, !wide && styles.chatCardNarrow]}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>AI 小幫手</Text>
+        <Text style={styles.headerTitle}>AI 智能員工</Text>
         <View style={{ flex: 1 }} />
         <Pressable onPress={() => setSpeakEnabled(!speakEnabled)} style={styles.headerBtn} accessibilityRole="switch" accessibilityState={{ checked: speakEnabled }} accessibilityLabel="朗讀">
           <Ionicons name={speakEnabled ? 'volume-high-outline' : 'volume-mute-outline'} size={18} color={colors.text} />
