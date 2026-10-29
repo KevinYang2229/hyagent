@@ -13,6 +13,11 @@ import { computeKid, detectAlgorithm, exportPublicJwk } from '@/lib/assertion/ke
 export const MCP_TOKEN_ISSUER = 'hyagent';
 export const MCP_TOKEN_LIFETIME_SECONDS = 60;
 export const MCP_SYSTEM_SUBJECT = 'hyagent-system';
+/**
+ * 管理呼叫（平台管理員經後台操作 MCP server 的管理 API，如 Database Intelligence 的 /admin）。
+ * 使用者 token 的 scope 一律過濾成 `mcp:<serverId>` 開頭，不可能帶上此 scope，因此無法被冒用。
+ */
+export const MCP_ADMIN_SCOPE = 'hyagent:admin';
 
 export interface McpCaller {
   tenantId: string;
@@ -80,15 +85,15 @@ export function isMcpSigningEnabled(): boolean {
   return signingKey() !== null;
 }
 
-export function signMcpToken(serverId: string, caller: McpCaller | 'system', nowMs = Date.now()): string {
+export function signMcpToken(serverId: string, caller: McpCaller | 'system' | 'admin', nowMs = Date.now()): string {
   const key = signingKey();
   if (!key) throw new Error('MCP 簽章金鑰未設定（MCP_SIGNING_KEY）');
   const iat = Math.floor(nowMs / 1000);
   const base = { iss: MCP_TOKEN_ISSUER, aud: serverId, iat, exp: iat + MCP_TOKEN_LIFETIME_SECONDS, jti: randomUUID() };
   const own = `mcp:${serverId}`;
   const payload =
-    caller === 'system'
-      ? { ...base, sub: MCP_SYSTEM_SUBJECT, scopes: [] as string[] }
+    caller === 'system' || caller === 'admin'
+      ? { ...base, sub: MCP_SYSTEM_SUBJECT, scopes: caller === 'admin' ? [MCP_ADMIN_SCOPE] : ([] as string[]) }
       : {
           ...base,
           sub: caller.userId,

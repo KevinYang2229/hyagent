@@ -39,6 +39,7 @@ import {
 } from '@/modules/knowledge/knowledge.admin.schema';
 import { putLlmConfigSchema } from '@/modules/tenant/llm-config.schema';
 import { mcpAdminController } from '@/modules/mcp/mcp.admin.controller';
+import { dbiAdminRouter } from '@/modules/db-intelligence/dbi.admin.routes';
 import { createMcpServerSchema, mcpServerParamSchema, patchMcpServerSchema } from '@/modules/mcp/mcp.admin.schema';
 import { adminController } from './admin.controller';
 import { adminAuthController } from './admin.auth.controller';
@@ -115,6 +116,9 @@ router.patch(
 );
 router.delete('/mcp-servers/:serverId', validate({ params: mcpServerParamSchema }), asyncHandler(mcpAdminController.remove));
 router.post('/mcp-servers/:serverId/refresh', validate({ params: mcpServerParamSchema }), asyncHandler(mcpAdminController.refresh));
+
+// Database Intelligence（平台層）：資料來源、Catalog 審核、存取政策——轉發到該 MCP server 的 /admin
+router.use('/db-intelligence/:serverId', dbiAdminRouter);
 
 router.post('/tenants', validate({ body: createTenantSchema }), asyncHandler(adminController.createTenant));
 router.get('/tenants', asyncHandler(adminController.listTenants));
