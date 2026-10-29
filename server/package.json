@@ -23,7 +23,8 @@
     "migrate:knowledge": "tsx scripts/knowledge-migrate-to-db.ts",
     "test": "jest",
     "db:smoke:write": "tsx scripts/db-smoke.ts write",
-    "db:smoke:verify": "tsx scripts/db-smoke.ts verify"
+    "db:smoke:verify": "tsx scripts/db-smoke.ts verify",
+    "eval:dbi": "tsx scripts/dbi-e2e-eval.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",

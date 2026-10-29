@@ -53,6 +53,8 @@ export const DBI_TOOLS: DbiTool[] = [
       '以結構化 query_plan 查詢資料（不接受 SQL）。只能使用 search_schema／get_dataset_details 回傳的資料集、欄位、計算指標與關聯；' +
       '問題用到的概念（如「完成率」）沒有對應欄位或已核准的計算指標時，不要自行推算，請向使用者說明尚未定義或請其澄清。' +
       '「今年」「上個月」等相對日期依 search_schema 回傳的 today 換算成 YYYY-MM-DD。' +
+      '使用者的資料範圍（如「我的部門」）由系統依身分自動套用，不要自行猜測部門或使用者代碼去篩選；' +
+      '結果含代碼欄位（如 department_id）且有已核准關聯時，join 取得名稱再回答。' +
       '回答時說明資料來源、篩選條件與 warnings；結果超過一頁時可用 get_query_result 取下一頁。',
     input: z
       .object({
