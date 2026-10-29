@@ -3,6 +3,8 @@
  * 有值代表該租戶專屬（其他租戶看不到、也無法被授權）。
  */
 export const MCP_SERVER_ID_RE = /^[a-z0-9-]{1,32}$/;
+/** 角色名稱：會成為 scope `mcp:<serverId>:<role>`，限小寫英數、底線與連字號（不得含冒號） */
+export const MCP_ROLE_RE = /^[a-z0-9_-]{1,32}$/;
 export const MCP_DEFAULT_TIMEOUT_MS = 20_000;
 
 export interface McpToolOverride {
@@ -32,6 +34,12 @@ export interface McpServerConfig {
   description: string;
   /** 路由關鍵字（0-token 命中 agent） */
   keywords: string[];
+  /**
+   * 此服務定義的角色（選填）。每個角色成為可授予的 scope `mcp:<serverId>:<role>`，
+   * 隨呼叫 JWT 傳給 MCP server，由對方決定該角色能做什麼（如 db-intelligence 的存取政策）。
+   * 只授予角色 scope 不會開放工具；仍需 `mcp:<serverId>`。
+   */
+  roles?: string[];
   timeoutMs: number;
   enabled: boolean;
   /** 以 MCP 工具名為 key */
@@ -43,6 +51,6 @@ export interface McpServerConfig {
 }
 
 export type McpServerCreateInput = Pick<McpServerConfig, 'id' | 'name' | 'url'> &
-  Partial<Pick<McpServerConfig, 'ownerTenantId' | 'description' | 'keywords' | 'timeoutMs' | 'enabled' | 'toolOverrides'>>;
+  Partial<Pick<McpServerConfig, 'ownerTenantId' | 'description' | 'keywords' | 'roles' | 'timeoutMs' | 'enabled' | 'toolOverrides'>>;
 
 export type McpServerPatch = Partial<Omit<McpServerCreateInput, 'id'>>;

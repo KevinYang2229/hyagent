@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { validateMcpUrl } from './mcp.network';
-import { MCP_SERVER_ID_RE } from './mcp.types';
+import { MCP_ROLE_RE, MCP_SERVER_ID_RE } from './mcp.types';
 
 const toolOverride = z
   .object({
@@ -22,6 +22,7 @@ const fields = {
   ownerTenantId: z.string().trim().min(1).nullable(),
   description: z.string().trim().max(500),
   keywords: z.array(z.string().trim().min(1).max(20)).max(20),
+  roles: z.array(z.string().trim().regex(MCP_ROLE_RE, '角色只允許小寫英數、底線與連字號（1–32 字）')).max(20),
   timeoutMs: z.number().int().min(1000).max(120_000),
   enabled: z.boolean(),
   toolOverrides: z.record(z.string(), toolOverride),
@@ -35,6 +36,7 @@ export const createMcpServerSchema = z
     ownerTenantId: fields.ownerTenantId.optional(),
     description: fields.description.optional(),
     keywords: fields.keywords.optional(),
+    roles: fields.roles.optional(),
     timeoutMs: fields.timeoutMs.optional(),
     enabled: fields.enabled.optional(),
     toolOverrides: fields.toolOverrides.optional(),
@@ -48,6 +50,7 @@ export const patchMcpServerSchema = z
     ownerTenantId: fields.ownerTenantId.optional(),
     description: fields.description.optional(),
     keywords: fields.keywords.optional(),
+    roles: fields.roles.optional(),
     timeoutMs: fields.timeoutMs.optional(),
     enabled: fields.enabled.optional(),
     toolOverrides: fields.toolOverrides.optional(),

@@ -22,3 +22,6 @@ MCP_SERVER_ID=rooms PORT=4100 npm run example:rooms -w mcp/kit
 ```
 
 在 HyAgent 後台「MCP 服務」登記 `serverId=rooms`、URL `http://localhost:4100/mcp`，並把 `mcp:rooms` 授予要使用的部門或帳號。
+
+需要區分使用者角色時，登記時宣告「角色」（如 `manager`），即可在權限分頁授予 `mcp:rooms:manager`；
+JWT 的 `scopes` 會帶上這個 scope，由 MCP server 自行決定該角色能做什麼。

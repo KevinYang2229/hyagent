@@ -106,6 +106,7 @@ export const mcpStore = {
       ownerTenantId: input.ownerTenantId ?? null,
       description: input.description ?? '',
       keywords: input.keywords ?? [],
+      roles: [...new Set(input.roles ?? [])],
       timeoutMs: input.timeoutMs ?? MCP_DEFAULT_TIMEOUT_MS,
       enabled: input.enabled ?? true,
       toolOverrides: input.toolOverrides ?? {},
@@ -120,6 +121,7 @@ export const mcpStore = {
     const cur = servers.get(id);
     if (!cur) throw AppError.notFound(`MCP server 不存在：${id}`);
     const next: McpServerConfig = { ...cur, ...patch, id: cur.id, auth: cur.auth, createdAt: cur.createdAt, updatedAt: new Date().toISOString() };
+    if (patch.roles) next.roles = [...new Set(patch.roles)];
     save(next);
     return next;
   },

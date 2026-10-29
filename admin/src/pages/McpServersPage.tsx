@@ -165,6 +165,13 @@ export default function McpServersPage() {
                   <input id="mcp-timeout" className="input" inputMode="numeric" value={editing.values.timeoutSeconds} onChange={(e) => setField({ timeoutSeconds: e.target.value })} />
                 </div>
               </div>
+              <div className="field">
+                <label className="field-label" htmlFor="mcp-roles">角色（選填）</label>
+                <input id="mcp-roles" className="input" value={editing.values.roles} placeholder="manager, hr" onChange={(e) => setField({ roles: e.target.value })} />
+                <div className="field-hint">
+                  每個角色會成為可在「權限」分頁授予的 <span className="code-pill">mcp:{editing.values.id || 'serverId'}:角色</span>，隨呼叫身分傳給服務，由服務決定該角色能做什麼。
+                </div>
+              </div>
               <label className="mcp-check">
                 <input type="checkbox" checked={editing.values.enabled} onChange={(e) => setField({ enabled: e.target.checked })} />
                 啟用

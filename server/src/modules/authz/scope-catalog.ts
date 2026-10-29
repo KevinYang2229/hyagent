@@ -125,9 +125,19 @@ export function mcpServerScopeId(serverId: string): string {
   return `mcp:${serverId}`;
 }
 
-/** 此租戶可授予的 MCP scope：共用 server 與該租戶專屬 server（不看啟用狀態，停用時仍可預先授權）。 */
+/** MCP 角色 scope：mcp:<serverId>:<role>（角色由該 server 登記時宣告）。 */
+export function mcpRoleScopeId(serverId: string, role: string): string {
+  return `mcp:${serverId}:${role}`;
+}
+
+/** 此租戶可授予的 MCP scope：共用 server 與該租戶專屬 server（不看啟用狀態，停用時仍可預先授權），含其宣告的角色。 */
 function tenantMcpScopeIds(tenantId: string): Set<string> {
-  return new Set(mcpStore.list().filter((s) => mcpStore.belongsTo(s, tenantId)).map((s) => mcpServerScopeId(s.id)));
+  return new Set(
+    mcpStore
+      .list()
+      .filter((s) => mcpStore.belongsTo(s, tenantId))
+      .flatMap((s) => [mcpServerScopeId(s.id), ...(s.roles ?? []).map((r) => mcpRoleScopeId(s.id, r))]),
+  );
 }
 
 /** 某租戶可授予的能力：靜態 grantable + 該租戶各表單的 form:<id>（label 用表單標題）。 */
@@ -147,11 +157,19 @@ export function tenantGrantableScopes(tenantId: string): ScopeDef[] {
   const mcp: ScopeDef[] = mcpStore
     .list()
     .filter((s) => mcpStore.belongsTo(s, tenantId))
-    .map((s) => ({
-      id: mcpServerScopeId(s.id),
-      label: s.name,
-      description: s.description || `使用外部服務「${s.name}」`,
-      base: false,
-    }));
+    .flatMap((s) => [
+      {
+        id: mcpServerScopeId(s.id),
+        label: s.name,
+        description: s.description || `使用外部服務「${s.name}」`,
+        base: false,
+      },
+      ...(s.roles ?? []).map((r) => ({
+        id: mcpRoleScopeId(s.id, r),
+        label: `${s.name}：${r}`,
+        description: `在「${s.name}」中具備角色 ${r}（能做什麼由該服務的政策決定；仍需同時授予「${s.name}」）`,
+        base: false,
+      })),
+    ]);
   return [...GRANTABLE_SCOPES, ...forms, ...labels, ...mcp];
 }

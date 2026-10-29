@@ -19,8 +19,15 @@ describe('mcpForm.util', () => {
   it('toPayload：空擁有租戶轉 null、秒轉毫秒、關鍵字轉陣列', () => {
     const p = toPayload({ ...emptyMcpForm(), id: 'rooms', name: '會議室', url: 'http://x/mcp', keywords: '會議室、預約', timeoutSeconds: '30' });
     expect(p).toEqual({
-      name: '會議室', url: 'http://x/mcp', ownerTenantId: null, description: '', keywords: ['會議室', '預約'], timeoutMs: 30000, enabled: true,
+      name: '會議室', url: 'http://x/mcp', ownerTenantId: null, description: '', keywords: ['會議室', '預約'], roles: [], timeoutMs: 30000, enabled: true,
     });
+  });
+
+  it('角色：逗號分隔轉陣列；只允許小寫英數、底線與連字號', () => {
+    const v = { ...emptyMcpForm(), id: 'db-intelligence', name: 'DB', url: 'http://x/mcp', roles: 'manager, hr, manager' };
+    expect(validateMcpForm(v, true)).toEqual([]);
+    expect(toPayload(v).roles).toEqual(['manager', 'hr']);
+    expect(validateMcpForm({ ...v, roles: 'Manager, a:b' }, true)).toContain('角色只允許小寫英數、底線與連字號：Manager、a:b');
   });
 
   it('statusLabel', () => {
