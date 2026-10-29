@@ -1,0 +1,49 @@
+{
+  "datasets": [
+    {
+      "id": "public.departments",
+      "approvalStatus": "approved",
+      "description": "公司部門清單",
+      "synonyms": ["部門", "單位"],
+      "columns": {
+        "id": { "isQueryable": true, "sensitivity": "public", "description": "部門編號" },
+        "name": { "isQueryable": true, "sensitivity": "public", "description": "部門名稱" }
+      }
+    },
+    {
+      "id": "public.projects",
+      "approvalStatus": "approved",
+      "description": "專案主檔，含預估與實際工時",
+      "synonyms": ["專案", "案子", "計畫"],
+      "columns": {
+        "id": { "isQueryable": true, "description": "專案編號" },
+        "name": { "isQueryable": true, "description": "專案名稱" },
+        "department_id": { "isQueryable": true, "description": "負責部門編號" },
+        "estimated_hours": { "isQueryable": true, "description": "預估工時（小時）", "synonyms": ["預估工時"] },
+        "actual_hours": { "isQueryable": true, "description": "實際工時（小時）", "synonyms": ["實際工時"] },
+        "start_date": { "isQueryable": true, "description": "專案開始日期（判斷「今年的專案」使用此欄位）", "synonyms": ["開始日期", "啟動日"] }
+      },
+      "metrics": [
+        {
+          "key": "actual_hours_over_estimated_ratio",
+          "description": "實際工時 ÷ 預估工時；大於 1.2 代表超時 20%",
+          "synonyms": ["超時比例", "工時比", "超時"],
+          "expression": { "op": "div", "args": [{ "column": "actual_hours" }, { "column": "estimated_hours" }] }
+        }
+      ]
+    },
+    {
+      "id": "public.employee_salary",
+      "approvalStatus": "approved",
+      "description": "員工薪資（機敏，僅供 HR 統計）",
+      "synonyms": ["薪資", "薪水"],
+      "columns": {
+        "department_id": { "isQueryable": true, "sensitivity": "internal", "description": "部門編號" },
+        "salary": { "isQueryable": true, "sensitivity": "confidential", "description": "月薪（新台幣）" },
+        "employee_name": { "isQueryable": false, "sensitivity": "restricted" },
+        "id": { "isQueryable": false, "sensitivity": "restricted" }
+      }
+    }
+  ],
+  "publish": true
+}

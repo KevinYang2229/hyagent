@@ -1,0 +1,16 @@
+# Demo DB：npm run demo-db -w mcp/db-intelligence（只供本機開發，帳密非正式用）
+services:
+  dbi-demo-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: projects
+      POSTGRES_USER: dbi_owner
+      POSTGRES_PASSWORD: owner_dev_only
+    ports:
+      - "54330:5432"
+    volumes:
+      - ./demo.sql:/docker-entrypoint-initdb.d/01-demo.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dbi_owner -d projects"]
+      interval: 2s
+      retries: 20

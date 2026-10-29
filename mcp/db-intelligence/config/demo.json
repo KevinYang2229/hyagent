@@ -1,0 +1,60 @@
+{
+  "dataSources": [
+    {
+      "id": "ds_project_01",
+      "tenantId": "demo",
+      "dbType": "postgres",
+      "schemas": ["public"],
+      "connectionEnv": "DBI_DS_PROJECT_01_URL",
+      "timezone": "Asia/Taipei"
+    }
+  ],
+  "policies": {
+    "version": "2026-10-29.1",
+    "policies": [
+      {
+        "id": "employee-own-department-projects",
+        "tenantId": "demo",
+        "dataSourceId": "ds_project_01",
+        "dataset": "public.projects",
+        "principals": { "roles": ["employee"] },
+        "columns": ["*"],
+        "rowScope": [{ "column": "department_id", "attribute": "departmentId" }],
+        "maxRows": 200
+      },
+      {
+        "id": "manager-all-projects",
+        "tenantId": "demo",
+        "dataSourceId": "ds_project_01",
+        "dataset": "public.projects",
+        "principals": { "roles": ["manager"] },
+        "columns": ["*"]
+      },
+      {
+        "id": "all-departments",
+        "tenantId": "demo",
+        "dataSourceId": "ds_project_01",
+        "dataset": "public.departments",
+        "principals": { "roles": ["employee", "manager", "hr"] },
+        "columns": ["*"]
+      },
+      {
+        "id": "hr-salary-statistics",
+        "tenantId": "demo",
+        "dataSourceId": "ds_project_01",
+        "dataset": "public.employee_salary",
+        "principals": { "roles": ["hr"] },
+        "columns": ["department_id", "salary"],
+        "aggregateOnly": true,
+        "minGroupSize": 3
+      }
+    ]
+  },
+  "principals": {
+    "demo": {
+      "alice": { "roles": ["employee"], "attributes": { "departmentId": 1 } },
+      "bob": { "roles": ["manager"] },
+      "hana": { "roles": ["hr"] }
+    }
+  }
+}

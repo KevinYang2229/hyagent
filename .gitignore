@@ -43,3 +43,6 @@ server/data/knowledge-config.json
 mobile/apps/*/.expo/
 mobile/apps/*/dist/
 mobile/apps/*/expo-env.d.ts
+
+# Database Intelligence 掃描出的 Catalog（客戶資料庫結構）＝環境資料，不進版控
+mcp/db-intelligence/data/

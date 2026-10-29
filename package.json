@@ -10,6 +10,7 @@
     "mcp/kit",
     "mcp/store-demo",
     "mcp/space-me-demo",
+    "mcp/db-intelligence",
     "server",
     "client",
     "admin"
@@ -24,9 +25,9 @@
     "dev:space-me": "npm --prefix mobile run dev:space-me",
     "dev:mcp": "npm run dev -w mcp/kit && npm run dev -w mcp/store-demo",
     "build": "npm run build -w server && npm run build -w client && npm run build -w admin",
-    "typecheck": "npm run typecheck -w ui && npm run typecheck -w sdk && npm run typecheck -w server && npm run typecheck -w client && npm run typecheck -w admin && npm run typecheck -w mcp/kit && npm run typecheck -w mcp/store-demo && npm run typecheck -w mcp/space-me-demo && npm --prefix mobile run typecheck",
+    "typecheck": "npm run typecheck -w ui && npm run typecheck -w sdk && npm run typecheck -w server && npm run typecheck -w client && npm run typecheck -w admin && npm run typecheck -w mcp/kit && npm run typecheck -w mcp/store-demo && npm run typecheck -w mcp/space-me-demo && npm run typecheck -w mcp/db-intelligence && npm --prefix mobile run typecheck",
     "smoke": "npm run smoke -w server",
-    "test": "npm run test -w server && npm run test -w admin && npm run test -w client && npm run test -w sdk && npm run test -w mcp/kit && npm run test -w mcp/store-demo && npm run test -w mcp/space-me-demo && npm --prefix mobile test",
+    "test": "npm run test -w server && npm run test -w admin && npm run test -w client && npm run test -w sdk && npm run test -w mcp/kit && npm run test -w mcp/store-demo && npm run test -w mcp/space-me-demo && npm run test -w mcp/db-intelligence && npm --prefix mobile test",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "dev:mcp:space-me": "npm start -w mcp/space-me-demo"
