@@ -1243,3 +1243,32 @@ li:not(.is-empty) > .feedback-bar { background: var(--bg-secondary); }
 .row-error td {
   @apply bg-[var(--badge-danger-bg)];
 }
+
+/* ---- 資料庫查詢（Database Intelligence） ---- */
+/* DB 原始註解：未審核、不提供給 AI，弱化顯示並保留換行以免被誤認為已核准內容 */
+.dbi-comment {
+  @apply text-[12px] text-[var(--text-secondary)] italic;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.dbi-json {
+  @apply text-[12.5px];
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+}
+.dbi-pre {
+  @apply my-2 overflow-x-auto rounded-[10px] border border-[var(--border-color)] bg-[var(--bg-secondary)] p-3 text-[12.5px] leading-relaxed;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  white-space: pre;
+}
+/* 每個資料集的欄位表共用固定欄寬，上下比對時對齊 */
+.dbi-columns {
+  table-layout: fixed;
+}
+.dbi-columns .input,
+.dbi-columns .select {
+  min-width: 0;
+}
+/* 固定在頁首（.topbar，h-16）下方；z-index 低於頁首 */
+.dbi-sticky {
+  @apply sticky top-16 z-[4] shadow-[var(--shadow-xs)];
+}

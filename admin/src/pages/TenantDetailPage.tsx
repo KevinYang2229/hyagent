@@ -17,6 +17,7 @@ import FeedbackTab from './tabs/FeedbackTab';
 import ReportsTab from './tabs/ReportsTab';
 import UsersTab from './tabs/UsersTab';
 import SsoTab from './tabs/SsoTab';
+import DatabaseTab from './tabs/database/DatabaseTab';
 
 type TabKey =
   | 'sso'
@@ -24,6 +25,7 @@ type TabKey =
   | 'appearance'
   | 'forms'
   | 'knowledge'
+  | 'database'
   | 'permissions'
   | 'settings'
   | 'webhook'
@@ -39,6 +41,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'permissions', label: '權限' },
   { key: 'forms', label: '表單' },
   { key: 'knowledge', label: '知識庫' },
+  { key: 'database', label: '資料庫查詢' },
   { key: 'webhook', label: 'Webhook' },
   { key: 'usage', label: '用量' },
   { key: 'reports', label: '報告' },
@@ -123,6 +126,7 @@ export default function TenantDetailPage() {
           {tab === 'appearance' && <AppearanceTab tenant={tenant} onSaved={handleSaved} onError={handleErr} />}
           {tab === 'forms' && <FormsTab tenantId={tenant.id} onError={handleErr} />}
           {tab === 'knowledge' && <KnowledgeTab tenantId={tenant.id} onError={handleErr} />}
+          {tab === 'database' && <DatabaseTab key={tenant.id} tenantId={tenant.id} onError={handleErr} />}
           {tab === 'permissions' && <PermissionsTab tenantId={tenant.id} onError={handleErr} />}
           {tab === 'settings' && <SettingsTab tenant={tenant} onSaved={handleSaved} onError={handleErr} />}
           {tab === 'webhook' && <WebhookTab tenantId={tenant.id} onError={handleErr} />}

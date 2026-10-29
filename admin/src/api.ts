@@ -489,6 +489,8 @@ export interface McpServerConfig {
   ownerTenantId: string | null;
   description: string;
   keywords: string[];
+  /** 服務宣告的角色；每個成為可授予的 scope mcp:<id>:<role> */
+  roles?: string[];
   timeoutMs: number;
   enabled: boolean;
   toolOverrides: Record<string, McpToolOverride>;
@@ -525,6 +527,174 @@ export interface McpServerListView {
   signingEnabled: boolean;
   servers: McpServerView[];
 }
+
+// ── Database Intelligence（轉發到客戶端 db-intelligence 服務的 /admin）──
+export type DbiApproval = 'pending' | 'approved' | 'rejected';
+export type DbiSensitivity = 'public' | 'internal' | 'confidential' | 'restricted';
+
+export interface DbiCatalogSummary {
+  version: number;
+  schemaVersion: string;
+  published: boolean;
+  updatedAt: string;
+  datasets: number;
+  approvedDatasets: number;
+  queryableColumns: number;
+  unreviewedColumns: number;
+}
+
+export interface DbiDataSource {
+  id: string;
+  tenantId: string;
+  dbType: 'postgres';
+  schemas: string[];
+  includeObjects?: string[];
+  connectionEnv: string;
+  timezone: string;
+  connectionConfigured: boolean;
+  catalog: DbiCatalogSummary | null;
+}
+
+export type DbiDataSourceInput = Pick<DbiDataSource, 'tenantId' | 'dbType' | 'schemas' | 'connectionEnv' | 'timezone'> & {
+  includeObjects?: string[];
+};
+
+export interface DbiConnectionTest {
+  ok: boolean;
+  latencyMs: number;
+  serverVersion?: string;
+  defaultReadOnly?: boolean;
+  writableObjects?: string[];
+  error?: string;
+}
+
+export interface DbiCatalogDiff {
+  fromVersion: number;
+  toVersion: number;
+  changed: boolean;
+  addedDatasets: string[];
+  removedDatasets: string[];
+  addedColumns: { dataset: string; column: string }[];
+  removedColumns: { dataset: string; column: string }[];
+  changedColumns: { dataset: string; column: string; from: string; to: string }[];
+  addedRelationships: string[];
+  removedRelationships: string[];
+  invalidatedMetrics: { dataset: string; metric: string }[];
+}
+
+export interface DbiColumn {
+  name: string;
+  dataType: string;
+  typeCategory: string;
+  nullable: boolean;
+  /** DB 原始註解：不可信，只供審核參考 */
+  comment: string | null;
+  description: string | null;
+  descriptionStatus: 'none' | 'suggested' | 'approved';
+  synonyms: string[];
+  sensitivity: DbiSensitivity;
+  isQueryable: boolean;
+  reviewStatus: 'new' | 'changed' | 'reviewed';
+}
+
+export interface DbiMetric {
+  key: string;
+  description: string;
+  synonyms: string[];
+  expression: unknown;
+  approvalStatus: DbiApproval;
+}
+
+export interface DbiDataset {
+  id: string;
+  key: string;
+  schemaName: string;
+  objectName: string;
+  kind: 'table' | 'view' | 'materialized_view';
+  comment: string | null;
+  description: string | null;
+  descriptionStatus: 'none' | 'suggested' | 'approved';
+  synonyms: string[];
+  approvalStatus: DbiApproval;
+  primaryKey: string[];
+  columns: DbiColumn[];
+  metrics: DbiMetric[];
+}
+
+export interface DbiRelationship {
+  id: string;
+  from: { dataset: string; columns: string[] };
+  to: { dataset: string; columns: string[] };
+  origin: 'foreign_key' | 'inferred' | 'manual';
+  approvalStatus: DbiApproval;
+}
+
+export interface DbiCatalog {
+  dataSourceId: string;
+  tenantId: string;
+  version: number;
+  schemaVersion: string;
+  published: boolean;
+  updatedAt: string;
+  datasets: DbiDataset[];
+  relationships: DbiRelationship[];
+}
+
+/** 與 db-intelligence 的 catalogReviewSchema 對應 */
+export interface DbiCatalogReview {
+  datasets?: {
+    id: string;
+    approvalStatus?: DbiApproval;
+    description?: string | null;
+    synonyms?: string[];
+    columns?: Record<string, { isQueryable?: boolean; sensitivity?: DbiSensitivity; description?: string | null; synonyms?: string[] }>;
+  }[];
+  relationships?: { id: string; approvalStatus: DbiApproval }[];
+  publish?: boolean;
+}
+
+export interface DbiPolicies {
+  version: string;
+  policies: Record<string, unknown>[];
+  warnings?: string[];
+}
+
+export type DbiPrincipals = Record<string, { roles: string[]; attributes: Record<string, unknown> }>;
+
+export interface DbiPreview {
+  principal: { roles: string[]; attributes: Record<string, unknown> };
+  sql: string;
+  params: unknown[];
+  limit: number;
+  policy_ids: string[];
+  row_scope: { dataset: string; conditions: { column: string; value: unknown }[] }[];
+  masked: { output: string; mode: string }[];
+  min_group_size: number | null;
+}
+
+export interface DbiAuditEvent {
+  request_id: string;
+  client_request_id?: string;
+  tenant_id: string;
+  principal_id: string;
+  tool: string;
+  source_id?: string;
+  plan_hash?: string;
+  policy_version: string;
+  catalog_version?: number;
+  policy_ids?: string[];
+  datasets?: string[];
+  status: 'success' | 'denied' | 'invalid' | 'error';
+  reason_code?: string;
+  row_count?: number;
+  truncated?: boolean;
+  duration_ms: number;
+  db_time_ms?: number;
+  created_at: string;
+}
+
+const dbiPath = (serverId: string, sub: string) => `/admin/db-intelligence/${encodeURIComponent(serverId)}${sub}`;
+const enc = encodeURIComponent;
 
 export const api = {
   listDirectoryUsers: (id: string) => req<{ users: DirectoryUser[] }>('GET', `/admin/tenants/${encodeURIComponent(id)}/users`),
@@ -748,4 +918,34 @@ export const api = {
     ),
   getKnowledgeAclReport: (id: string) =>
     req<KnowledgeAclReport>('GET', `/admin/tenants/${id}/knowledge/acl-report`),
+
+  // ── Database Intelligence ──
+  dbiListDataSources: (serverId: string, tenantId: string) =>
+    req<DbiDataSource[]>('GET', dbiPath(serverId, `/data-sources?tenant_id=${enc(tenantId)}`)),
+  dbiPutDataSource: (serverId: string, id: string, input: DbiDataSourceInput) =>
+    req<DbiDataSource>('PUT', dbiPath(serverId, `/data-sources/${enc(id)}`), input),
+  dbiDeleteDataSource: (serverId: string, id: string) =>
+    req<{ id: string; deleted: boolean }>('DELETE', dbiPath(serverId, `/data-sources/${enc(id)}`)),
+  dbiTestConnection: (serverId: string, id: string) =>
+    req<DbiConnectionTest>('POST', dbiPath(serverId, `/data-sources/${enc(id)}/connection-test`), {}),
+  dbiSchemaSync: (serverId: string, id: string) =>
+    req<{ diff: DbiCatalogDiff; catalog: DbiCatalogSummary }>('POST', dbiPath(serverId, `/data-sources/${enc(id)}/schema-sync`), {}),
+  dbiGetCatalog: (serverId: string, id: string) => req<DbiCatalog>('GET', dbiPath(serverId, `/data-sources/${enc(id)}/catalog`)),
+  dbiReviewCatalog: (serverId: string, id: string, review: DbiCatalogReview) =>
+    req<DbiCatalog>('PATCH', dbiPath(serverId, `/data-sources/${enc(id)}/catalog`), review),
+  dbiGetPolicies: (serverId: string, tenantId: string) => req<DbiPolicies>('GET', dbiPath(serverId, `/tenants/${enc(tenantId)}/policies`)),
+  dbiPutPolicies: (serverId: string, tenantId: string, policies: unknown[]) =>
+    req<DbiPolicies>('PUT', dbiPath(serverId, `/tenants/${enc(tenantId)}/policies`), { policies }),
+  dbiGetPrincipals: (serverId: string, tenantId: string) => req<DbiPrincipals>('GET', dbiPath(serverId, `/tenants/${enc(tenantId)}/principals`)),
+  dbiPutPrincipals: (serverId: string, tenantId: string, dir: unknown) =>
+    req<DbiPrincipals>('PUT', dbiPath(serverId, `/tenants/${enc(tenantId)}/principals`), dir),
+  dbiPreview: (serverId: string, body: { tenant_id: string; user_id: string; scopes: string[]; query_plan: unknown }) =>
+    req<DbiPreview>('POST', dbiPath(serverId, '/query/preview'), body),
+  dbiAudit: (serverId: string, params: { tenantId: string; status?: string; requestId?: string; limit?: number }) => {
+    const qs = new URLSearchParams({ tenant_id: params.tenantId });
+    if (params.status) qs.set('status', params.status);
+    if (params.requestId) qs.set('request_id', params.requestId);
+    if (params.limit) qs.set('limit', String(params.limit));
+    return req<DbiAuditEvent[]>('GET', dbiPath(serverId, `/audit?${qs.toString()}`));
+  },
 };
