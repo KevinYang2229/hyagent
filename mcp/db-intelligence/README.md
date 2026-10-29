@@ -3,7 +3,7 @@
 讓 HyAgent 在受控權限內查詢客戶既有的關聯式資料庫，不必為每種問題開發業務 API。
 模型只產生結構化 **Query Plan**（不是 SQL），由本服務驗證、套用政策、編譯成參數化 SQL，並在唯讀交易中執行。
 
-規格：[`docs/db-intelligence/development-spec.md`](../../docs/db-intelligence/development-spec.md)；實作進度與規格對照：[`docs/db-intelligence/implementation-status.md`](../../docs/db-intelligence/implementation-status.md)。
+操作手冊：[`docs/db-intelligence/onboarding-new-database.md`](../../docs/db-intelligence/onboarding-new-database.md)；規格：[`docs/db-intelligence/development-spec.md`](../../docs/db-intelligence/development-spec.md)；實作進度與規格對照：[`docs/db-intelligence/implementation-status.md`](../../docs/db-intelligence/implementation-status.md)。
 
 ## 流程
 
@@ -26,28 +26,31 @@ HyAgent ──JWT──▶ MCP app（mcp-kit 驗簽）──▶ DbIntelligenceSe
 | 協調流程、MCP 工具、HTTP app | `src/service.ts`、`src/tools.ts`、`src/app.ts` |
 | 管理 API、執行期設定、連線池 | `src/admin.ts`、`src/state.ts`、`src/pools.ts` |
 
-## 快速開始（Demo）
+## 快速開始（本機接上 HyAgent）
 
 ```bash
 # 1. Demo DB（postgres:17，port 54330；含唯讀帳號 hyagent_reader）
 npm run demo-db -w mcp/db-intelligence
 
-# 2. 掃描 → 審核並發布（Catalog 存在 mcp/db-intelligence/data/，不進版控）
-export DBI_DS_PROJECT_01_URL=postgres://hyagent_reader:reader_dev_only@localhost:54330/projects
-npm run catalog:sync -w mcp/db-intelligence -- ds_project_01
-npm run catalog:review -w mcp/db-intelligence -- ds_project_01 config/demo-review.json
+# 2. 設定並啟動（port 4300）；首次啟動以 config/local-default.json（租戶 default）為種子
+cp mcp/db-intelligence/.env.example mcp/db-intelligence/.env
+npm run dev -w mcp/db-intelligence
 
-# 3. 啟動 MCP server（port 4300）
-HYAGENT_JWKS_URL=http://localhost:3000/.well-known/hyagent-mcp-jwks.json MCP_SERVER_ID=db-intelligence \
-  npm start -w mcp/db-intelligence
+# 3. 套用 Demo 審核並發布（也可在後台「資料庫查詢 → Catalog 審核」手動操作）
+#    先在後台「資料庫查詢 → 資料來源」按「掃描 Schema」
+cd mcp/db-intelligence && npm run catalog:review -- ds_project_01 config/demo-review.json
 ```
 
-在 HyAgent 後台「MCP 服務」登記 `serverId=db-intelligence`、URL `http://localhost:4300/mcp`，並授予 `mcp:db-intelligence`。
-Demo 設定（`config/demo.json`）的租戶 ID 是 `demo`，使用者為 `alice`（員工，數位研發部）、`bob`（主管）、`hana`（HR）；
-接真實 HyAgent 時，以管理 API 把資料來源、政策、使用者目錄改成實際的 tenant／user（見下方「管理 API」）。
+HyAgent server 需設定 `MCP_SIGNING_KEY`（產生方式見 `server/.env.example`）。在後台「MCP 服務」登記
+`serverId=db-intelligence`、URL `http://localhost:4300/mcp`、角色 `manager, hr`，重新整理工具並核准唯讀；
+再到租戶「權限」分頁授予「智慧代理」（`service:agent`）、`mcp:db-intelligence` 與角色 scope。
+本機帳密登入只有內建的 `kevin`、`hyweb`（租戶建了使用者目錄後改以目錄為準）。
 
-**角色來源**：使用者目錄的 `roles`，加上 JWT scope 推導的角色——在 HyAgent 後台把 `mcp:db-intelligence:manager`
-授予部門或帳號，該使用者就有 `manager` 角色。資料列範圍用的屬性（如 `departmentId`）目前只來自使用者目錄。
+接入客戶的資料庫請依 [docs/db-intelligence/onboarding-new-database.md](../../docs/db-intelligence/onboarding-new-database.md)。`config/demo.json` 是租戶 `demo` 的版本，供測試使用。
+
+**角色來源**：使用者目錄的 `roles`，加上 JWT scope 推導的角色——在 HyAgent 後台「MCP 服務」登記時宣告角色
+（如 `manager, hr`），再到租戶「權限」分頁把 `mcp:db-intelligence:manager` 授予部門或帳號，該使用者就有 `manager` 角色
+（使用工具仍需同時授予 `mcp:db-intelligence`）。資料列範圍用的屬性（如 `departmentId`）目前只來自使用者目錄。
 
 | 環境變數 | 說明 |
 | --- | --- |
@@ -89,7 +92,7 @@ join 進來的資料集欄位加 `"dataset": "departments"`。完整格式見 `s
 
 ## 管理 API
 
-平台管理員在 HyAgent 後台操作，HyAgent server 驗證管理員、記稽核後轉發（`/api/admin/db-intelligence/<serverId>/...` →
+平台管理員在 HyAgent 後台（租戶頁 →「資料庫查詢」分頁）操作，HyAgent server 驗證管理員、記稽核後轉發（`/api/admin/db-intelligence/<serverId>/...` →
 本服務 `/admin/...`）。本服務只接受 HyAgent 簽發、帶 `hyagent:admin` scope 的系統 JWT。
 資料來源、政策、Catalog 都存在本服務（客戶端），HyAgent 平台不保存客戶資料庫結構。
 
@@ -124,3 +127,12 @@ DBI_TEST_READER_URL=postgres://hyagent_reader:reader_dev_only@localhost:54330/pr
 DBI_TEST_OWNER_URL=postgres://dbi_owner:owner_dev_only@localhost:54330/projects \
   npm test -w mcp/db-intelligence
 ```
+
+真實模型端到端評測（HyAgent 對話 → 路由 → agent → 本服務 → Demo DB，逐題自動檢查並輸出逐字紀錄）：
+
+```bash
+npm run demo-db -w mcp/db-intelligence
+DBI_EVAL_DATABASE_URL=postgres://hyagent_reader:reader_dev_only@localhost:54330/projects npm run eval:dbi -w server
+```
+
+會用到 `server/.env` 的 LLM 設定；資料一律寫入臨時目錄（強制 `DATA_BACKEND=file`）。

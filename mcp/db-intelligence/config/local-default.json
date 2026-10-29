@@ -1,0 +1,99 @@
+{
+  "dataSources": [
+    {
+      "id": "ds_project_01",
+      "tenantId": "default",
+      "dbType": "postgres",
+      "schemas": [
+        "public"
+      ],
+      "connectionEnv": "DBI_DS_PROJECT_01_URL",
+      "timezone": "Asia/Taipei"
+    }
+  ],
+  "policies": {
+    "version": "local-1",
+    "policies": [
+      {
+        "id": "employee-own-department-projects",
+        "tenantId": "default",
+        "dataSourceId": "ds_project_01",
+        "dataset": "public.projects",
+        "principals": {
+          "roles": [
+            "employee"
+          ]
+        },
+        "columns": [
+          "*"
+        ],
+        "rowScope": [
+          {
+            "column": "department_id",
+            "attribute": "departmentId"
+          }
+        ],
+        "maxRows": 200
+      },
+      {
+        "id": "manager-all-projects",
+        "tenantId": "default",
+        "dataSourceId": "ds_project_01",
+        "dataset": "public.projects",
+        "principals": {
+          "roles": [
+            "manager"
+          ]
+        },
+        "columns": [
+          "*"
+        ]
+      },
+      {
+        "id": "all-departments",
+        "tenantId": "default",
+        "dataSourceId": "ds_project_01",
+        "dataset": "public.departments",
+        "principals": {
+          "roles": [
+            "employee",
+            "manager",
+            "hr"
+          ]
+        },
+        "columns": [
+          "*"
+        ]
+      },
+      {
+        "id": "hr-salary-statistics",
+        "tenantId": "default",
+        "dataSourceId": "ds_project_01",
+        "dataset": "public.employee_salary",
+        "principals": {
+          "roles": [
+            "hr"
+          ]
+        },
+        "columns": [
+          "department_id",
+          "salary"
+        ],
+        "aggregateOnly": true,
+        "minGroupSize": 3
+      }
+    ]
+  },
+  "principals": {
+    "default": {
+      "hyweb": {
+        "roles": [
+          "employee"
+        ],
+        "attributes": {
+          "departmentId": 1
+        }
+      }
+    }
+  }
+}

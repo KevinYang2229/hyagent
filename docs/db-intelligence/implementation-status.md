@@ -1,6 +1,6 @@
 # Database Intelligence 實作進度（對照開發規格書 v0.1）
 
-> 程式：[`mcp/db-intelligence`](../../mcp/db-intelligence/README.md)　規格：[`development-spec.md`](development-spec.md)　更新：2026-10-29
+> 程式：[`mcp/db-intelligence`](../../mcp/db-intelligence/README.md)　規格：[`development-spec.md`](development-spec.md)　操作手冊：[`onboarding-new-database.md`](onboarding-new-database.md)　更新：2026-10-29
 
 ## 已決定的事項（規格書 §12）
 
@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | 1 | 後端語言、MCP Client 位置 | TypeScript／Node.js。HyAgent server 已有 MCP Client，以 ES256 JWT 呼叫自建 MCP server；本服務沿用 `@hyagent/mcp-kit` 驗簽，tenant／user 取自 JWT |
 | 3 | 第一版 DB | PostgreSQL（Adapter 介面預留 MSSQL／MySQL） |
-| 4 | 權限來源 | 角色＝使用者目錄 ∪ HyAgent JWT scope（`mcp:<serverId>:<role>`，沿用後台部門／帳號授權）；資料列範圍屬性來自使用者目錄。之後可換成 OA API 或 IAM，同一個 `PrincipalResolver` 介面 |
+| 4 | 權限來源 | 角色＝使用者目錄 ∪ HyAgent JWT scope（`mcp:<serverId>:<role>`：在「MCP 服務」登記時宣告角色，即可在「權限」分頁授予部門或帳號）；資料列範圍屬性來自使用者目錄。之後可換成 OA API 或 IAM，同一個 `PrincipalResolver` 介面 |
 | 5 | 是否採樣真實資料 | 否。Discovery 只查系統目錄 |
 | 6 | 結果快取 | 程序內記憶體，綁 tenant／user／政策版本／Catalog 版本，TTL 10 分鐘，上限 500 筆；未加密（不落地） |
 
@@ -28,7 +28,7 @@
 | 1 | Connector 安全通道（mTLS／出站連線）與遠端 Credential 管理 | ⬜ 目前 Executor 與 MCP server 同程序部署（需部署在客戶端），連線字串由環境變數注入 |
 | 1 | Catalog 版本、差異 | ✅ `catalog/sync.ts`（檔案儲存 `catalog/store.ts`；DB migration 待做） |
 | 1 | Admin API | ✅ MCP 端 `admin.ts`；HyAgent server 轉發 `server/src/modules/db-intelligence/`（requireAdmin＋稽核） |
-| 1 | 後台 UI | ⬜ |
+| 1 | 後台 UI | ✅ 租戶頁「資料庫查詢」分頁（`admin/src/pages/tabs/database/`）：資料來源與連線測試、掃描差異、Catalog 審核與發布、查詢預覽、查詢稽核。存取政策與使用者目錄目前為 JSON 編輯器（附範本與服務端驗證警告），指標定義仍以 API／審核檔設定 |
 | 2 | Validator（運算子、型別、聚合、排序、JOIN） | ✅ `query/validator.ts` |
 | 2 | Policy Engine ＋ 資料列範圍、遮罩、僅聚合、最小群組 | ✅ |
 | 2 | 推論攻擊：限制反覆縮小條件的查詢（差分攻擊） | ⬜ `minGroupSize` 只保證每組筆數，擋不了「全體 − 排除某人」的差分；需依使用者追蹤近期查詢條件 |
@@ -39,7 +39,7 @@
 | 3 | Metadata 檢索 | ✅ 關鍵字＋中文二字詞（100+ 表時的效能與向量檢索待評估） |
 | 3 | `plan_query`／Planner Prompt | ⬜ 目前由 HyAgent 的 Agent 依工具說明直接產生 Query Plan |
 | 3 | 歧義處理、低信心拒答 | 🟡 工具說明要求不猜測；未定義指標回 `QUERY_FIELD_NOT_ALLOWED`／`QUERY_METRIC_UNDEFINED`。尚無信心分數 |
-| 3 | 自然語言端對端測試（10 個案例） | ⬜ 需接上 HyAgent 實際跑模型 |
+| 3 | 自然語言端對端測試 | ✅ 自動化：`server/tests/dbi-e2e.test.ts`（假 LLM，驗證身分、角色、範圍、拒絕原因的傳遞）；真實模型：`npm run eval:dbi -w server`（§10 七題＋HR 統計，2026-10-30 以 claude-sonnet-4-5 連跑 2 次皆 8/8）。規格書要求的 10 題與 30 題 Golden Cases 尚待擴充 |
 | 4 | 指標、效能、滲透測試、試點 | ⬜ |
 
 ## §7.4 威脅測試對照
