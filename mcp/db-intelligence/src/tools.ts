@@ -54,6 +54,7 @@ export const DBI_TOOLS: DbiTool[] = [
       '問題用到的概念（如「完成率」）沒有對應欄位或已核准的計算指標時，不要自行推算，請向使用者說明尚未定義或請其澄清。' +
       '「今年」「上個月」等相對日期依 search_schema 回傳的 today 換算成 YYYY-MM-DD。' +
       '使用者的資料範圍（如「我的部門」）由系統依身分自動套用，不要自行猜測部門或使用者代碼去篩選；' +
+      '統計欄位請在 select 填 label（如「在職人數」）作為表格標題；' +
       '結果含代碼欄位（如 department_id）且有已核准關聯時，join 取得名稱再回答。' +
       '欄位或指標標示 aggregate_only 時，只能放進 select 的聚合函式（限 aggregates 列出的），不能直接顯示、篩選、分組或排序，且每組至少 min_group_size 筆；' +
       '使用者要明細時，改提供這類統計並說明原因。' +
@@ -100,10 +101,11 @@ const TABLE_TOOLS = new Set(['execute_safe_query', 'get_query_result']);
 
 /** 查詢結果畫成表格；沒有資料或欄位太多時不畫 */
 export function tableDisplay(data: Record<string, unknown>): Record<string, unknown> | undefined {
-  const { columns, rows } = data as { columns?: unknown; rows?: unknown };
+  const { columns, column_labels: labels, rows } = data as { columns?: unknown; column_labels?: unknown; rows?: unknown };
   if (!Array.isArray(columns) || !Array.isArray(rows) || rows.length === 0) return undefined;
   if (columns.length === 0 || columns.length > MAX_DISPLAY_COLUMNS) return undefined;
-  return { type: 'table', rows: 'rows', columns: columns.map((c) => ({ key: String(c), label: String(c) })) };
+  const labelOf = (i: number) => (Array.isArray(labels) && typeof labels[i] === 'string' && labels[i] ? (labels[i] as string) : String(columns[i]));
+  return { type: 'table', rows: 'rows', columns: columns.map((c, i) => ({ key: String(c), label: labelOf(i) })) };
 }
 
 export async function callDbiTool(service: DbIntelligenceService, name: string, rawArgs: unknown, caller: HyAgentCaller): Promise<DbiToolResult> {

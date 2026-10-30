@@ -231,11 +231,24 @@ describe('MCP 工具層', () => {
     executor.rows = [['A']];
     const ok = await callDbiTool(service, 'execute_safe_query', { query_plan: plan() }, caller('bob'));
     expect(ok.structuredContent).toMatchObject({ rows: [{ name: 'A' }] });
-    expect(ok.display).toEqual({ type: 'table', rows: 'rows', columns: [{ key: 'name', label: 'name' }] });
+    expect(ok.display).toEqual({ type: 'table', rows: 'rows', columns: [{ key: 'name', label: '專案名稱' }] });
     executor.rows = [];
     expect((await callDbiTool(service, 'execute_safe_query', { query_plan: plan() }, caller('bob'))).display).toBeUndefined();
     expect((await callDbiTool(service, 'search_schema', { question: 'x' }, caller('bob'))).display).toBeUndefined();
     expect((await callDbiTool(service, 'drop_table', {}, caller('bob'))).isError).toBe(true);
     expect((await callDbiTool(service, 'search_schema', { question: 'x', tenant_id: 'other' }, caller('bob'))).isError).toBe(true);
+  });
+
+  it('表格標題：Query Plan 的 label → 核准描述（取第一個標點前）→ 輸出名稱', async () => {
+    executor.rows = [[3, 120, 2]];
+    const select = [
+      { field: 'department_id', agg: 'count_distinct', label: '負責部門' },
+      { field: 'estimated_hours', agg: 'sum' },
+      { agg: 'count' },
+    ];
+    const r = await service.executeSafeQuery(caller('bob'), { query_plan: plan({ select }) });
+    expect(r.column_labels).toEqual(['負責部門', '預估工時合計', '筆數']);
+    const next = await service.getQueryResult(caller('bob'), { result_id: r.result_id });
+    expect(next.column_labels).toEqual(r.column_labels);
   });
 });

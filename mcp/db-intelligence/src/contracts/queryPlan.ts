@@ -33,6 +33,7 @@ export const selectItemSchema = z
     dataset: datasetRef,
     agg: z.enum(AGGREGATES).optional().describe('聚合函式'),
     alias: alias.optional(),
+    label: z.string().trim().min(1).max(30).optional().describe('表格欄位標題，用使用者看得懂的中文（如「在職人數」）；省略時依欄位描述產生'),
   })
   .strict()
   .refine((s) => s.field !== undefined || s.agg === 'count', { message: '只有 count 可以不指定欄位' });

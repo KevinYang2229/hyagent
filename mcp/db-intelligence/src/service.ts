@@ -10,11 +10,11 @@ import type { CatalogStore } from './catalog/store';
 import { RESTRICTED_AGGREGATES, RESTRICTED_MIN_GROUP_SIZE, type Catalog, type TypeCategory } from './contracts/catalog';
 import { DbiError } from './contracts/errors';
 import type { DataSource, PolicySet, Principal, PrincipalDirectory } from './contracts/policy';
-import type { FilterOp } from './contracts/queryPlan';
+import type { Aggregate, FilterOp } from './contracts/queryPlan';
 import { compileQuery } from './query/compiler';
 import { dialectFor } from './query/dialect';
 import type { QueryExecutor } from './query/executor';
-import { resolveQuery, type ResolvedQuery } from './query/validator';
+import { resolveQuery, type ResolvedQuery, type ResolvedSelect } from './query/validator';
 import { metricColumns } from './catalog/sync';
 
 export interface PrincipalResolver {
@@ -75,6 +75,7 @@ interface CachedResult {
   dataSourceId: string;
   expiresAt: number;
   columns: string[];
+  columnLabels: string[];
   rows: Record<string, unknown>[];
 }
 
@@ -87,6 +88,37 @@ const OPERATORS: Record<TypeCategory, FilterOp[]> = {
   boolean: ['eq', 'neq', 'is_null', 'is_not_null'],
   other: [],
 };
+
+const AGG_LABELS: Record<Aggregate, (field: string) => string> = {
+  count: (f) => `${f}筆數`,
+  count_distinct: (f) => `${f}數`,
+  sum: (f) => `${f}合計`,
+  avg: (f) => `平均${f}`,
+  min: (f) => `最小${f}`,
+  max: (f) => `最大${f}`,
+};
+
+/** 描述取第一個標點前的部分當標題，例如「離職日；空值代表仍在職」→「離職日」 */
+function shortLabel(description: string | null | undefined): string | undefined {
+  const head = description?.split(/[；;，,。：:（(\n]/)[0].trim();
+  return head ? head.slice(0, 20) : undefined;
+}
+
+/** 表格欄位標題：Query Plan 指定的 label → 核准的欄位／指標描述 → 輸出名稱 */
+export function columnLabel(s: ResolvedSelect, resolved: ResolvedQuery): string {
+  if (s.label) return s.label;
+  const ds = s.expr && resolved.datasets.find((d) => d.alias === s.expr!.alias)?.dataset;
+  let field: string | undefined;
+  if (s.expr?.kind === 'column') {
+    const col = ds?.columns.find((c) => c.name === (s.expr as { column: string }).column);
+    field = col?.descriptionStatus === 'approved' ? shortLabel(col.description) : undefined;
+  } else if (s.expr?.kind === 'metric') {
+    const key = s.expr.key;
+    field = shortLabel(ds?.metrics.find((m) => m.key === key)?.description);
+  }
+  if (s.agg) return s.expr ? (field ? AGG_LABELS[s.agg](field) : s.output) : '筆數';
+  return field ?? s.output;
+}
 
 /** 「限制」欄位／指標：只能放在聚合函式裡；遮罩後可直接顯示時 aggregate_only 為 false */
 function restrictedHint(aggregateOnly: boolean) {
@@ -243,6 +275,7 @@ export class DbIntelligenceService {
       const masks = resolved.select.map((s) => s.mask);
       const rows = exec.rows.map((r) => Object.fromEntries(exec.columns.map((c, i) => [c, masks[i] ? maskValue(r[i], masks[i]!) : r[i]])));
       const resultId = `res_${randomUUID()}`;
+      const columnLabels = resolved.select.map((s) => columnLabel(s, resolved!));
       this.cacheResult(resultId, {
         tenantId: principal.tenantId,
         userId: principal.userId,
@@ -251,6 +284,7 @@ export class DbIntelligenceService {
         dataSourceId: resolved.dataSourceId,
         expiresAt: Date.now() + this.limits.resultTtlMs,
         columns: exec.columns,
+        columnLabels,
         rows,
       });
 
@@ -280,6 +314,7 @@ export class DbIntelligenceService {
         request_id: requestId,
         result_id: resultId,
         columns: exec.columns,
+        column_labels: columnLabels,
         ...page,
         row_count: rows.length,
         truncated: exec.truncated,
@@ -359,6 +394,6 @@ export class DbIntelligenceService {
       if (!m || m[1] !== args.result_id || Number(m[2]) >= entry.rows.length) throw new DbiError('QUERY_PLAN_INVALID', 'cursor 不正確');
       offset = Number(m[2]);
     }
-    return { result_id: args.result_id, columns: entry.columns, ...this.page(args.result_id, entry.rows, offset), row_count: entry.rows.length };
+    return { result_id: args.result_id, columns: entry.columns, column_labels: entry.columnLabels, ...this.page(args.result_id, entry.rows, offset), row_count: entry.rows.length };
   }
 }

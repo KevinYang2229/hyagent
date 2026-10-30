@@ -26,6 +26,8 @@ export interface ResolvedSelect {
   expr?: ValueExpr;
   agg?: Aggregate;
   output: string;
+  /** Query Plan 指定的表格欄位標題 */
+  label?: string;
   mask?: 'redact' | 'partial';
 }
 
@@ -220,7 +222,7 @@ export function resolveQuery(input: unknown, ctx: ValidationContext): ResolvedQu
       use(expr!, expr!.kind === 'metric' ? 'derived' : 'raw');
     }
     const output = s.alias ?? (s.agg ? (s.field ? `${s.agg}_${s.field}` : 'count') : s.field!);
-    return { expr, agg: s.agg, output };
+    return { expr, agg: s.agg, output, ...(s.label ? { label: s.label } : {}) };
   });
   const outputs = new Set<string>();
   for (const s of select) {
