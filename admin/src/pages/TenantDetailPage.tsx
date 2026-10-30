@@ -12,7 +12,6 @@ import UsageTab from './tabs/UsageTab';
 import FormsTab from './tabs/FormsTab';
 import KnowledgeTab from './tabs/KnowledgeTab';
 import PermissionsTab from './tabs/PermissionsTab';
-import { isCapabilityCategory } from './tabs/permissions.util';
 import AuditTab from './tabs/AuditTab';
 import FeedbackTab from './tabs/FeedbackTab';
 import ReportsTab from './tabs/ReportsTab';
@@ -60,8 +59,6 @@ export default function TenantDetailPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const rawTab = searchParams.get('tab');
   const tab: TabKey = TABS.some((t) => t.key === rawTab) ? (rawTab as TabKey) : 'settings';
-  const rawCategory = searchParams.get('category');
-  const permissionCategory = isCapabilityCategory(rawCategory) ? rawCategory : undefined;
   // 權限分頁有未儲存變更時，離開前先確認（其他分頁各自即時儲存，不需要）
   const [permissionsDirty, setPermissionsDirty] = useState(false);
   const [pendingLeave, setPendingLeave] = useState<(() => void) | null>(null);
@@ -144,7 +141,6 @@ export default function TenantDetailPage() {
             <PermissionsTab
               tenantId={tenant.id}
               onError={handleErr}
-              initialCategory={permissionCategory}
               onDirtyChange={setPermissionsDirty}
             />
           )}

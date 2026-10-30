@@ -70,7 +70,7 @@ export default function DatabaseTab({ tenantId, onError }: { tenantId: string; o
           </div>
         </div>
         <div className="empty">
-          尚未登記 Database Intelligence 服務。請到「MCP 服務」登記 db-intelligence 服務並重新整理工具清單，再到「權限」分頁授予 <span className="code-pill">mcp:&lt;serverId&gt;</span>。
+          尚未登記 Database Intelligence 服務。請到「MCP 服務」登記 db-intelligence 服務並重新整理工具清單，再到「權限」分頁把 <span className="code-pill">mcp:&lt;serverId&gt;</span> 加進角色。
         </div>
       </div>
     );

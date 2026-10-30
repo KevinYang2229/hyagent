@@ -17,6 +17,21 @@ function mockRes() {
   return res;
 }
 
+/** 權限 API 讀回的是「只有角色」的檢視：舊直接授權換算成角色，這裡取某對象經角色拿到的 scopes */
+type RoleViewBody = {
+  bundles: { id: string; scopes: string[] }[];
+  groupBundles: Record<string, string[]>;
+  accountBundles: Record<string, string[]>;
+  tenantBundles: string[];
+};
+function roleScopes(body: unknown, target: 'everyone' | { department: string } | { account: string }): string[] {
+  const view = body as RoleViewBody;
+  const ids = target === 'everyone'
+    ? view.tenantBundles
+    : 'department' in target ? view.groupBundles[target.department] ?? [] : view.accountBundles[target.account] ?? [];
+  return view.bundles.filter((b) => ids.includes(b.id)).flatMap((b) => b.scopes);
+}
+
 describe('admin 權限 API', () => {
   afterEach(() => scopePolicy.clear());
 
@@ -55,8 +70,8 @@ describe('admin 權限 API', () => {
     const body = (getRes.body as {
       data: { grantedScopes: string[]; groups: Record<string, string[]>; capabilities: { id: string }[] };
     }).data;
-    expect(body.grantedScopes).toContain('erp:read');
-    expect(body.groups['行銷部']).toContain('email:write');
+    expect(roleScopes(body, 'everyone')).toContain('erp:read');
+    expect(roleScopes(body, { department: '行銷部' })).toContain('email:write');
     const ids = body.capabilities.map((c) => c.id);
     expect(ids).toContain('service:form');
     expect(ids).toContain('form:leave-request');
@@ -76,7 +91,7 @@ describe('admin 權限 API', () => {
     expect(scopes).toEqual(expect.arrayContaining(['service:form', 'form:leave-request']));
 
     const body = (res.body as { data: { grantedScopes: string[]; capabilities: { id: string }[] } }).data;
-    expect(body.grantedScopes).toContain('form:leave-request');
+    expect(roleScopes(body, 'everyone')).toContain('form:leave-request');
     expect(body.capabilities.map((c) => c.id)).toContain('form:leave-request');
   });
 
@@ -102,15 +117,15 @@ describe('admin 權限 API', () => {
 
     const getRes = mockRes();
     await adminController.getPolicy({ params: { id: t.id } } as never, getRes as never);
-    const body = (getRes.body as { data: { grantedScopes: string[] } }).data;
-    expect(body.grantedScopes).toContain('form:leave-request');
-    expect(body.grantedScopes).toContain('service:form');
-    expect(body.grantedScopes).not.toContain('form:ghost-deleted-form'); // 孤兒被濾掉
+    const body = (getRes.body as { data: RoleViewBody & { grantedScopes: string[]; groups: Record<string, string[]>; accounts: Record<string, string[]> } }).data;
+    expect(roleScopes(body, 'everyone')).toContain('form:leave-request');
+    expect(roleScopes(body, 'everyone')).toContain('service:form');
+    expect(roleScopes(body, 'everyone')).not.toContain('form:ghost-deleted-form'); // 孤兒被濾掉
 
-    // 把 GET 回來的 grantedScopes 原封 PUT（模擬按「儲存」）→ 不再 400
+    // 把 GET 回來的檢視原封 PUT（模擬按「儲存」）→ 不再 400
     const putRes = mockRes();
     await adminController.setPolicy(
-      { params: { id: t.id }, body: { grantedScopes: body.grantedScopes, groups: {}, accounts: {} } } as never,
+      { params: { id: t.id }, body: { ...body } } as never,
       putRes as never,
     );
     expect(putRes.statusCode).toBe(200);
@@ -130,8 +145,8 @@ describe('admin 權限 API', () => {
     const getRes = mockRes();
     await adminController.getPolicy({ params: { id: t.id } } as never, getRes as never);
     const body = (getRes.body as { data: { grantedScopes: string[]; groups: Record<string, string[]> } }).data;
-    expect(body.grantedScopes).toContain('erp:read');
-    expect(body.grantedScopes).not.toContain('kb:hr');
+    expect(roleScopes(body, 'everyone')).toContain('erp:read');
+    expect(roleScopes(body, 'everyone')).not.toContain('kb:hr');
   });
 
   it('授予非 grantable（BASE/未知）被擋 400', async () => {
@@ -177,7 +192,7 @@ describe('admin 權限 API', () => {
       .send({ grantedScopes: [], groups: { 行銷部: ['kb:hr'] }, accounts: {} });
     expect(groupLevel.status).toBe(200);
     // 200 不夠：要確認 kb:hr 真的存進去，而不是被某層過濾邏輯誤篩掉後仍回 200
-    expect((groupLevel.body as { data: { groups: Record<string, string[]> } }).data.groups['行銷部']).toContain('kb:hr');
+    expect(roleScopes(groupLevel.body.data, { department: '行銷部' })).toContain('kb:hr');
 
     // 帳號層：同樣合法
     const acctLevel = await request(app)
@@ -185,7 +200,7 @@ describe('admin 權限 API', () => {
       .set('x-admin-key', 'test-admin-key')
       .send({ grantedScopes: [], groups: {}, accounts: { kevin: ['kb:hr'] } });
     expect(acctLevel.status).toBe(200);
-    expect((acctLevel.body as { data: { accounts: Record<string, string[]> } }).data.accounts.kevin).toContain('kb:hr');
+    expect(roleScopes(acctLevel.body.data, { account: 'kevin' })).toContain('kb:hr');
   });
 
   describe('mcp: scope 不可在租戶層授予', () => {
@@ -211,7 +226,7 @@ describe('admin 權限 API', () => {
       tenantStore.updateTenant(t.id, { grantedScopes: ['service:agent', 'mcp:x'] });
       const res = mockRes();
       await adminController.getPolicy({ params: { id: t.id } } as never, res as never);
-      expect((res.body as { data: { grantedScopes: string[] } }).data.grantedScopes).toEqual(['service:agent']);
+      expect(roleScopes((res.body as { data: unknown }).data, 'everyone')).toEqual(['service:agent']);
     });
   });
 });

@@ -390,12 +390,17 @@ export interface TenantPolicyView {
   grantedScopes: string[];
   groups: Record<string, string[]>;
   accounts: Record<string, string[]>;
-  /** 角色能力：定義 + 部門/帳號指派 */
+  /** 角色：定義 + 套用對象（所有人／部門／帳號）。舊的直接授權由後端換算成角色，上面三個欄位恆為空 */
   bundles: SkillBundle[];
   groupBundles: Record<string, string[]>;
   accountBundles: Record<string, string[]>;
+  /** 套用給所有人（含網站訪客）的角色 ids */
+  tenantBundles: string[];
+  /** 這次讀取時由舊直接授權換算出來的角色（尚未儲存） */
+  convertedRoleIds: string[];
   departments: string[];
-  users: { id: string; label: string }[];
+  /** department：帳號所屬部門，用來顯示從部門繼承的角色 */
+  users: { id: string; label: string; department?: string }[];
   capabilities: ScopeDef[];
 }
 
@@ -812,6 +817,7 @@ export const api = {
       bundles: SkillBundle[];
       groupBundles: Record<string, string[]>;
       accountBundles: Record<string, string[]>;
+      tenantBundles: string[];
     },
   ) => req<TenantPolicyView>('PUT', `/admin/tenants/${id}/policy`, body),
 

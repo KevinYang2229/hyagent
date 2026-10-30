@@ -27,6 +27,11 @@ export interface TenantPolicy {
   groupBundles?: Record<string, string[]>;
   /** userId → 套餐 ids */
   accountBundles?: Record<string, string[]>;
+  /**
+   * 套用給「所有人」（含網站訪客）的角色 ids。效果等同租戶層 grantedScopes，
+   * 但能力跟著角色定義走，改角色一次全生效；kb:／mcp: 不可經此開給所有人（寫入端驗證）。
+   */
+  tenantBundles?: string[];
 }
 
 const STORE_FILE = dataFile('oa-agent-scope-policy.json');
@@ -75,6 +80,7 @@ function clone(p: TenantPolicy): TenantPolicy {
     ...(p.bundles ? { bundles: p.bundles.map((b) => ({ ...b, scopes: [...b.scopes] })) } : {}),
     ...(p.groupBundles ? { groupBundles: copyMap(p.groupBundles) } : {}),
     ...(p.accountBundles ? { accountBundles: copyMap(p.accountBundles) } : {}),
+    ...(p.tenantBundles ? { tenantBundles: [...p.tenantBundles] } : {}),
   };
 }
 
@@ -109,6 +115,11 @@ export const scopePolicy = {
   accountBundleScopes(tenantId: string, userId: string): string[] {
     const p = policies.get(tenantId);
     return expandBundles(p, grants(p?.accountBundles, userId));
+  },
+  /** 套用給所有人的角色展開 scopes（resolve 端仍會濾掉 kb:／mcp:） */
+  tenantBundleScopes(tenantId: string): string[] {
+    const p = policies.get(tenantId);
+    return expandBundles(p, p?.tenantBundles ?? []);
   },
   /** 取某租戶政策複本（admin 讀取用）。 */
   getPolicy(tenantId: string): TenantPolicy {

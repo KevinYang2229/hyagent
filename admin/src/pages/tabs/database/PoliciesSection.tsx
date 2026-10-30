@@ -130,7 +130,7 @@ export default function PoliciesSection({ serverId, tenantId, sources, onSaved, 
         <div className="card-body">
           <ul className="field-hint" style={{ margin: '0 0 12px', paddingLeft: 18, lineHeight: 2.1 }}>
             <li>
-              <span className="code-pill">principals.roles</span>：角色。在「權限」分頁把 <span className="code-pill">mcp:{serverId}:角色</span> 授予部門或帳號即可擁有該角色；也可寫在下方「帳號角色與屬性」。
+              <span className="code-pill">principals.roles</span>：角色。在「權限」分頁把 <span className="code-pill">mcp:{serverId}:角色</span> 加進角色、套用給部門或帳號即可擁有該角色；也可寫在下方「帳號角色與屬性」。
             </li>
             <li>
               <span className="code-pill">columns</span>：允許的欄位；<span className="code-pill">"*"</span> 只涵蓋公開、內部欄位。

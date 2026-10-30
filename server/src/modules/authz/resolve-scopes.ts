@@ -5,7 +5,7 @@
  */
 import { tenantStore } from '@/modules/tenant/tenant.store';
 import { getApplicant } from '@/modules/user/user.directory';
-import { BASE_SCOPE_IDS, isMcpScope } from './scope-catalog';
+import { BASE_SCOPE_IDS, isKbScope, isMcpScope } from './scope-catalog';
 import { scopePolicy } from './scope-policy';
 
 export interface ScopePrincipal {
@@ -13,9 +13,15 @@ export interface ScopePrincipal {
   userId: string;
 }
 
-/** 租戶層 grantedScopes 會併給所有人含訪客：mcp: 只能走部門/帳號層，這裡防禦性濾掉（寫入端已擋，防舊資料）。 */
+/**
+ * 給所有人（含訪客）的 scopes：租戶層 grantedScopes ∪ 套用給所有人的角色。
+ * kb:／mcp: 只能走部門/帳號層，這裡防禦性濾掉（寫入端已擋，防舊資料）。
+ */
 function tenantGrantedScopes(tenantId: string): string[] {
-  return (tenantStore.getTenant(tenantId)?.grantedScopes ?? []).filter((s) => !isMcpScope(s));
+  return [
+    ...(tenantStore.getTenant(tenantId)?.grantedScopes ?? []),
+    ...scopePolicy.tenantBundleScopes(tenantId),
+  ].filter((s) => !isMcpScope(s) && !isKbScope(s));
 }
 
 export function resolveScopes(principal: ScopePrincipal): string[] {

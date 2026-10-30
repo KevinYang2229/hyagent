@@ -68,3 +68,12 @@ it('delete is refused while members remain, and clears grants once empty', async
   expect(policy.groups['人資']).toEqual(['service:form']);
   await request(app).delete(`${base}/${encodeURIComponent('舊部門')}`).set(admin).expect(404);
 });
+
+it('policy view carries each user department so inherited roles can be shown', async () => {
+  const { t } = seed('dept-policy-users');
+  const res = await request(app).get(`/api/admin/tenants/${t.id}/policy`).set(admin).expect(200);
+  expect(res.body.data.users).toEqual(expect.arrayContaining([
+    { id: 'amy', label: 'Amy', department: '人資' },
+    { id: 'cat', label: 'Cat', department: '業務' },
+  ]));
+});

@@ -443,10 +443,10 @@ export default function KnowledgeTab({
             <div>
               <div className="card-title">誰可以查詢這些知識？</div>
               <div className="card-desc">
-                網站依「可查詢對象」設定開放；檔案與進階標籤模式需要先選標籤，再到「權限 › 知識庫標籤」授權給部門。
+                網站依「可查詢對象」設定開放；檔案與進階標籤模式需要先選標籤，再到「權限」把標籤加進角色。
               </div>
             </div>
-            <Link className="btn btn-sm" to="?tab=permissions&category=kb">設定部門授權</Link>
+            <Link className="btn btn-sm" to="?tab=permissions">設定角色</Link>
           </div>
           <div className="card-body">
             <div className="row-title">訪客／未建檔帳號</div>
@@ -464,7 +464,7 @@ export default function KnowledgeTab({
                 : "尚未授權"}
             </p>
             {guestCorpusState(aclReport.guest) === "no-grant" && (
-              <p className="row-sub">下一步：要開放網站，請將「網站可查詢對象」設為「所有人」；要開放檔案或進階標籤來源，請到「權限 › 知識庫標籤」授權給「{aclReport.guest.department}」部門。</p>
+              <p className="row-sub">下一步：要開放網站，請將「網站可查詢對象」設為「所有人」；要開放檔案或進階標籤來源，請到「權限」把標籤加進套用給「{aclReport.guest.department}」部門的角色。</p>
             )}
             {guestCorpusState(aclReport.guest) === "no-corpus" && (
               <p className="row-sub">下一步：替要開放的網站或檔案，選擇上方任一已授權標籤。目前沒有符合標籤的內容。</p>
@@ -592,7 +592,7 @@ export default function KnowledgeTab({
                         <span>{label.label}</span>
                       </label>)}
                     </div>
-                    <span className="field-hint">沿用標籤與部門授權。請到「權限 › 知識庫標籤」授權相同標籤；未選標籤時無人可查詢。</span>
+                    <span className="field-hint">沿用標籤與部門授權。請到「權限」把相同標籤加進角色；未選標籤時無人可查詢。</span>
                   </>}
                   {(src.audience?.mode === "disabled" || (!src.audience && !src.visibilityScopes?.length)) && <span className="field-hint">保留網站內容，但暫不提供任何人查詢。</span>}
                   <span className="field-hint">僅套用到整個網站來源，不會變更檔案的可見範圍。儲存後生效，不需重新解析。</span>
@@ -811,7 +811,7 @@ export default function KnowledgeTab({
             <div>
               <div className="card-title">可見性標籤</div>
               <div className="card-desc">
-                先替文件選擇標籤，再到「權限 › 知識庫標籤」授權給部門。未設定標籤時無人可查詢。
+                先替文件選擇標籤，再到「權限」把標籤加進角色。未設定標籤時無人可查詢。
               </div>
             </div>
           </div>

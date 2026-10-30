@@ -164,6 +164,7 @@ export const putPolicySchema = z.object({
     .default([]),
   groupBundles: z.record(z.string(), z.array(z.string())).default({}),
   accountBundles: z.record(z.string(), z.array(z.string())).default({}),
+  tenantBundles: z.array(z.string()).default([]),
 });
 export type PutPolicyInput = z.infer<typeof putPolicySchema>;
 

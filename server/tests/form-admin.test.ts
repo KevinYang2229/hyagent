@@ -7,6 +7,7 @@ import { createApp } from '@/app';
 import { validateDefinition } from '@/modules/form/form.validator';
 import type { Definition } from '@/modules/form/form.types';
 import { tenantStore } from '@/modules/tenant/tenant.store';
+import { scopePolicy } from '@/modules/authz/scope-policy';
 
 const app = createApp();
 const KEY = 'test-admin-key';
@@ -175,5 +176,23 @@ describe('Form Designer 管理 API', () => {
       .get(`/api/admin/tenants/${TENANT}/forms/${FORM_ID}`)
       .set('x-admin-key', KEY);
     expect(res.status).toBe(404);
+  });
+});
+
+describe('新表單自動開放給所有人（角色版）', () => {
+  it('已有套用給所有人的角色時，新表單加進該角色；刪除表單時一併移除', async () => {
+    const t = tenantStore.createTenant('form-everyone-role');
+    tenantStore.updateTenant(t.id, { grantedScopes: [] });
+    scopePolicy.setPolicy(t.id, {
+      groups: {}, accounts: {},
+      bundles: [{ id: 'all', name: '全體人員', scopes: ['service:form'] }],
+      groupBundles: {}, accountBundles: {}, tenantBundles: ['all'],
+    });
+    const fid = `role-form-${Date.now()}`;
+    await request(app).post(`/api/admin/tenants/${t.id}/forms`).set('x-admin-key', KEY).send(validDef(fid)).expect(201);
+    expect(scopePolicy.getPolicy(t.id).bundles![0].scopes).toContain(`form:${fid}`);
+    expect(tenantStore.getTenant(t.id)!.grantedScopes).toEqual([]);
+    await request(app).delete(`/api/admin/tenants/${t.id}/forms/${fid}`).set('x-admin-key', KEY).expect(200);
+    expect(scopePolicy.getPolicy(t.id).bundles![0].scopes).not.toContain(`form:${fid}`);
   });
 });

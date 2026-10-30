@@ -4,6 +4,7 @@
  */
 import type { Request, Response } from 'express';
 import { formScopeId } from '@/modules/authz/scope-catalog';
+import { scopePolicy } from '@/modules/authz/scope-policy';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 import { AppError } from '@/utils/app-error';
 import {
@@ -77,11 +78,23 @@ export const formAdminController = {
     }
     assertValid(def);
     const saved = formStore.saveDefinition(tenantId, def);
-    // 新建表單自動授予該租戶對應的 form:<id> scope，Designer 建的表單立即可用
-    const t = tenantStore.getTenant(tenantId);
-    const granted = new Set(t?.grantedScopes ?? []);
-    granted.add(formScopeId(def.formId));
-    tenantStore.updateTenant(tenantId, { grantedScopes: [...granted] });
+    // 新建表單自動開放給所有人，Designer 建的表單立即可用。
+    // 已有「套用給所有人」的角色時加進該角色：權限頁只呈現角色，寫進租戶層會變成另一個換算角色，
+    // 管理者會看到多出一個來路不明的「全體人員」。
+    const scope = formScopeId(def.formId);
+    const policy = scopePolicy.getPolicy(tenantId);
+    const everyoneRole = (policy.bundles ?? []).find((b) => (policy.tenantBundles ?? []).includes(b.id));
+    if (everyoneRole) {
+      scopePolicy.setPolicy(tenantId, {
+        ...policy,
+        bundles: (policy.bundles ?? []).map((b) =>
+          b.id === everyoneRole.id && !b.scopes.includes(scope) ? { ...b, scopes: [...b.scopes, scope] } : b),
+      });
+    } else {
+      const granted = new Set(tenantStore.getTenant(tenantId)?.grantedScopes ?? []);
+      granted.add(scope);
+      tenantStore.updateTenant(tenantId, { grantedScopes: [...granted] });
+    }
     res.status(201).json({ data: saved });
   },
 
@@ -110,6 +123,8 @@ export const formAdminController = {
     if (granted?.includes(scope)) {
       tenantStore.updateTenant(tenantId, { grantedScopes: granted.filter((s) => s !== scope) });
     }
+    // 角色與部門／帳號裡的同名授權一併移除：否則日後同 formId 重建時會靜默復活
+    scopePolicy.revokeScope(tenantId, scope);
     res.status(200).json({ data: { formId } });
   },
 

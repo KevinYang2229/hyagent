@@ -1,62 +1,36 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Checkbox, useToast } from '@hyagent/ui';
+import { Checkbox, Dialog, useToast } from '@hyagent/ui';
 import { api, type TenantPolicyView } from '../../api';
-import BundlesSection from './BundlesSection';
-import { formatDepartment, UNKNOWN_DEPARTMENT } from '../../components/department.util';
-import { groupCapabilities, policyChanged, policyDepartments, type CapabilityCategory } from './permissions.util';
+import { formatDepartment } from '../../components/department.util';
+import RoleEditor from './RoleEditor';
+import {
+  applyRoleDraft, capabilityGaps, capabilityLabel, CATEGORY_LABELS, categoryOf, effectiveCapabilities, peopleOf, policyChanged,
+  policyDepartments, removeRole, roleDraftOf, rolesOf, targetSummary, type Person, type RoleDraft, type RoleSource,
+} from './permissions.util';
 
 /**
- * 權限分頁：以「能力」為中心——每個能力一列，直接選 未開通／所有人／指定對象。
- * 對應資料模型（聯集）：所有人＝grantedScopes；指定對象＝groups/accounts；未開通＝三處皆無。
- * 切到「所有人」時清掉該能力的部門/帳號勾選（聯集下已無意義，留著徒增困惑）。
+ * 權限頁：只有「角色」。每個角色同時寫明能做什麼、給誰（所有人／部門／帳號）。
+ * 舊的直接授權由後端換算成等效角色（convertedRoleIds），按儲存後改由角色承載。
+ * 下方「個人權限」用來確認某人最後拿到什麼、有沒有缺漏，也可直接替他加角色。
  */
 
-type Mode = 'off' | 'all' | 'some';
+/** 摘要最多列出幾項能力，其餘以「等 N 項」帶過 */
+const SUMMARY_MAX = 5;
 
-/** 從清單加入/移除某 scope（回新陣列） */
-function toggle(list: string[], scope: string): string[] {
-  return list.includes(scope) ? list.filter((s) => s !== scope) : [...list, scope];
-}
-
-/** 把某 scope 從 groups/accounts 這類對照表的所有值中移除（回新物件） */
-function stripScope(map: Record<string, string[]>, scope: string): Record<string, string[]> {
-  return Object.fromEntries(
-    Object.entries(map).map(([k, v]) => [k, v.filter((s) => s !== scope)]),
-  );
-}
-
-const MODES: { value: Mode; label: string }[] = [
-  { value: 'off', label: '未開通' },
-  { value: 'all', label: '所有人' },
-  { value: 'some', label: '指定對象' },
+const TEMPLATES: { name: string; description: string; scopes: string[] }[] = [
+  { name: '一般員工', description: '填表申請與查詢規定；請另選允許的表單與知識庫標籤。', scopes: ['service:form', 'service:knowledge'] },
+  { name: '報告分析員', description: '查詢知識並產生報告；請另選可查詢的知識庫標籤。', scopes: ['service:knowledge', 'service:report'] },
 ];
 
-/**
- * 不可開放給所有人的能力：所有人（grantedScopes）會併給所有人含網站訪客，後端對知識庫標籤（kb:）與
- * MCP 服務（mcp:）一律拒絕（見 server assertTenantGrantable），前端先鎖住避免整頁儲存失敗。
- */
-function tenantWideBlocked(id: string): boolean {
-  return id.startsWith('kb:') || id.startsWith('mcp:');
+function sourceText(source: RoleSource): string {
+  if (source.via === 'everyone') return '套用給所有人';
+  if (source.via === 'department') return `來自部門「${formatDepartment(source.department)}」`;
+  return '直接指派';
 }
 
-/** 摘要最多列出幾個對象名稱，其餘以「等 N 個」帶過 */
-const SUMMARY_MAX_NAMES = 3;
-
-function summarizeTargets(names: string[]): string {
-  if (names.length <= SUMMARY_MAX_NAMES) return names.join('、');
-  return `${names.slice(0, SUMMARY_MAX_NAMES).join('、')} 等 ${names.length} 個`;
-}
-
-export default function PermissionsTab({
-  tenantId,
-  onError,
-  initialCategory = 'service',
-  onDirtyChange,
-}: {
+export default function PermissionsTab({ tenantId, onError, onDirtyChange }: {
   tenantId: string;
   onError: (e: unknown) => void;
-  /** 由其他分頁導過來時要先打開的分類（例：知識庫頁 → 知識庫標籤） */
-  initialCategory?: CapabilityCategory;
   /** 未儲存狀態變化時通知外層，讓切換分頁時能先確認 */
   onDirtyChange?: (dirty: boolean) => void;
 }) {
@@ -64,16 +38,11 @@ export default function PermissionsTab({
   const [policy, setPolicy] = useState<TenantPolicyView | null>(null);
   // 最後一次載入／儲存成功的內容，用來判斷是否有未儲存變更與「放棄變更」
   const [baseline, setBaseline] = useState<TenantPolicyView | null>(null);
-  const [activeCategory, setActiveCategory] = useState<CapabilityCategory>(initialCategory);
-  const [formQuery, setFormQuery] = useState('');
-  const [formFilter, setFormFilter] = useState('all');
-  const [formPage, setFormPage] = useState(1);
   const [saving, setSaving] = useState(false);
-  // 使用者明確選了「指定對象」但尚未勾任何人的能力：資料上三處皆無、推導會誤判成「未開通」，
-  // 用此集合讓模式停留在指定對象、展開區得以顯示（勾了人之後自然由資料推導）。
-  const [someOverride, setSomeOverride] = useState<Set<string>>(new Set());
-  // 「指定對象」的勾選區預設收合、只顯示摘要；此集合記錄使用者展開編輯中的能力
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [draft, setDraft] = useState<RoleDraft | null>(null);
+  const [draftIsNew, setDraftIsNew] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<RoleDraft | null>(null);
+  const [personKey, setPersonKey] = useState<string>('');
 
   const load = useCallback(async () => {
     try {
@@ -85,147 +54,75 @@ export default function PermissionsTab({
     }
   }, [tenantId, onError]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useEffect(() => { void load(); }, [load]);
 
   const dirty = !!policy && !!baseline && policyChanged(policy, baseline);
-
-  useEffect(() => {
-    onDirtyChange?.(dirty);
-  }, [dirty, onDirtyChange]);
-
+  useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
   // 離開分頁（unmount）時清掉外層的未儲存旗標
   useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
-
   // 重整或關閉瀏覽器前提醒
   useEffect(() => {
     if (!dirty) return;
-    const warn = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-      event.returnValue = '';
-    };
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
   }, [dirty]);
 
-  if (!policy)
-    return (
-      <div className="card">
-        <div className="card-body">載入中…</div>
-      </div>
-    );
+  if (!policy) return <div className="card"><div className="card-body">載入中…</div></div>;
 
-  const groups = groupCapabilities(policy.capabilities);
-
-  // 已無成員但仍綁著權限的部門也要列出：否則授權看不到、摘要誤報「等同未開通」，
-  // 之後同名部門或 SSO 帶入此部門時會靜默生效
+  const caps = policy.capabilities;
+  const people = peopleOf(policy);
   const departments = policyDepartments(policy);
-  const deptLabel = (dep: string) =>
-    policy.departments.includes(dep) ? formatDepartment(dep) : `${formatDepartment(dep)}（已無成員）`;
+  const accountLabel = (id: string) => people.find((p) => p.id === id)?.label ?? id;
+  const converted = policy.convertedRoleIds.filter((id) => policy.bundles.some((b) => b.id === id));
+  // 有缺漏的人（以每個人所有角色的聯集判斷才準確）
+  const gapsOf = (person: Person) => capabilityGaps(effectiveCapabilities(policy, person).map((c) => c.scope), caps);
+  const peopleWithGaps = people.filter((p) => gapsOf(p).length > 0);
 
-  /** 該能力目前的模式：所有人 > 指定對象（含剛切換、尚未勾人）> 未開通 */
-  const modeOf = (id: string): Mode => {
-    if (policy.grantedScopes.includes(id)) return 'all';
-    const inGroups = Object.values(policy.groups).some((v) => v.includes(id));
-    const inAccounts = Object.values(policy.accounts).some((v) => v.includes(id));
-    return inGroups || inAccounts || someOverride.has(id) ? 'some' : 'off';
+  const startNew = (template?: (typeof TEMPLATES)[number]) => {
+    setDraft({
+      id: `b-${crypto.randomUUID()}`,
+      name: template?.name ?? '',
+      ...(template ? { description: template.description } : {}),
+      scopes: template ? template.scopes.filter((id) => caps.some((c) => c.id === id)) : [],
+      everyone: false, departments: [], accounts: [],
+    });
+    setDraftIsNew(true);
+  };
+  const startEdit = (roleId: string) => {
+    const role = policy.bundles.find((b) => b.id === roleId)!;
+    setDraft(roleDraftOf(policy, role));
+    setDraftIsNew(false);
+  };
+  const finishDraft = () => {
+    if (!draft) return;
+    setPolicy((p) => (p ? applyRoleDraft(p, draft) : p));
+    setDraft(null);
+  };
+  const confirmDelete = () => {
+    const target = pendingDelete;
+    setPendingDelete(null);
+    if (target) setPolicy((p) => (p ? removeRole(p, target.id) : p));
   };
 
-  /**
-   * 角色授予對照：scope → 「角色名（被指派對象…）」。
-   * 聯集模型下權限區的模式推導只看零散資料，看不到角色授予——不補提示會出現
-   * 「顯示未開通、實際卻有權限」與「取消勾選卻關不掉」的認知落差。
-   */
-  const bundleGrants = (id: string): string[] =>
-    policy.bundles
-      .filter((b) => b.scopes.includes(id))
-      .map((b) => {
-        const deps = departments
-          .filter((d) => (policy.groupBundles[d] ?? []).includes(b.id))
-          .map(deptLabel);
-        const users = policy.users
-          .filter((u) => (policy.accountBundles[u.id] ?? []).includes(b.id))
-          .map((u) => u.label);
-        const targets = [...deps, ...users];
-        return targets.length ? `${b.name}（${targets.join('、')}）` : '';
-      })
-      .filter(Boolean);
-
-  // 「填表申請」是否有任何來源授予（零散或已被指派的角色）；form:* 缺它時為死授權，給軟警告
-  const formServiceGranted =
-    policy.grantedScopes.includes('service:form') ||
-    Object.values(policy.groups).some((v) => v.includes('service:form')) ||
-    Object.values(policy.accounts).some((v) => v.includes('service:form')) ||
-    policy.bundles.some(
-      (b) =>
-        b.scopes.includes('service:form') &&
-        (Object.values(policy.groupBundles).some((ids) => ids.includes(b.id)) ||
-          Object.values(policy.accountBundles).some((ids) => ids.includes(b.id))),
-    );
-
-  const toggleExpanded = (id: string) =>
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-
-  const setMode = (id: string, mode: Mode) => {
-    setSomeOverride((prev) => {
-      const next = new Set(prev);
-      if (mode === 'some') next.add(id);
-      else next.delete(id);
-      return next;
-    });
-    // 切到指定對象時直接展開勾選區，離開時收起
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (mode === 'some') next.add(id);
-      else next.delete(id);
-      return next;
-    });
-    setPolicy((p) => {
-      if (!p) return p;
-      const granted = p.grantedScopes.filter((s) => s !== id);
-      if (mode === 'all') {
-        // 所有人：進 grantedScopes，並清掉部門/帳號的殘留勾選
-        return {
-          ...p,
-          grantedScopes: [...granted, id],
-          groups: stripScope(p.groups, id),
-          accounts: stripScope(p.accounts, id),
-        };
-      }
-      if (mode === 'off') {
-        return { ...p, grantedScopes: granted, groups: stripScope(p.groups, id), accounts: stripScope(p.accounts, id) };
-      }
-      // some：離開 grantedScopes，保留（或開始）部門/帳號勾選
-      return { ...p, grantedScopes: granted };
-    });
-  };
-
-  const toggleDept = (dep: string, id: string) =>
-    setPolicy((p) =>
-      p ? { ...p, groups: { ...p.groups, [dep]: toggle(p.groups[dep] ?? [], id) } } : p,
-    );
-  const toggleAccount = (userId: string, id: string) =>
-    setPolicy((p) =>
-      p ? { ...p, accounts: { ...p.accounts, [userId]: toggle(p.accounts[userId] ?? [], id) } } : p,
-    );
+  /** 個人權限區直接替某人加／移除角色（只動直接指派） */
+  const toggleDirect = (person: Person, roleId: string) => setPolicy((p) => {
+    if (!p) return p;
+    const cur = p.accountBundles[person.id] ?? [];
+    const next = cur.includes(roleId) ? cur.filter((x) => x !== roleId) : [...cur, roleId];
+    return { ...p, accountBundles: { ...p.accountBundles, [person.id]: next } };
+  });
 
   const save = async () => {
-    if (!policy) return;
     setSaving(true);
     try {
       const updated = await api.putTenantPolicy(tenantId, {
-        grantedScopes: policy.grantedScopes,
-        groups: policy.groups,
-        accounts: policy.accounts,
+        // 直接授權一律送空：資料改由角色承載（舊設定已由後端換算成角色）
+        grantedScopes: [], groups: {}, accounts: {},
         bundles: policy.bundles,
         groupBundles: policy.groupBundles,
         accountBundles: policy.accountBundles,
+        tenantBundles: policy.tenantBundles,
       });
       setPolicy(updated);
       setBaseline(updated);
@@ -236,217 +133,168 @@ export default function PermissionsTab({
       setSaving(false);
     }
   };
+  const discard = () => { setPolicy(baseline); setDraft(null); };
 
-  const discard = () => {
-    setPolicy(baseline);
-    setSomeOverride(new Set());
-    setExpanded(new Set());
-  };
-
-  const forms = groups.find((group) => group.key === 'form')!.items;
-  const hasFormGrant = (id: string) => modeOf(id) !== 'off' || bundleGrants(id).length > 0;
-  const filteredForms = forms.filter((form) =>
-    `${form.label} ${form.description ?? ''}`.toLocaleLowerCase().includes(formQuery.trim().toLocaleLowerCase()) &&
-    (formFilter === 'all' || (formFilter === 'configured' ? hasFormGrant(form.id) : !hasFormGrant(form.id))),
+  const selected = people.find((p) => `${p.kind}:${p.id}` === personKey) ?? null;
+  const editor = draft && (
+    <RoleEditor draft={draft} isNew={draftIsNew} capabilities={caps} departments={departments} people={people}
+      onChange={setDraft} onDone={finishDraft} onCancel={() => setDraft(null)} />
   );
-  const formPages = Math.max(1, Math.ceil(filteredForms.length / 10));
-  const currentFormPage = Math.min(formPage, formPages);
-  const activeGroup = groups.find((group) => group.key === activeCategory)!;
-  const visibleScopes = activeCategory === 'form'
-    ? filteredForms.slice((currentFormPage - 1) * 10, currentFormPage * 10)
-    : activeGroup.items;
 
-  return (
-    <div className="settings-stack">
-      <BundlesSection
-        policy={policy}
-        onChange={(updater) => setPolicy((p) => (p ? updater(p) : p))}
-      />
+  return <div className="settings-stack">
+    {converted.length > 0 && (
+      <div className="banner" role="status">
+        舊的權限設定已整理成 {converted.length} 個角色（標示「由舊設定轉換」），每個人的權限都不變。按頁面底部「儲存」後改用新的角色格式；也可以先改名或合併。
+      </div>
+    )}
 
     <div className="card">
       <div className="card-head">
         <div>
-          <div className="card-title">權限</div>
-          <div className="card-desc">
-            先開通服務，再設定可用表單、知識庫標籤或外部能力。切換分類會保留尚未儲存的設定，完成後統一按頁面底部的「儲存」。
-          </div>
+          <div className="card-title">角色</div>
+          <div className="card-desc">每個角色寫明「能做什麼」與「給誰」。</div>
         </div>
+        <button className="btn btn-ghost btn-sm" onClick={() => startNew()} disabled={!!draft}>＋ 新增角色</button>
       </div>
 
-      <div className="permission-category-tabs assignment-tabs" role="group" aria-label="權限分類">
-        {groups.map((group) => <button key={group.key} type="button" aria-pressed={activeCategory === group.key}
-          onClick={() => setActiveCategory(group.key)}>{group.label}<span className="assignment-count-badge">{group.items.length}</span></button>)}
-      </div>
-      <div className="card-body" aria-label={`${activeGroup.label}權限設定`}>
-        {activeCategory === 'kb' && (
-          <p className="row-sub" style={{ marginTop: 0 }}>
-            文件要同時「掛上標籤」且「標籤已授權給查詢者」才查得到。標籤在「知識庫」分頁建立並套用到文件。
-          </p>
-        )}
-        {activeCategory === 'form' && <>
-          <div className="permission-form-guide">
-            <div><strong>1. 開通填表申請</strong><span className="permission-step-status">{formServiceGranted ? '已有授權對象' : '尚未開通'}</span>
-              <p className="row-sub">{formServiceGranted ? '使用者必須同時取得「填表申請」及個別表單權限，才能使用表單。' : '請先設定哪些人可以使用填表申請，再選擇允許的表單。既有表單設定會保留。'}</p>
+      {!draft && (
+        <div className="card-body role-templates">
+          <p className="perm-text role-tip">新人報到：在「使用者目錄」把人放進正確的部門，就會自動取得該部門的角色；需要額外權限時，到下方「個人權限」替他加角色。</p>
+          <span className="perm-text">從範本開始：</span>
+          {TEMPLATES.map((t) => <button key={t.name} type="button" className="btn btn-ghost btn-sm" onClick={() => startNew(t)}>{t.name}</button>)}
+        </div>
+      )}
+      {draft && draftIsNew && <div className="card-body">{editor}</div>}
+
+      {policy.bundles.length === 0 && !draft && <div className="empty">尚未建立角色，可從範本開始。</div>}
+      <ul className="list">
+        {policy.bundles.map((role) => {
+          if (draft && !draftIsNew && draft.id === role.id) return <li key={role.id} className="row role-row-editing">{editor}</li>;
+          const d = roleDraftOf(policy, role);
+          const target = targetSummary(d, accountLabel);
+          const labels = role.scopes.map((s) => capabilityLabel(caps, s));
+          const shown = labels.length > SUMMARY_MAX ? `${labels.slice(0, SUMMARY_MAX).join('、')} 等 ${labels.length} 項` : labels.join('、');
+          return <li key={role.id} className="row role-row">
+            <div className="row-main">
+              <div className="row-title">
+                {role.name}
+                {converted.includes(role.id) && <span className="badge badge-warn">由舊設定轉換</span>}
+              </div>
+              <div className="perm-text">能做：{shown || '（尚未選擇能力）'}</div>
+              <div className="perm-text">給誰：{target || <span className="perm-warn-inline">尚未套用給任何人，目前不會生效</span>}</div>
             </div>
-            <button type="button" className="btn btn-sm" onClick={() => {
-              setActiveCategory('service');
-              requestAnimationFrame(() => document.getElementById('permission-service-form')?.scrollIntoView({ block: 'center', behavior: 'smooth' }));
-            }}>{formServiceGranted ? '調整服務對象' : '前往開通服務'}</button>
-          </div>
-          <div className="permission-form-heading"><strong>2. 選擇可用表單</strong><span className="row-sub">已設定 {forms.filter((form) => hasFormGrant(form.id)).length} / {forms.length} 份</span></div>
-          <p className="row-sub">每份表單可分別授權。選擇「所有人」仍需具備填表申請服務權限；角色授權會另列於表單下方。</p>
-          <div className="assignment-toolbar permission-form-toolbar">
-            <input className="input" aria-label="搜尋表單" placeholder="搜尋表單名稱或說明…" value={formQuery}
-              onChange={(event) => { setFormQuery(event.target.value); setFormPage(1); }} />
-            <select className="select" aria-label="篩選表單設定" value={formFilter}
-              onChange={(event) => { setFormFilter(event.target.value); setFormPage(1); }}>
-              <option value="all">全部表單</option><option value="configured">已設定授權</option><option value="unconfigured">尚未設定</option>
-            </select>
-          </div>
-        </>}
-        <ul className="list">
-            {visibleScopes.map((s) => {
-              const mode = modeOf(s.id);
-              const pickedDeps = departments.filter((d) =>
-                (policy.groups[d] ?? []).includes(s.id),
-              );
-              const pickedUsers = policy.users.filter((u) =>
-                (policy.accounts[u.id] ?? []).includes(s.id),
-              );
-              const grants = bundleGrants(s.id);
-              const targetNames = [...pickedDeps.map(deptLabel), ...pickedUsers.map((u) => u.label)];
-              // 尚未勾任何對象時強制展開，避免摘要只剩警告、找不到勾選處
-              const showPicker = mode === 'some' && (expanded.has(s.id) || targetNames.length === 0);
-              return (
-                <li key={s.id} id={s.id === 'service:form' ? 'permission-service-form' : undefined} className="row" style={{ display: 'block', padding: '10px 0' }}>
-                  <div className="perm-row-head">
-                    <div style={{ flex: '1 1 240px', minWidth: 0 }}>
-                      <span style={{ fontWeight: 500 }}>{s.label}</span>
-                      {s.description && <div className="row-sub">{s.description}</div>}
-                      {s.id === 'service:form' && <div className="perm-summary">
-                        <button type="button" className="perm-summary-edit" onClick={() => setActiveCategory('form')}>選擇可用表單（{forms.filter((form) => hasFormGrant(form.id)).length} / {forms.length}）</button>
-                      </div>}
-                      {mode === 'all' && <div className="perm-summary">所有人皆可使用（含網站訪客）</div>}
-                      {tenantWideBlocked(s.id) && (
-                        <div className="row-sub">此項目若開放給所有人會連網站訪客一併開放，只能指定部門或帳號。</div>
-                      )}
-                      {mode === 'some' && targetNames.length > 0 && (
-                        <div className="perm-summary">
-                          指定對象：{summarizeTargets(targetNames)}
-                          <button
-                            type="button"
-                            className="perm-summary-edit"
-                            onClick={() => toggleExpanded(s.id)}
-                            aria-expanded={showPicker}
-                          >
-                            {showPicker ? '收合' : '編輯對象'}
-                          </button>
-                        </div>
-                      )}
-                      {grants.length > 0 && (
-                        <div className="perm-summary">另由角色授予：{grants.join('；')}</div>
-                      )}
-                      {s.id.startsWith('form:') &&
-                        (mode !== 'off' || grants.length > 0) &&
-                        !formServiceGranted && (
-                          <div className="perm-summary">
-                            ⚠️ 「填表申請」服務未開通，此表單的授權實際不可用。
-                          </div>
-                        )}
-                    </div>
-                    <div className="mode-seg" role="group" aria-label={`${s.label} 的授權模式`}>
-                      {MODES.map((m) => (
-                        <button
-                          key={m.value}
-                          type="button"
-                          data-mode={m.value}
-                          disabled={
-                            (s.id.startsWith('form:') && !formServiceGranted) ||
-                            (m.value === 'all' && tenantWideBlocked(s.id))
-                          }
-                          aria-pressed={mode === m.value}
-                          onClick={() => mode !== m.value && setMode(s.id, m.value)}
-                        >
-                          {m.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {showPicker && (
-                    <div style={{ marginTop: 10, marginLeft: 2, display: 'grid', gap: 6 }}>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12 }}>
-                        <span className="row-sub" style={{ width: 34 }}>部門</span>
-                        {departments.map((dep) => (
-                          <label key={dep} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                            <Checkbox
-                              checked={(policy.groups[dep] ?? []).includes(s.id)}
-                              disabled={s.id.startsWith('form:') && !formServiceGranted}
-                              onChange={() => toggleDept(dep, s.id)}
-                            />
-                            <span
-                              style={{ fontSize: 13.5 }}
-                              title={dep === UNKNOWN_DEPARTMENT ? '公開 widget 的訪客落在此桶' : undefined}
-                            >
-                              {deptLabel(dep)}
-                            </span>
-                          </label>
-                        ))}
-                      </div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12 }}>
-                        <span className="row-sub" style={{ width: 34 }}>帳號</span>
-                        {policy.users.map((u) => (
-                          <label key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                            <Checkbox
-                              checked={(policy.accounts[u.id] ?? []).includes(s.id)}
-                              disabled={s.id.startsWith('form:') && !formServiceGranted}
-                              onChange={() => toggleAccount(u.id, s.id)}
-                            />
-                            <span style={{ fontSize: 13.5 }}>
-                              {u.label}
-                              <span className="row-sub" style={{ marginLeft: 4 }}>{u.id}</span>
-                            </span>
-                          </label>
-                        ))}
-                      </div>
-                      {pickedDeps.length === 0 && pickedUsers.length === 0 && (
-                        <div className="row-sub">⚠️ 尚未選擇任何對象——目前效果等同「未開通」。</div>
-                      )}
-                    </div>
-                  )}
-                </li>
-              );
-            })}
-          {visibleScopes.length === 0 && <li className="assignment-empty">{
-            activeCategory === 'form' && forms.length ? '找不到符合條件的表單，請調整搜尋或篩選。'
-              : activeCategory === 'kb' ? '尚未建立知識庫標籤，請先到「知識庫」分頁建立標籤。'
-                : '目前沒有可設定的項目。'}</li>}
-          </ul>
-          {activeCategory === 'form' && <nav className="assignment-pagination" aria-label="表單分頁">
-            <span className="row-sub" aria-live="polite">共 {filteredForms.length} 份 · 第 {currentFormPage} / {formPages} 頁 · 每頁 10 份</span>
-            <div><button type="button" className="btn btn-sm" disabled={currentFormPage === 1} onClick={() => setFormPage(currentFormPage - 1)}>上一頁</button>
-              <button type="button" className="btn btn-sm" disabled={currentFormPage === formPages} onClick={() => setFormPage(currentFormPage + 1)}>下一頁</button></div>
-          </nav>}
-        </div>
-
+            <div className="row-actions">
+              <button className="btn btn-ghost btn-sm" onClick={() => startEdit(role.id)} disabled={!!draft} aria-label={`編輯 ${role.name}`}>編輯</button>
+              <button className="btn btn-danger btn-sm" onClick={() => setPendingDelete(d)} disabled={!!draft} aria-label={`刪除 ${role.name}`}>刪除</button>
+            </div>
+          </li>;
+        })}
+      </ul>
     </div>
 
-      {/* 角色與權限共用一顆儲存鈕；固定在底部，捲到哪都看得到是否還有未儲存的變更 */}
-      <div className={`perm-savebar${dirty ? ' is-dirty' : ''}`} role="region" aria-label="儲存權限">
-        <span className="perm-savebar-status" aria-live="polite">
-          {dirty ? '有未儲存的變更，按「儲存」後才會生效。' : '所有變更皆已儲存。'}
-        </span>
-        <div className="perm-savebar-actions">
-          {dirty && (
-            <button type="button" className="btn btn-ghost btn-sm" onClick={discard} disabled={saving}>
-              放棄變更
-            </button>
-          )}
-          <button type="button" className="btn btn-primary btn-sm" onClick={save} disabled={saving || !dirty}>
-            {saving ? '儲存中…' : '儲存'}
-          </button>
+    <div className="card">
+      <div className="card-head">
+        <div>
+          <div className="card-title">個人權限</div>
+          <div className="card-desc">選一個人，查看他最後擁有哪些能力、來自哪個角色，並檢查有沒有缺漏。需要部門以外的權限時，可以在這裡直接替他加角色。</div>
         </div>
       </div>
+      <div className="card-body person-access">
+        {peopleWithGaps.length > 0 ? (
+          <div className="perm-warn" role="status">
+            {peopleWithGaps.length} 位的權限可能不完整：
+            {peopleWithGaps.map((p) => <button key={`${p.kind}:${p.id}`} type="button" className="perm-link" onClick={() => setPersonKey(`${p.kind}:${p.id}`)}>{p.label}</button>)}
+          </div>
+        ) : <p className="perm-ok">沒有發現權限缺漏。</p>}
+
+        <label className="field" style={{ maxWidth: 360 }}>
+          <span className="field-label">人員</span>
+          <select className="select" aria-label="選擇人員" value={personKey} onChange={(e) => setPersonKey(e.target.value)}>
+            <option value="">請選擇…</option>
+            {people.map((p) => <option key={`${p.kind}:${p.id}`} value={`${p.kind}:${p.id}`}>
+              {p.kind === 'guest' ? '網站訪客（未登入）' : `${p.label}（${p.inDirectory ? formatDepartment(p.department) : '未列於目前名錄'}）`}
+            </option>)}
+          </select>
+        </label>
+
+        {selected && <PersonDetail person={selected} policy={policy} onToggle={(roleId) => toggleDirect(selected, roleId)} gaps={gapsOf(selected)} />}
+      </div>
     </div>
-  );
+
+    {/* 共用一顆儲存鈕；固定在底部，捲到哪都看得到是否還有未儲存的變更 */}
+    <div className={`perm-savebar${dirty ? ' is-dirty' : ''}`} role="region" aria-label="儲存權限">
+      <span className="perm-savebar-status" aria-live="polite">
+        {dirty ? '有未儲存的變更，按「儲存」後才會生效。' : converted.length > 0 ? '舊設定尚未改用角色格式，按「儲存」套用（權限不變）。' : '所有變更皆已儲存。'}
+      </span>
+      <div className="perm-savebar-actions">
+        {dirty && <button type="button" className="btn btn-ghost btn-sm" onClick={discard} disabled={saving}>放棄變更</button>}
+        <button type="button" className="btn btn-primary btn-sm" onClick={() => void save()} disabled={saving || !!draft || (!dirty && converted.length === 0)}>
+          {saving ? '儲存中…' : '儲存'}
+        </button>
+      </div>
+    </div>
+    {draft && <p className="perm-text" style={{ textAlign: 'right', margin: 0 }}>請先在角色編輯器按「完成」或「取消」，再儲存。</p>}
+
+    <Dialog
+      isOpen={!!pendingDelete}
+      title={`刪除角色「${pendingDelete?.name ?? ''}」？`}
+      confirmText="刪除"
+      confirmVariant="danger"
+      onClose={() => setPendingDelete(null)}
+      onConfirm={confirmDelete}
+    >
+      {pendingDelete && (targetSummary(pendingDelete, accountLabel)
+        ? <>「{targetSummary(pendingDelete, accountLabel)}」將失去這個角色的能力（其他角色提供的不受影響）。按頁面底部「儲存」後生效。</>
+        : <>這個角色沒有套用給任何人，刪除不影響現有權限。</>)}
+    </Dialog>
+  </div>;
+}
+
+function PersonDetail({ person, policy, onToggle, gaps }: {
+  person: Person;
+  policy: TenantPolicyView;
+  onToggle: (roleId: string) => void;
+  gaps: string[];
+}) {
+  const caps = policy.capabilities;
+  const held = rolesOf(policy, person);
+  const effective = effectiveCapabilities(policy, person);
+  const byCategory = (Object.keys(CATEGORY_LABELS) as (keyof typeof CATEGORY_LABELS)[])
+    .map((key) => ({ key, items: effective.filter((e) => categoryOf(e.scope) === key) }))
+    .filter((g) => g.items.length > 0);
+
+  return <div className="person-detail">
+    <div className="perm-text">
+      {person.kind === 'guest' ? '網站訪客只會取得「所有人」與「訪客／未建檔帳號」部門的角色。' : `部門：${formatDepartment(person.department)}`}
+    </div>
+
+    <section aria-label="角色">
+      <h4>角色</h4>
+      <div className="role-check-grid">
+        {policy.bundles.map((role) => {
+          const sources = held.find((h) => h.role.id === role.id)?.sources ?? [];
+          const direct = sources.some((s) => s.via === 'direct');
+          const inherited = sources.filter((s) => s.via !== 'direct');
+          return <label key={role.id} className="role-check">
+            <Checkbox checked={sources.length > 0} disabled={person.kind === 'guest' || (inherited.length > 0 && !direct)} onChange={() => onToggle(role.id)} />
+            <span>{role.name}{sources.length > 0 && <span className="role-check-sub">{sources.map(sourceText).join('、')}</span>}</span>
+          </label>;
+        })}
+      </div>
+      {person.kind === 'user' && <p className="perm-text">勾選＝直接指派給此人。來自部門或所有人的角色要到該角色的「給誰」調整。</p>}
+    </section>
+
+    <section aria-label="最後擁有的能力">
+      <h4>最後擁有的能力</h4>
+      {gaps.map((g) => <p key={g} className="perm-warn">{g}</p>)}
+      {byCategory.length === 0 ? <p className="perm-text">目前沒有任何能力。</p> : byCategory.map((g) => (
+        <div key={g.key} className="person-cap-group">
+          <div className="field-label">{CATEGORY_LABELS[g.key]}</div>
+          <ul className="person-caps">
+            {g.items.map((e) => <li key={e.scope}>{capabilityLabel(caps, e.scope)}<span className="role-check-sub">來自：{e.roles.join('、')}</span></li>)}
+          </ul>
+        </div>
+      ))}
+    </section>
+  </div>;
 }

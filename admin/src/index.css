@@ -438,43 +438,6 @@ a {
   @apply bg-[var(--card-bg)] text-[var(--primary-color)] shadow-[var(--shadow-xs)];
 }
 
-/* ---- 權限模式三段切換（未開通／所有人／指定對象） ---- */
-.mode-seg {
-  @apply inline-flex shrink-0 gap-[2px] rounded-[10px] border border-[var(--border-color)] bg-[var(--bg-secondary)] p-[3px];
-}
-.mode-seg button {
-  @apply cursor-pointer appearance-none whitespace-nowrap rounded-[7px] border-none bg-transparent px-3 py-[5px] text-[13px] font-medium text-[var(--text-secondary)];
-  font-family: inherit;
-  transition: all 0.15s;
-}
-.mode-seg button:hover {
-  @apply text-[var(--text-primary)];
-}
-.mode-seg button[aria-pressed="true"] {
-  @apply bg-[var(--card-bg)] font-semibold text-[var(--text-primary)] shadow-[var(--shadow-xs)];
-}
-.mode-seg button[data-mode="all"][aria-pressed="true"] {
-  @apply text-[var(--status-positive)];
-}
-.mode-seg button[data-mode="some"][aria-pressed="true"] {
-  @apply text-[var(--primary-color)];
-}
-
-/* 權限列：左側名稱＋狀態摘要，右側切換；窄螢幕切換換到下一行 */
-.perm-row-head {
-  @apply flex flex-wrap items-center gap-x-3 gap-y-2;
-}
-.perm-summary {
-  @apply mt-1 text-[12.5px] leading-[1.5] text-[var(--text-secondary)];
-}
-.perm-summary .perm-summary-edit {
-  @apply ml-2 cursor-pointer border-none bg-transparent p-0 text-[12.5px] text-[var(--link-color)];
-  font-family: inherit;
-}
-.perm-summary .perm-summary-edit:hover {
-  @apply underline;
-}
-
 /* ---- 表格 / 列表 ---- */
 .list {
   @apply m-0 list-none p-0;
@@ -1131,44 +1094,7 @@ li:not(.is-empty) > .feedback-bar { background: var(--bg-secondary); }
 .kb-file-editor .field + .field { margin-top: 0; }
 
 /* 角色指派：對象分頁，避免角色數量增加時撐寬整張矩陣。 */
-.assignment-section { padding: 16px; display: grid; gap: 12px; }
-.assignment-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border-color); }
-.assignment-tabs button { padding: 8px 10px; border-bottom: 2px solid transparent; color: var(--text-secondary); cursor: pointer; font-size: 14px; }
-.assignment-tabs button[aria-pressed="true"] { color: var(--primary-color); border-bottom-color: var(--primary-color); font-weight: 600; }
-.assignment-count-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 18px; margin-left: 4px; padding-inline: 6px; border-radius: 999px; background: var(--bg-secondary); color: var(--text-secondary); font-size: 11px; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
-.assignment-tabs button[aria-pressed="true"] .assignment-count-badge { background: rgba(var(--primary-color-rgb), 0.12); color: var(--primary-color); }
-.assignment-toolbar { display: flex; flex-wrap: wrap; gap: 10px; }
-.assignment-toolbar .input { flex: 1 1 240px; min-width: 0; }
-.assignment-toolbar .select { width: auto; flex: 0 1 180px; }
-.assignment-item { border-top: 1px solid var(--border-color); padding-block: 14px; }
-.assignment-item-main { display: grid; grid-template-columns: minmax(150px, 1fr) minmax(0, 2fr) auto; gap: 16px; align-items: start; }
-.assignment-identity, .assignment-summary { min-width: 0; overflow-wrap: anywhere; }
-.assignment-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-.assignment-chips span { padding: 3px 8px; border-radius: 6px; background: var(--bg-secondary); font-size: 12px; max-width: 100%; overflow-wrap: anywhere; }
-.assignment-more { margin-top: 8px; font-size: 12px; }
-.assignment-more summary { cursor: pointer; color: var(--text-secondary); }
-.assignment-more .assignment-chips { max-height: 140px; overflow-y: auto; }
-.assignment-editor { margin-top: 12px; padding: 12px; background: var(--bg-secondary); border-radius: 8px; display: grid; gap: 10px; }
-.assignment-role-options { display: flex; flex-wrap: wrap; gap: 8px 16px; max-height: 200px; overflow-y: auto; }
-.assignment-role-options label { display: inline-flex; align-items: center; gap: 8px; padding: 6px 0; font-size: 13px; max-width: 100%; }
-.assignment-role-options label span { min-width: 0; overflow-wrap: anywhere; }
-.assignment-pagination { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
-.assignment-pagination > div { display: flex; gap: 8px; }
-.assignment-empty { padding: 20px 0; font-size: 13px; color: var(--text-secondary); }
-@media (max-width: 720px) {
-  .assignment-section { padding: 14px; }
-  .assignment-item-main { grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
-  .assignment-summary { grid-column: 1 / -1; grid-row: 2; }
-  .assignment-item-main > button { grid-column: 2; grid-row: 1; }
-}
 
-.permission-category-tabs { padding-inline: 16px; flex-wrap: wrap; }
-.permission-form-guide { display: flex; justify-content: space-between; align-items: start; gap: 12px; flex-wrap: wrap; padding: 12px; background: var(--bg-secondary); border-radius: 8px; font-size: 13px; }
-.permission-form-guide > div { flex: 1 1 240px; }
-.permission-step-status { display: inline-block; margin-left: 8px; font-size: 12px; color: var(--text-secondary); }
-.permission-form-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 16px; font-size: 13px; }
-.permission-form-toolbar { margin-block: 12px; }
-.mode-seg button:disabled { opacity: 0.45; cursor: not-allowed; }
 
 /* 權限頁底部儲存列：固定在視窗底部，有未儲存變更時以主色框線提示 */
 .perm-savebar { position: sticky; bottom: 0; z-index: 4; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; padding: 10px 16px; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 10px; box-shadow: var(--shadow-sm); font-size: 13px; color: var(--text-secondary); }
@@ -1290,3 +1216,33 @@ li:not(.is-empty) > .feedback-bar { background: var(--bg-secondary); }
 .dbi-detail-list dd {
   @apply m-0 break-all;
 }
+
+/* ---- 權限頁（只有角色）---- */
+.perm-text { font-size: 12.5px; color: var(--text-secondary); line-height: 1.6; margin: 2px 0 0; }
+.perm-warn { margin: 6px 0 0; padding: 8px 10px; border-radius: 8px; background: var(--badge-warning-bg); color: var(--status-warning); font-size: 12.5px; line-height: 1.6; }
+.perm-warn-inline { color: var(--status-warning); }
+.perm-notice { margin: 6px 0 0; padding: 8px 10px; border-radius: 8px; background: rgba(var(--primary-color-rgb), 0.08); color: var(--text-primary); font-size: 12.5px; }
+.perm-ok { margin: 0; font-size: 12.5px; color: var(--status-positive); }
+.perm-link { margin-left: 8px; border: none; background: none; padding: 0; color: var(--link-color); cursor: pointer; font: inherit; text-decoration: underline; }
+.role-templates { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.role-tip { flex: 1 1 100%; margin: 0 0 4px; }
+.role-row { align-items: flex-start; }
+.role-row .row-title .badge { margin-left: 2px; }
+.role-row-editing { display: block; }
+.role-editor { display: grid; gap: 16px; padding: 16px; border-radius: 10px; background: var(--bg-secondary); }
+.role-editor-section { display: grid; gap: 10px; padding-top: 12px; border-top: 1px solid var(--border-color); }
+.role-editor-section h4, .person-detail h4 { margin: 0; font-size: 14px; font-weight: 700; }
+.role-editor-group { display: grid; gap: 6px; }
+.role-checklist { display: grid; gap: 8px; }
+.role-checklist .input { max-width: 320px; }
+.role-check-grid { display: flex; flex-wrap: wrap; gap: 8px 18px; }
+.role-check { display: inline-flex; align-items: flex-start; gap: 6px; font-size: 13.5px; cursor: pointer; max-width: 100%; }
+.role-check > span { min-width: 0; overflow-wrap: anywhere; }
+.role-check-sub { display: block; font-size: 12px; color: var(--text-secondary); }
+.role-check-everyone { font-weight: 600; }
+.person-access { display: grid; gap: 14px; }
+.person-detail { display: grid; gap: 16px; padding: 16px; border-radius: 10px; background: var(--bg-secondary); }
+.person-detail section { display: grid; gap: 8px; }
+.person-cap-group { display: grid; gap: 4px; }
+.person-caps { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13.5px; }
+.person-caps .role-check-sub { display: inline; margin-left: 8px; }

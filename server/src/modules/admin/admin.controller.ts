@@ -34,6 +34,7 @@ import {
 } from '@/modules/authz/scope-catalog';
 import { defaultGrantedScopes } from '@/modules/authz/scope-migration';
 import { scopePolicy } from '@/modules/authz/scope-policy';
+import { toRoleView } from '@/modules/authz/role-view';
 import { getApplicant, listDepartments, listUserIds, UNKNOWN_DEPARTMENT } from '@/modules/user/user.directory';
 import { llmConfigService } from '@/modules/tenant/llm-config.service';
 import type { PutLLMConfigInput } from '@/modules/tenant/llm-config.schema';
@@ -100,6 +101,53 @@ function publicTenant(tenant: NonNullable<ReturnType<typeof tenantStore.getTenan
     assertionSettings: resolveAssertionSettings(tenant),
     // 後台總覽用（規格 §11.1）：未設 active 公鑰的租戶無法登入，要能一眼看出來
     activeKeyCount: activeKeys(tenant.publicKeys).length,
+  };
+}
+
+/**
+ * 權限頁讀取檢視：後台只呈現「角色」。舊的直接授權（全租戶／部門／帳號）在這裡換算成等效角色
+ * 回傳（toRoleView），直接授權欄位一律回空——後台存檔時送回空值，資料就此改由角色承載。
+ * 換算只發生在讀取，不寫回；管理員按儲存前資料不動，有效權限也不變。
+ */
+function policyView(tenantId: string) {
+  const tenant = tenantStore.getTenant(tenantId)!;
+  const policy = scopePolicy.getPolicy(tenantId);
+  const capabilities = tenantGrantableScopes(tenantId);
+  // 濾掉孤兒 scope（如已刪表單殘留的 form:<id>）：確保 GET→PUT 冪等，
+  // 不會被自己回存的舊授予被 setPolicy 的 grantable 驗證擋成 400。
+  const grantableIds = new Set(capabilities.map((sc) => sc.id));
+  const prune = (ids: string[]): string[] => ids.filter((sc) => grantableIds.has(sc));
+  const pruneMap = (m: Record<string, string[]>) => Object.fromEntries(Object.entries(m).map(([k, v]) => [k, prune(v)]));
+  const view = toRoleView(
+    {
+      grantedScopes: prune(tenant.grantedScopes ?? []),
+      groups: pruneMap(policy.groups),
+      accounts: pruneMap(policy.accounts),
+    },
+    {
+      bundles: (policy.bundles ?? []).map((b) => ({ ...b, scopes: prune(b.scopes) })),
+      groupBundles: policy.groupBundles ?? {},
+      accountBundles: policy.accountBundles ?? {},
+      tenantBundles: policy.tenantBundles ?? [],
+    },
+    {
+      department: (id) => (id === UNKNOWN_DEPARTMENT ? '訪客／未建檔帳號' : id),
+      account: (id) => getApplicant(id, tenantId).name,
+    },
+  );
+  return {
+    capabilities,
+    grantedScopes: [] as string[],
+    groups: {} as Record<string, string[]>,
+    accounts: {} as Record<string, string[]>,
+    ...view,
+    // 訪客沒有目錄帳號，仍必須可在權限頁與角色指派中選取。
+    departments: [...new Set([UNKNOWN_DEPARTMENT, ...listDepartments(tenantId)])],
+    // 帶部門：帳號要顯示從部門取得的角色，否則看起來像「沒有角色」
+    users: listUserIds(tenantId).map((id) => {
+      const person = getApplicant(id, tenantId);
+      return { id, label: person.name, department: person.department };
+    }),
   };
 }
 
@@ -372,31 +420,7 @@ export const adminController = {
 
   async getPolicy(req: Request, res: Response): Promise<void> {
     const tenant = ensureTenant(String(req.params.id));
-    const policy = scopePolicy.getPolicy(tenant.id);
-    const capabilities = tenantGrantableScopes(tenant.id);
-    // 濾掉孤兒 scope（如已刪表單殘留的 form:<id>）：確保 GET→PUT 冪等，
-    // 不會被自己回存的舊授予被 setPolicy 的 grantable 驗證擋成 400。
-    const grantableIds = new Set(capabilities.map((s) => s.id));
-    const prune = (ids: string[]): string[] => ids.filter((s) => grantableIds.has(s));
-    // 租戶層 grantedScopes 額外濾掉 kb:/mcp: 前綴：即使 tenantGrantableScopes 合法列出 kb:<labelId>
-    // （部門/帳號層可用），grantedScopes 會併給該租戶所有人含訪客，此欄位永遠不該含 kb:。
-    // 這是讀取端的自我修復——寫入端已由 assertTenantGrantable 擋下，這裡是防禦深度，
-    // 不影響 groups/accounts/bundles（那裡 kb: 合法，仍走一般 prune）。
-    const pruneGrantedScopes = (ids: string[]): string[] => prune(ids).filter((s) => !isKbScope(s) && !isMcpScope(s));
-    res.status(200).json({
-      data: {
-        capabilities,
-        grantedScopes: pruneGrantedScopes(tenant.grantedScopes ?? []),
-        groups: Object.fromEntries(Object.entries(policy.groups).map(([k, v]) => [k, prune(v)])),
-        accounts: Object.fromEntries(Object.entries(policy.accounts).map(([k, v]) => [k, prune(v)])),
-        bundles: (policy.bundles ?? []).map((b) => ({ ...b, scopes: prune(b.scopes) })),
-        groupBundles: policy.groupBundles ?? {},
-        accountBundles: policy.accountBundles ?? {},
-        // 訪客沒有目錄帳號，仍必須可在權限頁與角色指派中選取。
-        departments: [...new Set([UNKNOWN_DEPARTMENT, ...listDepartments(tenant.id)])],
-        users: listUserIds(tenant.id).map((id) => ({ id, label: getApplicant(id, tenant.id).name })),
-      },
-    });
+    res.status(200).json({ data: policyView(tenant.id) });
   },
 
   async setPolicy(req: Request, res: Response): Promise<void> {
@@ -407,19 +431,28 @@ export const adminController = {
     assertTenantGrantable(body.grantedScopes, tenant.id);
     for (const scopes of Object.values(body.groups)) assertGrantableScopes(scopes, tenant.id);
     for (const scopes of Object.values(body.accounts)) assertGrantableScopes(scopes, tenant.id);
-    // 套餐守門：內容物同樣限 grantable；id 不可重複；指派只能引用已定義的套餐
+    // 角色守門：內容物同樣限 grantable；id 不可重複；指派只能引用已定義的角色
     // （fallback：zod default 只在走 validate middleware 時生效，直呼端防禦性補齊）
     const bundles = body.bundles ?? [];
     const groupBundles = body.groupBundles ?? {};
     const accountBundles = body.accountBundles ?? {};
+    const tenantBundles = body.tenantBundles ?? [];
     for (const b of bundles) assertGrantableScopes(b.scopes, tenant.id);
     const bundleIds = new Set(bundles.map((b) => b.id));
     if (bundleIds.size !== bundles.length) {
       throw AppError.badRequest('角色 id 不可重複');
     }
-    for (const ids of [...Object.values(groupBundles), ...Object.values(accountBundles)]) {
+    for (const ids of [...Object.values(groupBundles), ...Object.values(accountBundles), tenantBundles]) {
       for (const id of ids) {
         if (!bundleIds.has(id)) throw AppError.badRequest(`指派了不存在的角色：${id}`);
+      }
+    }
+    // 套用給所有人＝連網站訪客一起開放：角色內不可有知識庫標籤或 MCP 服務（同 assertTenantGrantable）
+    for (const id of tenantBundles) {
+      const role = bundles.find((b) => b.id === id)!;
+      const blocked = role.scopes.filter((sc) => isKbScope(sc) || isMcpScope(sc));
+      if (blocked.length > 0) {
+        throw AppError.badRequest(`角色「${role.name}」含知識庫標籤或外部服務，不可套用給所有人（會開放給網站訪客）：${blocked.join('、')}`);
       }
     }
 
@@ -430,22 +463,9 @@ export const adminController = {
       bundles,
       groupBundles,
       accountBundles,
+      tenantBundles,
     });
 
-    const policy = scopePolicy.getPolicy(tenant.id);
-    res.status(200).json({
-      data: {
-        capabilities: tenantGrantableScopes(tenant.id),
-        grantedScopes: body.grantedScopes,
-        groups: policy.groups,
-        accounts: policy.accounts,
-        bundles: policy.bundles ?? [],
-        groupBundles: policy.groupBundles ?? {},
-        accountBundles: policy.accountBundles ?? {},
-        // 訪客沒有目錄帳號，仍必須可在權限頁與角色指派中選取。
-        departments: [...new Set([UNKNOWN_DEPARTMENT, ...listDepartments(tenant.id)])],
-        users: listUserIds(tenant.id).map((id) => ({ id, label: getApplicant(id, tenant.id).name })),
-      },
-    });
+    res.status(200).json({ data: policyView(tenant.id) });
   },
 };

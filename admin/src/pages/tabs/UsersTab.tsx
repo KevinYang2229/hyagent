@@ -194,7 +194,7 @@ export default function UsersTab({ tenantId, onError }: { tenantId: string; onEr
       <ul style={{ paddingLeft: 18 }}>
         <li>無法再用帳密登入，已登入的工作階段會立即失效。</li>
         <li>會從其他人的代理人名單中移除。</li>
-        <li>「權限」中直接指派給此帳號的設定會保留；之後以相同帳號重新加入，或透過 SSO 以此帳號登入時仍會生效。</li>
+        <li>「權限」中直接指派給此帳號的角色會保留；之後以相同帳號重新加入，或透過 SSO 以此帳號登入時仍會生效。</li>
       </ul>
     </Dialog>
   </div>;
