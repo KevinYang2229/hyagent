@@ -772,6 +772,9 @@
 .display-block { margin-top: 0.5rem; border: 1px solid var(--border-color); border-radius: 0.75rem; background: var(--card-bg); overflow: hidden; }
 .display-block-title { font-weight: 600; padding: 0.6rem 0.9rem; border-bottom: 1px solid var(--border-color); }
 .display-block-scroll { overflow-x: auto; }
+.display-block-actions { display: flex; justify-content: flex-end; padding: 0.4rem 0.6rem; border-top: 1px solid var(--border-color); }
+.display-block-export { font-size: 0.8rem; padding: 0.2rem 0.6rem; border: 1px solid var(--border-color); border-radius: 0.5rem; background: transparent; color: inherit; cursor: pointer; }
+.display-block-export:hover { background: var(--border-color); }
 .display-table, .confirm-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
 .display-table th, .display-table td, .confirm-table th, .confirm-table td { padding: 0.5rem 0.75rem; text-align: left; border-bottom: 1px solid var(--border-color); white-space: nowrap; }
 .display-table th, .confirm-table th { font-size: 0.8rem; opacity: 0.7; font-weight: 600; }

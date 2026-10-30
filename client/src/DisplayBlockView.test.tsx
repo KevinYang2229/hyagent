@@ -1,7 +1,7 @@
 import '@testing-library/jest-dom/vitest';
 import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { DisplayBlockView } from './DisplayBlockView';
+import { DisplayBlockView, tableToCsv } from './DisplayBlockView';
 import type { DisplayBlock } from '@hyagent/shared';
 
 const block: DisplayBlock = {
@@ -36,5 +36,17 @@ describe('DisplayBlockView', () => {
     const b: DisplayBlock = { type: 'table', columns: [{ key: 's', label: '狀態', badge: { 正常: 'success' } }], rows: [{ s: 'constructor' }] };
     render(<DisplayBlockView block={b} />);
     expect(screen.getByText('constructor')).toHaveAttribute('data-tone', 'neutral');
+  });
+});
+
+describe('tableToCsv', () => {
+  it('表頭帶單位、數值不帶單位；跳脫逗號與引號；空值留白；擋公式', () => {
+    expect(tableToCsv(block).split('\r\n')).toEqual([
+      '商品名稱,目前庫存（個）,建議補貨（個）,狀態',
+      '鮭魚御飯糰,6,24,庫存偏低',
+      '鮪魚御飯糰,12,0,正常',
+    ]);
+    const tricky: DisplayBlock = { type: 'table', columns: [{ key: 'a', label: 'A' }], rows: [{ a: 'x,"y"' }, { a: null }, { a: '=SUM(1)' }, { a: -3 }] };
+    expect(tableToCsv(tricky).split('\r\n')).toEqual(['A', '"x,""y"""', '', "'=SUM(1)", '-3']);
   });
 });

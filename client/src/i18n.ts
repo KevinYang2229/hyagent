@@ -253,6 +253,9 @@ const zhHant = {
     pickFormat: "選擇要下載的格式：",
     close: "關閉",
   },
+  block: {
+    downloadCsv: "下載 CSV（可用 Excel 開啟）",
+  },
   action: {
     confirm: "確認執行",
     cancel: "取消",
@@ -559,6 +562,9 @@ const en = {
     dialogTitle: "Knowledge base report",
     pickFormat: "Choose a format to download:",
     close: "Close",
+  },
+  block: {
+    downloadCsv: "Download CSV (opens in Excel)",
   },
   action: {
     confirm: "Confirm",
