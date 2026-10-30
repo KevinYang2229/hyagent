@@ -94,6 +94,18 @@ describe('DatabaseTab', () => {
     expect(api.dbiListDataSources).not.toHaveBeenCalled();
   });
 
+  it('工具唯讀核准失效時提醒到 MCP 服務重新核准', async () => {
+    const view = servers(['db-intelligence']);
+    view.servers[0].config.toolOverrides = { execute_safe_query: { approvedReadOnly: true, approvedFingerprint: 'old' } };
+    view.servers[0].tools = [
+      { name: 'execute_safe_query', llmName: 'x', effect: 'write', declaredReadOnly: true, fingerprint: 'new', approvalValid: false, disabled: false },
+      { name: 'search_schema', llmName: 'y', effect: 'read', declaredReadOnly: true, fingerprint: 'f', approvalValid: true, disabled: false },
+    ];
+    vi.mocked(api.listMcpServers).mockResolvedValue(view);
+    render(<DatabaseTab tenantId="t1" onError={onError} />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('工具 execute_safe_query 的唯讀核准已失效');
+  });
+
   it('連線測試：帳號仍可寫入時顯示警告', async () => {
     vi.mocked(api.dbiTestConnection).mockResolvedValue({ ok: true, latencyMs: 4, serverVersion: '17.2', defaultReadOnly: true, writableObjects: ['public.projects'] });
     render(<DatabaseTab tenantId="t1" onError={onError} />);
@@ -185,13 +197,19 @@ describe('DatabaseTab', () => {
 
   it('查詢稽核：依狀態篩選', async () => {
     vi.mocked(api.dbiAudit).mockResolvedValue([
-      { request_id: 'req_1', tenant_id: 't1', principal_id: 'alice', tool: 'execute_safe_query', policy_version: 'v1', status: 'denied', reason_code: 'QUERY_POLICY_DENIED', duration_ms: 3, created_at: '2026-10-30T01:00:00Z' },
+      { request_id: 'req_1', tenant_id: 't1', principal_id: 'alice', tool: 'execute_safe_query', policy_version: 'v1', status: 'denied', reason_code: 'QUERY_POLICY_DENIED', reason_detail: '限制欄位 salary 只能統計', plan_summary: { dataset: 'salary', filters: [{ field: 'salary', op: 'gt', value: '<數字>' }] }, duration_ms: 3, created_at: '2026-10-30T01:00:00Z' },
       { request_id: 'req_2', tenant_id: 't1', principal_id: 'hana', tool: 'execute_safe_query', policy_version: 'v1', status: 'success', datasets: ['public.salary'], sensitive_columns: ['salary.salary'], duration_ms: 3, created_at: '2026-10-30T01:01:00Z' },
     ]);
     render(<DatabaseTab tenantId="t1" onError={onError} />);
     await openSection('查詢稽核');
     expect(await screen.findByText('QUERY_POLICY_DENIED')).toBeInTheDocument();
     expect(screen.getByText('敏感欄位 1')).toHaveAttribute('title', 'salary.salary');
+    // 展開詳細：顯示拒絕原因與 AI 組的查詢結構（值已遮蔽）
+    fireEvent.click(screen.getAllByRole('button', { name: '詳細' })[0]);
+    expect(screen.getByText('限制欄位 salary 只能統計')).toBeInTheDocument();
+    expect(screen.getByLabelText('查詢結構')).toHaveTextContent('"value": "<數字>"');
+    fireEvent.click(screen.getByRole('button', { name: '收合' }));
+    expect(screen.queryByLabelText('查詢結構')).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('狀態'), { target: { value: 'denied' } });
     await waitFor(() => expect(api.dbiAudit).toHaveBeenLastCalledWith('db-intelligence', { tenantId: 't1', status: 'denied', requestId: undefined, limit: 100 }));
   });

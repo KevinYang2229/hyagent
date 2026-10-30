@@ -7,6 +7,7 @@ import DataSourcesSection from './DataSourcesSection';
 import PoliciesSection from './PoliciesSection';
 import PreviewSection from './PreviewSection';
 import { dbiServersFor } from './database.util';
+import { staleApprovals } from '../../mcpForm.util';
 
 type Section = 'sources' | 'catalog' | 'policies' | 'preview' | 'audit';
 const SECTIONS: { key: Section; label: string }[] = [
@@ -75,8 +76,19 @@ export default function DatabaseTab({ tenantId, onError }: { tenantId: string; o
     );
   }
 
+  const currentView = view.servers.find((s) => s.config.id === current);
+  const staleTools = currentView ? staleApprovals(currentView) : [];
+
   return (
     <div className="settings-stack">
+      {staleTools.length > 0 && (
+        <div className="banner banner-err" role="alert" style={{ marginBottom: 0 }}>
+          <div>
+            <strong>AI 查詢目前需要使用者逐次確認，且確認後看不到結果。</strong>
+            工具 {staleTools.join('、')} 的唯讀核准已失效（服務更新後工具定義已變更），請到左側「MCP 服務」重新核准。
+          </div>
+        </div>
+      )}
       <div className="toolbar">
         <div className="tabs" style={{ marginBottom: 0 }}>
           {SECTIONS.map((s) => (

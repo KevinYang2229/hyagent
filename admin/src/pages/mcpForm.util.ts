@@ -1,5 +1,5 @@
 /** MCP 服務表單：純函式（驗證、轉換），與畫面分離以便測試。 */
-import type { McpServerConfig, McpServerStatus } from '../api';
+import type { McpServerConfig, McpServerStatus, McpServerView } from '../api';
 
 export interface McpServerFormValues {
   id: string;
@@ -79,4 +79,24 @@ export function toPayload(v: McpServerFormValues): McpServerPayload {
 
 export function statusLabel(state: McpServerStatus['state']): string {
   return { ok: '正常', unreachable: '連不上', auth_failed: '驗證失敗', idle: '尚未連線' }[state];
+}
+
+/**
+ * 核准已失效的工具：管理員曾核准唯讀，但工具定義（含說明）之後變了。
+ * 這些工具會被當成寫入：AI 每次呼叫都要使用者確認，確認後也只回「已完成」看不到結果。
+ * 從未核准過的不算（新登記的服務本來就還沒核准）；停用的工具不影響使用者，也不算。
+ */
+export function staleApprovals(server: McpServerView): string[] {
+  return server.tools
+    .filter((t) => t.declaredReadOnly && !t.disabled && !t.approvalValid && server.config.toolOverrides[t.name]?.approvedReadOnly === true)
+    .map((t) => t.name);
+}
+
+/** 以目前的工具定義重新核准：回傳整份 toolOverrides（一次更新） */
+export function reapprovedOverrides(server: McpServerView, names: string[]): McpServerConfig['toolOverrides'] {
+  const next = { ...server.config.toolOverrides };
+  for (const t of server.tools) {
+    if (names.includes(t.name)) next[t.name] = { ...next[t.name], approvedReadOnly: true, approvedFingerprint: t.fingerprint };
+  }
+  return next;
 }

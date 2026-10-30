@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import AppLayout from '../components/AppLayout';
 import { api, UnauthorizedError, type McpServerListView, type McpServerView, type Tenant } from '../api';
 import { useAuth } from '../auth';
-import { emptyMcpForm, statusLabel, toFormValues, toPayload, validateMcpForm, type McpServerFormValues } from './mcpForm.util';
+import { emptyMcpForm, reapprovedOverrides, staleApprovals, statusLabel, toFormValues, toPayload, validateMcpForm, type McpServerFormValues } from './mcpForm.util';
 
 /**
  * MCP 服務（平台層）：登記自建 MCP server、測試連線、檢視工具讀寫判定並覆寫。
@@ -102,6 +102,18 @@ export default function McpServersPage() {
     }
   }
 
+  async function reapprove(server: McpServerView, names: string[]) {
+    if (!window.confirm(`以「${server.config.name}」目前的工具定義重新核准唯讀：\n${names.join('\n')}\n\n請先確認這些工具仍只查詢資料、不會修改任何東西。`)) return;
+    try {
+      replaceServer(await api.updateMcpServer(server.config.id, { toolOverrides: reapprovedOverrides(server, names) }));
+      setErr(null);
+    } catch (e) {
+      handle(e);
+    }
+  }
+
+  const stale = (view?.servers ?? []).map((s) => ({ server: s, names: staleApprovals(s) })).filter((x) => x.names.length > 0);
+
   const tenantName = (id: string | null) => (id ? `${tenants.find((t) => t.id === id)?.name ?? id}（專屬）` : '共用');
   const setField = (patch: Partial<McpServerFormValues>) => editing && setEditing({ ...editing, values: { ...editing.values, ...patch } });
 
@@ -113,6 +125,18 @@ export default function McpServersPage() {
           <div className="card"><div className="card-body muted">尚未設定 MCP_SIGNING_KEY：MCP 功能停用中，AI 不會呼叫任何 MCP 工具。</div></div>
         )}
         {!view && !err && <div className="card"><div className="empty">載入中…</div></div>}
+        {/* 核准失效：AI 查詢會變成每次要使用者確認、確認後也看不到結果，必須醒目提示 */}
+        {stale.map(({ server, names }) => (
+          <div key={server.config.id} className="banner banner-err" role="alert">
+            <div style={{ flex: 1 }}>
+              <strong>「{server.config.name}」有 {names.length} 個工具的唯讀核准已失效</strong>（工具定義已變更）：{names.join('、')}。
+              <div>目前 AI 每次使用這些工具都會要求使用者確認，確認後也看不到結果。請確認這些工具仍只查詢資料後重新核准。</div>
+            </div>
+            <button type="button" className="btn btn-sm" onClick={() => void reapprove(server, names)}>
+              重新核准 {names.length} 個工具
+            </button>
+          </div>
+        ))}
 
         {/* 表單放在清單上方：開啟時就在眼前，錯誤訊息也直接顯示在表單裡 */}
         {editing && (
@@ -239,7 +263,9 @@ export default function McpServersPage() {
                             <td>
                               <span className={`badge ${t.effect === 'read' ? 'badge-on' : 'badge-warn'}`}>{t.effect === 'read' ? '唯讀' : '寫入・需確認'}</span>
                               {t.declaredReadOnly && !t.approvalValid && (
-                                <div className="row-sub">服務宣告唯讀，待核准目前版本</div>
+                                s.config.toolOverrides[t.name]?.approvedReadOnly && !t.disabled
+                                  ? <div className="mcp-error">核准已失效：工具定義已變更，請確認後重新核准</div>
+                                  : <div className="row-sub">服務宣告唯讀，待核准目前版本</div>
                               )}
                             </td>
                             <td className="center">

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { emptyMcpForm, parseKeywords, statusLabel, toPayload, validateMcpForm } from './mcpForm.util';
+import type { McpServerView } from '../api';
+import { emptyMcpForm, parseKeywords, reapprovedOverrides, staleApprovals, statusLabel, toPayload, validateMcpForm } from './mcpForm.util';
 
 describe('mcpForm.util', () => {
   it('parseKeywords：逗號、頓號、換行分隔，去空白與重複', () => {
@@ -35,5 +36,35 @@ describe('mcpForm.util', () => {
     expect(statusLabel('unreachable')).toBe('連不上');
     expect(statusLabel('auth_failed')).toBe('驗證失敗');
     expect(statusLabel('idle')).toBe('尚未連線');
+  });
+
+  describe('核准失效', () => {
+    const tool = (name: string, p: { valid?: boolean; declared?: boolean; disabled?: boolean } = {}) => ({
+      name, llmName: name, effect: 'write' as const, declaredReadOnly: p.declared ?? true, fingerprint: `fp-${name}`,
+      approvalValid: p.valid ?? false, disabled: p.disabled ?? false,
+    });
+    const server: McpServerView = {
+      config: {
+        id: 'db', name: 'DB', url: '', ownerTenantId: null, description: '', keywords: [], timeoutMs: 1, enabled: true, createdAt: '',
+        toolOverrides: {
+          changed: { approvedReadOnly: true, approvedFingerprint: 'old' },
+          ok: { approvedReadOnly: true, approvedFingerprint: 'fp-ok' },
+          off: { approvedReadOnly: true, approvedFingerprint: 'old', disabled: true },
+          writeTool: { approvedReadOnly: true },
+        },
+      },
+      status: { state: 'ok' },
+      tools: [tool('changed'), tool('ok', { valid: true }), tool('never'), tool('off', { disabled: true }), tool('writeTool', { declared: false })],
+    };
+
+    it('只列出曾核准、定義已變更的唯讀工具（排除從未核准、已停用、服務未宣告唯讀）', () => {
+      expect(staleApprovals(server)).toEqual(['changed']);
+    });
+
+    it('重新核准：以目前指紋更新指定工具，其他設定保留', () => {
+      const next = reapprovedOverrides(server, ['changed']);
+      expect(next.changed).toEqual({ approvedReadOnly: true, approvedFingerprint: 'fp-changed' });
+      expect(next.off).toEqual(server.config.toolOverrides.off);
+    });
   });
 });
