@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Checkbox } from '@hyagent/ui';
 import type { SkillBundle, TenantPolicyView } from '../../api';
 import { formatDepartment, UNKNOWN_DEPARTMENT } from '../../components/department.util';
-import { groupCapabilities } from './permissions.util';
+import { groupCapabilities, policyDepartments } from './permissions.util';
 
 /** 對象採分頁，角色只在編輯時展開，避免雙向增長的矩陣。 */
 export function AssignmentSection({ policy, onToggle }: {
@@ -15,10 +15,12 @@ export function AssignmentSection({ policy, onToggle }: {
   const [page, setPage] = useState(1);
   const [editing, setEditing] = useState<string | null>(null);
   const [roleQuery, setRoleQuery] = useState('');
-  const departmentIds = [...new Set([...policy.departments, ...Object.keys(policy.groupBundles)])];
+  // 編輯中的部門保留到收合：已無成員的部門取消最後一個角色時，不會在編輯途中消失
+  const departmentIds = [...new Set([...policyDepartments(policy), ...(kind === 'groupBundles' && editing ? [editing] : [])])];
   const userIds = [...new Set([...policy.users.map((user) => user.id), ...Object.keys(policy.accountBundles)])];
   const targets = kind === 'groupBundles'
-    ? departmentIds.map((id) => ({ id, label: formatDepartment(id), sub: id === UNKNOWN_DEPARTMENT ? '公開聊天視窗的訪客與未建檔帳號' : '' }))
+    ? departmentIds.map((id) => ({ id, label: formatDepartment(id),
+      sub: id === UNKNOWN_DEPARTMENT ? '公開聊天視窗的訪客與未建檔帳號' : policy.departments.includes(id) ? '' : '已無成員；可到「使用者目錄」刪除此部門' }))
     : userIds.map((id) => ({ id, label: policy.users.find((user) => user.id === id)?.label ?? id,
       sub: policy.users.some((user) => user.id === id) ? id : `${id} · 未列於目前名錄` }));
   const selectedRoles = (id: string) => policy.bundles.filter((role) => (policy[kind][id] ?? []).includes(role.id));
@@ -34,10 +36,15 @@ export function AssignmentSection({ policy, onToggle }: {
   const switchKind = (next: typeof kind) => {
     setKind(next); setQuery(''); setFilter('all'); setPage(1); setEditing(null); setRoleQuery('');
   };
-  return <section className="assignment-section" aria-label="角色指派">
-    <div><h3 className="assignment-title">指派對象</h3>
-      <p className="row-sub">選擇部門或帳號，再編輯角色。變更須按本頁「儲存」才會生效。</p>
+  // 獨立成一張卡片：與「角色能力」（定義角色）分開，避免標題被看成角色清單的一列
+  return <section className="card" aria-label="角色指派">
+    <div className="card-head">
+      <div>
+        <div className="card-title">指派對象</div>
+        <div className="card-desc">選擇部門或帳號，再編輯要給的角色。按頁面底部「儲存」後生效。</div>
+      </div>
     </div>
+    <div className="assignment-section">
     <div className="assignment-tabs" role="group" aria-label="指派對象類型">
       <button type="button" aria-pressed={kind === 'groupBundles'} onClick={() => switchKind('groupBundles')}>部門 <span className="assignment-count-badge">{departmentIds.length}</span></button>
       <button type="button" aria-pressed={kind === 'accountBundles'} onClick={() => switchKind('accountBundles')}>帳號 <span className="assignment-count-badge">{userIds.length}</span></button>
@@ -84,6 +91,7 @@ export function AssignmentSection({ policy, onToggle }: {
         <button type="button" className="btn btn-sm" disabled={currentPage === pages} onClick={() => setPage(currentPage + 1)}>下一頁</button></div>
     </nav>
     <p className="row-sub">角色名稱不會額外開放團隊資料或簽核權限；移除角色也不會撤銷其他來源的授權。</p>
+    </div>
   </section>;
 }
 
@@ -144,6 +152,7 @@ export default function BundlesSection({
   const scopeLabel = (id: string) => policy.capabilities.find((c) => c.id === id)?.label ?? id;
 
   return (
+    <>
     <div className="card">
       <div className="card-head">
         <div>
@@ -274,7 +283,8 @@ export default function BundlesSection({
         </div>
       )}
 
-      {policy.bundles.length > 0 && <AssignmentSection policy={policy} onToggle={toggleAssign} />}
     </div>
+    {policy.bundles.length > 0 && <AssignmentSection policy={policy} onToggle={toggleAssign} />}
+    </>
   );
 }

@@ -43,3 +43,49 @@ userAdminRouter.post('/', validate({ body: profile }), asyncHandler(async (req, 
   await tenantStore.persistCritical();
   res.status(201).json({ data: { users: parsed.users } });
 }));
+
+// 編輯單筆：帳號（id）不可改，避免與權限、代理人等以帳號為 key 的設定脫鉤；email 傳 null 代表清除
+const patch = z.object({
+  name: z.string().trim().min(1).max(200).optional(),
+  department: z.string().trim().min(1).max(200).optional(),
+  email: z.string().email().nullable().optional(),
+}).strict();
+
+userAdminRouter.patch('/:userId', validate({ body: patch }), asyncHandler(async (req, res) => {
+  const tenantId = String(req.params.id);
+  const userId = String(req.params.userId);
+  const changes = req.body as z.infer<typeof patch>;
+  const existing = tenantStore.getTenant(tenantId)!.userDirectory ?? [];
+  if (!existing.some((entry) => entry.id === userId)) throw AppError.notFound('找不到此帳號');
+  const users = existing.map((entry) => {
+    if (entry.id !== userId) return entry;
+    const { email: _email, ...rest } = entry;
+    const email = changes.email === undefined ? entry.email : changes.email ?? undefined;
+    return {
+      ...rest,
+      ...(changes.name !== undefined ? { name: changes.name } : {}),
+      ...(changes.department !== undefined ? { department: changes.department } : {}),
+      ...(email ? { email } : {}),
+    };
+  });
+  const parsed = body.parse({ users });
+  tenantStore.updateTenant(tenantId, { userDirectory: parsed.users });
+  await tenantStore.persistCritical();
+  res.json({ data: { users: parsed.users } });
+}));
+
+// 刪除單筆：同時從其他人的代理人名單移除，否則整份目錄會因「代理人必須存在」而無法再儲存。
+// 移出目錄後該帳號的帳密登入 token 立即失效（見 auth/credential-version）。
+userAdminRouter.delete('/:userId', asyncHandler(async (req, res) => {
+  const tenantId = String(req.params.id);
+  const userId = String(req.params.userId);
+  const existing = tenantStore.getTenant(tenantId)!.userDirectory ?? [];
+  if (!existing.some((entry) => entry.id === userId)) throw AppError.notFound('找不到此帳號');
+  const users = existing
+    .filter((entry) => entry.id !== userId)
+    .map((entry) => (entry.deputyIds ? { ...entry, deputyIds: entry.deputyIds.filter((id) => id !== userId) } : entry));
+  const parsed = body.parse({ users });
+  tenantStore.updateTenant(tenantId, { userDirectory: parsed.users });
+  await tenantStore.persistCritical();
+  res.json({ data: { users: parsed.users } });
+}));

@@ -1131,8 +1131,7 @@ li:not(.is-empty) > .feedback-bar { background: var(--bg-secondary); }
 .kb-file-editor .field + .field { margin-top: 0; }
 
 /* 角色指派：對象分頁，避免角色數量增加時撐寬整張矩陣。 */
-.assignment-section { padding: 16px; border-top: 1px solid var(--border-color); display: grid; gap: 12px; }
-.assignment-title { margin: 0; font-size: 15px; font-weight: 600; }
+.assignment-section { padding: 16px; display: grid; gap: 12px; }
 .assignment-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border-color); }
 .assignment-tabs button { padding: 8px 10px; border-bottom: 2px solid transparent; color: var(--text-secondary); cursor: pointer; font-size: 14px; }
 .assignment-tabs button[aria-pressed="true"] { color: var(--primary-color); border-bottom-color: var(--primary-color); font-weight: 600; }
@@ -1182,6 +1181,8 @@ li:not(.is-empty) > .feedback-bar { background: var(--bg-secondary); }
 .directory-form { display: grid; gap: 12px; }
 .directory-form h3 { margin: 0; font-size: 14px; font-weight: 600; }
 .directory-form .form-actions { margin-top: 0; }
+.directory-row { flex-wrap: wrap; gap: 8px; }
+.directory-edit { flex: 1 1 100%; padding: 4px 0; }
 
 /* 後台日期觸發器與緊湊輸入框對齊；日曆本體維持原有操作尺寸。 */
 .app .date-picker-trigger-btn { height: 34px; padding-inline: 8px; gap: 6px; font-size: 13px; font-weight: 500; letter-spacing: normal; }

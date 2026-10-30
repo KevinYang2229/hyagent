@@ -50,6 +50,14 @@ export interface DirectoryUser {
   email?: string;
 }
 
+/** 部門摘要：成員數與綁定的權限數（members 為 0 但仍有授權＝已無成員的殘留部門） */
+export interface DepartmentSummary {
+  name: string;
+  members: number;
+  directGrants: number;
+  roles: number;
+}
+
 export interface Tenant {
   id: string;
   name: string;
@@ -719,6 +727,16 @@ const enc = encodeURIComponent;
 export const api = {
   listDirectoryUsers: (id: string) => req<{ users: DirectoryUser[] }>('GET', `/admin/tenants/${encodeURIComponent(id)}/users`),
   addDirectoryUser: (id: string, user: DirectoryUser) => req<{ users: DirectoryUser[] }>('POST', `/admin/tenants/${encodeURIComponent(id)}/users`, user),
+  updateDirectoryUser: (id: string, userId: string, patch: { name?: string; department?: string; email?: string | null }) =>
+    req<{ users: DirectoryUser[] }>('PATCH', `/admin/tenants/${encodeURIComponent(id)}/users/${encodeURIComponent(userId)}`, patch),
+  deleteDirectoryUser: (id: string, userId: string) =>
+    req<{ users: DirectoryUser[] }>('DELETE', `/admin/tenants/${encodeURIComponent(id)}/users/${encodeURIComponent(userId)}`),
+  listDepartments: (id: string) =>
+    req<{ departments: DepartmentSummary[] }>('GET', `/admin/tenants/${encodeURIComponent(id)}/departments`),
+  renameDepartment: (id: string, name: string, next: string) =>
+    req<{ name: string }>('PATCH', `/admin/tenants/${encodeURIComponent(id)}/departments/${encodeURIComponent(name)}`, { name: next }),
+  deleteDepartment: (id: string, name: string) =>
+    req<{ name: string }>('DELETE', `/admin/tenants/${encodeURIComponent(id)}/departments/${encodeURIComponent(name)}`),
   login: (password: string) => req<{ token: string }>('POST', '/admin/auth/login', { password }),
 
   listTenants: () => req<Tenant[]>('GET', '/admin/tenants'),

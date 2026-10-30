@@ -87,3 +87,16 @@ describe('大量對象的角色指派', () => {
     expect(container.querySelector('.assignment-identity')?.textContent).toContain('部門 02');
   });
 });
+
+describe('部門清單與使用者目錄一致', () => {
+  it('只列出目錄部門與仍綁著角色的部門，空的指派殘留不列出', () => {
+    const policy: TenantPolicyView = { ...fixture(), departments: ['人資'],
+      groupBundles: { 人資部: [], 舊部門: ['role-1'] } };
+    act(() => root.render(<AssignmentSection policy={policy} onToggle={() => {}} />));
+    const text = container.textContent ?? '';
+    expect(text).toContain('人資');
+    expect(text).toContain('舊部門');
+    expect(text).toContain('已無成員');
+    expect(text).not.toContain('人資部');
+  });
+});

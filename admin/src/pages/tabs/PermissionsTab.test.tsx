@@ -116,3 +116,9 @@ it('儲存成功後回到已儲存狀態', async () => {
   expect(api.putTenantPolicy).toHaveBeenCalledWith('test', expect.objectContaining({ grantedScopes: ['service:form'] }));
   expect(container.textContent).toContain('所有變更皆已儲存');
 });
+it('已無成員但仍綁權限的部門會列出並標示，不誤報等同未開通', async () => {
+  fixture.groups = { 舊部門: ['service:form'] };
+  await render();
+  expect(container.textContent).toContain('指定對象：舊部門（已無成員）');
+  expect(container.textContent).not.toContain('目前效果等同「未開通」');
+});

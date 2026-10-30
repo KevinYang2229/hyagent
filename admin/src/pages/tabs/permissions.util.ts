@@ -61,3 +61,13 @@ function normalize(p: EditablePolicy): string {
 export function policyChanged(a: EditablePolicy, b: EditablePolicy): boolean {
   return normalize(a) !== normalize(b);
 }
+
+/**
+ * 權限頁可選的部門：目錄裡的部門，加上已無成員但仍綁著授權或角色的部門。
+ * 只看「非空」的設定——取消勾選會留下空陣列，那不是授權，列出來只會出現
+ * 使用者目錄看不到、也刪不掉的幽靈部門。與後端 /departments 的判斷一致。
+ */
+export function policyDepartments(policy: Pick<TenantPolicyView, 'departments' | 'groups' | 'groupBundles'>): string[] {
+  const withGrants = (map: Record<string, string[]>) => Object.keys(map).filter((k) => map[k].length > 0);
+  return [...new Set([...policy.departments, ...withGrants(policy.groups), ...withGrants(policy.groupBundles)])];
+}

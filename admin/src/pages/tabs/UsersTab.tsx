@@ -1,8 +1,50 @@
 import { useCallback, useEffect, useId, useState, type FormEvent } from 'react';
-import { api, type DirectoryUser } from '../../api';
+import { Dialog } from '@hyagent/ui';
+import { api, type DepartmentSummary, type DirectoryUser } from '../../api';
+import DepartmentsSection from './DepartmentsSection';
 
 /** 部門下拉的「新增部門」選項值；不會與真實部門名稱衝突 */
 const NEW_DEPARTMENT = '__new__';
+/** 後端以此值代表未指定部門 */
+const UNSPECIFIED = '—';
+
+/** 部門選擇的狀態：選既有部門，或選「新增部門」後自行輸入 */
+interface DeptState { choice: string; typed: string }
+
+const deptStateOf = (department: string): DeptState => ({ choice: department === UNSPECIFIED ? '' : department, typed: '' });
+const deptValueOf = ({ choice, typed }: DeptState): string => (choice === NEW_DEPARTMENT ? typed.trim() : choice);
+const deptIncomplete = (state: DeptState): boolean => state.choice === NEW_DEPARTMENT && !state.typed.trim();
+
+/**
+ * 部門會被權限比對，改用下拉選既有部門，避免手打錯字默默產生新部門、權限對不上。
+ * 新增與編輯共用。
+ */
+function DepartmentField({ departments, value, onChange, disabled }: {
+  departments: string[];
+  value: DeptState;
+  onChange: (next: DeptState) => void;
+  disabled: boolean;
+}) {
+  const newDeptId = useId();
+  const typed = value.typed.trim();
+  const typedExisting = value.choice === NEW_DEPARTMENT && departments.includes(typed);
+  return <>
+    <label className="field"><span className="field-label">部門（選填）</span>
+      <select className="select" value={value.choice} onChange={(e) => onChange({ ...value, choice: e.target.value })} disabled={disabled}>
+        <option value="">未指定</option>
+        {departments.map((dep) => <option key={dep} value={dep}>{dep}</option>)}
+        <option value={NEW_DEPARTMENT}>＋ 新增部門…</option>
+      </select>
+    </label>
+    {value.choice === NEW_DEPARTMENT && <div className="field"><label className="field-label" htmlFor={newDeptId}>新部門名稱</label>
+      <input id={newDeptId} className="input" value={value.typed} onChange={(e) => onChange({ ...value, typed: e.target.value })} required maxLength={200} disabled={disabled} autoFocus />
+      {typedExisting && <span className="field-hint">已有此部門，將直接加入。</span>}
+      {!typedExisting && typed && <span className="field-hint">將建立新部門；權限需另外授權給此部門。</span>}
+    </div>}
+  </>;
+}
+
+interface Draft { name: string; dept: DeptState; email: string }
 
 export default function UsersTab({ tenantId, onError }: { tenantId: string; onError: (error: unknown) => void }) {
   const [users, setUsers] = useState<DirectoryUser[]>([]);
@@ -12,38 +54,87 @@ export default function UsersTab({ tenantId, onError }: { tenantId: string; onEr
   const [error, setError] = useState('');
   const [id, setId] = useState('');
   const [name, setName] = useState('');
-  // 部門會被權限比對，改用下拉選既有部門，避免手打錯字默默產生新部門、權限對不上
-  const [deptChoice, setDeptChoice] = useState('');
-  const [newDept, setNewDept] = useState('');
-  const newDeptId = useId();
+  const [dept, setDept] = useState<DeptState>({ choice: '', typed: '' });
   const [email, setEmail] = useState('');
+  // 編輯中的帳號（同時只編輯一位）與草稿
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<DirectoryUser | null>(null);
+  // 部門清單（含已無成員但仍綁權限的部門）：人員表單的下拉與部門區塊共用
+  const [deptSummaries, setDeptSummaries] = useState<DepartmentSummary[] | null>(null);
   const load = useCallback(async () => {
     setLoaded(false);
     setError('');
     try { setUsers((await api.listDirectoryUsers(tenantId)).users); setLoaded(true); }
     catch (err) { setError('目錄載入失敗，請重新整理'); onError(err); }
   }, [tenantId, onError]);
-  useEffect(() => { void load(); }, [load]);
-  const departments = [...new Set(users.map((user) => user.department).filter((dep) => dep && dep !== '—'))]
+  const loadDepartments = useCallback(async () => {
+    try { setDeptSummaries((await api.listDepartments(tenantId)).departments); }
+    catch (err) { onError(err); }
+  }, [tenantId, onError]);
+  useEffect(() => { void load(); void loadDepartments(); }, [load, loadDepartments]);
+  // 部門改名後成員的部門跟著變：背景更新名單，不切回「載入中」（否則部門區塊的結果訊息會消失）
+  const refreshAfterDepartmentChange = useCallback(async () => {
+    try {
+      const [dir] = await Promise.all([api.listDirectoryUsers(tenantId), loadDepartments()]);
+      setUsers(dir.users);
+    } catch (err) { onError(err); }
+  }, [tenantId, onError, loadDepartments]);
+  const departments = [...new Set([...users.map((user) => user.department), ...(deptSummaries ?? []).map((d) => d.name)]
+    .filter((dep) => dep && dep !== UNSPECIFIED))]
     .sort((a, b) => a.localeCompare(b, 'zh-Hant'));
-  const typedDept = newDept.trim();
-  const department = deptChoice === NEW_DEPARTMENT ? typedDept : deptChoice;
-  const typedExisting = deptChoice === NEW_DEPARTMENT && departments.includes(typedDept);
+
+  /** 共用的寫入流程：鎖住按鈕、清訊息、成功時以伺服器回傳的目錄為準 */
+  async function run(action: () => Promise<{ users: DirectoryUser[] }>, success: string, fallbackError: string): Promise<boolean> {
+    setBusy(true); setError(''); setMessage('');
+    try {
+      setUsers((await action()).users);
+      void loadDepartments();
+      setMessage(success);
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : fallbackError);
+      onError(err);
+      return false;
+    } finally { setBusy(false); }
+  }
+
   async function add(event: FormEvent) {
     event.preventDefault();
     if (busy || !loaded) return;
-    setBusy(true); setError(''); setMessage('');
-    try {
-      const result = await api.addDirectoryUser(tenantId, {
-        id: id.trim(), name: name.trim(), department: department || '—',
-        ...(email.trim() ? { email: email.trim() } : {}),
-      });
-      setUsers(result.users);
-      setMessage(`已新增帳號 ${id.trim()}`);
-      setId(''); setName(''); setDeptChoice(''); setNewDept(''); setEmail('');
-    } catch (err) { setError(err instanceof Error ? err.message : '新增失敗，請稍後再試'); onError(err); }
-    finally { setBusy(false); }
+    const newId = id.trim();
+    const ok = await run(() => api.addDirectoryUser(tenantId, {
+      id: newId, name: name.trim(), department: deptValueOf(dept) || UNSPECIFIED,
+      ...(email.trim() ? { email: email.trim() } : {}),
+    }), `已新增帳號 ${newId}`, '新增失敗，請稍後再試');
+    if (ok) { setId(''); setName(''); setDept({ choice: '', typed: '' }); setEmail(''); }
   }
+
+  function startEdit(user: DirectoryUser) {
+    setEditingId(user.id);
+    setDraft({ name: user.name, dept: deptStateOf(user.department), email: user.email ?? '' });
+  }
+  function cancelEdit() { setEditingId(null); setDraft(null); }
+
+  async function saveEdit(event: FormEvent, user: DirectoryUser) {
+    event.preventDefault();
+    if (!draft || busy) return;
+    const ok = await run(() => api.updateDirectoryUser(tenantId, user.id, {
+      name: draft.name.trim(),
+      department: deptValueOf(draft.dept) || UNSPECIFIED,
+      email: draft.email.trim() || null,
+    }), `已更新帳號 ${user.id}`, '更新失敗，請稍後再試');
+    if (ok) cancelEdit();
+  }
+
+  async function confirmDelete() {
+    const target = pendingDelete;
+    setPendingDelete(null);
+    if (!target) return;
+    const ok = await run(() => api.deleteDirectoryUser(tenantId, target.id), `已刪除帳號 ${target.id}`, '刪除失敗，請稍後再試');
+    if (ok && editingId === target.id) cancelEdit();
+  }
+
   return <div className="card">
     <div className="card-head"><div><div className="card-title">使用者目錄</div>
       <div className="card-desc">管理此租戶的人員帳號。已開放帳密登入時，請使用此處的帳號及服務設定的登入密碼。</div>
@@ -55,31 +146,56 @@ export default function UsersTab({ tenantId, onError }: { tenantId: string; onEr
       {loaded && <>
         <p className="row-sub">共 {users.length} 位使用者。部門會影響既有部門授權，未填寫時為「未指定」。新增不會覆蓋其他人員。</p>
         {!users.length ? <p className="empty">尚無使用者，請先新增登入帳號。</p> :
-          <ul className="list">{users.map((user) => <li className="row" key={user.id}>
-            <div><strong>{user.name}</strong><div className="row-sub">帳號：{user.id} · 部門：{user.department === '—' ? '未指定' : user.department}{user.email ? ` · ${user.email}` : ''}</div></div>
+          <ul className="list">{users.map((user) => <li className="row directory-row" key={user.id}>
+            {editingId === user.id && draft ? (
+              <form className="directory-form directory-edit" aria-label={`編輯 ${user.name}`} onSubmit={(event) => void saveEdit(event, user)}>
+                <div className="row-sub">帳號：{user.id}（帳號建立後不可修改）</div>
+                <div className="form-grid">
+                  <label className="field"><span className="field-label">顯示名稱</span><input className="input" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} required maxLength={200} disabled={busy} /></label>
+                  <DepartmentField departments={departments} value={draft.dept} onChange={(next) => setDraft({ ...draft, dept: next })} disabled={busy} />
+                  <label className="field"><span className="field-label">Email（選填）</span><input className="input" type="email" value={draft.email} onChange={(e) => setDraft({ ...draft, email: e.target.value })} disabled={busy} /></label>
+                </div>
+                <div className="form-actions">
+                  <button className="btn btn-primary btn-sm" disabled={busy || !draft.name.trim() || deptIncomplete(draft.dept)}>{busy ? '儲存中…' : '儲存'}</button>
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={cancelEdit} disabled={busy}>取消</button>
+                </div>
+              </form>
+            ) : <>
+              <div className="row-main"><strong>{user.name}</strong><div className="row-sub">帳號：{user.id} · 部門：{user.department === UNSPECIFIED ? '未指定' : user.department}{user.email ? ` · ${user.email}` : ''}</div></div>
+              <div className="toolbar" style={{ display: 'flex', gap: 8 }}>
+                <button type="button" className="btn btn-ghost btn-sm" aria-label={`編輯 ${user.name}`} onClick={() => startEdit(user)} disabled={busy}>編輯</button>
+                <button type="button" className="btn btn-danger btn-sm" aria-label={`刪除 ${user.name}`} onClick={() => setPendingDelete(user)} disabled={busy}>刪除</button>
+              </div>
+            </>}
           </li>)}</ul>}
+        <DepartmentsSection tenantId={tenantId} departments={deptSummaries} onChanged={refreshAfterDepartmentChange} onError={onError} />
         <form onSubmit={(event) => void add(event)} className="directory-form settings-section">
           <h3>新增使用者</h3>
           <div className="form-grid">
           <label className="field"><span className="field-label">登入帳號</span><input className="input" value={id} onChange={(e) => setId(e.target.value)} required maxLength={200} disabled={busy} autoComplete="off" placeholder="例如 hyweb" /></label>
           <label className="field"><span className="field-label">顯示名稱</span><input className="input" value={name} onChange={(e) => setName(e.target.value)} required maxLength={200} disabled={busy} /></label>
-          <label className="field"><span className="field-label">部門（選填）</span>
-            <select className="select" value={deptChoice} onChange={(e) => setDeptChoice(e.target.value)} disabled={busy}>
-              <option value="">未指定</option>
-              {departments.map((dep) => <option key={dep} value={dep}>{dep}</option>)}
-              <option value={NEW_DEPARTMENT}>＋ 新增部門…</option>
-            </select>
-          </label>
-          {deptChoice === NEW_DEPARTMENT && <div className="field"><label className="field-label" htmlFor={newDeptId}>新部門名稱</label>
-            <input id={newDeptId} className="input" value={newDept} onChange={(e) => setNewDept(e.target.value)} required maxLength={200} disabled={busy} autoFocus />
-            {typedExisting && <span className="field-hint">已有此部門，將直接加入。</span>}
-            {!typedExisting && typedDept && <span className="field-hint">將建立新部門；權限需另外授權給此部門。</span>}
-          </div>}
+          <DepartmentField departments={departments} value={dept} onChange={setDept} disabled={busy} />
           <label className="field"><span className="field-label">Email（選填）</span><input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} disabled={busy} /></label>
           </div>
-          <div className="form-actions"><button className="btn btn-primary" disabled={busy || !id.trim() || !name.trim() || (deptChoice === NEW_DEPARTMENT && !typedDept)}>{busy ? '新增中…' : '新增使用者'}</button></div>
+          <div className="form-actions"><button className="btn btn-primary" disabled={busy || !id.trim() || !name.trim() || deptIncomplete(dept)}>{busy ? '新增中…' : '新增使用者'}</button></div>
         </form>
       </>}
     </div>
+
+    <Dialog
+      isOpen={!!pendingDelete}
+      title={`刪除「${pendingDelete?.name ?? ''}」？`}
+      confirmText="刪除"
+      confirmVariant="danger"
+      onClose={() => setPendingDelete(null)}
+      onConfirm={() => void confirmDelete()}
+    >
+      <p style={{ marginTop: 0 }}>帳號 {pendingDelete?.id} 將從目錄移除：</p>
+      <ul style={{ paddingLeft: 18 }}>
+        <li>無法再用帳密登入，已登入的工作階段會立即失效。</li>
+        <li>會從其他人的代理人名單中移除。</li>
+        <li>「權限」中直接指派給此帳號的設定會保留；之後以相同帳號重新加入，或透過 SSO 以此帳號登入時仍會生效。</li>
+      </ul>
+    </Dialog>
   </div>;
 }

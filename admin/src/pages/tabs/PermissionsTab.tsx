@@ -3,7 +3,7 @@ import { Checkbox, useToast } from '@hyagent/ui';
 import { api, type TenantPolicyView } from '../../api';
 import BundlesSection from './BundlesSection';
 import { formatDepartment, UNKNOWN_DEPARTMENT } from '../../components/department.util';
-import { groupCapabilities, policyChanged, type CapabilityCategory } from './permissions.util';
+import { groupCapabilities, policyChanged, policyDepartments, type CapabilityCategory } from './permissions.util';
 
 /**
  * 權限分頁：以「能力」為中心——每個能力一列，直接選 未開通／所有人／指定對象。
@@ -118,6 +118,12 @@ export default function PermissionsTab({
 
   const groups = groupCapabilities(policy.capabilities);
 
+  // 已無成員但仍綁著權限的部門也要列出：否則授權看不到、摘要誤報「等同未開通」，
+  // 之後同名部門或 SSO 帶入此部門時會靜默生效
+  const departments = policyDepartments(policy);
+  const deptLabel = (dep: string) =>
+    policy.departments.includes(dep) ? formatDepartment(dep) : `${formatDepartment(dep)}（已無成員）`;
+
   /** 該能力目前的模式：所有人 > 指定對象（含剛切換、尚未勾人）> 未開通 */
   const modeOf = (id: string): Mode => {
     if (policy.grantedScopes.includes(id)) return 'all';
@@ -135,9 +141,9 @@ export default function PermissionsTab({
     policy.bundles
       .filter((b) => b.scopes.includes(id))
       .map((b) => {
-        const deps = policy.departments
+        const deps = departments
           .filter((d) => (policy.groupBundles[d] ?? []).includes(b.id))
-          .map(formatDepartment);
+          .map(deptLabel);
         const users = policy.users
           .filter((u) => (policy.accountBundles[u.id] ?? []).includes(b.id))
           .map((u) => u.label);
@@ -301,14 +307,14 @@ export default function PermissionsTab({
         <ul className="list">
             {visibleScopes.map((s) => {
               const mode = modeOf(s.id);
-              const pickedDeps = policy.departments.filter((d) =>
+              const pickedDeps = departments.filter((d) =>
                 (policy.groups[d] ?? []).includes(s.id),
               );
               const pickedUsers = policy.users.filter((u) =>
                 (policy.accounts[u.id] ?? []).includes(s.id),
               );
               const grants = bundleGrants(s.id);
-              const targetNames = [...pickedDeps.map(formatDepartment), ...pickedUsers.map((u) => u.label)];
+              const targetNames = [...pickedDeps.map(deptLabel), ...pickedUsers.map((u) => u.label)];
               // 尚未勾任何對象時強制展開，避免摘要只剩警告、找不到勾選處
               const showPicker = mode === 'some' && (expanded.has(s.id) || targetNames.length === 0);
               return (
@@ -371,7 +377,7 @@ export default function PermissionsTab({
                     <div style={{ marginTop: 10, marginLeft: 2, display: 'grid', gap: 6 }}>
                       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12 }}>
                         <span className="row-sub" style={{ width: 34 }}>部門</span>
-                        {policy.departments.map((dep) => (
+                        {departments.map((dep) => (
                           <label key={dep} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
                             <Checkbox
                               checked={(policy.groups[dep] ?? []).includes(s.id)}
@@ -382,7 +388,7 @@ export default function PermissionsTab({
                               style={{ fontSize: 13.5 }}
                               title={dep === UNKNOWN_DEPARTMENT ? '公開 widget 的訪客落在此桶' : undefined}
                             >
-                              {formatDepartment(dep)}
+                              {deptLabel(dep)}
                             </span>
                           </label>
                         ))}

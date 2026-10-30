@@ -1,4 +1,5 @@
 import { userAdminRouter } from '@/modules/user/user.admin';
+import { departmentAdminRouter } from '@/modules/user/department.admin';
 import { adminLoginRateLimit } from '@/middlewares/auth-rate-limit';
 import { Router } from 'express';
 import { z } from 'zod';
@@ -99,6 +100,7 @@ router.use(requireAdmin);
 // 設定變更稽核：在所有管理端點之前掛上，新增端點不會漏記（見 audit/admin-audit.ts）
 router.use(adminAuditTrail);
 router.use('/tenants/:id/users', userAdminRouter);
+router.use('/tenants/:id/departments', departmentAdminRouter);
 
 // 平台層稽核（建立／刪除租戶、MCP 服務等）；租戶層稽核見 /tenants/:id/audit
 router.get('/audit', validate({ query: auditPageQuerySchema }), asyncHandler(adminController.getPlatformAudit));

@@ -65,3 +65,33 @@ it('admin can append a login account without replacing existing profiles or acce
   await request(app).post(path).set(admin).send({ id: 'hyweb', name: 'Overwrite' }).expect(409);
   expect(tenantStore.getTenant(tenant.id)!.userDirectory![1].name).toBe('Hyweb');
 });
+
+it('admin can edit a profile in place without touching its id or other fields', async () => {
+  const tenant = tenantStore.createTenant('edit-directory');
+  tenantStore.updateTenant(tenant.id, { userDirectory: [
+    { id: 'amy', name: 'Amy', department: 'HR', title: 'Manager', email: 'amy@example.com', deputyIds: ['bob'] },
+    { id: 'bob', name: 'Bob', department: 'HR' },
+  ] });
+  const path = `/api/admin/tenants/${tenant.id}/users/amy`;
+  await request(app).patch(path).send({ name: 'X' }).expect(401);
+  const res = await request(app).patch(path).set(admin).send({ name: 'Amy Lin', department: 'Sales', email: null }).expect(200);
+  const amy = res.body.data.users.find((u: { id: string }) => u.id === 'amy');
+  expect(amy).toEqual({ id: 'amy', name: 'Amy Lin', department: 'Sales', title: 'Manager', deputyIds: ['bob'] });
+  expect(getApplicant('amy', tenant.id).department).toBe('Sales');
+  await request(app).patch(path).set(admin).send({ id: 'renamed' }).expect(422);
+  await request(app).patch(`/api/admin/tenants/${tenant.id}/users/ghost`).set(admin).send({ name: 'G' }).expect(404);
+});
+
+it('admin can delete a profile; it is removed from deputy lists and loses login', async () => {
+  const tenant = tenantStore.createTenant('delete-directory');
+  tenantStore.updateTenant(tenant.id, { userDirectory: [
+    { id: 'amy', name: 'Amy', department: 'HR', deputyIds: ['bob'] },
+    { id: 'bob', name: 'Bob', department: 'HR' },
+  ] });
+  const base = `/api/admin/tenants/${tenant.id}/users`;
+  await request(app).delete(`${base}/bob`).expect(401);
+  const res = await request(app).delete(`${base}/bob`).set(admin).expect(200);
+  expect(res.body.data.users).toEqual([{ id: 'amy', name: 'Amy', department: 'HR', deputyIds: [] }]);
+  expect(listUserIds(tenant.id)).toEqual(['amy']);
+  await request(app).delete(`${base}/bob`).set(admin).expect(404);
+});
