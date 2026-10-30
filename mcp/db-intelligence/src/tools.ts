@@ -90,6 +90,20 @@ export interface DbiToolResult {
   structuredContent?: Record<string, unknown>;
   text: string;
   isError?: boolean;
+  /** HyAgent 表格提示，放在 _meta["hyagent/display"] */
+  display?: Record<string, unknown>;
+}
+
+/** HyAgent 表格最多顯示的欄數，超過就不畫表格，由模型自行整理 */
+const MAX_DISPLAY_COLUMNS = 12;
+const TABLE_TOOLS = new Set(['execute_safe_query', 'get_query_result']);
+
+/** 查詢結果畫成表格；沒有資料或欄位太多時不畫 */
+export function tableDisplay(data: Record<string, unknown>): Record<string, unknown> | undefined {
+  const { columns, rows } = data as { columns?: unknown; rows?: unknown };
+  if (!Array.isArray(columns) || !Array.isArray(rows) || rows.length === 0) return undefined;
+  if (columns.length === 0 || columns.length > MAX_DISPLAY_COLUMNS) return undefined;
+  return { type: 'table', rows: 'rows', columns: columns.map((c) => ({ key: String(c), label: String(c) })) };
 }
 
 export async function callDbiTool(service: DbIntelligenceService, name: string, rawArgs: unknown, caller: HyAgentCaller): Promise<DbiToolResult> {
@@ -105,7 +119,8 @@ export async function callDbiTool(service: DbIntelligenceService, name: string, 
   }
   try {
     const data = await tool.run(service, caller, parsed.data);
-    return { structuredContent: data, text: JSON.stringify(data) };
+    const display = TABLE_TOOLS.has(name) ? tableDisplay(data) : undefined;
+    return { structuredContent: data, text: JSON.stringify(data), ...(display ? { display } : {}) };
   } catch (err) {
     const e = err instanceof DbiError ? err : new DbiError('QUERY_EXECUTION_FAILED');
     const body = errorBody((err as { requestId?: string }).requestId ?? '', e);

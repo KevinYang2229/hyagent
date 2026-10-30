@@ -37,6 +37,7 @@ export function createDbIntelligenceApp(opts: DbIntelligenceAppOptions): Express
           ...(r.isError ? { isError: true } : {}),
           content: [{ type: 'text', text: r.text }],
           ...(r.structuredContent && !r.isError ? { structuredContent: r.structuredContent } : {}),
+          ...(r.display && !r.isError ? { _meta: { 'hyagent/display': r.display } } : {}),
         };
       });
     },

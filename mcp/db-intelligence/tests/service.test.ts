@@ -231,6 +231,10 @@ describe('MCP 工具層', () => {
     executor.rows = [['A']];
     const ok = await callDbiTool(service, 'execute_safe_query', { query_plan: plan() }, caller('bob'));
     expect(ok.structuredContent).toMatchObject({ rows: [{ name: 'A' }] });
+    expect(ok.display).toEqual({ type: 'table', rows: 'rows', columns: [{ key: 'name', label: 'name' }] });
+    executor.rows = [];
+    expect((await callDbiTool(service, 'execute_safe_query', { query_plan: plan() }, caller('bob'))).display).toBeUndefined();
+    expect((await callDbiTool(service, 'search_schema', { question: 'x' }, caller('bob'))).display).toBeUndefined();
     expect((await callDbiTool(service, 'drop_table', {}, caller('bob'))).isError).toBe(true);
     expect((await callDbiTool(service, 'search_schema', { question: 'x', tenant_id: 'other' }, caller('bob'))).isError).toBe(true);
   });
