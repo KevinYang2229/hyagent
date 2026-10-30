@@ -1,5 +1,8 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useId, useState, type FormEvent } from 'react';
 import { api, type DirectoryUser } from '../../api';
+
+/** 部門下拉的「新增部門」選項值；不會與真實部門名稱衝突 */
+const NEW_DEPARTMENT = '__new__';
 
 export default function UsersTab({ tenantId, onError }: { tenantId: string; onError: (error: unknown) => void }) {
   const [users, setUsers] = useState<DirectoryUser[]>([]);
@@ -9,7 +12,10 @@ export default function UsersTab({ tenantId, onError }: { tenantId: string; onEr
   const [error, setError] = useState('');
   const [id, setId] = useState('');
   const [name, setName] = useState('');
-  const [department, setDepartment] = useState('');
+  // 部門會被權限比對，改用下拉選既有部門，避免手打錯字默默產生新部門、權限對不上
+  const [deptChoice, setDeptChoice] = useState('');
+  const [newDept, setNewDept] = useState('');
+  const newDeptId = useId();
   const [email, setEmail] = useState('');
   const load = useCallback(async () => {
     setLoaded(false);
@@ -18,18 +24,23 @@ export default function UsersTab({ tenantId, onError }: { tenantId: string; onEr
     catch (err) { setError('目錄載入失敗，請重新整理'); onError(err); }
   }, [tenantId, onError]);
   useEffect(() => { void load(); }, [load]);
+  const departments = [...new Set(users.map((user) => user.department).filter((dep) => dep && dep !== '—'))]
+    .sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+  const typedDept = newDept.trim();
+  const department = deptChoice === NEW_DEPARTMENT ? typedDept : deptChoice;
+  const typedExisting = deptChoice === NEW_DEPARTMENT && departments.includes(typedDept);
   async function add(event: FormEvent) {
     event.preventDefault();
     if (busy || !loaded) return;
     setBusy(true); setError(''); setMessage('');
     try {
       const result = await api.addDirectoryUser(tenantId, {
-        id: id.trim(), name: name.trim(), department: department.trim() || '—',
+        id: id.trim(), name: name.trim(), department: department || '—',
         ...(email.trim() ? { email: email.trim() } : {}),
       });
       setUsers(result.users);
       setMessage(`已新增帳號 ${id.trim()}`);
-      setId(''); setName(''); setDepartment(''); setEmail('');
+      setId(''); setName(''); setDeptChoice(''); setNewDept(''); setEmail('');
     } catch (err) { setError(err instanceof Error ? err.message : '新增失敗，請稍後再試'); onError(err); }
     finally { setBusy(false); }
   }
@@ -52,10 +63,21 @@ export default function UsersTab({ tenantId, onError }: { tenantId: string; onEr
           <div className="form-grid">
           <label className="field"><span className="field-label">登入帳號</span><input className="input" value={id} onChange={(e) => setId(e.target.value)} required maxLength={200} disabled={busy} autoComplete="off" placeholder="例如 hyweb" /></label>
           <label className="field"><span className="field-label">顯示名稱</span><input className="input" value={name} onChange={(e) => setName(e.target.value)} required maxLength={200} disabled={busy} /></label>
-          <label className="field"><span className="field-label">部門（選填）</span><input className="input" value={department} onChange={(e) => setDepartment(e.target.value)} maxLength={200} disabled={busy} /></label>
+          <label className="field"><span className="field-label">部門（選填）</span>
+            <select className="select" value={deptChoice} onChange={(e) => setDeptChoice(e.target.value)} disabled={busy}>
+              <option value="">未指定</option>
+              {departments.map((dep) => <option key={dep} value={dep}>{dep}</option>)}
+              <option value={NEW_DEPARTMENT}>＋ 新增部門…</option>
+            </select>
+          </label>
+          {deptChoice === NEW_DEPARTMENT && <div className="field"><label className="field-label" htmlFor={newDeptId}>新部門名稱</label>
+            <input id={newDeptId} className="input" value={newDept} onChange={(e) => setNewDept(e.target.value)} required maxLength={200} disabled={busy} autoFocus />
+            {typedExisting && <span className="field-hint">已有此部門，將直接加入。</span>}
+            {!typedExisting && typedDept && <span className="field-hint">將建立新部門；權限需另外授權給此部門。</span>}
+          </div>}
           <label className="field"><span className="field-label">Email（選填）</span><input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} disabled={busy} /></label>
           </div>
-          <div className="form-actions"><button className="btn btn-primary" disabled={busy || !id.trim() || !name.trim()}>{busy ? '新增中…' : '新增使用者'}</button></div>
+          <div className="form-actions"><button className="btn btn-primary" disabled={busy || !id.trim() || !name.trim() || (deptChoice === NEW_DEPARTMENT && !typedDept)}>{busy ? '新增中…' : '新增使用者'}</button></div>
         </form>
       </>}
     </div>

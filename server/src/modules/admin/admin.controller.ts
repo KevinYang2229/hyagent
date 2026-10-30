@@ -415,11 +415,11 @@ export const adminController = {
     for (const b of bundles) assertGrantableScopes(b.scopes, tenant.id);
     const bundleIds = new Set(bundles.map((b) => b.id));
     if (bundleIds.size !== bundles.length) {
-      throw AppError.badRequest('套餐 id 不可重複');
+      throw AppError.badRequest('角色 id 不可重複');
     }
     for (const ids of [...Object.values(groupBundles), ...Object.values(accountBundles)]) {
       for (const id of ids) {
-        if (!bundleIds.has(id)) throw AppError.badRequest(`指派了未定義的套餐：${id}`);
+        if (!bundleIds.has(id)) throw AppError.badRequest(`指派了不存在的角色：${id}`);
       }
     }
 

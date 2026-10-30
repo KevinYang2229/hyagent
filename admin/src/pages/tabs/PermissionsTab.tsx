@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Checkbox, useToast } from '@hyagent/ui';
-import { api, type ScopeDef, type TenantPolicyView } from '../../api';
+import { api, type TenantPolicyView } from '../../api';
 import BundlesSection from './BundlesSection';
 import { formatDepartment, UNKNOWN_DEPARTMENT } from '../../components/department.util';
+import { groupCapabilities, policyChanged, type CapabilityCategory } from './permissions.util';
 
 /**
- * 權限分頁：以「能力」為中心——每個能力一列，直接選 未開通／全租戶／指定對象。
- * 對應資料模型（聯集）：全租戶＝grantedScopes；指定對象＝groups/accounts；未開通＝三處皆無。
- * 切到「全租戶」時清掉該能力的部門/帳號勾選（聯集下已無意義，留著徒增困惑）。
+ * 權限分頁：以「能力」為中心——每個能力一列，直接選 未開通／所有人／指定對象。
+ * 對應資料模型（聯集）：所有人＝grantedScopes；指定對象＝groups/accounts；未開通＝三處皆無。
+ * 切到「所有人」時清掉該能力的部門/帳號勾選（聯集下已無意義，留著徒增困惑）。
  */
 
 type Mode = 'off' | 'all' | 'some';
@@ -26,9 +27,17 @@ function stripScope(map: Record<string, string[]>, scope: string): Record<string
 
 const MODES: { value: Mode; label: string }[] = [
   { value: 'off', label: '未開通' },
-  { value: 'all', label: '全租戶' },
+  { value: 'all', label: '所有人' },
   { value: 'some', label: '指定對象' },
 ];
+
+/**
+ * 不可開放給所有人的能力：所有人（grantedScopes）會併給所有人含網站訪客，後端對知識庫標籤（kb:）與
+ * MCP 服務（mcp:）一律拒絕（見 server assertTenantGrantable），前端先鎖住避免整頁儲存失敗。
+ */
+function tenantWideBlocked(id: string): boolean {
+  return id.startsWith('kb:') || id.startsWith('mcp:');
+}
 
 /** 摘要最多列出幾個對象名稱，其餘以「等 N 個」帶過 */
 const SUMMARY_MAX_NAMES = 3;
@@ -41,13 +50,21 @@ function summarizeTargets(names: string[]): string {
 export default function PermissionsTab({
   tenantId,
   onError,
+  initialCategory = 'service',
+  onDirtyChange,
 }: {
   tenantId: string;
   onError: (e: unknown) => void;
+  /** 由其他分頁導過來時要先打開的分類（例：知識庫頁 → 知識庫標籤） */
+  initialCategory?: CapabilityCategory;
+  /** 未儲存狀態變化時通知外層，讓切換分頁時能先確認 */
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const toast = useToast();
   const [policy, setPolicy] = useState<TenantPolicyView | null>(null);
-  const [activeCategory, setActiveCategory] = useState('服務');
+  // 最後一次載入／儲存成功的內容，用來判斷是否有未儲存變更與「放棄變更」
+  const [baseline, setBaseline] = useState<TenantPolicyView | null>(null);
+  const [activeCategory, setActiveCategory] = useState<CapabilityCategory>(initialCategory);
   const [formQuery, setFormQuery] = useState('');
   const [formFilter, setFormFilter] = useState('all');
   const [formPage, setFormPage] = useState(1);
@@ -60,7 +77,9 @@ export default function PermissionsTab({
 
   const load = useCallback(async () => {
     try {
-      setPolicy(await api.getTenantPolicy(tenantId));
+      const loaded = await api.getTenantPolicy(tenantId);
+      setPolicy(loaded);
+      setBaseline(loaded);
     } catch (e) {
       onError(e);
     }
@@ -70,6 +89,26 @@ export default function PermissionsTab({
     void load();
   }, [load]);
 
+  const dirty = !!policy && !!baseline && policyChanged(policy, baseline);
+
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
+
+  // 離開分頁（unmount）時清掉外層的未儲存旗標
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
+
+  // 重整或關閉瀏覽器前提醒
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [dirty]);
+
   if (!policy)
     return (
       <div className="card">
@@ -77,18 +116,9 @@ export default function PermissionsTab({
       </div>
     );
 
-  const groups: { label: string; items: ScopeDef[] }[] = [
-    { label: '服務', items: policy.capabilities.filter((s) => s.id.startsWith('service:')) },
-    { label: '表單', items: policy.capabilities.filter((s) => s.id.startsWith('form:')) },
-    {
-      label: '外部能力',
-      items: policy.capabilities.filter(
-        (s) => !s.id.startsWith('service:') && !s.id.startsWith('form:'),
-      ),
-    },
-  ];
+  const groups = groupCapabilities(policy.capabilities);
 
-  /** 該能力目前的模式：全租戶 > 指定對象（含剛切換、尚未勾人）> 未開通 */
+  /** 該能力目前的模式：所有人 > 指定對象（含剛切換、尚未勾人）> 未開通 */
   const modeOf = (id: string): Mode => {
     if (policy.grantedScopes.includes(id)) return 'all';
     const inGroups = Object.values(policy.groups).some((v) => v.includes(id));
@@ -154,7 +184,7 @@ export default function PermissionsTab({
       if (!p) return p;
       const granted = p.grantedScopes.filter((s) => s !== id);
       if (mode === 'all') {
-        // 全租戶：進 grantedScopes，並清掉部門/帳號的殘留勾選
+        // 所有人：進 grantedScopes，並清掉部門/帳號的殘留勾選
         return {
           ...p,
           grantedScopes: [...granted, id],
@@ -192,6 +222,7 @@ export default function PermissionsTab({
         accountBundles: policy.accountBundles,
       });
       setPolicy(updated);
+      setBaseline(updated);
       toast.success('已儲存變更');
     } catch (e) {
       onError(e);
@@ -200,7 +231,13 @@ export default function PermissionsTab({
     }
   };
 
-  const forms = groups.find((group) => group.label === '表單')!.items;
+  const discard = () => {
+    setPolicy(baseline);
+    setSomeOverride(new Set());
+    setExpanded(new Set());
+  };
+
+  const forms = groups.find((group) => group.key === 'form')!.items;
   const hasFormGrant = (id: string) => modeOf(id) !== 'off' || bundleGrants(id).length > 0;
   const filteredForms = forms.filter((form) =>
     `${form.label} ${form.description ?? ''}`.toLocaleLowerCase().includes(formQuery.trim().toLocaleLowerCase()) &&
@@ -208,8 +245,8 @@ export default function PermissionsTab({
   );
   const formPages = Math.max(1, Math.ceil(filteredForms.length / 10));
   const currentFormPage = Math.min(formPage, formPages);
-  const activeGroup = groups.find((group) => group.label === activeCategory)!;
-  const visibleScopes = activeCategory === '表單'
+  const activeGroup = groups.find((group) => group.key === activeCategory)!;
+  const visibleScopes = activeCategory === 'form'
     ? filteredForms.slice((currentFormPage - 1) * 10, currentFormPage * 10)
     : activeGroup.items;
 
@@ -225,28 +262,33 @@ export default function PermissionsTab({
         <div>
           <div className="card-title">權限</div>
           <div className="card-desc">
-            先開通服務，再設定可用表單或外部能力。切換分類會保留尚未儲存的設定，完成後統一按「儲存」。
+            先開通服務，再設定可用表單、知識庫標籤或外部能力。切換分類會保留尚未儲存的設定，完成後統一按頁面底部的「儲存」。
           </div>
         </div>
       </div>
 
       <div className="permission-category-tabs assignment-tabs" role="group" aria-label="權限分類">
-        {groups.map((group) => <button key={group.label} type="button" aria-pressed={activeCategory === group.label}
-          onClick={() => setActiveCategory(group.label)}>{group.label}<span className="assignment-count-badge">{group.items.length}</span></button>)}
+        {groups.map((group) => <button key={group.key} type="button" aria-pressed={activeCategory === group.key}
+          onClick={() => setActiveCategory(group.key)}>{group.label}<span className="assignment-count-badge">{group.items.length}</span></button>)}
       </div>
-      <div className="card-body" aria-label={`${activeCategory}權限設定`}>
-        {activeCategory === '表單' && <>
+      <div className="card-body" aria-label={`${activeGroup.label}權限設定`}>
+        {activeCategory === 'kb' && (
+          <p className="row-sub" style={{ marginTop: 0 }}>
+            文件要同時「掛上標籤」且「標籤已授權給查詢者」才查得到。標籤在「知識庫」分頁建立並套用到文件。
+          </p>
+        )}
+        {activeCategory === 'form' && <>
           <div className="permission-form-guide">
             <div><strong>1. 開通填表申請</strong><span className="permission-step-status">{formServiceGranted ? '已有授權對象' : '尚未開通'}</span>
               <p className="row-sub">{formServiceGranted ? '使用者必須同時取得「填表申請」及個別表單權限，才能使用表單。' : '請先設定哪些人可以使用填表申請，再選擇允許的表單。既有表單設定會保留。'}</p>
             </div>
             <button type="button" className="btn btn-sm" onClick={() => {
-              setActiveCategory('服務');
+              setActiveCategory('service');
               requestAnimationFrame(() => document.getElementById('permission-service-form')?.scrollIntoView({ block: 'center', behavior: 'smooth' }));
             }}>{formServiceGranted ? '調整服務對象' : '前往開通服務'}</button>
           </div>
           <div className="permission-form-heading"><strong>2. 選擇可用表單</strong><span className="row-sub">已設定 {forms.filter((form) => hasFormGrant(form.id)).length} / {forms.length} 份</span></div>
-          <p className="row-sub">每份表單可分別授權。選擇「全租戶」仍需具備填表申請服務權限；角色授權會另列於表單下方。</p>
+          <p className="row-sub">每份表單可分別授權。選擇「所有人」仍需具備填表申請服務權限；角色授權會另列於表單下方。</p>
           <div className="assignment-toolbar permission-form-toolbar">
             <input className="input" aria-label="搜尋表單" placeholder="搜尋表單名稱或說明…" value={formQuery}
               onChange={(event) => { setFormQuery(event.target.value); setFormPage(1); }} />
@@ -276,9 +318,12 @@ export default function PermissionsTab({
                       <span style={{ fontWeight: 500 }}>{s.label}</span>
                       {s.description && <div className="row-sub">{s.description}</div>}
                       {s.id === 'service:form' && <div className="perm-summary">
-                        <button type="button" className="perm-summary-edit" onClick={() => setActiveCategory('表單')}>選擇可用表單（{forms.filter((form) => hasFormGrant(form.id)).length} / {forms.length}）</button>
+                        <button type="button" className="perm-summary-edit" onClick={() => setActiveCategory('form')}>選擇可用表單（{forms.filter((form) => hasFormGrant(form.id)).length} / {forms.length}）</button>
                       </div>}
-                      {mode === 'all' && <div className="perm-summary">租戶內所有人皆可使用</div>}
+                      {mode === 'all' && <div className="perm-summary">所有人皆可使用（含網站訪客）</div>}
+                      {tenantWideBlocked(s.id) && (
+                        <div className="row-sub">此項目若開放給所有人會連網站訪客一併開放，只能指定部門或帳號。</div>
+                      )}
                       {mode === 'some' && targetNames.length > 0 && (
                         <div className="perm-summary">
                           指定對象：{summarizeTargets(targetNames)}
@@ -309,7 +354,10 @@ export default function PermissionsTab({
                           key={m.value}
                           type="button"
                           data-mode={m.value}
-                          disabled={s.id.startsWith('form:') && !formServiceGranted}
+                          disabled={
+                            (s.id.startsWith('form:') && !formServiceGranted) ||
+                            (m.value === 'all' && tenantWideBlocked(s.id))
+                          }
                           aria-pressed={mode === m.value}
                           onClick={() => mode !== m.value && setMode(s.id, m.value)}
                         >
@@ -363,21 +411,36 @@ export default function PermissionsTab({
                 </li>
               );
             })}
-          {visibleScopes.length === 0 && <li className="assignment-empty">{activeCategory === '表單' && forms.length ? '找不到符合條件的表單，請調整搜尋或篩選。' : '目前沒有可設定的項目。'}</li>}
+          {visibleScopes.length === 0 && <li className="assignment-empty">{
+            activeCategory === 'form' && forms.length ? '找不到符合條件的表單，請調整搜尋或篩選。'
+              : activeCategory === 'kb' ? '尚未建立知識庫標籤，請先到「知識庫」分頁建立標籤。'
+                : '目前沒有可設定的項目。'}</li>}
           </ul>
-          {activeCategory === '表單' && <nav className="assignment-pagination" aria-label="表單分頁">
+          {activeCategory === 'form' && <nav className="assignment-pagination" aria-label="表單分頁">
             <span className="row-sub" aria-live="polite">共 {filteredForms.length} 份 · 第 {currentFormPage} / {formPages} 頁 · 每頁 10 份</span>
             <div><button type="button" className="btn btn-sm" disabled={currentFormPage === 1} onClick={() => setFormPage(currentFormPage - 1)}>上一頁</button>
               <button type="button" className="btn btn-sm" disabled={currentFormPage === formPages} onClick={() => setFormPage(currentFormPage + 1)}>下一頁</button></div>
           </nav>}
         </div>
 
-      <div className="card-body" style={{ borderTop: '1px solid var(--border-color)' }}>
-        <button className="btn btn-primary" onClick={save} disabled={saving}>
-          儲存
-        </button>
-      </div>
     </div>
+
+      {/* 角色與權限共用一顆儲存鈕；固定在底部，捲到哪都看得到是否還有未儲存的變更 */}
+      <div className={`perm-savebar${dirty ? ' is-dirty' : ''}`} role="region" aria-label="儲存權限">
+        <span className="perm-savebar-status" aria-live="polite">
+          {dirty ? '有未儲存的變更，按「儲存」後才會生效。' : '所有變更皆已儲存。'}
+        </span>
+        <div className="perm-savebar-actions">
+          {dirty && (
+            <button type="button" className="btn btn-ghost btn-sm" onClick={discard} disabled={saving}>
+              放棄變更
+            </button>
+          )}
+          <button type="button" className="btn btn-primary btn-sm" onClick={save} disabled={saving || !dirty}>
+            {saving ? '儲存中…' : '儲存'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { useToast } from '@hyagent/ui';
+import { Dialog, useToast } from '@hyagent/ui';
 import { api, UnauthorizedError, type Tenant } from '../api';
 import { useAuth } from '../auth';
 import AppLayout from '../components/AppLayout';
@@ -12,6 +12,7 @@ import UsageTab from './tabs/UsageTab';
 import FormsTab from './tabs/FormsTab';
 import KnowledgeTab from './tabs/KnowledgeTab';
 import PermissionsTab from './tabs/PermissionsTab';
+import { isCapabilityCategory } from './tabs/permissions.util';
 import AuditTab from './tabs/AuditTab';
 import FeedbackTab from './tabs/FeedbackTab';
 import ReportsTab from './tabs/ReportsTab';
@@ -59,7 +60,19 @@ export default function TenantDetailPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const rawTab = searchParams.get('tab');
   const tab: TabKey = TABS.some((t) => t.key === rawTab) ? (rawTab as TabKey) : 'settings';
-  const setTab = (next: TabKey) => setSearchParams({ tab: next }, { replace: true });
+  const rawCategory = searchParams.get('category');
+  const permissionCategory = isCapabilityCategory(rawCategory) ? rawCategory : undefined;
+  // 權限分頁有未儲存變更時，離開前先確認（其他分頁各自即時儲存，不需要）
+  const [permissionsDirty, setPermissionsDirty] = useState(false);
+  const [pendingLeave, setPendingLeave] = useState<(() => void) | null>(null);
+  const guardLeave = (action: () => void) => {
+    if (permissionsDirty) setPendingLeave(() => action);
+    else action();
+  };
+  const setTab = (next: TabKey) => {
+    if (next === tab) return;
+    guardLeave(() => setSearchParams({ tab: next }, { replace: true }));
+  };
 
   const handleErr = useCallback(
     (e: unknown) => {
@@ -97,7 +110,7 @@ export default function TenantDetailPage() {
       crumb="租戶"
       title={tenant?.name ?? '載入中…'}
       actions={
-        <button className="btn btn-ghost btn-sm" onClick={() => navigate('/')}>
+        <button className="btn btn-ghost btn-sm" onClick={() => guardLeave(() => navigate('/'))}>
           <IconBack />
           租戶清單
         </button>
@@ -127,7 +140,14 @@ export default function TenantDetailPage() {
           {tab === 'forms' && <FormsTab tenantId={tenant.id} onError={handleErr} />}
           {tab === 'knowledge' && <KnowledgeTab tenantId={tenant.id} onError={handleErr} />}
           {tab === 'database' && <DatabaseTab key={tenant.id} tenantId={tenant.id} onError={handleErr} />}
-          {tab === 'permissions' && <PermissionsTab tenantId={tenant.id} onError={handleErr} />}
+          {tab === 'permissions' && (
+            <PermissionsTab
+              tenantId={tenant.id}
+              onError={handleErr}
+              initialCategory={permissionCategory}
+              onDirtyChange={setPermissionsDirty}
+            />
+          )}
           {tab === 'settings' && <SettingsTab tenant={tenant} onSaved={handleSaved} onError={handleErr} />}
           {tab === 'webhook' && <WebhookTab tenantId={tenant.id} onError={handleErr} />}
           {tab === 'usage' && <UsageTab tenant={tenant} onError={handleErr} />}
@@ -140,6 +160,23 @@ export default function TenantDetailPage() {
             />
           )}
           {tab === 'audit' && <AuditTab tenantId={tenant.id} onError={handleErr} />}
+
+          <Dialog
+            isOpen={!!pendingLeave}
+            title="放棄未儲存的權限變更？"
+            confirmText="放棄並離開"
+            cancelText="留在此頁"
+            confirmVariant="danger"
+            onClose={() => setPendingLeave(null)}
+            onConfirm={() => {
+              const leave = pendingLeave;
+              setPendingLeave(null);
+              setPermissionsDirty(false);
+              leave?.();
+            }}
+          >
+            權限頁有尚未儲存的變更，離開後這些變更會遺失。
+          </Dialog>
         </>
       )}
     </AppLayout>

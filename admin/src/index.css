@@ -438,7 +438,7 @@ a {
   @apply bg-[var(--card-bg)] text-[var(--primary-color)] shadow-[var(--shadow-xs)];
 }
 
-/* ---- 權限模式三段切換（未開通／全租戶／指定對象） ---- */
+/* ---- 權限模式三段切換（未開通／所有人／指定對象） ---- */
 .mode-seg {
   @apply inline-flex shrink-0 gap-[2px] rounded-[10px] border border-[var(--border-color)] bg-[var(--bg-secondary)] p-[3px];
 }
@@ -1170,6 +1170,11 @@ li:not(.is-empty) > .feedback-bar { background: var(--bg-secondary); }
 .permission-form-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 16px; font-size: 13px; }
 .permission-form-toolbar { margin-block: 12px; }
 .mode-seg button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* 權限頁底部儲存列：固定在視窗底部，有未儲存變更時以主色框線提示 */
+.perm-savebar { position: sticky; bottom: 0; z-index: 4; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; padding: 10px 16px; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 10px; box-shadow: var(--shadow-sm); font-size: 13px; color: var(--text-secondary); }
+.perm-savebar.is-dirty { border-color: var(--primary-color); background: rgba(var(--primary-color-rgb), 0.06); color: var(--text-primary); font-weight: 500; }
+.perm-savebar-actions { display: flex; gap: 8px; }
 
 /* 設定頁共用節奏：卡片間 14px、內容 16px、欄位間 12px。 */
 .settings-stack { display: grid; gap: 14px; }

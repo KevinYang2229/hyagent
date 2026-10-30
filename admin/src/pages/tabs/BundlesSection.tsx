@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Checkbox } from '@hyagent/ui';
-import type { ScopeDef, SkillBundle, TenantPolicyView } from '../../api';
+import type { SkillBundle, TenantPolicyView } from '../../api';
 import { formatDepartment, UNKNOWN_DEPARTMENT } from '../../components/department.util';
+import { groupCapabilities } from './permissions.util';
 
 /** 對象採分頁，角色只在編輯時展開，避免雙向增長的矩陣。 */
 export function AssignmentSection({ policy, onToggle }: {
@@ -100,16 +101,7 @@ export default function BundlesSection({
   // 編輯中的角色（null = 沒在編輯；id 為空字串 = 新增）
   const [draft, setDraft] = useState<SkillBundle | null>(null);
 
-  const scopeGroups: { label: string; items: ScopeDef[] }[] = [
-    { label: '服務', items: policy.capabilities.filter((s) => s.id.startsWith('service:')) },
-    { label: '表單', items: policy.capabilities.filter((s) => s.id.startsWith('form:')) },
-    {
-      label: '外部能力',
-      items: policy.capabilities.filter(
-        (s) => !s.id.startsWith('service:') && !s.id.startsWith('form:'),
-      ),
-    },
-  ].filter((g) => g.items.length > 0);
+  const scopeGroups = groupCapabilities(policy.capabilities).filter((g) => g.items.length > 0);
 
   const startNew = () =>
     setDraft({ id: `b-${Math.random().toString(16).slice(2, 8)}`, name: '', scopes: [] });
@@ -157,7 +149,7 @@ export default function BundlesSection({
         <div>
           <div className="card-title">角色能力</div>
           <div className="card-desc">
-            以具名角色組合可用 Skill，指派給部門或帳號。儲存權限後生效；與其他授權取聯集，移除角色不會撤銷其他來源的權限。
+            把常用的能力組成角色，再指派給部門或帳號。按頁面底部「儲存」後生效。權限會疊加：移除角色不會收回從其他地方取得的權限。
           </div>
         </div>
         <div className="toolbar">
@@ -185,9 +177,7 @@ export default function BundlesSection({
           {policy.bundles.map((b) => (
             <li key={b.id} className="row">
               <div className="row-main">
-                <div className="row-title">
-                  {b.name} <code style={{ fontSize: 12, opacity: 0.6 }}>{b.id}</code>
-                </div>
+                <div className="row-title">{b.name}</div>
                 <div className="row-sub">
                   {b.scopes.length === 0 ? '（尚未設定能力）' : b.scopes.map(scopeLabel).join('、')}
                 </div>
@@ -226,11 +216,11 @@ export default function BundlesSection({
           </div>
           {scopeGroups.map((g) => {
             // 表單掛在「填表申請」skill 底下：service:form 沒勾時 form:* 是死授權，鎖住避免誤設
-            const isFormGroup = g.label === '表單';
+            const isFormGroup = g.key === 'form';
             const hasFormService = draft.scopes.includes('service:form');
             const groupDisabled = isFormGroup && !hasFormService;
             return (
-              <div key={g.label}>
+              <div key={g.key}>
                 <div className="row-sub" style={{ marginBottom: 4 }}>
                   {g.label}
                   {groupDisabled && (

@@ -94,14 +94,14 @@ export default function PoliciesSection({ serverId, tenantId, sources, onSaved, 
   async function savePrincipals() {
     const parsed = parseJson(principals);
     if (!parsed.ok || typeof parsed.value !== 'object' || parsed.value === null || Array.isArray(parsed.value)) {
-      setParseError((e) => ({ ...e, principals: parsed.ok ? '使用者目錄必須是物件（帳號 → 角色與屬性）' : parsed.error }));
+      setParseError((e) => ({ ...e, principals: parsed.ok ? '帳號角色與屬性必須是物件（帳號 → 角色與屬性）' : parsed.error }));
       return;
     }
     setParseError((e) => ({ ...e, principals: undefined }));
     setBusy(true);
     try {
       setPrincipals(pretty(await api.dbiPutPrincipals(serverId, tenantId, parsed.value)));
-      onSaved('已儲存使用者目錄');
+      onSaved('已儲存帳號角色與屬性');
     } catch (e) {
       onError(e);
     } finally {
@@ -130,7 +130,7 @@ export default function PoliciesSection({ serverId, tenantId, sources, onSaved, 
         <div className="card-body">
           <ul className="field-hint" style={{ margin: '0 0 12px', paddingLeft: 18, lineHeight: 2.1 }}>
             <li>
-              <span className="code-pill">principals.roles</span>：角色。在「權限」分頁把 <span className="code-pill">mcp:{serverId}:角色</span> 授予部門或帳號即可擁有該角色；也可寫在下方使用者目錄。
+              <span className="code-pill">principals.roles</span>：角色。在「權限」分頁把 <span className="code-pill">mcp:{serverId}:角色</span> 授予部門或帳號即可擁有該角色；也可寫在下方「帳號角色與屬性」。
             </li>
             <li>
               <span className="code-pill">columns</span>：允許的欄位；<span className="code-pill">"*"</span> 只涵蓋公開、內部欄位。
@@ -192,19 +192,19 @@ export default function PoliciesSection({ serverId, tenantId, sources, onSaved, 
       <div className="card">
         <div className="card-head">
           <div>
-            <div className="card-title">使用者目錄</div>
-            <div className="card-desc">補充角色與資料列範圍屬性（如部門）。格式：帳號 → {'{ "roles": [...], "attributes": { "departmentId": 1 } }'}；帳號需與 SSO 登入的使用者 ID 相同。</div>
+            <div className="card-title">帳號角色與屬性</div>
+            <div className="card-desc">只用於資料庫查詢，與「使用者目錄」分頁的人員名單不同。補充角色與資料列範圍屬性（如部門）。格式：帳號 → {'{ "roles": [...], "attributes": { "departmentId": 1 } }'}；帳號需與 SSO 登入的使用者 ID 相同。</div>
           </div>
         </div>
         <div className="card-body">
           <label className="field">
-            <span className="field-label">使用者目錄（JSON 物件）</span>
-            <textarea className="textarea dbi-json" aria-label="使用者目錄 JSON" style={{ minHeight: 200 }} value={principals} onChange={(e) => setPrincipals(e.target.value)} spellCheck={false} />
+            <span className="field-label">帳號角色與屬性（JSON 物件）</span>
+            <textarea className="textarea dbi-json" aria-label="帳號角色與屬性 JSON" style={{ minHeight: 200 }} value={principals} onChange={(e) => setPrincipals(e.target.value)} spellCheck={false} />
           </label>
           {parseError.principals && <div className="form-errors" role="alert">{parseError.principals}</div>}
           <div className="form-actions">
             <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => void savePrincipals()}>
-              儲存使用者目錄
+              儲存帳號角色與屬性
             </button>
           </div>
         </div>
