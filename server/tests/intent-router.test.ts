@@ -144,6 +144,23 @@ describe('intentRouter.route', () => {
     expect(r.viaLLM).toBe(true);
   });
 
+  it('agent 點黏中提出報告請求（沒有知識語氣詞）→ 交給 Haiku，不 0-token 續留 agent', async () => {
+    const t = tenantStore.createTenant('router-report-agent');
+    tenantStore.updateTenant(t.id, { grantedScopes: ['service:agent', 'service:report'] });
+    mockCreate.mockResolvedValue({ text: '{"intent":"report.generate","confidence":0.9}', toolCalls: [], stopReason: 'end_turn' });
+    const r = await intentRouter.route(
+      makeSession({ tenantId: t.id, activeServiceId: 'agent', messages: MID_CONV_MSGS }),
+      '產生工時統計報告',
+    );
+    expect(mockCreate).toHaveBeenCalledTimes(1);
+    expect(r).toEqual({ serviceId: 'report', viaLLM: true });
+
+    // 分類器判定不是報告 → 續留 agent
+    mockCreate.mockResolvedValue({ text: '{"intent":"none","confidence":0}', toolCalls: [], stopReason: 'end_turn' });
+    const stay = await intentRouter.route(makeSession({ tenantId: t.id, activeServiceId: 'agent', messages: MID_CONV_MSGS }), '產生工時統計報告');
+    expect(stay.serviceId).toBe('agent');
+  });
+
   it('填表中疑似語氣但 Haiku 判為表單意圖 → 續留 form', async () => {
     mockCreate.mockResolvedValue({
       text: '{"intent":"leave-request.apply","confidence":0.85}',
