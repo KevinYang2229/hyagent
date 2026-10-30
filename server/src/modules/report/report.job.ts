@@ -13,6 +13,7 @@ import { normalizeLocale } from '@/lib/locale';
 import { buildOutline } from './report.outline';
 import { composeSection } from './report.compose';
 import { composeSynthesis } from './report.synthesis';
+import { buildDataReport } from './report.data';
 import { renderers } from './report.render';
 import { reportStore } from './report.store';
 import type { ReportDoc, ReportJob, ReportSection } from './report.types';
@@ -25,7 +26,11 @@ export interface ReportJobDeps {
   outline?: typeof buildOutline;
   compose?: typeof composeSection;
   synthesize?: typeof composeSynthesis;
+  dataReport?: typeof buildDataReport;
 }
+
+/** 報告的資料來源：knowledge＝知識庫檢索；database＝依主題自動查資料庫（Database Intelligence） */
+export type ReportSource = 'knowledge' | 'database';
 
 export interface StartReportParams {
   tenantId: string;
@@ -33,6 +38,7 @@ export interface StartReportParams {
   topic: string;
   locale?: string;
   llm: LLMProvider;
+  source?: ReportSource;
 }
 
 export function listReportJobsByUser(tenantId: string, userId: string): ReportJob[] {
@@ -70,6 +76,7 @@ export function startReportJob(params: StartReportParams, deps: ReportJobDeps = 
   const outline = deps.outline ?? buildOutline;
   const compose = deps.compose ?? composeSection;
   const synthesize = deps.synthesize ?? composeSynthesis;
+  const dataReport = deps.dataReport ?? buildDataReport;
 
   const job: ReportJob = {
     id: randomUUID(),
@@ -89,24 +96,37 @@ export function startReportJob(params: StartReportParams, deps: ReportJobDeps = 
     await Promise.resolve();
     try {
       job.status = 'outlining';
-      const plan = await outline(
-        params.tenantId, params.userId, params.topic, params.locale, params.llm,
-      );
-      job.totalSections = plan.sections.length;
-      job.status = 'composing';
-
-      // 逐節序列執行：併發會讓同租戶的 embedding / rerank 呼叫尖峰疊在一起，
-      // 而報告本來就是非同步任務，沒有必要用尖峰換那幾秒
+      let title: string;
       const sections: ReportSection[] = [];
-      // 跨節共用：自動補圖只看「最相關的表 + 欄位型別」，不記錄的話同一張表會被多節重複選中
-      const usedTables = new Set<string>();
-      for (const section of plan.sections) {
-        sections.push(
-          await compose(params.tenantId, params.userId, section, params.locale, params.llm, {
-            usedTables,
-          }),
+      if (params.source === 'database') {
+        // 查詢規劃與執行是同一個 tool-loop，沒有可預知的節數：查完才知道
+        const data = await dataReport({
+          tenantId: params.tenantId, userId: params.userId, topic: params.topic, locale: params.locale, llm: params.llm,
+        });
+        title = data.title;
+        sections.push(...data.sections);
+        job.totalSections = sections.length;
+        job.doneSections = sections.length;
+        job.status = 'composing';
+      } else {
+        const plan = await outline(
+          params.tenantId, params.userId, params.topic, params.locale, params.llm,
         );
-        job.doneSections += 1;
+        title = plan.title;
+        job.totalSections = plan.sections.length;
+        job.status = 'composing';
+
+        // 逐節序列執行：併發會讓同租戶的 embedding / rerank 呼叫尖峰疊在一起，
+        // 而報告本來就是非同步任務，沒有必要用尖峰換那幾秒
+        // 跨節共用：自動補圖只看「最相關的表 + 欄位型別」，不記錄的話同一張表會被多節重複選中
+        const usedTables = new Set<string>();
+        for (const section of plan.sections) {
+          sections.push(
+            await compose(params.tenantId, params.userId, section, params.locale, params.llm, {
+              usedTables,
+            }),
+          );
+          job.doneSections += 1;
       }
 
       /*
@@ -119,9 +139,10 @@ export function startReportJob(params: StartReportParams, deps: ReportJobDeps = 
         params.tenantId, params.topic, sections, params.locale, params.llm,
       );
       if (synthesis) sections.push(synthesis);
+      }
 
       // 全部節都零命中：流程成功但沒有內容可交付，不產檔
-      if (sections.every((s) => s.hits === 0)) {
+      if (sections.length === 0 || sections.every((s) => s.hits === 0)) {
         job.status = 'empty';
         job.finishedAt = new Date().toISOString();
         logger.info({ jobId: job.id, tenantId: params.tenantId }, 'report job empty');
@@ -129,14 +150,14 @@ export function startReportJob(params: StartReportParams, deps: ReportJobDeps = 
       }
 
       const doc: ReportDoc = {
-        title: plan.title,
+        title,
         topic: params.topic,
         locale: normalizeLocale(params.locale),
         generatedAt: new Date().toISOString(),
         sections,
       };
 
-      const slug = slugify(plan.title);
+      const slug = slugify(title);
       /*
        * 單一格式失敗不得讓整份報告作廢。PDF 要有 Chromium 才印得出來，而那是部署環境的
        * 條件、不是報告本身的問題——缺了它，md 與 html 仍然是完整可用的產出。
