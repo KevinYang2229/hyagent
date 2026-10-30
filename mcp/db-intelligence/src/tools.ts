@@ -99,11 +99,18 @@ export interface DbiToolResult {
 const MAX_DISPLAY_COLUMNS = 12;
 const TABLE_TOOLS = new Set(['execute_safe_query', 'get_query_result']);
 
-/** 查詢結果畫成表格；沒有資料或欄位太多時不畫 */
+const isNumber = (v: unknown) => (typeof v === 'number' && Number.isFinite(v)) || (typeof v === 'string' && /^-?\d+(\.\d+)?$/.test(v));
+
+/**
+ * 查詢結果畫成表格；沒有資料或欄位太多時不畫。
+ * 只有一列且全是數字（如「部門數 15」）是單一統計值，由模型用文字回答即可：
+ * 一個問題拆成數個查詢時，否則會冒出好幾張只有一格的表格，看起來像分次回答。
+ */
 export function tableDisplay(data: Record<string, unknown>): Record<string, unknown> | undefined {
   const { columns, column_labels: labels, rows } = data as { columns?: unknown; column_labels?: unknown; rows?: unknown };
   if (!Array.isArray(columns) || !Array.isArray(rows) || rows.length === 0) return undefined;
   if (columns.length === 0 || columns.length > MAX_DISPLAY_COLUMNS) return undefined;
+  if (rows.length === 1 && columns.every((c) => isNumber((rows[0] as Record<string, unknown>)?.[String(c)]))) return undefined;
   const labelOf = (i: number) => (Array.isArray(labels) && typeof labels[i] === 'string' && labels[i] ? (labels[i] as string) : String(columns[i]));
   return { type: 'table', rows: 'rows', columns: columns.map((c, i) => ({ key: String(c), label: labelOf(i) })) };
 }

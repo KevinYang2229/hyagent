@@ -234,6 +234,8 @@ describe('MCP 工具層', () => {
     expect(ok.display).toEqual({ type: 'table', rows: 'rows', columns: [{ key: 'name', label: '專案名稱' }] });
     executor.rows = [];
     expect((await callDbiTool(service, 'execute_safe_query', { query_plan: plan() }, caller('bob'))).display).toBeUndefined();
+    executor.rows = [['15']];
+    expect((await callDbiTool(service, 'execute_safe_query', { query_plan: plan({ select: [{ agg: 'count' }] }) }, caller('bob'))).display).toBeUndefined();
     expect((await callDbiTool(service, 'search_schema', { question: 'x' }, caller('bob'))).display).toBeUndefined();
     expect((await callDbiTool(service, 'drop_table', {}, caller('bob'))).isError).toBe(true);
     expect((await callDbiTool(service, 'search_schema', { question: 'x', tenant_id: 'other' }, caller('bob'))).isError).toBe(true);
