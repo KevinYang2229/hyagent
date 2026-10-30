@@ -413,6 +413,8 @@ export interface TableBlock {
   title?: string;
   columns: TableColumn[];
   rows: Record<string, string | number | null>[];
+  /** 使用者本輪要求匯出／下載時才為 true，前端據此顯示下載按鈕 */
+  downloadable?: boolean;
 }
 
 /** 回覆中的畫面區塊；目前只有表格 */

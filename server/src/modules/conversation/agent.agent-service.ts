@@ -34,6 +34,13 @@ import { runToolLoop } from './tool-loop';
 /** 開放式多步驟任務（跨工具查詢、彙整、MCP、出錯重試）比填表需要更多往返。 */
 const AGENT_MAX_ITERATIONS = 10;
 
+/** 使用者要求匯出／下載資料：本輪產生的表格才提供下載 */
+const EXPORT_REQUEST_RE = /匯出|導出|下載|輸出成|存成|轉成\s*(excel|csv|檔)|\bexport\b|\bdownload\b|\bcsv\b|\bexcel\b/i;
+
+export function isExportRequest(text: string): boolean {
+  return EXPORT_REQUEST_RE.test(text);
+}
+
 /** Anthropic 上限 128、OpenAI 上限 64，取交集。 */
 const LLM_TOOL_NAME_RE = /^[a-zA-Z0-9_-]{1,64}$/;
 
@@ -51,6 +58,7 @@ function buildSystemPrompt(userId: string, locale?: string, extraLines: string[]
     '- 只處理與公司系統或知識庫相關的任務；純閒聊、與任何服務無關的問題請禮貌婉拒。',
     '- 寫入類工具（寄信、預約、建立或修改資料等）呼叫後不會立即執行：系統會把內容做成確認卡片給使用者。你要用一兩句話說明即將執行的內容並請使用者確認，切勿宣稱已完成。',
     '- 工具結果標示已以表格或確認卡片顯示時，使用者已經看得到每一筆明細：回覆只用一兩句話點出重點（例如哪幾項需要注意），不要用條列或表格把明細再寫一遍。',
+    '- 使用者要求匯出或下載資料時，重新呼叫查詢工具取得資料：系統只在本輪產生的表格提供下載按鈕。不要主動提供或提及下載。',
     '- 使用者問申請/簽核進度時：用 oa_listMyRequests 列出他的申請、oa_getApprovalStatus 查特定單號的關卡；如實轉述查詢結果，查無就說查無。要催辦時，用 email_send 擬催辦信（不確定收件人就先問使用者）。',
     '- 需要寄信時：呼叫 email_send 並帶上完整收件人、主旨、內文；系統會先請使用者確認才寄出。',
     untrustedDataRule(locale),
@@ -145,6 +153,7 @@ export const agentAgentService: AgentService = {
     const toolTrace: { name: string; ok: boolean }[] = [];
     let model: string | undefined;
     const blocks: DisplayBlock[] = [];
+    const downloadable = isExportRequest(userText);
 
     await toolRegistry.prepare(ctx);
     const { llmTools, idByLlmName } = exposeTools(toolRegistry.availableFor(ctx));
@@ -187,7 +196,7 @@ export const agentAgentService: AgentService = {
           if (display !== undefined) {
             const block = buildDisplayBlock(display, data);
             if (block) {
-              blocks.push(block);
+              blocks.push(downloadable ? { ...block, downloadable: true } : block);
               shown = true;
             } else {
               logger.warn({ toolId: realId }, 'invalid display hint ignored');

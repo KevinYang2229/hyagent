@@ -50,3 +50,13 @@ describe('tableToCsv', () => {
     expect(tableToCsv(tricky).split('\r\n')).toEqual(['A', '"x,""y"""', '', "'=SUM(1)", '-3']);
   });
 });
+
+describe('下載按鈕', () => {
+  it('預設不顯示；使用者要求匯出（downloadable）才顯示', () => {
+    const { rerender } = render(<DisplayBlockView block={block} />);
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    rerender(<DisplayBlockView block={{ ...block, downloadable: true }} />);
+    expect(screen.getByRole('button')).toBeInTheDocument();
+  });
+});
+

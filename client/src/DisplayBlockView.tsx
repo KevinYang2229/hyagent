@@ -70,7 +70,7 @@ export function DisplayBlockView({ block }: { block: DisplayBlock }) {
           </tbody>
         </table>
       </div>
-      {block.rows.length > 0 && (
+      {block.downloadable && block.rows.length > 0 && (
         <div className="display-block-actions">
           <button type="button" className="display-block-export" onClick={() => downloadCsv(block)}>
             {t('block.downloadCsv')}

@@ -1,6 +1,6 @@
 /** Agent 回覆帶表格：LLM 只拿到資料（含附註），表格進 blocks；壞的顯示提示不影響回覆。 */
 import type { LLMProvider, LLMResult } from '@/lib/llm/types';
-import { agentAgentService } from '@/modules/conversation/agent.agent-service';
+import { agentAgentService, isExportRequest } from '@/modules/conversation/agent.agent-service';
 import type { Session } from '@/modules/conversation/conversation.types';
 import { registerTool, toolOutput } from '@/modules/tools';
 import { TABLE_SHOWN_NOTE } from '@/modules/display/display-block';
@@ -65,6 +65,19 @@ describe('Agent 表格區塊', () => {
     expect(tr.result).toEqual({ items });
     expect(tr.note).toBe(TABLE_SHOWN_NOTE);
     expect(JSON.stringify(tr)).not.toContain('columns');
+  });
+
+  it('使用者要求匯出時表格才可下載', async () => {
+    const t = tenantStore.createTenant('agent-blocks-export');
+    tenantStore.updateTenant(t.id, { grantedScopes: ['service:agent'] });
+    const run = (text: string) => agentAgentService.handleTurn(session(t.id), text, scripted([
+      res({ toolCalls: [{ id: 't1', name: 'test_stockTable', input: {} }], stopReason: 'tool_use' }),
+      res({ text: '好的。' }),
+    ]));
+    expect((await run('查庫存')).blocks![0].downloadable).toBeUndefined();
+    expect((await run('把庫存匯出成 Excel')).blocks![0].downloadable).toBe(true);
+    expect(isExportRequest('download the list')).toBe(true);
+    expect(isExportRequest('各部門有幾人')).toBe(false);
   });
 
   it('顯示提示不合法 → 沒有 blocks、沒有附註，回覆照常', async () => {
