@@ -84,7 +84,16 @@ export default function AuditSection({ serverId, tenantId, onError }: Props) {
                   <span className={`badge ${STATUS[e.status].badge}`}>{STATUS[e.status].label}</span>
                   {e.reason_code && <div className="muted" style={{ fontSize: 12 }}>{e.reason_code}</div>}
                 </td>
-                <td>{e.datasets?.join('、') ?? '—'}</td>
+                <td>
+                  {e.datasets?.join('、') ?? '—'}
+                  {e.sensitive_columns?.length ? (
+                    <div>
+                      <span className="badge badge-warn" title={e.sensitive_columns.join('、')}>
+                        敏感欄位 {e.sensitive_columns.length}
+                      </span>
+                    </div>
+                  ) : null}
+                </td>
                 <td className="muted">{e.policy_ids?.join('、') ?? '—'}</td>
                 <td>
                   {e.row_count ?? '—'}

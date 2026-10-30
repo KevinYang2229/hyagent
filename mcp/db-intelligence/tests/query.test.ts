@@ -254,3 +254,67 @@ describe('結構與型別驗證', () => {
     expect(q.params[0]).toEqual([1, 2]);
   });
 });
+
+describe('敏感度：「限制」欄位只能統計或遮罩後顯示', () => {
+  // salary 改為「限制」；另給 HR 一條沒有 aggregateOnly、沒有 minGroupSize 的寬鬆政策，驗證規則不靠政策寫對
+  const restricted = applyCatalogReview(catalog, {
+    datasets: [
+      {
+        id: 'public.employee_salary',
+        columns: { salary: { sensitivity: 'restricted' }, employee_name: { isQueryable: true, sensitivity: 'internal' } },
+        metrics: [{ key: 'salary_k', description: '月薪（千元）', expression: { op: 'div', args: [{ column: 'salary' }, { number: 1000 }] } }],
+      },
+    ],
+  });
+  const loose: AccessPolicy = {
+    id: 'hr-loose',
+    tenantId: 'demo',
+    dataSourceId: 'ds_project_01',
+    dataset: 'public.employee_salary',
+    principals: { users: [], roles: ['hr'] },
+    columns: ['*', 'salary'],
+    masked: {},
+    rowScope: [],
+    aggregateOnly: false,
+  };
+  const c = (policies: AccessPolicy[] = [loose]) => ctx('hana', { catalog: restricted, policies });
+  const p = (x: Partial<QueryPlanInput>) => plan({ dataset: 'employee_salary', ...x });
+
+  it('平均、加總可以，且強制每組至少 3 筆；最大／最小值不行', () => {
+    const r = resolveQuery(p({ select: [{ field: 'department_id' }, { field: 'salary', agg: 'avg' }], group_by: [{ field: 'department_id' }] }), c());
+    expect(r.minGroupSize).toBe(3);
+    expect(compileQuery(r).sql).toContain('HAVING count(*) >= $1');
+    expect(r.sensitiveColumns).toEqual(['employee_salary.salary']);
+    for (const agg of ['max', 'min'] as const) {
+      expect(code(() => resolveQuery(p({ select: [{ field: 'salary', agg }] }), c()))).toBe('QUERY_POLICY_DENIED');
+    }
+  });
+
+  it('政策的 minGroupSize 較大時以政策為準', () => {
+    const r = resolveQuery(p({ select: [{ field: 'salary', agg: 'sum' }] }), c([{ ...loose, minGroupSize: 5 }]));
+    expect(r.minGroupSize).toBe(5);
+  });
+
+  it('不能直接顯示、篩選或分組；遮罩後可以顯示', () => {
+    expect(code(() => resolveQuery(p({ select: [{ field: 'employee_name' }, { field: 'salary' }] }), c()))).toBe('QUERY_POLICY_DENIED');
+    expect(code(() => resolveQuery(p({ select: [{ agg: 'count' }], filters: [{ field: 'salary', op: 'gt', value: 80000 }] }), c()))).toBe('QUERY_POLICY_DENIED');
+    expect(code(() => resolveQuery(p({ select: [{ field: 'salary' }, { agg: 'count' }], group_by: [{ field: 'salary' }] }), c()))).toBe('QUERY_POLICY_DENIED');
+    const masked = resolveQuery(p({ select: [{ field: 'employee_name' }, { field: 'salary' }] }), c([{ ...loose, masked: { salary: 'redact' } }]));
+    expect(masked.select.map((s) => s.mask)).toEqual([undefined, 'redact']);
+  });
+
+  it('計算指標不能用來繞過：直接顯示引用限制或遮罩欄位的指標一律拒絕', () => {
+    expect(code(() => resolveQuery(p({ select: [{ field: 'salary_k' }] }), c([{ ...loose, masked: { salary: 'redact' } }])))).toBe('QUERY_POLICY_DENIED');
+    // 一般（非限制）欄位設了遮罩，同樣不能經由指標輸出原值
+    const internal = applyCatalogReview(restricted, { datasets: [{ id: 'public.employee_salary', columns: { salary: { sensitivity: 'internal' } } }] });
+    expect(code(() => resolveQuery(p({ select: [{ field: 'salary_k' }] }), ctx('hana', { catalog: internal, policies: [{ ...loose, masked: { salary: 'partial' } }] })))).toBe('QUERY_POLICY_DENIED');
+    // 統計指標可以
+    expect(resolveQuery(p({ select: [{ field: 'salary_k', agg: 'avg' }] }), c()).minGroupSize).toBe(3);
+  });
+
+  it('機密欄位照常可查，但列入敏感欄位供稽核標記', () => {
+    const r = resolveQuery(plan({ dataset: 'employee_salary', select: [{ field: 'salary', agg: 'avg' }] }), ctx('hana'));
+    expect(r.sensitiveColumns).toEqual(['employee_salary.salary']);
+    expect(resolveQuery(plan({}), ctx('bob')).sensitiveColumns).toEqual([]);
+  });
+});

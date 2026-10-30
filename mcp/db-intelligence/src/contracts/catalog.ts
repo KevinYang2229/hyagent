@@ -48,6 +48,12 @@ export type TypeCategory = (typeof TYPE_CATEGORIES)[number];
 /** 由寬到嚴；confidential 以上不會被 columns: ['*'] 涵蓋，必須在政策中逐欄列出 */
 export const SENSITIVITIES = ['public', 'internal', 'confidential', 'restricted'] as const;
 export type Sensitivity = (typeof SENSITIVITIES)[number];
+/** 敏感欄位：政策明確開放時須確認、查詢稽核會標記 */
+export const SENSITIVE_LEVELS: ReadonlySet<Sensitivity> = new Set(['confidential', 'restricted']);
+/** 聚合「限制」欄位時每組最少筆數（政策的 minGroupSize 較大時以政策為準） */
+export const RESTRICTED_MIN_GROUP_SIZE = 3;
+/** 「限制」欄位可用的聚合；最大／最小值會直接得到某一筆的確切數值，不在其中 */
+export const RESTRICTED_AGGREGATES: readonly string[] = ['count', 'count_distinct', 'sum', 'avg'];
 
 const approvalStatus = z.enum(['pending', 'approved', 'rejected']);
 const descriptionStatus = z.enum(['none', 'suggested', 'approved']);

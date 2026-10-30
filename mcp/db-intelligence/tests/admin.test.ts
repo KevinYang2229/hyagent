@@ -161,6 +161,27 @@ describe('政策與使用者目錄', () => {
     expect((await call('PUT', '/tenants/other/policies', { policies: [{ ...policy, tenantId: 'other' }] })).status).toBe(400);
   });
 
+  it('新開放機密／限制欄位要確認：試算不存檔、未確認回 409、確認後儲存、沒變動不再詢問', async () => {
+    const salary = { ...policy, id: 'hr-salary-detail', dataset: 'public.employee_salary', principals: { roles: ['hr'] }, columns: ['department_id', 'salary'] };
+    const existing = state.tenantPolicies('demo').policies;
+    const next = [...existing, salary];
+    const expected = [{ policyId: 'hr-salary-detail', dataset: 'public.employee_salary', column: 'salary', sensitivity: 'restricted' }];
+
+    const dry = await call('PUT', '/tenants/demo/policies?dry_run=1', { policies: next });
+    expect(dry.body.data).toMatchObject({ saved: false, sensitive: expected });
+    expect(state.tenantPolicies('demo').policies).toHaveLength(existing.length);
+
+    const refused = await call('PUT', '/tenants/demo/policies', { policies: next });
+    expect(refused).toMatchObject({ status: 409, body: { error: { code: 'SENSITIVE_COLUMNS_UNCONFIRMED', details: { sensitive: expected } } } });
+    expect(state.tenantPolicies('demo').policies).toHaveLength(existing.length);
+
+    const ok = await call('PUT', '/tenants/demo/policies', { policies: next, confirmSensitiveColumns: true });
+    expect(ok.body.data).toMatchObject({ saved: true, sensitive: expected });
+    // 既有的 hr-salary-statistics 也列了 salary，但不是新開放的，所以不出現在清單裡
+    const again = await call('PUT', '/tenants/demo/policies', { policies: state.tenantPolicies('demo').policies });
+    expect(again.body.data).toMatchObject({ saved: true, sensitive: [] });
+  });
+
   it('使用者目錄', async () => {
     const r = await call('PUT', '/tenants/demo/principals', { carol: { roles: ['employee'], attributes: { departmentId: 2 } } });
     expect(r.body.data).toEqual({ carol: { roles: ['employee'], attributes: { departmentId: 2 } } });

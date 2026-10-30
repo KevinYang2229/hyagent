@@ -2,7 +2,7 @@
  * Query Plan Validator（規格書 4.2 步驟 4–5）：結構驗證 → 資料來源／租戶 → 資料集與 JOIN → 欄位、運算子、型別 →
  * 聚合規則 → 政策。輸出已解析的 ResolvedQuery，編譯器只吃這個，不會再看到模型給的原始字串。
  */
-import type { Catalog, CatalogDataset, MetricExpr, TypeCategory } from '../contracts/catalog';
+import { RESTRICTED_AGGREGATES, RESTRICTED_MIN_GROUP_SIZE, SENSITIVE_LEVELS, type Catalog, type CatalogDataset, type MetricExpr, type TypeCategory } from '../contracts/catalog';
 import { DbiError } from '../contracts/errors';
 import type { AccessPolicy, DataSource, Principal } from '../contracts/policy';
 import { HARD_MAX_ROWS, queryPlanSchema, type Aggregate, type FilterOp, type QueryPlan } from '../contracts/queryPlan';
@@ -42,6 +42,8 @@ export interface ResolvedQuery {
   minGroupSize?: number;
   isAggregate: boolean;
   policyIds: string[];
+  /** 查詢用到的機密／限制欄位（dataset.column），供稽核標記 */
+  sensitiveColumns: string[];
 }
 
 export interface ValidationContext {
@@ -191,6 +193,9 @@ export function resolveQuery(input: unknown, ctx: ValidationContext): ResolvedQu
   };
 
   const usage = new Map(datasets.map((d) => [d.alias, emptyUsage()]));
+  const sensitivityOf = (alias: string, column: string) =>
+    datasets.find((d) => d.alias === alias)!.dataset.columns.find((c) => c.name === column)?.sensitivity;
+  const restrictedIn = (e: ValueExpr) => exprColumns(e).filter((c) => sensitivityOf(e.alias, c) === 'restricted');
   const use = (e: ValueExpr, kind: keyof DatasetUsage) => {
     for (const c of exprColumns(e)) usage.get(e.alias)![kind].add(c);
   };
@@ -203,11 +208,16 @@ export function resolveQuery(input: unknown, ctx: ValidationContext): ResolvedQu
     if (s.agg) {
       const allowed = AGG_TYPES[s.agg];
       if (expr && allowed && !allowed.has(expr.category)) throw new DbiError('QUERY_OPERATION_NOT_ALLOWED', `${s.field} 不能使用 ${s.agg}`);
+      // 最大／最小值就是某一筆的確切數值，對「限制」欄位等於洩漏明細
+      if (expr && !RESTRICTED_AGGREGATES.includes(s.agg) && restrictedIn(expr).length) {
+        throw new DbiError('QUERY_POLICY_DENIED', `限制欄位 ${restrictedIn(expr).join('、')} 不能取最大或最小值`);
+      }
       if (expr) use(expr, 'aggregated');
     } else if (isAggregate) {
       if (!groupBy.some((g) => sameExpr(g, expr!))) throw new DbiError('QUERY_PLAN_INVALID', `${s.field} 必須列在 group_by，或改用聚合函式`);
     } else {
-      use(expr!, 'raw');
+      // 計算指標的輸出是運算結果，無法遮罩：與直接輸出的欄位分開判斷
+      use(expr!, expr!.kind === 'metric' ? 'derived' : 'raw');
     }
     const output = s.alias ?? (s.agg ? (s.field ? `${s.agg}_${s.field}` : 'count') : s.field!);
     return { expr, agg: s.agg, output };
@@ -253,5 +263,17 @@ export function resolveQuery(input: unknown, ctx: ValidationContext): ResolvedQu
     }
   }
 
-  return { dataSourceId: ds.id, datasets, select, filters, groupBy, orderBy, limit, minGroupSize, isAggregate, policyIds };
+  // 聚合「限制」欄位時強制最少筆數，即使政策沒設 minGroupSize
+  const aggregatesRestricted = datasets.some((d) =>
+    [...usage.get(d.alias)!.aggregated].some((c) => sensitivityOf(d.alias, c) === 'restricted'),
+  );
+  if (aggregatesRestricted) minGroupSize = Math.max(minGroupSize ?? 0, RESTRICTED_MIN_GROUP_SIZE);
+
+  const sensitiveColumns = datasets.flatMap((d) => {
+    const u = usage.get(d.alias)!;
+    const used = new Set([...u.raw, ...u.derived, ...u.grouped, ...u.aggregated, ...u.filtered, ...u.ordered]);
+    return [...used].filter((c) => SENSITIVE_LEVELS.has(sensitivityOf(d.alias, c)!)).map((c) => `${d.dataset.key}.${c}`);
+  });
+
+  return { dataSourceId: ds.id, datasets, select, filters, groupBy, orderBy, limit, minGroupSize, isAggregate, policyIds, sensitiveColumns };
 }

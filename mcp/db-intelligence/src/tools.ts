@@ -37,7 +37,7 @@ export const DBI_TOOLS: DbiTool[] = [
   {
     name: 'get_dataset_details',
     title: '查看資料集欄位',
-    description: '取得單一資料集的欄位型別、可用運算子、計算指標與可 join 的關聯，用來組 execute_safe_query 的 query_plan。',
+    description: '取得單一資料集的欄位型別、可用運算子、計算指標與可 join 的關聯，用來組 execute_safe_query 的 query_plan。operators 為空的欄位不能用來篩選；aggregate_only 的欄位只能統計。',
     input: z
       .object({
         data_source_id: z.string().describe('資料來源 ID'),
@@ -55,6 +55,8 @@ export const DBI_TOOLS: DbiTool[] = [
       '「今年」「上個月」等相對日期依 search_schema 回傳的 today 換算成 YYYY-MM-DD。' +
       '使用者的資料範圍（如「我的部門」）由系統依身分自動套用，不要自行猜測部門或使用者代碼去篩選；' +
       '結果含代碼欄位（如 department_id）且有已核准關聯時，join 取得名稱再回答。' +
+      '欄位或指標標示 aggregate_only 時，只能放進 select 的聚合函式（限 aggregates 列出的），不能直接顯示、篩選、分組或排序，且每組至少 min_group_size 筆；' +
+      '使用者要明細時，改提供這類統計並說明原因。' +
       '回答時說明資料來源、篩選條件與 warnings；結果超過一頁時可用 get_query_result 取下一頁。',
     input: z
       .object({

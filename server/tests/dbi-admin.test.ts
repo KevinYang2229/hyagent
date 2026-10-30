@@ -128,6 +128,20 @@ describe('後台 Database Intelligence API', () => {
     expect(JSON.stringify(entries)).not.toContain('analyst-projects');
   });
 
+  it('新開放機密欄位：試算參數轉發；未確認的 409 與欄位清單原樣帶回後台', async () => {
+    await request(app).patch(`${base}/data-sources/ds_project_01/catalog`).set(admin).send({
+      datasets: [{ id: 'public.projects', approvalStatus: 'approved', columns: { name: { isQueryable: true, sensitivity: 'confidential' } } }],
+    });
+    const policies = [{ id: 'p-name', tenantId, dataSourceId: 'ds_project_01', dataset: 'public.projects', principals: { roles: ['analyst'] }, columns: ['name'] }];
+    const dry = await request(app).put(`${base}/tenants/${tenantId}/policies?dry_run=1`).set(admin).send({ policies });
+    expect(dry.body.data).toMatchObject({ saved: false, sensitive: [{ column: 'name', sensitivity: 'confidential' }] });
+    const refused = await request(app).put(`${base}/tenants/${tenantId}/policies`).set(admin).send({ policies });
+    expect(refused.status).toBe(409);
+    expect(refused.body.error).toMatchObject({ code: 'SENSITIVE_COLUMNS_UNCONFIRMED', details: { sensitive: [{ column: 'name' }] } });
+    const ok = await request(app).put(`${base}/tenants/${tenantId}/policies`).set(admin).send({ policies, confirmSensitiveColumns: true });
+    expect(ok.body.data.saved).toBe(true);
+  });
+
   it('MCP server 拒絕管理身分時回 502，而不是讓後台以為自己被登出', async () => {
     // 同一個 URL 以不同 serverId 登記：JWT 的 aud 對不上
     mcpStore.create({ id: 'dbi-wrong-aud', name: 'x', url });

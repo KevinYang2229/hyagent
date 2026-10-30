@@ -18,7 +18,7 @@ import { AppError } from '@/utils/app-error';
 
 /** 掃描大型資料庫可能較久，管理呼叫的逾時放寬 */
 export const DBI_ADMIN_TIMEOUT_MS = 60_000;
-const QUERY_KEYS = ['tenant_id', 'request_id', 'status', 'limit'] as const;
+const QUERY_KEYS = ['tenant_id', 'request_id', 'status', 'limit', 'dry_run'] as const;
 
 const serverParam = z.object({ serverId: z.string().regex(MCP_SERVER_ID_RE) });
 const dataSourceParam = serverParam.extend({ id: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/) });

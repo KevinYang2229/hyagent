@@ -17,6 +17,8 @@ export interface AuditEvent {
   catalog_version?: number;
   policy_ids?: string[];
   datasets?: string[];
+  /** 查詢用到的機密／限制欄位（dataset.column）；只記欄位名，不記值 */
+  sensitive_columns?: string[];
   status: 'success' | 'denied' | 'invalid' | 'error';
   reason_code?: string;
   row_count?: number;

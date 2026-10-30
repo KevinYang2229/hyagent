@@ -7,13 +7,14 @@ import type { HyAgentCaller } from '@hyagent/mcp-kit';
 import { planHash, type AuditEvent, type AuditSink } from './audit';
 import { searchDatasets, visibleDatasets, type VisibleDataset } from './catalog/search';
 import type { CatalogStore } from './catalog/store';
-import type { Catalog, TypeCategory } from './contracts/catalog';
+import { RESTRICTED_AGGREGATES, RESTRICTED_MIN_GROUP_SIZE, type Catalog, type TypeCategory } from './contracts/catalog';
 import { DbiError } from './contracts/errors';
 import type { DataSource, PolicySet, Principal, PrincipalDirectory } from './contracts/policy';
 import type { FilterOp } from './contracts/queryPlan';
 import { compileQuery } from './query/compiler';
 import type { QueryExecutor } from './query/executor';
 import { resolveQuery, type ResolvedQuery } from './query/validator';
+import { metricColumns } from './catalog/sync';
 
 export interface PrincipalResolver {
   resolve(caller: HyAgentCaller): Principal | Promise<Principal>;
@@ -86,6 +87,11 @@ const OPERATORS: Record<TypeCategory, FilterOp[]> = {
   other: [],
 };
 
+/** 「限制」欄位／指標：只能放在聚合函式裡；遮罩後可直接顯示時 aggregate_only 為 false */
+function restrictedHint(aggregateOnly: boolean) {
+  return { aggregate_only: aggregateOnly, aggregates: RESTRICTED_AGGREGATES, min_group_size: RESTRICTED_MIN_GROUP_SIZE };
+}
+
 export function maskValue(v: unknown, mode: 'redact' | 'partial'): unknown {
   if (v === null || v === undefined) return v;
   if (mode === 'redact') return '***';
@@ -139,15 +145,25 @@ export class DbIntelligenceService {
       dataset: ds.key,
       kind: ds.kind,
       description: ds.descriptionStatus === 'approved' ? ds.description : null,
-      columns: v.columns.map((c) => ({
-        name: c.name,
-        type: c.typeCategory,
-        description: c.descriptionStatus === 'approved' ? c.description : null,
-        ...(c.synonyms.length ? { synonyms: c.synonyms } : {}),
-        ...(v.masked.has(c.name) ? { masked: true } : {}),
-        ...(detailed ? { nullable: c.nullable, operators: v.masked.has(c.name) ? [] : OPERATORS[c.typeCategory] } : {}),
+      columns: v.columns.map((c) => {
+        const restricted = c.sensitivity === 'restricted';
+        return {
+          name: c.name,
+          type: c.typeCategory,
+          description: c.descriptionStatus === 'approved' ? c.description : null,
+          ...(c.synonyms.length ? { synonyms: c.synonyms } : {}),
+          ...(v.masked.has(c.name) ? { masked: true } : {}),
+          // 「限制」欄位的用法與查詢時的強制規則一致，讓模型第一次就用對（規則仍由 Validator 強制）
+          ...(restricted ? restrictedHint(!v.masked.has(c.name)) : {}),
+          ...(detailed ? { nullable: c.nullable, operators: v.masked.has(c.name) || restricted ? [] : OPERATORS[c.typeCategory] } : {}),
+        };
+      }),
+      metrics: v.metrics.map((m) => ({
+        name: m.key,
+        type: 'numeric',
+        description: m.description,
+        ...(metricColumns(m.expression).some((c) => ds.columns.find((x) => x.name === c)?.sensitivity === 'restricted') ? restrictedHint(true) : {}),
       })),
-      metrics: v.metrics.map((m) => ({ name: m.key, type: 'numeric', description: m.description })),
       relationships,
       ...(detailed ? { primary_key: ds.primaryKey.filter((k) => v.columns.some((c) => c.name === k)) } : {}),
       ...(notes.length ? { notes } : {}),
@@ -250,6 +266,7 @@ export class DbIntelligenceService {
         catalog_version: catalog!.version,
         policy_ids: resolved.policyIds,
         datasets: resolved.datasets.map((d) => d.dataset.id),
+        ...(resolved.sensitiveColumns.length ? { sensitive_columns: resolved.sensitiveColumns } : {}),
         status: 'success',
         row_count: rows.length,
         truncated: exec.truncated,

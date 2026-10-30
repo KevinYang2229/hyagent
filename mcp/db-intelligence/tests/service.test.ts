@@ -78,6 +78,19 @@ describe('search_schema', () => {
     await expect(service.searchSchema({ ...caller(''), system: true }, { question: 'x' })).rejects.toMatchObject({ code: 'AUTH_REQUIRED' });
   });
 
+  it('「限制」欄位提示只能統計：可用聚合、每組最少筆數，且沒有篩選運算子', async () => {
+    const d = await service.getDatasetDetails(caller('hana'), { data_source_id: 'ds_project_01', dataset: 'employee_salary' });
+    expect(d.columns.find((c) => c.name === 'salary')).toMatchObject({
+      aggregate_only: true,
+      aggregates: ['count', 'count_distinct', 'sum', 'avg'],
+      min_group_size: 3,
+      operators: [],
+    });
+    expect(d.columns.find((c) => c.name === 'department_id')).not.toHaveProperty('aggregate_only');
+    const search = await service.searchSchema(caller('hana'), { question: '薪資' });
+    expect(search.datasets[0].columns.find((c) => c.name === 'salary')).toMatchObject({ aggregate_only: true });
+  });
+
   it('get_dataset_details 帶出運算子；看不到的資料集當作不存在', async () => {
     const d = await service.getDatasetDetails(caller('bob'), { data_source_id: 'ds_project_01', dataset: 'projects' });
     expect(d.primary_key).toEqual(['id']);

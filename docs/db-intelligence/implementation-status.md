@@ -31,6 +31,7 @@
 | 1 | 後台 UI | ✅ 租戶頁「資料庫查詢」分頁（`admin/src/pages/tabs/database/`）：資料來源與連線測試、掃描差異、Catalog 審核與發布、查詢預覽、查詢稽核。存取政策與使用者目錄目前為 JSON 編輯器（附範本與服務端驗證警告），指標定義仍以 API／審核檔設定 |
 | 2 | Validator（運算子、型別、聚合、排序、JOIN） | ✅ `query/validator.ts` |
 | 2 | Policy Engine ＋ 資料列範圍、遮罩、僅聚合、最小群組 | ✅ |
+| 2 | 敏感度強制 | ✅ 「限制」欄位一律只能統計（每組 ≥ 3、不可最大／最小值）或遮罩後顯示，不能篩選、分組、排序或經計算指標輸出；機密／限制欄位新開放時須確認，查詢稽核標記 `sensitive_columns`；工具回傳的欄位資訊標示 `aggregate_only`、可用聚合與每組最少筆數，讓模型第一次就用統計（評測 #10：改動前 1/3、改動後 3/3 未被拒絕） |
 | 2 | 推論攻擊：限制反覆縮小條件的查詢（差分攻擊） | ⬜ `minGroupSize` 只保證每組筆數，擋不了「全體 − 排除某人」的差分；需依使用者追蹤近期查詢條件 |
 | 2 | SQL Compiler（參數化） | ✅ `query/compiler.ts` |
 | 2 | Executor（唯讀交易、timeout、筆數／位元組上限） | ✅ `query/executor.ts` |
@@ -39,7 +40,7 @@
 | 3 | Metadata 檢索 | ✅ 關鍵字＋中文二字詞（100+ 表時的效能與向量檢索待評估） |
 | 3 | `plan_query`／Planner Prompt | ⬜ 目前由 HyAgent 的 Agent 依工具說明直接產生 Query Plan |
 | 3 | 歧義處理、低信心拒答 | 🟡 工具說明要求不猜測；未定義指標回 `QUERY_FIELD_NOT_ALLOWED`／`QUERY_METRIC_UNDEFINED`。尚無信心分數 |
-| 3 | 自然語言端對端測試 | ✅ 自動化：`server/tests/dbi-e2e.test.ts`（假 LLM，驗證身分、角色、範圍、拒絕原因的傳遞）；真實模型：`npm run eval:dbi -w server`（§10 七題＋HR 統計，2026-10-30 以 claude-sonnet-4-5 連跑 2 次皆 8/8）。規格書要求的 10 題與 30 題 Golden Cases 尚待擴充 |
+| 3 | 自然語言端對端測試 | ✅ 自動化：`server/tests/dbi-e2e.test.ts`（假 LLM，驗證身分、角色、範圍、拒絕原因的傳遞）；真實模型：`npm run eval:dbi -w server`（§10 七題＋HR 統計＋限制欄位明細要求共 10 題，2026-10-30 以 claude-sonnet-4-5 執行）。規格書要求的 10 題與 30 題 Golden Cases 尚待擴充 |
 | 4 | 指標、效能、滲透測試、試點 | ⬜ |
 
 ## §7.4 威脅測試對照

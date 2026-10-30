@@ -653,10 +653,22 @@ export interface DbiCatalogReview {
   publish?: boolean;
 }
 
+/** 政策新開放的機密／限制欄位 */
+export interface DbiSensitiveExposure {
+  policyId: string;
+  dataset: string;
+  column: string;
+  sensitivity: DbiSensitivity;
+}
+
 export interface DbiPolicies {
   version: string;
   policies: Record<string, unknown>[];
   warnings?: string[];
+  /** PUT 才有：是否已寫入（試算為 false） */
+  saved?: boolean;
+  /** PUT 才有：這次新開放的機密／限制欄位 */
+  sensitive?: DbiSensitiveExposure[];
 }
 
 export type DbiPrincipals = Record<string, { roles: string[]; attributes: Record<string, unknown> }>;
@@ -684,6 +696,7 @@ export interface DbiAuditEvent {
   catalog_version?: number;
   policy_ids?: string[];
   datasets?: string[];
+  sensitive_columns?: string[];
   status: 'success' | 'denied' | 'invalid' | 'error';
   reason_code?: string;
   row_count?: number;
@@ -934,8 +947,12 @@ export const api = {
   dbiReviewCatalog: (serverId: string, id: string, review: DbiCatalogReview) =>
     req<DbiCatalog>('PATCH', dbiPath(serverId, `/data-sources/${enc(id)}/catalog`), review),
   dbiGetPolicies: (serverId: string, tenantId: string) => req<DbiPolicies>('GET', dbiPath(serverId, `/tenants/${enc(tenantId)}/policies`)),
-  dbiPutPolicies: (serverId: string, tenantId: string, policies: unknown[]) =>
-    req<DbiPolicies>('PUT', dbiPath(serverId, `/tenants/${enc(tenantId)}/policies`), { policies }),
+  /** dryRun：只驗證並回報新開放的敏感欄位；新開放敏感欄位時須 confirmSensitiveColumns 才會儲存（否則 409） */
+  dbiPutPolicies: (serverId: string, tenantId: string, policies: unknown[], opts: { dryRun?: boolean; confirmSensitiveColumns?: boolean } = {}) =>
+    req<DbiPolicies>('PUT', dbiPath(serverId, `/tenants/${enc(tenantId)}/policies${opts.dryRun ? '?dry_run=1' : ''}`), {
+      policies,
+      ...(opts.confirmSensitiveColumns ? { confirmSensitiveColumns: true } : {}),
+    }),
   dbiGetPrincipals: (serverId: string, tenantId: string) => req<DbiPrincipals>('GET', dbiPath(serverId, `/tenants/${enc(tenantId)}/principals`)),
   dbiPutPrincipals: (serverId: string, tenantId: string, dir: unknown) =>
     req<DbiPrincipals>('PUT', dbiPath(serverId, `/tenants/${enc(tenantId)}/principals`), dir),

@@ -39,7 +39,7 @@
       "synonyms": ["薪資", "薪水"],
       "columns": {
         "department_id": { "isQueryable": true, "sensitivity": "internal", "description": "部門編號" },
-        "salary": { "isQueryable": true, "sensitivity": "confidential", "description": "月薪（新台幣）" },
+        "salary": { "isQueryable": true, "sensitivity": "restricted", "description": "月薪（新台幣）" },
         "employee_name": { "isQueryable": false, "sensitivity": "restricted" },
         "id": { "isQueryable": false, "sensitivity": "restricted" }
       }

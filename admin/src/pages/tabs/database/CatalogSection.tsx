@@ -249,7 +249,8 @@ export default function CatalogSection({ serverId, sources, dataSourceId, onSele
               </tbody>
             </table>
             <div className="field-hint" style={{ marginTop: 8 }}>
-              機密、限制欄位不會被政策的 <span className="code-pill">columns: ["*"]</span> 涵蓋，必須在政策中逐欄列出。
+              敏感度：公開、內部會被政策的 <span className="code-pill">columns: ["*"]</span> 涵蓋；機密須在政策逐欄列出，開放時要確認、查詢會在稽核標記；
+              限制另外一律只能統計（每組至少 3 筆，不能取最大／最小值）或遮罩後顯示，也不能用於篩選、分組、排序。
             </div>
           </div>
           {ds.metrics.length > 0 && (

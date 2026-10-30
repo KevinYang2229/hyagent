@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api, type DbiDataSource } from '../../../api';
+import { Dialog } from '@hyagent/ui';
+import { api, type DbiDataSource, type DbiSensitiveExposure } from '../../../api';
 import { parseJson, policyTemplate } from './database.util';
 
 interface Props {
@@ -25,6 +26,8 @@ export default function PoliciesSection({ serverId, tenantId, sources, onSaved, 
   const [principals, setPrincipals] = useState('');
   const [parseError, setParseError] = useState<{ policies?: string; principals?: string }>({});
   const [busy, setBusy] = useState(false);
+  /** 待確認：新開放了機密／限制欄位的政策內容 */
+  const [confirming, setConfirming] = useState<{ policies: unknown[]; sensitive: DbiSensitiveExposure[] } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -52,11 +55,35 @@ export default function PoliciesSection({ serverId, tenantId, sources, onSaved, 
     setParseError((e) => ({ ...e, policies: undefined }));
     setBusy(true);
     try {
-      const r = await api.dbiPutPolicies(serverId, tenantId, parsed.value);
-      setPolicies(pretty(r.policies));
-      setVersion(r.version);
-      setWarnings(r.warnings ?? []);
-      onSaved('已儲存存取政策');
+      // 先試算：新開放機密／限制欄位時要管理員明確確認，才真正儲存
+      const dry = await api.dbiPutPolicies(serverId, tenantId, parsed.value, { dryRun: true });
+      if (dry.sensitive?.length) {
+        setConfirming({ policies: parsed.value, sensitive: dry.sensitive });
+        return;
+      }
+      await commitPolicies(parsed.value, false);
+    } catch (e) {
+      onError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function commitPolicies(list: unknown[], confirmSensitiveColumns: boolean) {
+    const r = await api.dbiPutPolicies(serverId, tenantId, list, { confirmSensitiveColumns });
+    setPolicies(pretty(r.policies));
+    setVersion(r.version);
+    setWarnings(r.warnings ?? []);
+    onSaved('已儲存存取政策');
+  }
+
+  async function confirmSave() {
+    const pending = confirming;
+    setConfirming(null);
+    if (!pending) return;
+    setBusy(true);
+    try {
+      await commitPolicies(pending.policies, true);
     } catch (e) {
       onError(e);
     } finally {
@@ -142,6 +169,25 @@ export default function PoliciesSection({ serverId, tenantId, sources, onSaved, 
           </div>
         </div>
       </div>
+
+      <Dialog
+        isOpen={!!confirming}
+        title="確認開放敏感欄位"
+        confirmText="確認儲存"
+        confirmVariant="danger"
+        onClose={() => setConfirming(null)}
+        onConfirm={() => void confirmSave()}
+      >
+        <p style={{ marginTop: 0 }}>這次儲存會新開放以下欄位給 AI 查詢：</p>
+        <ul style={{ paddingLeft: 18 }}>
+          {confirming?.sensitive.map((x) => (
+            <li key={`${x.policyId}-${x.dataset}-${x.column}`}>
+              <span className="code-pill">{x.dataset}.{x.column}</span> {x.sensitivity === 'restricted' ? '限制' : '機密'}（政策 {x.policyId}）
+            </li>
+          ))}
+        </ul>
+        <p className="field-hint" style={{ marginBottom: 0 }}>「限制」欄位一律只能統計（每組至少 3 筆）或由政策遮罩後顯示；「機密」欄位會依政策開放，並在查詢稽核中標記。</p>
+      </Dialog>
 
       <div className="card">
         <div className="card-head">

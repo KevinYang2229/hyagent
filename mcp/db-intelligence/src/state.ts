@@ -41,9 +41,11 @@ export class DbiState {
     return this.state.principals;
   }
 
-  private commit(next: DbiConfig): void {
+  /** dryRun：只驗證不寫入（管理 API 的試算） */
+  private commit(next: DbiConfig, dryRun = false): void {
     const parsed = configSchema.safeParse(next);
     if (!parsed.success) throw new StateError('BAD_REQUEST', parsed.error.issues[0].message);
+    if (dryRun) return;
     this.persist(parsed.data);
     this.state = parsed.data;
   }
@@ -71,8 +73,8 @@ export class DbiState {
     return { version: this.state.policies.version, policies: this.state.policies.policies.filter((p) => p.tenantId === tenantId) };
   }
 
-  /** 整包取代某租戶的政策（其他租戶不動） */
-  setTenantPolicies(tenantId: string, policies: AccessPolicy[]): { version: string; policies: AccessPolicy[] } {
+  /** 整包取代某租戶的政策（其他租戶不動）；dryRun 只驗證，回傳不含預設值補齊以外的變更 */
+  setTenantPolicies(tenantId: string, policies: AccessPolicy[], opts: { dryRun?: boolean } = {}): { version: string; policies: AccessPolicy[] } {
     const foreign = policies.find((p) => p.tenantId !== tenantId);
     if (foreign) throw new StateError('BAD_REQUEST', `政策 ${foreign.id} 的 tenantId 與路徑不符`);
     const ids = new Set<string>();
@@ -82,8 +84,9 @@ export class DbiState {
     }
     const others = this.state.policies.policies.filter((p) => p.tenantId !== tenantId);
     if (others.some((p) => ids.has(p.id))) throw new StateError('CONFLICT', '政策 ID 已被其他租戶使用');
-    this.commit({ ...this.state, policies: { version: this.nextPolicyVersion(), policies: [...others, ...policies] } });
-    return this.tenantPolicies(tenantId);
+    const version = this.nextPolicyVersion();
+    this.commit({ ...this.state, policies: { version, policies: [...others, ...policies] } }, opts.dryRun);
+    return opts.dryRun ? { version: this.state.policies.version, policies } : this.tenantPolicies(tenantId);
   }
 
   tenantPrincipals(tenantId: string): PrincipalDirectory[string] {

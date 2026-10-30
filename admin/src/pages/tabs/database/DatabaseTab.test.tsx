@@ -149,7 +149,26 @@ describe('DatabaseTab', () => {
     fireEvent.change(editor, { target: { value: '[{"id":"p1"}]' } });
     fireEvent.click(screen.getByRole('button', { name: '儲存政策' }));
     expect(await screen.findByText(/Catalog 中沒有資料集 public.x/)).toBeInTheDocument();
-    expect(api.dbiPutPolicies).toHaveBeenCalledWith('db-intelligence', 't1', [{ id: 'p1' }]);
+    expect(api.dbiPutPolicies).toHaveBeenNthCalledWith(1, 'db-intelligence', 't1', [{ id: 'p1' }], { dryRun: true });
+    expect(api.dbiPutPolicies).toHaveBeenNthCalledWith(2, 'db-intelligence', 't1', [{ id: 'p1' }], { confirmSensitiveColumns: false });
+  });
+
+  it('存取政策：新開放敏感欄位時先列出確認，確認後才帶 confirmSensitiveColumns 儲存', async () => {
+    vi.mocked(api.dbiGetPolicies).mockResolvedValue({ version: 'v1', policies: [] });
+    vi.mocked(api.dbiGetPrincipals).mockResolvedValue({});
+    vi.mocked(api.dbiPutPolicies)
+      .mockResolvedValueOnce({ version: 'v1', policies: [], saved: false, sensitive: [{ policyId: 'p1', dataset: 'public.salary', column: 'salary', sensitivity: 'restricted' }] })
+      .mockResolvedValueOnce({ version: 'v2', policies: [{ id: 'p1' }], saved: true, sensitive: [] });
+    render(<DatabaseTab tenantId="t1" onError={onError} />);
+    await openSection('存取政策');
+    const editor = await screen.findByLabelText('存取政策 JSON');
+    await waitFor(() => expect(editor).toHaveValue('[]'));
+    fireEvent.change(editor, { target: { value: '[{"id":"p1"}]' } });
+    fireEvent.click(screen.getByRole('button', { name: '儲存政策' }));
+    expect(await screen.findByText('public.salary.salary')).toBeInTheDocument();
+    expect(api.dbiPutPolicies).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: '確認儲存' }));
+    await waitFor(() => expect(api.dbiPutPolicies).toHaveBeenLastCalledWith('db-intelligence', 't1', [{ id: 'p1' }], { confirmSensitiveColumns: true }));
   });
 
   it('查詢預覽：被政策拒絕時就地顯示原因，不跳全域錯誤', async () => {
@@ -167,10 +186,12 @@ describe('DatabaseTab', () => {
   it('查詢稽核：依狀態篩選', async () => {
     vi.mocked(api.dbiAudit).mockResolvedValue([
       { request_id: 'req_1', tenant_id: 't1', principal_id: 'alice', tool: 'execute_safe_query', policy_version: 'v1', status: 'denied', reason_code: 'QUERY_POLICY_DENIED', duration_ms: 3, created_at: '2026-10-30T01:00:00Z' },
+      { request_id: 'req_2', tenant_id: 't1', principal_id: 'hana', tool: 'execute_safe_query', policy_version: 'v1', status: 'success', datasets: ['public.salary'], sensitive_columns: ['salary.salary'], duration_ms: 3, created_at: '2026-10-30T01:01:00Z' },
     ]);
     render(<DatabaseTab tenantId="t1" onError={onError} />);
     await openSection('查詢稽核');
     expect(await screen.findByText('QUERY_POLICY_DENIED')).toBeInTheDocument();
+    expect(screen.getByText('敏感欄位 1')).toHaveAttribute('title', 'salary.salary');
     fireEvent.change(screen.getByLabelText('狀態'), { target: { value: 'denied' } });
     await waitFor(() => expect(api.dbiAudit).toHaveBeenLastCalledWith('db-intelligence', { tenantId: 't1', status: 'denied', requestId: undefined, limit: 100 }));
   });

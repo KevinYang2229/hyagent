@@ -13,7 +13,7 @@ import { discoverPostgresSchema } from './catalog/postgresDiscovery';
 import { applyCatalogReview, CatalogReviewError } from './catalog/review';
 import type { CatalogStore } from './catalog/store';
 import { syncCatalog } from './catalog/sync';
-import type { Catalog } from './contracts/catalog';
+import { SENSITIVE_LEVELS, type Catalog, type Sensitivity } from './contracts/catalog';
 import { DbiError } from './contracts/errors';
 import { accessPolicySchema, dataSourceSchema, principalDirectorySchema, type AccessPolicy } from './contracts/policy';
 import { testConnection, type PoolRegistry } from './pools';
@@ -117,6 +117,31 @@ async function policyWarnings(policies: AccessPolicy[], catalogs: CatalogStore):
   }
   return warnings;
 }
+
+export interface SensitiveExposure {
+  policyId: string;
+  dataset: string;
+  column: string;
+  sensitivity: Sensitivity;
+}
+
+/** 政策明確開放的機密／限制欄位（'*' 本來就不涵蓋它們，只看逐欄列出的） */
+async function sensitiveExposures(policies: AccessPolicy[], catalogs: CatalogStore): Promise<SensitiveExposure[]> {
+  const out: SensitiveExposure[] = [];
+  const cache = new Map<string, Catalog | undefined>();
+  for (const p of policies) {
+    if (!cache.has(p.dataSourceId)) cache.set(p.dataSourceId, await catalogs.load(p.dataSourceId));
+    const ds = cache.get(p.dataSourceId)?.datasets.find((d) => d.id === p.dataset);
+    for (const col of ds?.columns ?? []) {
+      if (p.columns.includes(col.name) && SENSITIVE_LEVELS.has(col.sensitivity)) {
+        out.push({ policyId: p.id, dataset: p.dataset, column: col.name, sensitivity: col.sensitivity });
+      }
+    }
+  }
+  return out;
+}
+
+const exposureKey = (e: SensitiveExposure) => `${e.policyId}|${e.dataset}|${e.column}|${e.sensitivity}`;
 
 const idParam = z.object({ id: z.string().regex(DATA_SOURCE_ID_RE) });
 const tenantParam = z.object({ tenantId: z.string().min(1).max(64) });
@@ -257,9 +282,19 @@ export function createAdminRouter(opts: AdminRouterOptions): Router {
     '/tenants/:tenantId/policies',
     handle(async (req) => {
       const { tenantId } = tenantParam.parse(req.params);
-      const { policies } = z.object({ policies: z.array(accessPolicySchema) }).strict().parse(req.body);
-      const saved = state.setTenantPolicies(tenantId, policies);
-      return { ...saved, warnings: await policyWarnings(saved.policies, catalogs) };
+      const { policies, confirmSensitiveColumns } = z
+        .object({ policies: z.array(accessPolicySchema), confirmSensitiveColumns: z.boolean().optional() })
+        .strict()
+        .parse(req.body);
+      const dryRun = req.query.dry_run === '1';
+      // 只有「新開放」的機密／限制欄位需要確認，未變動的既有授權不重複詢問
+      const before = new Set((await sensitiveExposures(state.tenantPolicies(tenantId).policies, catalogs)).map(exposureKey));
+      const sensitive = (await sensitiveExposures(policies, catalogs)).filter((e) => !before.has(exposureKey(e)));
+      if (!dryRun && sensitive.length > 0 && !confirmSensitiveColumns) {
+        throw new HttpError(409, 'SENSITIVE_COLUMNS_UNCONFIRMED', '政策新開放了機密或限制欄位，請確認後再儲存', { sensitive });
+      }
+      const saved = state.setTenantPolicies(tenantId, policies, { dryRun });
+      return { ...saved, saved: !dryRun, sensitive, warnings: await policyWarnings(saved.policies, catalogs) };
     }),
   );
 

@@ -30,6 +30,8 @@ export function allowedColumns(p: AccessPolicy, ds: CatalogDataset): Set<string>
 export interface DatasetUsage {
   /** 明細查詢中直接輸出的欄位 */
   raw: Set<string>;
+  /** 明細查詢中直接輸出的計算指標所用到的欄位（輸出是運算結果，無法遮罩） */
+  derived: Set<string>;
   /** 聚合查詢中的分組欄位 */
   grouped: Set<string>;
   /** 出現在聚合函式內的欄位 */
@@ -39,7 +41,7 @@ export interface DatasetUsage {
 }
 
 export function emptyUsage(): DatasetUsage {
-  return { raw: new Set(), grouped: new Set(), aggregated: new Set(), filtered: new Set(), ordered: new Set() };
+  return { raw: new Set(), derived: new Set(), grouped: new Set(), aggregated: new Set(), filtered: new Set(), ordered: new Set() };
 }
 
 export interface ScopeCondition {
@@ -57,11 +59,22 @@ export type PolicyCheck = { ok: true; decision: PolicyDecision } | { ok: false; 
 
 export function checkPolicy(p: AccessPolicy, ds: CatalogDataset, usage: DatasetUsage, isAggregate: boolean, principal: Principal): PolicyCheck {
   const allowed = allowedColumns(p, ds);
-  const all = new Set([...usage.raw, ...usage.grouped, ...usage.aggregated, ...usage.filtered, ...usage.ordered]);
+  const all = new Set([...usage.raw, ...usage.derived, ...usage.grouped, ...usage.aggregated, ...usage.filtered, ...usage.ordered]);
   for (const c of all) if (!allowed.has(c)) return { ok: false, reason: `未授權欄位 ${c}` };
   for (const c of Object.keys(p.masked)) {
-    if (usage.grouped.has(c) || usage.aggregated.has(c) || usage.filtered.has(c) || usage.ordered.has(c)) {
+    if (usage.derived.has(c) || usage.grouped.has(c) || usage.aggregated.has(c) || usage.filtered.has(c) || usage.ordered.has(c)) {
       return { ok: false, reason: `遮罩欄位 ${c} 只能直接顯示，不能用於篩選、分組、排序或計算` };
+    }
+  }
+  // 「限制」欄位：不論政策怎麼寫，只能統計或遮罩後顯示，也不能當條件反覆縮小範圍來推出個別值
+  for (const col of ds.columns) {
+    if (col.sensitivity !== 'restricted') continue;
+    const c = col.name;
+    if (usage.filtered.has(c) || usage.grouped.has(c) || usage.ordered.has(c)) {
+      return { ok: false, reason: `限制欄位 ${c} 不能用於篩選、分組或排序` };
+    }
+    if (usage.derived.has(c) || (usage.raw.has(c) && !p.masked[c])) {
+      return { ok: false, reason: `限制欄位 ${c} 只能統計，或由政策設定遮罩後顯示` };
     }
   }
   if (p.aggregateOnly && !isAggregate) return { ok: false, reason: `${ds.key} 只允許統計查詢` };
