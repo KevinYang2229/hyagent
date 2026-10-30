@@ -4,20 +4,19 @@
  * HyAgent 後端驗證管理員並留稽核後代為呼叫。一般使用者 JWT 與列工具用的系統 JWT 都會被拒。
  * 回應格式與 HyAgent server 一致：成功 `{ data }`、失敗 `{ error: { code, message, details? } }`。
  */
-import type { PoolClient } from 'pg';
 import { Router, type NextFunction, type Request, type Response } from 'express';
 import { z, ZodError } from 'zod';
 import { requireHyAgent, type HyAgentCaller, type HyAgentVerifier } from '@hyagent/mcp-kit';
 import type { RingAuditSink } from './audit';
-import { discoverPostgresSchema } from './catalog/postgresDiscovery';
 import { applyCatalogReview, CatalogReviewError } from './catalog/review';
 import type { CatalogStore } from './catalog/store';
 import { syncCatalog } from './catalog/sync';
 import { SENSITIVE_LEVELS, type Catalog, type Sensitivity } from './contracts/catalog';
 import { DbiError } from './contracts/errors';
 import { accessPolicySchema, dataSourceSchema, principalDirectorySchema, type AccessPolicy } from './contracts/policy';
-import { testConnection, type PoolRegistry } from './pools';
+import { ConnectionNotConfiguredError, type DataSourceConnections } from './pools';
 import { compileQuery } from './query/compiler';
+import { dialectFor } from './query/dialect';
 import { resolveQuery } from './query/validator';
 import { directoryResolver } from './service';
 import { DATA_SOURCE_ID_RE, StateError, type DbiState } from './state';
@@ -28,7 +27,8 @@ export interface AdminRouterOptions {
   verifier: HyAgentVerifier;
   state: DbiState;
   catalogs: CatalogStore;
-  pools: PoolRegistry;
+  /** 依資料來源類型分派的連線（連線測試、掃描） */
+  connections: DataSourceConnections;
   audit: RingAuditSink;
   /** 本服務在 HyAgent 登記的 serverId（scope 推導角色用，查詢預覽與正式查詢一致） */
   serverId: string;
@@ -163,7 +163,7 @@ const auditQuery = z.object({
 });
 
 export function createAdminRouter(opts: AdminRouterOptions): Router {
-  const { state, catalogs, pools } = opts;
+  const { state, catalogs, connections } = opts;
   const r = Router();
   r.use(requireAdminCaller(opts.verifier));
 
@@ -172,11 +172,10 @@ export function createAdminRouter(opts: AdminRouterOptions): Router {
     if (!ds) throw new HttpError(404, 'NOT_FOUND', `資料來源不存在：${id}`);
     return ds;
   };
-  const poolOr400 = (id: string) => {
+  const configuredOr400 = (id: string) => {
     const ds = dataSourceOr404(id);
-    const pool = pools.get(id);
-    if (!pool) throw new HttpError(400, 'CONNECTION_NOT_CONFIGURED', `連線字串環境變數 ${ds.connectionEnv} 未設定`);
-    return { ds, pool };
+    if (!connections.configured(ds)) throw new HttpError(400, 'CONNECTION_NOT_CONFIGURED', `連線字串環境變數 ${ds.connectionEnv} 未設定`);
+    return ds;
   };
 
   r.get(
@@ -187,7 +186,7 @@ export function createAdminRouter(opts: AdminRouterOptions): Router {
       return Promise.all(
         list.map(async (d) => ({
           ...d,
-          connectionConfigured: pools.configured(d),
+          connectionConfigured: connections.configured(d),
           catalog: catalogSummary(await catalogs.load(d.id)),
         })),
       );
@@ -202,7 +201,7 @@ export function createAdminRouter(opts: AdminRouterOptions): Router {
       const existing = await catalogs.load(id);
       if (existing && existing.tenantId !== body.tenantId) throw new HttpError(409, 'CONFLICT', '此 ID 已有其他租戶的 Catalog，請換一個 ID');
       const ds = state.upsertDataSource({ ...body, id });
-      await pools.close(id);
+      await connections.close(id);
       return ds;
     }),
   );
@@ -212,7 +211,7 @@ export function createAdminRouter(opts: AdminRouterOptions): Router {
     handle(async (req) => {
       const { id } = idParam.parse(req.params);
       state.removeDataSource(id);
-      await pools.close(id);
+      await connections.close(id);
       return { id, deleted: true };
     }),
   );
@@ -220,32 +219,24 @@ export function createAdminRouter(opts: AdminRouterOptions): Router {
   r.post(
     '/data-sources/:id/connection-test',
     handle(async (req) => {
-      const { ds, pool } = poolOr400(idParam.parse(req.params).id);
-      return testConnection(pool, ds);
+      return connections.testConnection(configuredOr400(idParam.parse(req.params).id));
     }),
   );
 
   r.post(
     '/data-sources/:id/schema-sync',
     handle(async (req) => {
-      const { ds, pool } = poolOr400(idParam.parse(req.params).id);
-      let client: PoolClient;
+      const ds = configuredOr400(idParam.parse(req.params).id);
+      let discovered;
       try {
-        client = await pool.connect();
-      } catch {
-        throw new HttpError(502, 'CONNECTION_FAILED', '無法連線到資料庫，請先執行連線測試');
-      }
-      try {
-        const discovered = await discoverPostgresSchema(client, { schemas: ds.schemas, includeObjects: ds.includeObjects });
-        const { catalog, diff } = syncCatalog(await catalogs.load(ds.id), discovered, { dataSourceId: ds.id, tenantId: ds.tenantId });
-        if (diff.changed) await catalogs.save(catalog);
-        return { diff, catalog: catalogSummary(catalog) };
+        discovered = await connections.discover(ds);
       } catch (err) {
-        if (err instanceof HttpError) throw err;
-        throw new HttpError(502, 'SCHEMA_SYNC_FAILED', 'Schema 掃描失敗');
-      } finally {
-        client.release();
+        if (err instanceof ConnectionNotConfiguredError) throw new HttpError(400, 'CONNECTION_NOT_CONFIGURED', err.message);
+        throw new HttpError(502, 'SCHEMA_SYNC_FAILED', 'Schema 掃描失敗：請先執行連線測試確認連線與權限');
       }
+      const { catalog, diff } = syncCatalog(await catalogs.load(ds.id), discovered, { dataSourceId: ds.id, tenantId: ds.tenantId });
+      if (diff.changed) await catalogs.save(catalog);
+      return { diff, catalog: catalogSummary(catalog) };
     }),
   );
 
@@ -328,7 +319,7 @@ export function createAdminRouter(opts: AdminRouterOptions): Router {
       const ds = state.dataSources().find((d) => d.id === dsId && d.tenantId === principal.tenantId);
       const catalog = ds ? await catalogs.load(ds.id) : undefined;
       const resolved = resolveQuery(body.query_plan, { catalog, dataSources: state.dataSources(), policies: state.policies().policies, principal });
-      const compiled = compileQuery(resolved);
+      const compiled = compileQuery(resolved, dialectFor(ds!.dbType));
       return {
         principal: { roles: principal.roles, attributes: principal.attributes },
         sql: compiled.sql,

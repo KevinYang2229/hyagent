@@ -3,7 +3,8 @@ import { applyCatalogReview, CatalogReviewError } from '../src/catalog/review';
 import { buildDiscoveredSchema } from '../src/catalog/postgresDiscovery';
 import { syncCatalog } from '../src/catalog/sync';
 import { MemoryCatalogStore } from '../src/catalog/store';
-import { typeCategoryOf } from '../src/contracts/catalog';
+import { mysqlTypeCategory, typeCategoryOf } from '../src/contracts/catalog';
+import { riskyGrants } from '../src/adapters/mysql';
 import { demoCatalog, demoDiscovered, demoReview, discoveredColumn, now } from './fixtures';
 
 const opts = { dataSourceId: 'ds_project_01', tenantId: 'demo', now };
@@ -144,5 +145,43 @@ describe('typeCategoryOf / store', () => {
     loaded.datasets = [];
     expect((await store.load('ds_project_01'))!.datasets).toHaveLength(3);
     await expect(store.save({ ...c, version: -1 })).rejects.toThrow();
+  });
+});
+
+describe('MariaDB／MySQL', () => {
+  it('COLUMN_TYPE 對應型別分類', () => {
+    expect(mysqlTypeCategory('int(11)')).toBe('numeric');
+    expect(mysqlTypeCategory('decimal(10,1)')).toBe('numeric');
+    expect(mysqlTypeCategory('tinyint(1)')).toBe('numeric');
+    expect(mysqlTypeCategory('bigint unsigned')).toBe('numeric');
+    expect(mysqlTypeCategory('varchar(100)')).toBe('text');
+    expect(mysqlTypeCategory("enum('a','b')")).toBe('text');
+    expect(mysqlTypeCategory('longtext')).toBe('text');
+    expect(mysqlTypeCategory('date')).toBe('date');
+    expect(mysqlTypeCategory('datetime(3)')).toBe('timestamp');
+    expect(mysqlTypeCategory('timestamp')).toBe('timestamp');
+    expect(mysqlTypeCategory('uuid')).toBe('uuid');
+    expect(mysqlTypeCategory('blob')).toBe('other');
+    expect(mysqlTypeCategory('json')).toBe('other');
+    expect(mysqlTypeCategory("set('a','b')")).toBe('other');
+    expect(typeCategoryOf('int(11)', 'mariadb')).toBe('numeric');
+  });
+
+  it('SHOW GRANTS：只列範圍內的寫入／管理權限，不回傳原文（MariaDB 原文含密碼雜湊）', () => {
+    const r = riskyGrants(
+      [
+        "GRANT USAGE ON *.* TO `r`@`%` IDENTIFIED BY PASSWORD '*ABCDEF'",
+        'GRANT SELECT ON `projects`.`departments` TO `r`@`%`',
+        'GRANT SELECT (`a`, `b`), INSERT ON `projects`.`orders` TO `r`@`%`',
+        'GRANT ALL PRIVILEGES ON `other_db`.* TO `r`@`%`',
+        'GRANT SELECT ON `projects`.* TO `r`@`%` WITH GRANT OPTION',
+        'GRANT `report_role`@`%` TO `r`@`%`',
+      ],
+      ['projects'],
+    );
+    expect(r.risky).toEqual(['projects.orders：INSERT', 'projects.*：GRANT OPTION']);
+    expect(r.roles).toBe(true);
+    expect(JSON.stringify(r)).not.toContain('ABCDEF');
+    expect(riskyGrants(['GRANT ALL PRIVILEGES ON *.* TO `root`@`%`'], ['projects']).risky).toEqual(['*.*：ALL PRIVILEGES']);
   });
 });

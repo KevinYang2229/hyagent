@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { Dialog } from '@hyagent/ui';
-import { api, type DbiDataSource } from '../../../api';
+import { api, type DbiDataSource, type DbiDbType } from '../../../api';
 import { IconPlus } from '../../../components/icons';
-import { connectionSummary, diffSummary, parseList } from './database.util';
+import { CONNECTION_EXAMPLES, connectionSummary, DB_TYPE_LABELS, diffSummary, parseList } from './database.util';
 
 interface Props {
   serverId: string;
@@ -15,12 +15,13 @@ interface Props {
 
 interface FormValues {
   id: string;
+  dbType: DbiDbType;
   schemas: string;
   connectionEnv: string;
   timezone: string;
 }
 
-const EMPTY: FormValues = { id: '', schemas: 'public', connectionEnv: '', timezone: 'Asia/Taipei' };
+const EMPTY: FormValues = { id: '', dbType: 'postgres', schemas: 'public', connectionEnv: '', timezone: 'Asia/Taipei' };
 
 /** 每列操作結果：連線測試或掃描差異 */
 type RowResult = { kind: 'ok' | 'err'; lines: string[]; warnings?: string[] };
@@ -70,7 +71,7 @@ export default function DataSourcesSection({ serverId, tenantId, sources, reload
       const existing = form.isNew ? undefined : sources.find((s) => s.id === v.id);
       await api.dbiPutDataSource(serverId, v.id.trim(), {
         tenantId,
-        dbType: 'postgres',
+        dbType: v.dbType,
         schemas,
         connectionEnv: v.connectionEnv.trim(),
         timezone: v.timezone.trim() || 'Asia/Taipei',
@@ -120,6 +121,27 @@ export default function DataSourcesSection({ serverId, tenantId, sources, reload
               <span className="field-hint">英數、底線與連字號；建立後不可修改</span>
             </label>
             <label className="field">
+              <span className="field-label">資料庫類型</span>
+              <select
+                className="select"
+                value={form.values.dbType}
+                disabled={!form.isNew}
+                onChange={(e) => {
+                  const dbType = e.target.value as DbiDbType;
+                  // Schema 預設值隨類型調整：PostgreSQL 是 public，MariaDB／MySQL 的 schema 就是資料庫名稱
+                  const schemas = form.values.schemas === 'public' && dbType !== 'postgres' ? '' : form.values.schemas;
+                  setForm({ ...form, values: { ...form.values, dbType, schemas: schemas || (dbType === 'postgres' ? 'public' : '') } });
+                }}
+              >
+                {(Object.keys(DB_TYPE_LABELS) as DbiDbType[]).map((t) => (
+                  <option key={t} value={t}>
+                    {DB_TYPE_LABELS[t]}
+                  </option>
+                ))}
+              </select>
+              <span className="field-hint">建立後不可修改</span>
+            </label>
+            <label className="field">
               <span className="field-label">連線字串環境變數</span>
               <input
                 className="input"
@@ -127,12 +149,14 @@ export default function DataSourcesSection({ serverId, tenantId, sources, reload
                 placeholder="DBI_DS_ERP_URL"
                 onChange={(e) => setForm({ ...form, values: { ...form.values, connectionEnv: e.target.value } })}
               />
-              <span className="field-hint">在 db-intelligence 服務設定此變數＝postgres://唯讀帳號@主機/資料庫</span>
+              <span className="field-hint">在 db-intelligence 服務設定此變數，例如 {CONNECTION_EXAMPLES[form.values.dbType]}</span>
             </label>
             <label className="field">
               <span className="field-label">允許掃描的 Schema</span>
               <input className="input" value={form.values.schemas} onChange={(e) => setForm({ ...form, values: { ...form.values, schemas: e.target.value } })} />
-              <span className="field-hint">逗號分隔；範圍外的 Schema 不會被掃描</span>
+              <span className="field-hint">
+                逗號分隔；範圍外的 Schema 不會被掃描。{form.values.dbType === 'postgres' ? '' : 'MariaDB／MySQL 填資料庫名稱'}
+              </span>
             </label>
             <label className="field">
               <span className="field-label">時區</span>
@@ -159,6 +183,7 @@ export default function DataSourcesSection({ serverId, tenantId, sources, reload
               <div className="row-main">
                 <div className="row-title">
                   <span style={{ fontWeight: 600 }}>{ds.id}</span>
+                  <span className="badge badge-off">{DB_TYPE_LABELS[ds.dbType]}</span>
                   {!ds.catalog ? (
                     <span className="badge badge-off">尚未掃描</span>
                   ) : ds.catalog.published ? (
@@ -190,7 +215,7 @@ export default function DataSourcesSection({ serverId, tenantId, sources, reload
                 </button>
                 <button
                   className="btn btn-ghost btn-sm"
-                  onClick={() => setForm({ isNew: false, values: { id: ds.id, schemas: ds.schemas.join(', '), connectionEnv: ds.connectionEnv, timezone: ds.timezone } })}
+                  onClick={() => setForm({ isNew: false, values: { id: ds.id, dbType: ds.dbType, schemas: ds.schemas.join(', '), connectionEnv: ds.connectionEnv, timezone: ds.timezone } })}
                 >
                   編輯
                 </button>

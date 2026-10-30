@@ -105,8 +105,10 @@ describe('摘要', () => {
 
   it('連線測試：可寫入的帳號要警告', () => {
     expect(connectionSummary({ ok: false, latencyMs: 3, error: 'auth_failed' })).toEqual({ ok: false, text: '帳號或密碼錯誤', warnings: [] });
-    const r = connectionSummary({ ok: true, latencyMs: 5, serverVersion: '17.2', defaultReadOnly: true, writableObjects: ['public.projects'] });
+    const r = connectionSummary({ ok: true, latencyMs: 5, serverVersion: 'PostgreSQL 17.2', defaultReadOnly: true, writableObjects: ['public.projects'] });
     expect(r.text).toBe('連線成功（PostgreSQL 17.2，5 ms）');
     expect(r.warnings[0]).toContain('public.projects');
+    const maria = connectionSummary({ ok: true, latencyMs: 3, serverVersion: 'MariaDB 12.2.2', writableObjects: [], warnings: ['資料來源設定為 MySQL，但伺服器是 MariaDB，請修正資料庫類型'] });
+    expect(maria).toEqual({ ok: true, text: '連線成功（MariaDB 12.2.2，3 ms）', warnings: ['資料來源設定為 MySQL，但伺服器是 MariaDB，請修正資料庫類型'] });
   });
 });

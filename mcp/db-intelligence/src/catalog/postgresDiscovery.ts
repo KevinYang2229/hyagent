@@ -5,7 +5,7 @@
  */
 import { createHash } from 'node:crypto';
 import type { ClientBase } from 'pg';
-import type { DatasetKind, DiscoveredForeignKey, DiscoveredObject, DiscoveredSchema } from '../contracts/catalog';
+import type { DatasetKind, DbType, DiscoveredForeignKey, DiscoveredObject, DiscoveredSchema } from '../contracts/catalog';
 
 export interface DiscoveryOptions {
   schemas: string[];
@@ -77,7 +77,10 @@ export async function discoverPostgresSchema(client: ClientBase, opts: Discovery
 
 const keyOf = (schema: unknown, object: unknown) => `${String(schema)}.${String(object)}`;
 
-/** 純函式：把系統目錄查詢結果組成 DiscoveredSchema（拆出來方便單元測試） */
+/**
+ * 純函式：把系統目錄查詢結果組成 DiscoveredSchema（拆出來方便單元測試，MariaDB／MySQL 也共用）。
+ * 物件種類用 PostgreSQL 的 relkind 代碼（r／p／v／m），其他資料庫在查詢端先轉成這組代碼。
+ */
 export function buildDiscoveredSchema(
   schemas: string[],
   include: Set<string> | null,
@@ -85,6 +88,7 @@ export function buildDiscoveredSchema(
   columnRows: Row[],
   constraintRows: Row[],
   indexRows: Row[],
+  dbType: DbType = 'postgres',
 ): DiscoveredSchema {
   const byKey = new Map<string, DiscoveredObject>();
   for (const r of objectRows) {
@@ -135,6 +139,6 @@ export function buildDiscoveredSchema(
     });
   }
   const objects = [...byKey.values()];
-  const body = { dbType: 'postgres' as const, schemas, objects, foreignKeys };
+  const body = { dbType, schemas, objects, foreignKeys };
   return { ...body, schemaVersion: createHash('sha256').update(JSON.stringify(body)).digest('hex') };
 }

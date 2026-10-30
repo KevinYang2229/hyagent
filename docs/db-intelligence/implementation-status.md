@@ -7,7 +7,7 @@
 | # | 問題 | 本 branch 的做法 |
 | --- | --- | --- |
 | 1 | 後端語言、MCP Client 位置 | TypeScript／Node.js。HyAgent server 已有 MCP Client，以 ES256 JWT 呼叫自建 MCP server；本服務沿用 `@hyagent/mcp-kit` 驗簽，tenant／user 取自 JWT |
-| 3 | 第一版 DB | PostgreSQL（Adapter 介面預留 MSSQL／MySQL） |
+| 3 | 支援的 DB | PostgreSQL、MariaDB（已驗證 12.2）、MySQL（已驗證 8.4）。轉接層：掃描（`catalog/postgresDiscovery.ts`、`adapters/mysql.ts`）、SQL 方言（`query/dialect.ts`）、執行與連線（`pools.ts` 的 `DataSourceConnections`）；SQL Server 可沿用同一介面 |
 | 4 | 權限來源 | 角色＝使用者目錄 ∪ HyAgent JWT scope（`mcp:<serverId>:<role>`：在「MCP 服務」登記時宣告角色，即可在「權限」分頁授予部門或帳號）；資料列範圍屬性來自使用者目錄。之後可換成 OA API 或 IAM，同一個 `PrincipalResolver` 介面 |
 | 5 | 是否採樣真實資料 | 否。Discovery 只查系統目錄 |
 | 6 | 結果快取 | 程序內記憶體，綁 tenant／user／政策版本／Catalog 版本，TTL 10 分鐘，上限 500 筆；未加密（不落地） |

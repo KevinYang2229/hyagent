@@ -1,4 +1,8 @@
-# Demo DB：npm run demo-db -w mcp/db-intelligence（只供本機開發，帳密非正式用）
+# Demo DB（只供本機開發，帳密非正式用）
+#   PostgreSQL：npm run demo-db -w mcp/db-intelligence
+#   MariaDB：  npm run demo-db:mariadb -w mcp/db-intelligence
+#   MySQL：    npm run demo-db:mysql -w mcp/db-intelligence
+#   OA 組織（MariaDB，虛構資料）：npm run demo-db:oa -w mcp/db-intelligence
 services:
   dbi-demo-db:
     image: postgres:17-alpine
@@ -14,3 +18,39 @@ services:
       test: ["CMD-SHELL", "pg_isready -U dbi_owner -d projects"]
       interval: 2s
       retries: 20
+
+  dbi-demo-mariadb:
+    profiles: ["mariadb"]
+    image: mariadb:12.2
+    environment:
+      MARIADB_DATABASE: projects
+      MARIADB_ROOT_PASSWORD: root_dev_only
+    ports:
+      - "54340:3306"
+    volumes:
+      - ./demo.mysql.sql:/docker-entrypoint-initdb.d/01-demo.sql:ro
+
+  dbi-demo-mysql:
+    profiles: ["mysql"]
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: projects
+      MYSQL_ROOT_PASSWORD: root_dev_only
+    ports:
+      - "54341:3306"
+    volumes:
+      - ./demo.mysql.sql:/docker-entrypoint-initdb.d/01-demo.sql:ro
+
+  dbi-oa-mariadb:
+    profiles: ["oa"]
+    image: mariadb:12.2
+    environment:
+      MARIADB_ROOT_PASSWORD: root_dev_only
+    ports:
+      - "54343:3306"
+    volumes:
+      - ./oa-organization:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 2s
+      retries: 30

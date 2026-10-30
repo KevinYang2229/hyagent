@@ -12,8 +12,7 @@ import { createDbIntelligenceApp } from './app';
 import { ConsoleAuditSink, multiAuditSink, RingAuditSink } from './audit';
 import { FileCatalogStore } from './catalog/store';
 import { loadConfig } from './config';
-import { PoolRegistry } from './pools';
-import { PostgresExecutor } from './query/executor';
+import { DataSourceConnections } from './pools';
 import { DbIntelligenceService, directoryResolver } from './service';
 import { fileState } from './state';
 
@@ -25,7 +24,7 @@ const serverId = process.env.MCP_SERVER_ID ?? 'db-intelligence';
 const dataDir = process.env.DBI_DATA_DIR ?? process.env.DBI_CATALOG_DIR ?? 'data';
 const state = fileState(path.join(dataDir, 'state.json'), () => loadConfig(process.env.DBI_CONFIG ?? 'config/demo.json'));
 const catalogs = new FileCatalogStore(dataDir);
-const pools = new PoolRegistry(() => state.dataSources(), { max: Number(process.env.DBI_POOL_MAX ?? 5) });
+const connections = new DataSourceConnections(() => state.dataSources(), { max: Number(process.env.DBI_POOL_MAX ?? 5) });
 const recentAudit = new RingAuditSink();
 
 const service = new DbIntelligenceService({
@@ -33,7 +32,7 @@ const service = new DbIntelligenceService({
   catalogs,
   policies: () => state.policies(),
   principals: directoryResolver(() => state.principals(), { serverId }),
-  executor: new PostgresExecutor(pools),
+  executor: connections,
   audit: multiAuditSink(new ConsoleAuditSink(), recentAudit),
   limits: { timeoutMs: Number(process.env.DBI_STATEMENT_TIMEOUT_MS ?? 10_000) },
 });
@@ -45,13 +44,13 @@ const app = createDbIntelligenceApp({
     rejectReplay: true,
   }),
   service,
-  admin: { state, catalogs, pools, audit: recentAudit, serverId },
+  admin: { state, catalogs, connections, audit: recentAudit, serverId },
 });
 const http = app.listen(port, () => console.log(`db-intelligence MCP server on http://localhost:${port}/mcp（管理 API：/admin）`));
 
 for (const sig of ['SIGINT', 'SIGTERM'] as const) {
   process.once(sig, () => {
     http.close();
-    void pools.closeAll().finally(() => process.exit(0));
+    void connections.closeAll().finally(() => process.exit(0));
   });
 }

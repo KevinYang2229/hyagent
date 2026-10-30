@@ -4,6 +4,7 @@
  */
 import { z } from 'zod';
 import { metricExprSchema, SENSITIVITIES, type Catalog, type CatalogDataset } from '../contracts/catalog';
+import { PENDING_MARK, pendingDescriptions } from './reviewDraft';
 import { metricColumns } from './sync';
 
 const approval = z.enum(['pending', 'approved', 'rejected']);
@@ -82,6 +83,10 @@ function requireColumns(ds: CatalogDataset, cols: string[], what: string): void 
 
 export function applyCatalogReview(catalog: Catalog, input: CatalogReview, now: Date = new Date()): Catalog {
   const review = catalogReviewSchema.parse(input);
+  const unconfirmed = pendingDescriptions(review);
+  if (unconfirmed.length) {
+    throw new CatalogReviewError(`描述仍標記${PENDING_MARK}（DB 原始註解未經確認）：${unconfirmed.slice(0, 5).join('、')}${unconfirmed.length > 5 ? ` 等 ${unconfirmed.length} 處` : ''}`);
+  }
   const next: Catalog = structuredClone(catalog);
   const find = (id: string) => {
     const ds = next.datasets.find((d) => d.id === id);

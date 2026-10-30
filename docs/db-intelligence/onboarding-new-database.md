@@ -16,11 +16,13 @@
 
 ## 一、前置條件
 
-- [ ] 資料庫是 **PostgreSQL**（MySQL／SQL Server 尚未支援）。
+- [ ] 資料庫是 **PostgreSQL**、**MariaDB**（10.1 以上，已驗證 12.2）或 **MySQL**（8.0 以上，已驗證 8.4）。SQL Server 尚未支援。
 - [ ] db-intelligence 服務部署在**看得到資料庫**的網路內（通常是客戶端），並已在 HyAgent 後台「MCP 服務」登記。首次登記見第七節。
 - [ ] HyAgent server 已設定 `MCP_SIGNING_KEY`。「MCP 服務」頁的狀態應為「正常」。
 
 ## 二、資料庫端：建立唯讀帳號（DBA 執行）
+
+**PostgreSQL**
 
 ```sql
 CREATE ROLE hyagent_reader LOGIN PASSWORD '強密碼';
@@ -31,6 +33,17 @@ GRANT USAGE ON SCHEMA public TO hyagent_reader;
 -- 逐表授權，不要用 ON ALL TABLES：未授權的表在掃描時完全看不到
 GRANT SELECT ON public.orders, public.customers, public.products TO hyagent_reader;
 ```
+
+**MariaDB／MySQL**（schema 就是資料庫名稱，以下以 `erp` 為例）
+
+```sql
+CREATE USER 'hyagent_reader'@'10.0.0.%' IDENTIFIED BY '強密碼';  -- 主機限制為 db-intelligence 所在網段
+-- 逐表授權，不要用 erp.* 或 ALL PRIVILEGES
+GRANT SELECT ON erp.orders TO 'hyagent_reader'@'10.0.0.%';
+GRANT SELECT ON erp.customers TO 'hyagent_reader'@'10.0.0.%';
+```
+
+MariaDB／MySQL 沒有帳號層級的「預設唯讀」，也沒有 PostgreSQL 的資料列層級安全（RLS）；db-intelligence 一律在唯讀交易中執行查詢，資料列範圍由存取政策控管。需要在資料庫層再限縮時，請建 View 並只授權 View。
 
 建議：
 
@@ -47,8 +60,13 @@ GRANT SELECT ON public.orders, public.customers, public.products TO hyagent_read
 在 db-intelligence 的 `.env`（本機為 `mcp/db-intelligence/.env`，正式環境由 Secret Manager 注入）加入：
 
 ```bash
+# PostgreSQL
 DBI_DS_ERP_URL=postgres://hyagent_reader:密碼@db-host:5432/erp?sslmode=require
+# MariaDB／MySQL（兩者都用 mysql://；mariadb:// 也接受）
+DBI_DS_ERP_URL=mysql://hyagent_reader:密碼@db-host:3306/erp
 ```
+
+MariaDB／MySQL 需要 TLS 時，在連線字串加上 `?ssl={"rejectUnauthorized":true}`（需 URL 編碼）。
 
 - 變數名稱自訂，限英數與底線。後台只填**變數名稱**，密碼不會經過 HyAgent，也不會出現在設定檔、Catalog 或 log。
 - 新增或修改後要**重新啟動 db-intelligence**，`.env` 只在啟動時讀取。
@@ -60,8 +78,9 @@ DBI_DS_ERP_URL=postgres://hyagent_reader:密碼@db-host:5432/erp?sslmode=require
 | 欄位 | 範例 | 規則 |
 | --- | --- | --- |
 | 資料來源 ID | `ds_erp` | 英數、底線、連字號，64 字內；建立後不可修改，也不能改綁其他租戶 |
+| 資料庫類型 | `MariaDB` | PostgreSQL／MariaDB／MySQL；建立後不可修改。連線測試會比對伺服器實際類型，設錯會警告 |
 | 連線字串環境變數 | `DBI_DS_ERP_URL` | 第三節的變數名稱 |
-| 允許掃描的 Schema | `public` | 逗號分隔；範圍外的 Schema 不會被掃描 |
+| 允許掃描的 Schema | `public`／`erp` | 逗號分隔；範圍外的 Schema 不會被掃描。MariaDB／MySQL 填**資料庫名稱** |
 | 時區 | `Asia/Taipei` | AI 換算「今年」「上個月」用 |
 
 儲存後依序執行：
@@ -70,6 +89,17 @@ DBI_DS_ERP_URL=postgres://hyagent_reader:密碼@db-host:5432/erp?sslmode=require
 2. **掃描 Schema**：只讀系統目錄，不讀資料列。完成後顯示新增的資料集、欄位、關聯數量。
 
 只想掃描 Schema 中的部分表時，優先用第二節的帳號授權控制。另有 `includeObjects`（如 `["public.orders"]`），目前只能透過管理 API 設定。
+
+### MariaDB／MySQL 與 PostgreSQL 的差異
+
+| 項目 | 說明 |
+| --- | --- |
+| 資料表 ID | `資料庫名稱.表名`，例如 `erp.orders`（存取政策的 `dataset` 也用這個格式） |
+| 文字比對（「包含」「開頭為」） | 是否區分大小寫取決於欄位定序；常見的 `*_ci` 定序不分大小寫 |
+| `tinyint(1)` | 常被當布林用，但系統無法確定，一律當數值；請在業務描述說明 |
+| `json`、`blob`、`set` 等型別 | 不支援查詢 |
+| 無效日期（`0000-00-00`） | 以文字原樣回傳 |
+| 連線測試的「仍可寫入」 | 解析 `SHOW GRANTS`，列出範圍內 SELECT 以外的權限；帳號被授予角色時，角色內的權限無法檢查，會另外提醒 |
 
 ## 五、Catalog 審核與發布
 
@@ -99,7 +129,21 @@ DBI_DS_ERP_URL=postgres://hyagent_reader:密碼@db-host:5432/erp?sslmode=require
 
 ### 計算指標、無外鍵的關聯（目前用審核檔）
 
-AI 不能自行組 SQL 運算式。像「毛利率」這類計算，要先由管理員定義成指標。後台目前只能檢視指標，新增要寫審核檔，在服務目錄執行：
+AI 不能自行組 SQL 運算式。像「毛利率」這類計算，要先由管理員定義成指標。後台目前只能檢視指標，新增要寫審核檔。
+
+審核檔不用從頭寫。掃描後先產生草稿：
+
+```bash
+cd mcp/db-intelligence && npm run catalog:review-draft -- ds_erp > review-erp.json
+```
+
+草稿列出全部資料表與欄位，預設全部不核准、不開放，並且：
+
+- **敏感度**依欄位名稱先猜：證號、生日、地址、薪資是「限制」；email、電話、性別是「機密」；其他是「內部」。
+- **關聯**依命名推測（`company_id` → `company.id`、`job_post` → `employee_job_post.code`），全部待審。
+- **描述**會帶入資料庫原始註解，並加上「【待確認】」。註解內容不可信，沒刪掉標記的審核檔會被拒絕套用。
+
+要改的只有三件事：把要開放的核准並勾可查詢、補業務描述並刪掉標記、核准正確的關聯。實例見 `config/oa-organization-review.json`。改完後套用：
 
 ```bash
 cd mcp/db-intelligence && npm run catalog:review -- ds_erp review-erp.json

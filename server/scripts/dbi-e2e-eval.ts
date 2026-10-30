@@ -4,8 +4,10 @@
  * 走完整路徑：conversationService（intent router 路由）→ agent → MCP（JWT）→ db-intelligence →
  * 政策 → 真實 PostgreSQL（infra/demo.sql）→ 模型回答。每題自動檢查工具呼叫與回答，並輸出逐字紀錄供人工核對。
  *
- * 前置：
- *   npm run demo-db -w mcp/db-intelligence           # Demo DB（port 54330）
+ * 前置（三選一，內容相同；依連線字串開頭判斷資料庫種類，mysql:// 時以 DBI_EVAL_DB_TYPE=mysql 指定 MySQL）：
+ *   npm run demo-db -w mcp/db-intelligence           # PostgreSQL（port 54330）
+ *   npm run demo-db:mariadb -w mcp/db-intelligence   # MariaDB（port 54340，mysql://hyagent_reader:reader_dev_only@localhost:54340/projects）
+ *   npm run demo-db:mysql -w mcp/db-intelligence     # MySQL（port 54341）
  *   server/.env 需有可用的 LLM 設定（LLM_PROVIDER 與對應金鑰）
  * 執行：
  *   DBI_EVAL_DATABASE_URL=postgres://hyagent_reader:reader_dev_only@localhost:54330/projects \
@@ -19,7 +21,6 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import path from 'node:path';
-import pg from 'pg';
 import * as dbi from '@hyagent/db-intelligence';
 import { createHyAgentVerifier } from '@hyagent/mcp-kit';
 import { env } from '../src/config/env';
@@ -153,11 +154,11 @@ const CASES: EvalCase[] = [
 ];
 
 /** 評測專用：薪資專員可看明細（未設 aggregateOnly），薪資靠「限制」等級保護 */
-const PAYROLL_POLICY = (tenantId: string) => ({
+const PAYROLL_POLICY = (tenantId: string, schema: string) => ({
   id: 'payroll-salary',
   tenantId,
   dataSourceId: 'ds_project_01',
-  dataset: 'public.employee_salary',
+  dataset: `${schema}.employee_salary`,
   principals: { users: [], roles: ['payroll'] },
   columns: ['department_id', 'salary'],
   masked: {},
@@ -180,17 +181,21 @@ async function main(): Promise<void> {
   // ── db-intelligence（同程序）：真實掃描 Demo DB → 套用 Demo 審核 → 發布 ──
   const tenantId = tenantStore.createTenant('DB 評測').id;
   tenantStore.updateTenant(tenantId, { grantedScopes: ['service:agent', 'service:knowledge'] });
-  const pool = new pg.Pool({ connectionString: dbUrl, max: 3 });
-  const client = await pool.connect();
-  const discovered = await dbi.discoverPostgresSchema(client, { schemas: ['public'] }).finally(() => client.release());
-  const review = JSON.parse(readFileSync(path.join(DBI, 'config/demo-review.json'), 'utf8'));
+  const dbType = /^postgres(ql)?:\/\//i.test(dbUrl) ? 'postgres' : process.env.DBI_EVAL_DB_TYPE === 'mysql' ? 'mysql' : 'mariadb';
+  // MariaDB／MySQL 的 schema 就是資料庫名稱：Demo 設定的 public.* 換成 projects.*
+  const schema = dbType === 'postgres' ? 'public' : 'projects';
+  const adapt = (text: string) => (schema === 'public' ? text : text.replaceAll('"public.', `"${schema}.`));
+  const demo = dbi.configSchema.parse(JSON.parse(adapt(readFileSync(path.join(DBI, 'config/demo.json'), 'utf8')).replaceAll('"demo"', JSON.stringify(tenantId))));
+  demo.dataSources = demo.dataSources.map((d) => ({ ...d, dbType, schemas: [schema], connectionEnv: 'DBI_EVAL_DATABASE_URL' }));
+  const connections = new dbi.DataSourceConnections(() => demo.dataSources, { max: 3 });
+  const discovered = await connections.discover(demo.dataSources[0]);
+  const review = JSON.parse(adapt(readFileSync(path.join(DBI, 'config/demo-review.json'), 'utf8')));
   const catalogs = new dbi.MemoryCatalogStore();
   await catalogs.save(dbi.applyCatalogReview(dbi.syncCatalog(undefined, discovered, { dataSourceId: 'ds_project_01', tenantId }).catalog, review));
-  // Demo 設定換成本租戶；角色改由 HyAgent scope 授予（bob、hana 不在目錄），只有 alice 需要部門屬性
-  const demo = dbi.configSchema.parse(JSON.parse(readFileSync(path.join(DBI, 'config/demo.json'), 'utf8').replaceAll('"demo"', JSON.stringify(tenantId))));
+  // 角色改由 HyAgent scope 授予（bob、hana 不在目錄），只有 alice 需要部門屬性
   const state = new dbi.DbiState({
     ...demo,
-    policies: { ...demo.policies, policies: [...demo.policies.policies, PAYROLL_POLICY(tenantId)] },
+    policies: { ...demo.policies, policies: [...demo.policies.policies, PAYROLL_POLICY(tenantId, schema)] },
     principals: { [tenantId]: { alice: { roles: ['employee'], attributes: { departmentId: 1 } } } },
   });
 
@@ -200,7 +205,7 @@ async function main(): Promise<void> {
     catalogs,
     policies: () => state.policies(),
     principals: dbi.directoryResolver(() => state.principals(), { serverId: 'db-intelligence' }),
-    executor: new dbi.PostgresExecutor(new Map([['ds_project_01', pool]])),
+    executor: connections,
     audit: new dbi.MemoryAuditSink(),
   });
   // 記錄每次工具呼叫（參數與結果），寫進逐字紀錄
@@ -252,7 +257,7 @@ async function main(): Promise<void> {
   });
 
   // ── 逐題執行 ──
-  const lines: string[] = [`# Database Intelligence 端到端評測`, '', `- 時間：${new Date().toISOString()}`, `- 模型：${env.LLM_PROVIDER} / ${env.LLM_MODEL}`, ''];
+  const lines: string[] = [`# Database Intelligence 端到端評測`, '', `- 時間：${new Date().toISOString()}`, `- 模型：${env.LLM_PROVIDER} / ${env.LLM_MODEL}`, `- 資料庫：${dbType}`, ''];
   let passed = 0;
   let total = 0;
   for (const c of CASES.filter((x) => !only || only.has(x.id))) {
@@ -283,14 +288,15 @@ async function main(): Promise<void> {
     }
     lines.push('', '**回答**', '', error ? `錯誤：${error}` : reply || '（空白）', '');
   }
-  lines.splice(4, 0, `- 結果：${passed}/${total} 題通過`, '');
+  // 插在標頭（標題、空行、時間、模型、資料庫）之後
+  lines.splice(5, 0, `- 結果：${passed}/${total} 題通過`);
   const out = path.join(process.env.OA_AGENT_DATA_DIR!, 'dbi-e2e-report.md');
   writeFileSync(out, `${lines.join('\n')}\n`);
   console.log(`\n${passed}/${total} 題通過；逐字紀錄：${out}`);
 
   await mcpConnections.closeAll();
   http.close();
-  await pool.end();
+  await connections.closeAll();
   process.exit(passed === total ? 0 : 1);
 }
 

@@ -3,6 +3,7 @@
  * 預設拒絕：沒有政策涵蓋的資料集、欄位一律不可查；多條政策符合時取聯集（任一政策允許即可）。
  */
 import { z } from 'zod';
+import { DB_TYPES } from './catalog';
 
 const attrValue = z.union([z.string(), z.number(), z.array(z.union([z.string(), z.number()]))]);
 
@@ -52,7 +53,7 @@ export const dataSourceSchema = z
   .object({
     id: z.string(),
     tenantId: z.string(),
-    dbType: z.literal('postgres'),
+    dbType: z.enum(DB_TYPES),
     /** 允許掃描的 schema */
     schemas: z.array(z.string()).min(1),
     /** 只掃描這些物件（schema.object）；省略＝schema 內全部有 SELECT 權限的物件 */

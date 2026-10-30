@@ -4,6 +4,7 @@ import type { Catalog } from '../src/contracts/catalog';
 import type { AccessPolicy } from '../src/contracts/policy';
 import type { QueryPlanInput } from '../src/contracts/queryPlan';
 import { compileQuery } from '../src/query/compiler';
+import { mysqlDialect } from '../src/query/dialect';
 import { resolveQuery, type ValidationContext } from '../src/query/validator';
 import { demoCatalog, demoConfig, principal } from './fixtures';
 
@@ -316,5 +317,70 @@ describe('敏感度：「限制」欄位只能統計或遮罩後顯示', () => {
     const r = resolveQuery(plan({ dataset: 'employee_salary', select: [{ field: 'salary', agg: 'avg' }] }), ctx('hana'));
     expect(r.sensitiveColumns).toEqual(['employee_salary.salary']);
     expect(resolveQuery(plan({}), ctx('bob')).sensitiveColumns).toEqual([]);
+  });
+});
+
+describe('MariaDB／MySQL 方言', () => {
+  const my = (p: Partial<QueryPlanInput>, userId = 'bob', over: Partial<ValidationContext> = {}) => compileQuery(resolveQuery(plan(p), ctx(userId, over)), mysqlDialect);
+
+  it('反引號、? 參數、LIMIT 直接寫入整數', () => {
+    const q = my({ select: [{ field: 'name' }], filters: [{ field: 'start_date', op: 'gte', value: '2026-01-01' }], order_by: [{ field: 'name' }] });
+    expect(q.sql).toBe(['SELECT t0.`name` AS `name`', 'FROM `public`.`projects` AS t0', 'WHERE (t0.`start_date` >= ?)', 'ORDER BY `name` ASC', 'LIMIT 101'].join('\n'));
+    expect(q.params).toEqual(['2026-01-01']);
+  });
+
+  it('IN 展開成多個參數；LIKE 以 ! 跳脫；指標轉 DECIMAL', () => {
+    const q = my({
+      select: [{ field: 'actual_hours_over_estimated_ratio', alias: 'r' }],
+      filters: [
+        { field: 'department_id', op: 'in', value: [1, 2] },
+        { field: 'name', op: 'contains', value: '100%_!' },
+        { field: 'department_id', op: 'not_in', value: [3] },
+      ],
+    });
+    expect(q.sql).toContain('(CAST(t0.`actual_hours` AS DECIMAL(65,10)) / NULLIF(CAST(t0.`estimated_hours` AS DECIMAL(65,10)), 0)) AS `r`');
+    expect(q.sql).toContain("WHERE (t0.`department_id` IN (?, ?)) AND (t0.`name` LIKE ? ESCAPE '!') AND (NOT (t0.`department_id` IN (?)))");
+    expect(q.params).toEqual([1, 2, '%100!%!_!!%', 3]);
+  });
+
+  it('參數順序與 SQL 中出現的順序一致（join 範圍、篩選、資料列範圍、HAVING）', () => {
+    const policies = [
+      ...demoConfig.policies.policies.filter((p) => p.dataset !== 'public.departments'),
+      {
+        id: 'own-dept', tenantId: 'demo', dataSourceId: 'ds_project_01', dataset: 'public.departments',
+        principals: { users: [], roles: ['employee'] }, columns: ['*'], masked: {}, rowScope: [{ column: 'id', attribute: 'departmentId' }], aggregateOnly: false, minGroupSize: 2,
+      },
+    ];
+    const q = my(
+      {
+        joins: [{ dataset: 'departments' }],
+        select: [{ field: 'name', dataset: 'departments', alias: 'd' }, { agg: 'count', alias: 'n' }],
+        filters: [{ field: 'estimated_hours', op: 'gt', value: 50 }],
+        group_by: [{ field: 'name', dataset: 'departments' }],
+      },
+      'alice',
+      { policies },
+    );
+    expect(q.sql).toBe(
+      [
+        'SELECT t1.`name` AS `d`, count(*) AS `n`',
+        'FROM `public`.`projects` AS t0',
+        'JOIN `public`.`departments` AS t1 ON t0.`department_id` = t1.`id` AND t1.`id` = ?',
+        'WHERE (t0.`estimated_hours` > ?) AND (t0.`department_id` = ?)',
+        'GROUP BY t1.`name`',
+        'HAVING count(*) >= ?',
+        'LIMIT 101',
+      ].join('\n'),
+    );
+    expect(q.params).toEqual([1, 50, 1, 2]);
+  });
+
+  it('指標常數直接寫入（ONLY_FULL_GROUP_BY 下 SELECT 與 GROUP BY 的運算式才會一致）', () => {
+    const c = applyCatalogReview(catalog, {
+      datasets: [{ id: 'public.projects', metrics: [{ key: 'hours_k', description: '', expression: { op: 'div', args: [{ column: 'actual_hours' }, { number: 1000 }] } }] }],
+    });
+    const q = compileQuery(resolveQuery(plan({ select: [{ field: 'hours_k' }, { agg: 'count' }], group_by: [{ field: 'hours_k' }] }), ctx('bob', { catalog: c })), mysqlDialect);
+    expect(q.sql).toContain('NULLIF(CAST(1000 AS DECIMAL(65,10)), 0)');
+    expect(q.params).toEqual([]);
   });
 });

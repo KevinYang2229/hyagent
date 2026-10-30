@@ -29,8 +29,12 @@ export interface DiscoveredForeignKey {
   to: { schemaName: string; objectName: string; columns: string[] };
 }
 
+/** 支援的資料庫：mariadb 與 mysql 共用同一套轉接（差異在逾時語法等少數地方） */
+export const DB_TYPES = ['postgres', 'mariadb', 'mysql'] as const;
+export type DbType = (typeof DB_TYPES)[number];
+
 export interface DiscoveredSchema {
-  dbType: 'postgres';
+  dbType: DbType;
   schemas: string[];
   objects: DiscoveredObject[];
   foreignKeys: DiscoveredForeignKey[];
@@ -159,8 +163,27 @@ export interface CatalogDiff {
   invalidatedMetrics: { dataset: string; metric: string }[];
 }
 
+/** 資料庫型別字串 → 型別分類（依資料庫種類） */
+export function typeCategoryOf(dataType: string, dbType: DbType = 'postgres'): TypeCategory {
+  return dbType === 'postgres' ? postgresTypeCategory(dataType) : mysqlTypeCategory(dataType);
+}
+
+/**
+ * MariaDB／MySQL 的 COLUMN_TYPE（如 int(11)、decimal(10,1)、varchar(100)、enum('a','b')）→ 型別分類。
+ * tinyint(1) 常被當布林用，但無法確定，一律當數值；JSON 在 MariaDB 是 longtext 別名，會落在 text。
+ */
+export function mysqlTypeCategory(columnType: string): TypeCategory {
+  const t = columnType.toLowerCase().trim();
+  if (/^(tinyint|smallint|mediumint|int|integer|bigint|decimal|numeric|dec|fixed|float|double|real|year)\b/.test(t)) return 'numeric';
+  if (/^(char|varchar|tinytext|text|mediumtext|longtext|enum)\b/.test(t)) return 'text';
+  if (t === 'date') return 'date';
+  if (/^(datetime|timestamp)\b/.test(t)) return 'timestamp';
+  if (t === 'uuid') return 'uuid';
+  return 'other';
+}
+
 /** PostgreSQL format_type() 結果 → 型別分類 */
-export function typeCategoryOf(dataType: string): TypeCategory {
+export function postgresTypeCategory(dataType: string): TypeCategory {
   const t = dataType.toLowerCase();
   if (t.endsWith('[]')) return 'other';
   if (/^(smallint|integer|bigint|numeric|decimal|real|double precision)\b/.test(t)) return 'numeric';

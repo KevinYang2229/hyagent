@@ -543,10 +543,12 @@ export interface DbiCatalogSummary {
   unreviewedColumns: number;
 }
 
+export type DbiDbType = 'postgres' | 'mariadb' | 'mysql';
+
 export interface DbiDataSource {
   id: string;
   tenantId: string;
-  dbType: 'postgres';
+  dbType: DbiDbType;
   schemas: string[];
   includeObjects?: string[];
   connectionEnv: string;
@@ -565,6 +567,7 @@ export interface DbiConnectionTest {
   serverVersion?: string;
   defaultReadOnly?: boolean;
   writableObjects?: string[];
+  warnings?: string[];
   error?: string;
 }
 

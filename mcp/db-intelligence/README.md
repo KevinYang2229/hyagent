@@ -1,6 +1,6 @@
 # @hyagent/db-intelligence
 
-讓 HyAgent 在受控權限內查詢客戶既有的關聯式資料庫，不必為每種問題開發業務 API。
+讓 HyAgent 在受控權限內查詢客戶既有的關聯式資料庫（PostgreSQL、MariaDB、MySQL），不必為每種問題開發業務 API。
 模型只產生結構化 **Query Plan**（不是 SQL），由本服務驗證、套用政策、編譯成參數化 SQL，並在唯讀交易中執行。
 
 操作手冊：[`docs/db-intelligence/onboarding-new-database.md`](../../docs/db-intelligence/onboarding-new-database.md)；規格：[`docs/db-intelligence/development-spec.md`](../../docs/db-intelligence/development-spec.md)；實作進度與規格對照：[`docs/db-intelligence/implementation-status.md`](../../docs/db-intelligence/implementation-status.md)。
@@ -29,7 +29,7 @@ HyAgent ──JWT──▶ MCP app（mcp-kit 驗簽）──▶ DbIntelligenceSe
 ## 快速開始（本機接上 HyAgent）
 
 ```bash
-# 1. Demo DB（postgres:17，port 54330；含唯讀帳號 hyagent_reader）
+# 1. Demo DB（含唯讀帳號 hyagent_reader）：PostgreSQL 54330；另有 demo-db:mariadb（54340）、demo-db:mysql（54341）
 npm run demo-db -w mcp/db-intelligence
 
 # 2. 設定並啟動（port 4300）；首次啟動以 config/local-default.json（租戶 default）為種子
@@ -108,7 +108,7 @@ join 進來的資料集欄位加 `"dataset": "departments"`。完整格式見 `s
 | POST | `/query/preview` | 以指定使用者身分（可模擬 scope）預覽 Query Plan 的 SQL、參數與套用的政策，不執行 |
 | GET | `/audit?request_id=&tenant_id=&status=&limit=` | 最近的查詢稽核（記憶體保留 5000 筆；長期保存看 stdout log） |
 
-CLI（`catalog:sync`、`catalog:review`）仍可用於本機開發。
+CLI（`catalog:sync`、`catalog:review-draft`、`catalog:review`）仍可用於本機開發；`catalog:review-draft` 由已掃描的 Catalog 產生審核檔草稿。
 
 ## 管理 Catalog 與政策
 
@@ -126,6 +126,14 @@ npm run demo-db -w mcp/db-intelligence
 DBI_TEST_READER_URL=postgres://hyagent_reader:reader_dev_only@localhost:54330/projects \
 DBI_TEST_OWNER_URL=postgres://dbi_owner:owner_dev_only@localhost:54330/projects \
   npm test -w mcp/db-intelligence
+
+# 真實 MariaDB／MySQL 整合測試（驗收結果與 PostgreSQL 相同）
+npm run demo-db:mariadb -w mcp/db-intelligence && npm run demo-db:mysql -w mcp/db-intelligence
+DBI_TEST_MARIADB_URL=mysql://hyagent_reader:reader_dev_only@localhost:54340/projects \
+DBI_TEST_MARIADB_ROOT_URL=mysql://root:root_dev_only@localhost:54340/projects \
+DBI_TEST_MYSQL_URL=mysql://hyagent_reader:reader_dev_only@localhost:54341/projects \
+DBI_TEST_MYSQL_ROOT_URL=mysql://root:root_dev_only@localhost:54341/projects \
+  npm test -w mcp/db-intelligence
 ```
 
 真實模型端到端評測（HyAgent 對話 → 路由 → agent → 本服務 → Demo DB，逐題自動檢查並輸出逐字紀錄）：
@@ -136,3 +144,4 @@ DBI_EVAL_DATABASE_URL=postgres://hyagent_reader:reader_dev_only@localhost:54330/
 ```
 
 會用到 `server/.env` 的 LLM 設定；資料一律寫入臨時目錄（強制 `DATA_BACKEND=file`）。
+連線字串為 `mysql://` 時跑在 MariaDB（MySQL 另加 `DBI_EVAL_DB_TYPE=mysql`）。

@@ -6,7 +6,7 @@ import { createHyAgentVerifier } from '@hyagent/mcp-kit';
 import { createDbIntelligenceApp } from '../src/app';
 import { RingAuditSink } from '../src/audit';
 import { MemoryCatalogStore } from '../src/catalog/store';
-import { PoolRegistry } from '../src/pools';
+import { DataSourceConnections } from '../src/pools';
 import { DbIntelligenceService, directoryResolver } from '../src/service';
 import { DbiState } from '../src/state';
 import { caller, demoCatalog, demoConfig, now } from './fixtures';
@@ -35,7 +35,7 @@ beforeEach(async () => {
   catalogs = new MemoryCatalogStore();
   await catalogs.save(demoCatalog());
   audit = new RingAuditSink(10);
-  const pools = new PoolRegistry(() => state.dataSources(), { env: {} });
+  const connections = new DataSourceConnections(() => state.dataSources(), { env: {} });
   const service = new DbIntelligenceService({
     dataSources: () => state.dataSources(),
     catalogs,
@@ -48,7 +48,7 @@ beforeEach(async () => {
   const app = createDbIntelligenceApp({
     verifier: createHyAgentVerifier({ jwksUrl: 'http://x', audience: 'db-intelligence', fetchJwks: async () => ({ keys: [jwk] }), rejectReplay: true }),
     service,
-    admin: { state, catalogs, pools, audit, serverId: 'db-intelligence' },
+    admin: { state, catalogs, connections, audit, serverId: 'db-intelligence' },
   });
   server = await new Promise<Server>((r) => {
     const s = app.listen(0, () => r(s));

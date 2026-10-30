@@ -138,7 +138,7 @@ describe.skipIf(!readerUrl)('PostgreSQL 整合', () => {
     const ds = demoConfig.dataSources[0];
     const r = await testConnection(pool, ds);
     expect(r).toMatchObject({ ok: true, defaultReadOnly: true, writableObjects: [] });
-    expect(r.serverVersion).toMatch(/^\d+/);
+    expect(r.serverVersion).toMatch(/^PostgreSQL \d+/);
     if (ownerUrl) {
       const reg = new PoolRegistry(() => [ds], { env: { [ds.connectionEnv]: ownerUrl } });
       const owner = await testConnection(reg.get(ds.id)!, ds);

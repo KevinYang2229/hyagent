@@ -1,0 +1,105 @@
+{
+  "datasets": [
+    {
+      "id": "oa_organization_db.company",
+      "approvalStatus": "approved",
+      "description": "集團公司主檔",
+      "synonyms": ["公司", "子公司", "集團公司"],
+      "columns": {
+        "id": { "isQueryable": true, "sensitivity": "public", "description": "公司編號" },
+        "company_code": { "isQueryable": true, "sensitivity": "public", "description": "公司代碼，例如 ht" },
+        "company_name": { "isQueryable": true, "sensitivity": "public", "description": "公司名稱，例如 凌網、萬耀、全球", "synonyms": ["公司名"] },
+        "sort_no": { "isQueryable": true, "sensitivity": "public", "description": "顯示排序" },
+        "active": { "isQueryable": true, "sensitivity": "public", "description": "是否啟用：1 = 啟用，0 = 停用" }
+      }
+    },
+    {
+      "id": "oa_organization_db.department",
+      "approvalStatus": "approved",
+      "description": "部門主檔；同一部門代碼在不同公司可能重複，請搭配 company_id 判斷",
+      "synonyms": ["部門", "單位", "處", "事業處"],
+      "columns": {
+        "id": { "isQueryable": true, "sensitivity": "public", "description": "部門編號" },
+        "dept_code": { "isQueryable": true, "sensitivity": "public", "description": "部門代碼" },
+        "dept_name": { "isQueryable": true, "sensitivity": "public", "description": "部門中文名稱", "synonyms": ["部門名稱"] },
+        "dept_name_en": { "isQueryable": true, "sensitivity": "public", "description": "部門英文名稱" },
+        "company_id": { "isQueryable": true, "sensitivity": "public", "description": "所屬公司編號" },
+        "parent_id": { "isQueryable": true, "sensitivity": "public", "description": "上層部門編號" },
+        "manager_id": { "isQueryable": true, "sensitivity": "internal", "description": "部門主管的員工編號（employee.id）" },
+        "if_delete": { "isQueryable": true, "sensitivity": "public", "description": "是否已裁撤：1 = 已裁撤，0 = 現行部門；查「現有部門」要加 if_delete = 0" }
+      }
+    },
+    {
+      "id": "oa_organization_db.department_profile",
+      "approvalStatus": "approved",
+      "description": "部門屬性：是否為一級單位、是否為營運單位",
+      "synonyms": ["部門屬性", "一級單位"],
+      "columns": {
+        "department_id": { "isQueryable": true, "sensitivity": "public", "description": "部門編號" },
+        "is_level1": { "isQueryable": true, "sensitivity": "public", "description": "是否為一級單位：1 = 是" },
+        "is_operation": { "isQueryable": true, "sensitivity": "public", "description": "是否為營運單位：1 = 是，0 = 否，空值 = 未設定" },
+        "level1_dept": { "isQueryable": true, "sensitivity": "public", "description": "所屬一級單位的部門編號" }
+      }
+    },
+    {
+      "id": "oa_organization_db.employee_job_post",
+      "approvalStatus": "approved",
+      "description": "職稱代碼表",
+      "synonyms": ["職稱", "職位"],
+      "columns": {
+        "code": { "isQueryable": true, "sensitivity": "public", "description": "職稱代碼，例如 E03" },
+        "name": { "isQueryable": true, "sensitivity": "public", "description": "職稱中文名稱，例如 工程師、經理", "synonyms": ["職稱名稱"] },
+        "name_en": { "isQueryable": true, "sensitivity": "public", "description": "職稱英文名稱" },
+        "active": { "isQueryable": true, "sensitivity": "public", "description": "是否啟用：1 = 啟用" }
+      }
+    },
+    {
+      "id": "oa_organization_db.employee",
+      "approvalStatus": "approved",
+      "description": "員工主檔（含已離職人員）；leave_day 為空值代表在職，查「在職員工」要加 leave_day is_null",
+      "synonyms": ["員工", "同仁", "人員", "職員"],
+      "columns": {
+        "id": { "isQueryable": true, "sensitivity": "internal", "description": "員工內部編號" },
+        "employee_no": { "isQueryable": true, "sensitivity": "internal", "description": "員工工號", "synonyms": ["工號", "員編"] },
+        "cn_name": { "isQueryable": true, "sensitivity": "internal", "description": "中文姓名", "synonyms": ["姓名", "名字"] },
+        "en_name": { "isQueryable": true, "sensitivity": "internal", "description": "英文姓名" },
+        "nick_name": { "isQueryable": true, "sensitivity": "internal", "description": "英文暱稱" },
+        "sex": { "isQueryable": true, "sensitivity": "confidential", "description": "性別：M = 男，F = 女" },
+        "manager_id": { "isQueryable": true, "sensitivity": "internal", "description": "直屬主管的員工編號（employee.id）" },
+        "job_post": { "isQueryable": true, "sensitivity": "internal", "description": "職稱代碼（對應 employee_job_post.code）" },
+        "job_level": { "isQueryable": true, "sensitivity": "confidential", "description": "職等代碼" },
+        "employee_type": { "isQueryable": true, "sensitivity": "internal", "description": "雇用類型：F = 正職，P = 兼職或約聘" },
+        "job_place": { "isQueryable": true, "sensitivity": "internal", "description": "工作地點代碼" },
+        "company_id": { "isQueryable": true, "sensitivity": "internal", "description": "所屬公司編號" },
+        "arrival_day": { "isQueryable": true, "sensitivity": "internal", "description": "到職日", "synonyms": ["到職日期", "報到日"] },
+        "leave_day": { "isQueryable": true, "sensitivity": "internal", "description": "離職日；空值代表仍在職", "synonyms": ["離職日期"] },
+        "job_tel": { "isQueryable": true, "sensitivity": "internal", "description": "公司分機", "synonyms": ["分機"] },
+        "job_mobile": { "isQueryable": false, "sensitivity": "confidential", "description": "公務手機" },
+        "email": { "isQueryable": false, "sensitivity": "confidential", "description": "電子郵件" }
+      }
+    },
+    {
+      "id": "oa_organization_db.employee_assignment",
+      "approvalStatus": "approved",
+      "description": "員工的部門歸屬；一人可分屬多個部門，percent 為分配比例。查「某部門有幾位在職員工」請 join employee 並篩 leave_day is_null，並以 end_date 為空值代表現行歸屬",
+      "synonyms": ["部門歸屬", "人員配置", "所屬部門"],
+      "columns": {
+        "id": { "isQueryable": true, "sensitivity": "internal", "description": "歸屬紀錄編號" },
+        "employee_id": { "isQueryable": true, "sensitivity": "internal", "description": "員工編號" },
+        "department_id": { "isQueryable": true, "sensitivity": "internal", "description": "部門編號" },
+        "percent": { "isQueryable": true, "sensitivity": "internal", "description": "分配比例（%）" },
+        "start_date": { "isQueryable": true, "sensitivity": "internal", "description": "歸屬起日" },
+        "end_date": { "isQueryable": true, "sensitivity": "internal", "description": "歸屬迄日；空值代表現行歸屬" }
+      }
+    }
+  ],
+  "addRelationships": [
+    { "from": { "dataset": "oa_organization_db.department", "columns": ["company_id"] }, "to": { "dataset": "oa_organization_db.company", "columns": ["id"] }, "approvalStatus": "approved" },
+    { "from": { "dataset": "oa_organization_db.employee", "columns": ["company_id"] }, "to": { "dataset": "oa_organization_db.company", "columns": ["id"] }, "approvalStatus": "approved" },
+    { "from": { "dataset": "oa_organization_db.department_profile", "columns": ["department_id"] }, "to": { "dataset": "oa_organization_db.department", "columns": ["id"] }, "approvalStatus": "approved" },
+    { "from": { "dataset": "oa_organization_db.employee", "columns": ["job_post"] }, "to": { "dataset": "oa_organization_db.employee_job_post", "columns": ["code"] }, "approvalStatus": "approved" },
+    { "from": { "dataset": "oa_organization_db.employee_assignment", "columns": ["employee_id"] }, "to": { "dataset": "oa_organization_db.employee", "columns": ["id"] }, "approvalStatus": "approved" },
+    { "from": { "dataset": "oa_organization_db.employee_assignment", "columns": ["department_id"] }, "to": { "dataset": "oa_organization_db.department", "columns": ["id"] }, "approvalStatus": "approved" }
+  ],
+  "publish": true
+}

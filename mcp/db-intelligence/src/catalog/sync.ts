@@ -22,11 +22,11 @@ export interface SyncOptions {
   now?: () => Date;
 }
 
-function newColumn(c: DiscoveredObject['columns'][number]): CatalogColumn {
+function newColumn(c: DiscoveredObject['columns'][number], dbType: DiscoveredSchema['dbType']): CatalogColumn {
   return {
     name: c.name,
     dataType: c.dataType,
-    typeCategory: typeCategoryOf(c.dataType),
+    typeCategory: typeCategoryOf(c.dataType, dbType),
     nullable: c.nullable,
     comment: c.comment,
     description: null,
@@ -90,7 +90,7 @@ export function syncCatalog(prev: Catalog | undefined, discovered: DiscoveredSch
         synonyms: [],
         approvalStatus: 'pending',
         primaryKey: o.primaryKey,
-        columns: o.columns.map(newColumn),
+        columns: o.columns.map((c) => newColumn(c, discovered.dbType)),
         metrics: [],
       };
     }
@@ -100,12 +100,12 @@ export function syncCatalog(prev: Catalog | undefined, discovered: DiscoveredSch
       const prevCol = oldCols.get(c.name);
       if (!prevCol) {
         diff.addedColumns.push({ dataset: id, column: c.name });
-        return newColumn(c);
+        return newColumn(c, discovered.dbType);
       }
       if (prevCol.dataType !== c.dataType) {
         diff.changedColumns.push({ dataset: id, column: c.name, from: prevCol.dataType, to: c.dataType });
         touched.add(c.name);
-        return { ...prevCol, dataType: c.dataType, typeCategory: typeCategoryOf(c.dataType), nullable: c.nullable, comment: c.comment, isQueryable: false, reviewStatus: 'changed' };
+        return { ...prevCol, dataType: c.dataType, typeCategory: typeCategoryOf(c.dataType, discovered.dbType), nullable: c.nullable, comment: c.comment, isQueryable: false, reviewStatus: 'changed' };
       }
       return { ...prevCol, nullable: c.nullable, comment: c.comment };
     });

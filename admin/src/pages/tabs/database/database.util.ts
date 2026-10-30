@@ -1,4 +1,4 @@
-import type { DbiCatalog, DbiCatalogDiff, DbiCatalogReview, DbiConnectionTest, McpServerListView } from '../../../api';
+import type { DbiCatalog, DbiCatalogDiff, DbiCatalogReview, DbiConnectionTest, DbiDbType, McpServerListView } from '../../../api';
 
 /** db-intelligence 服務的特徵工具；未重新整理過工具清單時改看 serverId */
 const DBI_TOOLS = ['search_schema', 'execute_safe_query'];
@@ -88,7 +88,8 @@ export function connectionSummary(t: DbiConnectionTest): { ok: boolean; text: st
   const warnings: string[] = [];
   if (t.writableObjects?.length) warnings.push(`此帳號仍可寫入：${t.writableObjects.join('、')}——請改用只有 SELECT 權限的帳號`);
   if (t.defaultReadOnly === false) warnings.push('連線未預設唯讀（default_transaction_read_only=off）；查詢仍在唯讀交易中執行');
-  return { ok: true, text: `連線成功（PostgreSQL ${t.serverVersion ?? ''}，${t.latencyMs} ms）`, warnings };
+  warnings.push(...(t.warnings ?? []));
+  return { ok: true, text: `連線成功（${t.serverVersion ?? '版本不明'}，${t.latencyMs} ms）`, warnings };
 }
 
 export function parseJson(text: string): { ok: true; value: unknown } | { ok: false; error: string } {
@@ -115,3 +116,12 @@ export function policyTemplate(tenantId: string, dataSourceId: string, dataset: 
 
 export const SAMPLE_PLAN = (dataSourceId: string, dataset: string) =>
   JSON.stringify({ version: '1.0', data_source_id: dataSourceId, dataset, select: [{ agg: 'count', alias: 'n' }] }, null, 2);
+
+export const DB_TYPE_LABELS: Record<DbiDbType, string> = { postgres: 'PostgreSQL', mariadb: 'MariaDB', mysql: 'MySQL' };
+
+/** 連線字串範例（只當提示；實際連線字串放在 db-intelligence 的環境變數） */
+export const CONNECTION_EXAMPLES: Record<DbiDbType, string> = {
+  postgres: 'postgres://唯讀帳號:密碼@主機:5432/資料庫?sslmode=require',
+  mariadb: 'mysql://唯讀帳號:密碼@主機:3306/資料庫',
+  mysql: 'mysql://唯讀帳號:密碼@主機:3306/資料庫',
+};

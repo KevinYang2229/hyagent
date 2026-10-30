@@ -12,6 +12,7 @@ import { DbiError } from './contracts/errors';
 import type { DataSource, PolicySet, Principal, PrincipalDirectory } from './contracts/policy';
 import type { FilterOp } from './contracts/queryPlan';
 import { compileQuery } from './query/compiler';
+import { dialectFor } from './query/dialect';
 import type { QueryExecutor } from './query/executor';
 import { resolveQuery, type ResolvedQuery } from './query/validator';
 import { metricColumns } from './catalog/sync';
@@ -236,7 +237,7 @@ export class DbIntelligenceService {
       const ds = this.tenantSources(principal).find((d) => d.id === dsId);
       catalog = ds && (await this.catalogFor(ds));
       resolved = resolveQuery(args.query_plan, { catalog, dataSources: this.opts.dataSources(), policies: policySet.policies, principal });
-      const compiled = compileQuery(resolved);
+      const compiled = compileQuery(resolved, dialectFor(ds!.dbType));
       const exec = await this.opts.executor.execute(resolved.dataSourceId, compiled, { timeoutMs: this.limits.timeoutMs, maxBytes: this.limits.maxBytes });
 
       const masks = resolved.select.map((s) => s.mask);

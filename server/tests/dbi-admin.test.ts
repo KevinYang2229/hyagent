@@ -17,7 +17,7 @@ import {
   DbiState,
   directoryResolver,
   MemoryCatalogStore,
-  PoolRegistry,
+  DataSourceConnections,
   RingAuditSink,
   syncCatalog,
 } from '@hyagent/db-intelligence';
@@ -66,7 +66,7 @@ beforeEach(async () => {
       executor: { execute: async () => { throw new Error('不應執行'); } },
       audit,
     }),
-    admin: { state, catalogs, pools: new PoolRegistry(() => state.dataSources(), { env: {} }), audit, serverId: 'db-intelligence' },
+    admin: { state, catalogs, connections: new DataSourceConnections(() => state.dataSources(), { env: {} }), audit, serverId: 'db-intelligence' },
   });
   http = await new Promise((r) => { const s = dbi.listen(0, '127.0.0.1', () => r(s)); });
   url = `http://127.0.0.1:${(http.address() as AddressInfo).port}/mcp`;
