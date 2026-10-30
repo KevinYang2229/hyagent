@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState, type ReactNode } from 'react';
 import { api, type DbiAuditEvent } from '../../../api';
 
 interface Props {
@@ -21,6 +21,8 @@ export default function AuditSection({ serverId, tenantId, onError }: Props) {
   const [requestId, setRequestId] = useState('');
   /** 按「查詢」才套用的 request_id（輸入時不即時重查） */
   const [appliedRequestId, setAppliedRequestId] = useState('');
+  /** 展開查看詳細內容的紀錄 */
+  const [expanded, setExpanded] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -72,38 +74,53 @@ export default function AuditSection({ serverId, tenantId, onError }: Props) {
               <th>政策</th>
               <th>筆數</th>
               <th>耗時</th>
-              <th>request_id</th>
+              <th />
             </tr>
           </thead>
           <tbody>
             {events.map((e) => (
-              <tr key={e.request_id}>
-                <td className="muted">{new Date(e.created_at).toLocaleString('zh-TW', { hour12: false })}</td>
-                <td>{e.principal_id}</td>
-                <td>
-                  <span className={`badge ${STATUS[e.status].badge}`}>{STATUS[e.status].label}</span>
-                  {e.reason_code && <div className="muted" style={{ fontSize: 12 }}>{e.reason_code}</div>}
-                </td>
-                <td>
-                  {e.datasets?.join('、') ?? '—'}
-                  {e.sensitive_columns?.length ? (
-                    <div>
-                      <span className="badge badge-warn" title={e.sensitive_columns.join('、')}>
-                        敏感欄位 {e.sensitive_columns.length}
-                      </span>
-                    </div>
-                  ) : null}
-                </td>
-                <td className="muted">{e.policy_ids?.join('、') ?? '—'}</td>
-                <td>
-                  {e.row_count ?? '—'}
-                  {e.truncated && <span className="muted">（截斷）</span>}
-                </td>
-                <td className="muted">{e.duration_ms} ms</td>
-                <td>
-                  <span className="code-pill">{e.request_id}</span>
-                </td>
-              </tr>
+              <Fragment key={e.request_id}>
+                <tr>
+                  <td className="muted">{new Date(e.created_at).toLocaleString('zh-TW', { hour12: false })}</td>
+                  <td>{e.principal_id}</td>
+                  <td>
+                    <span className={`badge ${STATUS[e.status].badge}`}>{STATUS[e.status].label}</span>
+                    {e.reason_code && <div className="muted" style={{ fontSize: 12 }}>{e.reason_code}</div>}
+                  </td>
+                  <td>
+                    {e.datasets?.join('、') ?? '—'}
+                    {e.sensitive_columns?.length ? (
+                      <div>
+                        <span className="badge badge-warn" title={e.sensitive_columns.join('、')}>
+                          敏感欄位 {e.sensitive_columns.length}
+                        </span>
+                      </div>
+                    ) : null}
+                  </td>
+                  <td className="muted">{e.policy_ids?.join('、') ?? '—'}</td>
+                  <td>
+                    {e.row_count ?? '—'}
+                    {e.truncated && <span className="muted">（截斷）</span>}
+                  </td>
+                  <td className="muted">{e.duration_ms} ms</td>
+                  <td>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      aria-expanded={expanded === e.request_id}
+                      onClick={() => setExpanded((x) => (x === e.request_id ? null : e.request_id))}
+                    >
+                      {expanded === e.request_id ? '收合' : '詳細'}
+                    </button>
+                  </td>
+                </tr>
+                {expanded === e.request_id && (
+                  <tr>
+                    <td colSpan={8} className="dbi-audit-detail">
+                      <AuditDetail event={e} />
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
             ))}
             {events.length === 0 && (
               <tr>
@@ -115,6 +132,34 @@ export default function AuditSection({ serverId, tenantId, onError }: Props) {
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+/** 單筆稽核的詳細內容：AI 組的查詢結構（值已遮蔽）、拒絕原因、版本 */
+function AuditDetail({ event: e }: { event: DbiAuditEvent }) {
+  const rows: [string, ReactNode][] = [['request_id', <span className="code-pill">{e.request_id}</span>]];
+  if (e.client_request_id) rows.push(['呼叫端關聯 ID', e.client_request_id]);
+  if (e.reason_detail) rows.push(['原因', e.reason_detail]);
+  if (e.sensitive_columns?.length) rows.push(['敏感欄位', e.sensitive_columns.join('、')]);
+  rows.push(['版本', `Catalog v${e.catalog_version ?? '—'}・政策 ${e.policy_version}`]);
+  if (e.db_time_ms !== undefined) rows.push(['資料庫耗時', `${e.db_time_ms} ms`]);
+  return (
+    <div>
+      <dl className="dbi-detail-list">
+        {rows.map(([k, v]) => (
+          <Fragment key={k}>
+            <dt>{k}</dt>
+            <dd>{v}</dd>
+          </Fragment>
+        ))}
+      </dl>
+      <div className="field-label" style={{ marginTop: 8 }}>AI 送出的查詢（比較值已遮蔽）</div>
+      {e.plan_summary === undefined ? (
+        <div className="muted">（未記錄）</div>
+      ) : (
+        <pre className="dbi-pre" aria-label="查詢結構">{JSON.stringify(e.plan_summary, null, 2)}</pre>
+      )}
     </div>
   );
 }

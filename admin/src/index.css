@@ -1272,3 +1272,15 @@ li:not(.is-empty) > .feedback-bar { background: var(--bg-secondary); }
 .dbi-sticky {
   @apply sticky top-16 z-[4] shadow-[var(--shadow-xs)];
 }
+.dbi-audit-detail {
+  @apply bg-[var(--bg-secondary)];
+}
+.dbi-detail-list {
+  @apply m-0 grid grid-cols-[110px_1fr] gap-x-3 gap-y-1 text-[13px];
+}
+.dbi-detail-list dt {
+  @apply text-[var(--text-secondary)];
+}
+.dbi-detail-list dd {
+  @apply m-0 break-all;
+}

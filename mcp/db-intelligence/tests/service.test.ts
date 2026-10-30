@@ -121,6 +121,18 @@ describe('execute_safe_query', () => {
       datasets: ['public.projects'],
     });
     expect(JSON.stringify(audit.events)).not.toContain('機密字串');
+    expect(audit.events[0].plan_summary).toMatchObject({ dataset: 'projects', filters: [{ field: 'name', op: 'contains', value: '<文字>' }] });
+  });
+
+  it('被拒絕時記錄 AI 組的查詢結構與詳細原因，供管理員追查', async () => {
+    await expect(
+      service.executeSafeQuery(caller('hana'), { query_plan: plan({ dataset: 'employee_salary', select: [{ field: 'department_id' }, { field: 'salary', agg: 'max' }], group_by: [{ field: 'department_id' }] }) }),
+    ).rejects.toMatchObject({ code: 'QUERY_POLICY_DENIED' });
+    expect(audit.events[0]).toMatchObject({
+      status: 'denied',
+      reason_detail: '限制欄位 salary 不能取最大或最小值',
+      plan_summary: { dataset: 'employee_salary', select: [{ field: 'department_id' }, { field: 'salary', agg: 'max' }] },
+    });
   });
 
   it('一般員工查全公司薪資：拒絕並留下稽核', async () => {

@@ -35,7 +35,7 @@
 | 2 | 推論攻擊：限制反覆縮小條件的查詢（差分攻擊） | ⬜ `minGroupSize` 只保證每組筆數，擋不了「全體 − 排除某人」的差分；需依使用者追蹤近期查詢條件 |
 | 2 | SQL Compiler（參數化） | ✅ `query/compiler.ts` |
 | 2 | Executor（唯讀交易、timeout、筆數／位元組上限） | ✅ `query/executor.ts` |
-| 2 | Audit Logging | ✅ `audit.ts`（stdout JSON＋記憶體最近 5000 筆供管理 API 查詢；持久化 sink 待做） |
+| 2 | Audit Logging | ✅ `audit.ts`（stdout JSON＋記憶體最近 5000 筆供管理 API 查詢；持久化 sink 待做）。記錄 AI 送出的 Query Plan 結構（白名單保留資料表／欄位／運算子，比較值只記型別）與拒絕的詳細原因，後台「查詢稽核」可展開查看 |
 | 3 | MCP Tools：search_schema、get_dataset_details、execute_safe_query、get_query_result | ✅ `tools.ts`、`app.ts` |
 | 3 | Metadata 檢索 | ✅ 關鍵字＋中文二字詞（100+ 表時的效能與向量檢索待評估） |
 | 3 | `plan_query`／Planner Prompt | ⬜ 目前由 HyAgent 的 Agent 依工具說明直接產生 Query Plan |

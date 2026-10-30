@@ -4,7 +4,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import type { HyAgentCaller } from '@hyagent/mcp-kit';
-import { planHash, type AuditEvent, type AuditSink } from './audit';
+import { planHash, redactPlan, type AuditEvent, type AuditSink } from './audit';
 import { searchDatasets, visibleDatasets, type VisibleDataset } from './catalog/search';
 import type { CatalogStore } from './catalog/store';
 import { RESTRICTED_AGGREGATES, RESTRICTED_MIN_GROUP_SIZE, type Catalog, type TypeCategory } from './contracts/catalog';
@@ -225,6 +225,7 @@ export class DbIntelligenceService {
       principal_id: caller.userId,
       tool: 'execute_safe_query',
       plan_hash: planHash(args.query_plan),
+      plan_summary: redactPlan(args.query_plan),
       policy_version: policySet.version,
     };
     let resolved: ResolvedQuery | undefined;
@@ -305,6 +306,7 @@ export class DbIntelligenceService {
         catalog_version: catalog?.version,
         status,
         reason_code: e.code,
+        ...(e.detail ? { reason_detail: e.detail.slice(0, 300) } : {}),
         duration_ms: Date.now() - started,
       });
       throw Object.assign(e, { requestId });

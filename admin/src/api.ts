@@ -699,6 +699,10 @@ export interface DbiAuditEvent {
   sensitive_columns?: string[];
   status: 'success' | 'denied' | 'invalid' | 'error';
   reason_code?: string;
+  /** 拒絕或錯誤的說明（不含資料值） */
+  reason_detail?: string;
+  /** AI 送出的 Query Plan 結構；比較值與格式外內容已遮蔽 */
+  plan_summary?: unknown;
   row_count?: number;
   truncated?: boolean;
   duration_ms: number;
