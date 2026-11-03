@@ -45,3 +45,22 @@ it('改名通知外層重新載入；改成既有部門時先確認合併', asyn
   expect(api.renameDepartment).toHaveBeenCalledWith('t', '人資', '舊部門');
   expect(onChanged).toHaveBeenCalled();
 });
+it('有人員但沒有授權的部門顯示提醒，未指定部門與已無成員的不顯示', () => {
+  render(<DepartmentsSection tenantId="t" onChanged={vi.fn()} onError={vi.fn()} departments={[
+    { name: '財務', members: 3, directGrants: 0, roles: 0 },
+    { name: '人資', members: 2, directGrants: 0, roles: 1 },
+    { name: '舊部門', members: 0, directGrants: 0, roles: 0 },
+    { name: '—', members: 4, directGrants: 0, roles: 0 },
+  ]} />);
+  expect(screen.getAllByText(/但沒有任何角色/)).toHaveLength(1);
+  expect(screen.getByText(/財務 有 3 位人員，但沒有任何角色/)).toBeInTheDocument();
+});
+it('directorySyncEnabled 只在改名與刪除時提示會被 OA 蓋回', () => {
+  render(<DepartmentsSection tenantId="t" onChanged={vi.fn()} onError={vi.fn()} directorySyncEnabled departments={departments} />);
+  expect(screen.queryByText(/蓋回/)).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: '改名 人資' }));
+  expect(screen.getByText(/蓋回/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '取消' }));
+  fireEvent.click(screen.getByRole('button', { name: '刪除 舊部門' }));
+  expect(screen.getByText(/蓋回/)).toBeInTheDocument();
+});

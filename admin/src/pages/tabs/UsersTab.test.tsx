@@ -5,9 +5,10 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import UsersTab from './UsersTab';
 import { api } from '../../api';
 vi.mock('../../api', () => ({ api: { listDirectoryUsers: vi.fn(), addDirectoryUser: vi.fn(), updateDirectoryUser: vi.fn(), deleteDirectoryUser: vi.fn(),
-  listDepartments: vi.fn(), renameDepartment: vi.fn(), deleteDepartment: vi.fn() } }));
+  listDepartments: vi.fn(), renameDepartment: vi.fn(), deleteDepartment: vi.fn(), getDirectorySync: vi.fn() } }));
 afterEach(cleanup);
-beforeEach(() => { vi.clearAllMocks(); vi.mocked(api.listDepartments).mockResolvedValue({ departments: [] }); });
+beforeEach(() => { vi.clearAllMocks(); vi.mocked(api.listDepartments).mockResolvedValue({ departments: [] });
+  vi.mocked(api.getDirectorySync).mockResolvedValue({ directorySyncEnabled: false } as never); });
 it('adds the entered account to the selected tenant and displays the saved directory', async () => {
   vi.mocked(api.listDirectoryUsers).mockResolvedValue({ users: [] });
   vi.mocked(api.addDirectoryUser).mockResolvedValue({ users: [{ id: 'hyweb', name: 'Hyweb', department: '—' }] });
@@ -93,4 +94,84 @@ it('部門下拉包含已無成員但仍存在的部門', async () => {
   fireEvent.click(screen.getByRole('button', { name: '編輯 Kevin' }));
   const form = screen.getByRole('form', { name: '編輯 Kevin' });
   expect([...form.querySelector('select')!.options].map((o) => o.text)).toContain('行銷部');
+});
+
+const mixedUsers = [
+  { id: 'm', name: 'Manual', department: '人資' },
+  { id: 's', name: 'Sso', department: '人資', origin: 'sso' as const },
+  { id: 'y', name: 'Synced', department: '人資', origin: 'sync' as const, syncedAt: '2026-11-01T00:00:00Z' },
+];
+const rowOf = (name: string) => screen.getByText(name).closest('li') as HTMLElement;
+it('顯示來源標記：手動、自動登入、OA 同步', async () => {
+  vi.mocked(api.listDirectoryUsers).mockResolvedValue({ users: mixedUsers });
+  render(<UsersTab tenantId="tenant-a" onError={vi.fn()} />);
+  await screen.findByText('Manual');
+  expect(rowOf('Manual')).toHaveTextContent('手動');
+  expect(rowOf('Sso')).toHaveTextContent('自動登入');
+  expect(rowOf('Synced')).toHaveTextContent('OA 同步');
+});
+it('OA 管理的帳號沒有編輯按鈕', async () => {
+  vi.mocked(api.listDirectoryUsers).mockResolvedValue({ users: mixedUsers });
+  render(<UsersTab tenantId="tenant-a" onError={vi.fn()} />);
+  await screen.findByText('Manual');
+  expect(screen.getByRole('button', { name: '編輯 Manual' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: '編輯 Sso' })).toBeNull();
+  expect(screen.queryByRole('button', { name: '編輯 Synced' })).toBeNull();
+});
+it('webhook 接手的 manual 帳號標示 OA 同步，也沒有編輯按鈕', async () => {
+  vi.mocked(api.listDirectoryUsers).mockResolvedValue({ users: [{ id: 'w', name: 'Taken', department: '人資', origin: 'manual', syncedAt: '2026-11-01T00:00:00Z' }] });
+  render(<UsersTab tenantId="tenant-a" onError={vi.fn()} />);
+  await screen.findByText('Taken');
+  expect(rowOf('Taken')).toHaveTextContent('OA 同步');
+  expect(screen.queryByRole('button', { name: '編輯 Taken' })).toBeNull();
+});
+it('刪除 OA 管理帳號時提示會重新建立，停權請在 OA 處理', async () => {
+  vi.mocked(api.listDirectoryUsers).mockResolvedValue({ users: mixedUsers });
+  render(<UsersTab tenantId="tenant-a" onError={vi.fn()} />);
+  fireEvent.click(await screen.findByRole('button', { name: '刪除 Synced' }));
+  expect(screen.getByText(/會重新建立，停權請在 OA 處理/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: /取消|cancel/i }));
+  fireEvent.click(screen.getByRole('button', { name: '刪除 Manual' }));
+  expect(screen.queryByText(/會重新建立，停權請在 OA 處理/)).toBeNull();
+  expect(screen.getByText(/無法再用帳密登入/)).toBeInTheDocument();
+});
+it('手動帳號的編輯與刪除行為不變', async () => {
+  vi.mocked(api.listDirectoryUsers).mockResolvedValue({ users: mixedUsers });
+  vi.mocked(api.updateDirectoryUser).mockResolvedValue({ users: mixedUsers });
+  render(<UsersTab tenantId="tenant-a" onError={vi.fn()} />);
+  fireEvent.click(await screen.findByRole('button', { name: '編輯 Manual' }));
+  fireEvent.click(screen.getByRole('button', { name: '儲存' }));
+  await screen.findByText('已更新帳號 m');
+  expect(api.updateDirectoryUser).toHaveBeenCalledWith('tenant-a', 'm', { name: 'Manual', department: '人資', email: null });
+  expect(screen.getByRole('button', { name: '刪除 Manual' })).toBeEnabled();
+});
+it('有人員但沒有角色的部門顯示提醒；都有角色時不顯示', async () => {
+  vi.mocked(api.listDirectoryUsers).mockResolvedValue({ users: [] });
+  vi.mocked(api.listDepartments).mockResolvedValue({ departments: [
+    { name: '財務', members: 3, directGrants: 0, roles: 0 },
+    { name: '人資', members: 2, directGrants: 1, roles: 0 },
+    { name: '行銷', members: 2, directGrants: 0, roles: 1 },
+    { name: '舊部門', members: 0, directGrants: 0, roles: 0 },
+    { name: '—', members: 5, directGrants: 0, roles: 0 },
+  ] });
+  render(<UsersTab tenantId="tenant-a" onError={vi.fn()} />);
+  expect(await screen.findByText('財務 有 3 位人員，但沒有任何角色；若部門在 OA 改過名，請更新角色的適用部門。')).toBeInTheDocument();
+  expect(screen.getAllByText(/但沒有任何角色/)).toHaveLength(1);
+});
+it('getDirectorySync 失敗時目錄照常顯示', async () => {
+  vi.mocked(api.listDirectoryUsers).mockResolvedValue({ users: mixedUsers });
+  vi.mocked(api.getDirectorySync).mockRejectedValue(new Error('boom'));
+  render(<UsersTab tenantId="tenant-a" onError={vi.fn()} />);
+  expect(await screen.findByText('Manual')).toBeInTheDocument();
+});
+it('directorySyncEnabled 開啟時，改名或刪除部門提示會被 OA 蓋回', async () => {
+  vi.mocked(api.listDirectoryUsers).mockResolvedValue({ users: [] });
+  vi.mocked(api.getDirectorySync).mockResolvedValue({ directorySyncEnabled: true } as never);
+  vi.mocked(api.listDepartments).mockResolvedValue({ departments: [{ name: '舊部門', members: 0, directGrants: 0, roles: 1 }] });
+  render(<UsersTab tenantId="tenant-a" onError={vi.fn()} />);
+  fireEvent.click(await screen.findByRole('button', { name: '改名 舊部門' }));
+  expect(await screen.findByText(/OA 同步已開啟.*蓋回/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '取消' }));
+  fireEvent.click(screen.getByRole('button', { name: '刪除 舊部門' }));
+  expect(screen.getByText(/OA 同步已開啟.*蓋回/)).toBeInTheDocument();
 });

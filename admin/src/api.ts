@@ -48,6 +48,10 @@ export interface DirectoryUser {
   name: string;
   department: string;
   email?: string;
+  /** 帳號來源；舊資料可能沒有 */
+  origin?: 'manual' | 'sso' | 'sync';
+  /** OA 同步最後寫入時間；有值代表由 OA 管理 */
+  syncedAt?: string;
 }
 
 /** 部門摘要：成員數與綁定的權限數（members 為 0 但仍有授權＝已無成員的殘留部門） */

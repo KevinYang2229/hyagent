@@ -44,6 +44,11 @@ function DepartmentField({ departments, value, onChange, disabled }: {
   </>;
 }
 
+/** 與伺服端 isExternallyManaged 同規則：來自 SSO／OA 同步，或曾被 OA 同步寫入 */
+const isOaManaged = (user: DirectoryUser): boolean => user.origin === 'sso' || user.origin === 'sync' || !!user.syncedAt;
+const originLabel = (user: DirectoryUser): string =>
+  user.syncedAt || user.origin === 'sync' ? 'OA 同步' : user.origin === 'sso' ? '自動登入' : '手動';
+
 interface Draft { name: string; dept: DeptState; email: string }
 
 export default function UsersTab({ tenantId, onError }: { tenantId: string; onError: (error: unknown) => void }) {
@@ -72,7 +77,13 @@ export default function UsersTab({ tenantId, onError }: { tenantId: string; onEr
     try { setDeptSummaries((await api.listDepartments(tenantId)).departments); }
     catch (err) { onError(err); }
   }, [tenantId, onError]);
-  useEffect(() => { void load(); void loadDepartments(); }, [load, loadDepartments]);
+  // OA 同步是否開啟：只用來補充提示，讀取失敗視為關閉，不影響目錄
+  const [syncEnabled, setSyncEnabled] = useState(false);
+  const loadSyncEnabled = useCallback(async () => {
+    try { setSyncEnabled(!!(await api.getDirectorySync(tenantId)).directorySyncEnabled); }
+    catch { setSyncEnabled(false); }
+  }, [tenantId]);
+  useEffect(() => { void load(); void loadDepartments(); void loadSyncEnabled(); }, [load, loadDepartments, loadSyncEnabled]);
   // 部門改名後成員的部門跟著變：背景更新名單，不切回「載入中」（否則部門區塊的結果訊息會消失）
   const refreshAfterDepartmentChange = useCallback(async () => {
     try {
@@ -161,14 +172,14 @@ export default function UsersTab({ tenantId, onError }: { tenantId: string; onEr
                 </div>
               </form>
             ) : <>
-              <div className="row-main"><strong>{user.name}</strong><div className="row-sub">帳號：{user.id} · 部門：{user.department === UNSPECIFIED ? '未指定' : user.department}{user.email ? ` · ${user.email}` : ''}</div></div>
+              <div className="row-main"><strong>{user.name}</strong><span className="badge" style={{ marginLeft: 8 }}>{originLabel(user)}</span><div className="row-sub">帳號：{user.id} · 部門：{user.department === UNSPECIFIED ? '未指定' : user.department}{user.email ? ` · ${user.email}` : ''}</div></div>
               <div className="toolbar" style={{ display: 'flex', gap: 8 }}>
-                <button type="button" className="btn btn-ghost btn-sm" aria-label={`編輯 ${user.name}`} onClick={() => startEdit(user)} disabled={busy}>編輯</button>
+                {!isOaManaged(user) && <button type="button" className="btn btn-ghost btn-sm" aria-label={`編輯 ${user.name}`} onClick={() => startEdit(user)} disabled={busy}>編輯</button>}
                 <button type="button" className="btn btn-danger btn-sm" aria-label={`刪除 ${user.name}`} onClick={() => setPendingDelete(user)} disabled={busy}>刪除</button>
               </div>
             </>}
           </li>)}</ul>}
-        <DepartmentsSection tenantId={tenantId} departments={deptSummaries} onChanged={refreshAfterDepartmentChange} onError={onError} />
+        <DepartmentsSection tenantId={tenantId} departments={deptSummaries} directorySyncEnabled={syncEnabled} onChanged={refreshAfterDepartmentChange} onError={onError} />
         <form onSubmit={(event) => void add(event)} className="directory-form settings-section">
           <h3>新增使用者</h3>
           <div className="form-grid">
@@ -196,6 +207,7 @@ export default function UsersTab({ tenantId, onError }: { tenantId: string; onEr
         <li>會從其他人的代理人名單中移除。</li>
         <li>「權限」中直接指派給此帳號的角色會保留；之後以相同帳號重新加入，或透過 SSO 以此帳號登入時仍會生效。</li>
       </ul>
+      {pendingDelete && isOaManaged(pendingDelete) && <p>此帳號由 OA 管理：刪除後下次同步或登入時會重新建立，停權請在 OA 處理。</p>}
     </Dialog>
   </div>;
 }
