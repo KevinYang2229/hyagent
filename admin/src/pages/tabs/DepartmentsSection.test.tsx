@@ -64,3 +64,21 @@ it('directorySyncEnabled 只在改名與刪除時提示會被 OA 蓋回', () => 
   fireEvent.click(screen.getByRole('button', { name: '刪除 舊部門' }));
   expect(screen.getByText(/蓋回/)).toBeInTheDocument();
 });
+it.each([
+  { props: { ssoAutoProvision: true }, text: /登入自動建立已開啟.*員工下次登入時被蓋回/ },
+  { props: { directorySyncEnabled: true }, text: /OA 同步已開啟.*下次同步時被 OA 蓋回/ },
+  { props: { directorySyncEnabled: true, ssoAutoProvision: true }, text: /下次同步或員工下次登入時被蓋回/ },
+])('提示依開啟的開關說明來源：$props', ({ props, text }) => {
+  render(<DepartmentsSection tenantId="t" onChanged={vi.fn()} onError={vi.fn()} {...props} departments={departments} />);
+  expect(screen.queryByText(/蓋回/)).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: '改名 人資' }));
+  expect(screen.getByText(text)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '取消' }));
+  fireEvent.click(screen.getByRole('button', { name: '刪除 舊部門' }));
+  expect(screen.getByText(text)).toBeInTheDocument();
+});
+it('兩個開關都關：改名與刪除都不提示蓋回', () => {
+  render(<DepartmentsSection tenantId="t" onChanged={vi.fn()} onError={vi.fn()} departments={departments} />);
+  fireEvent.click(screen.getByRole('button', { name: '改名 人資' }));
+  expect(screen.queryByText(/蓋回/)).toBeNull();
+});

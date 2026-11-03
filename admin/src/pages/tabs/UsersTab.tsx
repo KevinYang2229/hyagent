@@ -44,8 +44,20 @@ function DepartmentField({ departments, value, onChange, disabled }: {
   </>;
 }
 
-/** 與伺服端 isExternallyManaged 同規則：來自 SSO／OA 同步，或曾被 OA 同步寫入 */
+/** 來自 SSO／OA 同步，或曾被 OA 同步寫入 */
 const isOaManaged = (user: DirectoryUser): boolean => user.origin === 'sso' || user.origin === 'sync' || !!user.syncedAt;
+/** 與伺服端 isPasswordLoginUser 同規則：只看 origin，被 webhook 接手的手動帳號仍可帳密登入 */
+const canPasswordLogin = (user: DirectoryUser): boolean => !user.origin || user.origin === 'manual';
+interface Switches { ssoAutoProvision: boolean; directorySyncEnabled: boolean }
+/**
+ * 與伺服端 isFieldLocked 同規則，鎖定跟著負責的開關走。
+ * 開關未知（讀取中或失敗）時 OA 管理的帳號維持鎖定：多擋一個按鈕，好過按了才收到 409。
+ */
+const isLocked = (user: DirectoryUser, switches: Switches | null): boolean => {
+  if (!isOaManaged(user)) return false;
+  if (!switches) return true;
+  return user.syncedAt || user.origin === 'sync' ? switches.directorySyncEnabled : switches.ssoAutoProvision;
+};
 const originLabel = (user: DirectoryUser): string =>
   user.syncedAt || user.origin === 'sync' ? 'OA 同步' : user.origin === 'sso' ? '自動登入' : '手動';
 
@@ -77,13 +89,15 @@ export default function UsersTab({ tenantId, onError }: { tenantId: string; onEr
     try { setDeptSummaries((await api.listDepartments(tenantId)).departments); }
     catch (err) { onError(err); }
   }, [tenantId, onError]);
-  // OA 同步是否開啟：只用來補充提示，讀取失敗視為關閉，不影響目錄
-  const [syncEnabled, setSyncEnabled] = useState(false);
-  const loadSyncEnabled = useCallback(async () => {
-    try { setSyncEnabled(!!(await api.getDirectorySync(tenantId)).directorySyncEnabled); }
-    catch { setSyncEnabled(false); }
+  // 兩個開關：決定編輯按鈕與部門提示。null＝讀取中或失敗，不影響目錄本身（見 isLocked）
+  const [switches, setSwitches] = useState<Switches | null>(null);
+  const loadSwitches = useCallback(async () => {
+    try {
+      const view = await api.getDirectorySync(tenantId);
+      setSwitches({ ssoAutoProvision: !!view.ssoAutoProvision, directorySyncEnabled: !!view.directorySyncEnabled });
+    } catch { setSwitches(null); }
   }, [tenantId]);
-  useEffect(() => { void load(); void loadDepartments(); void loadSyncEnabled(); }, [load, loadDepartments, loadSyncEnabled]);
+  useEffect(() => { void load(); void loadDepartments(); void loadSwitches(); }, [load, loadDepartments, loadSwitches]);
   // 部門改名後成員的部門跟著變：背景更新名單，不切回「載入中」（否則部門區塊的結果訊息會消失）
   const refreshAfterDepartmentChange = useCallback(async () => {
     try {
@@ -174,12 +188,12 @@ export default function UsersTab({ tenantId, onError }: { tenantId: string; onEr
             ) : <>
               <div className="row-main"><strong>{user.name}</strong><span className="badge" style={{ marginLeft: 8 }}>{originLabel(user)}</span><div className="row-sub">帳號：{user.id} · 部門：{user.department === UNSPECIFIED ? '未指定' : user.department}{user.email ? ` · ${user.email}` : ''}</div></div>
               <div className="toolbar" style={{ display: 'flex', gap: 8 }}>
-                {!isOaManaged(user) && <button type="button" className="btn btn-ghost btn-sm" aria-label={`編輯 ${user.name}`} onClick={() => startEdit(user)} disabled={busy}>編輯</button>}
+                {!isLocked(user, switches) && <button type="button" className="btn btn-ghost btn-sm" aria-label={`編輯 ${user.name}`} onClick={() => startEdit(user)} disabled={busy}>編輯</button>}
                 <button type="button" className="btn btn-danger btn-sm" aria-label={`刪除 ${user.name}`} onClick={() => setPendingDelete(user)} disabled={busy}>刪除</button>
               </div>
             </>}
           </li>)}</ul>}
-        <DepartmentsSection tenantId={tenantId} departments={deptSummaries} directorySyncEnabled={syncEnabled} onChanged={refreshAfterDepartmentChange} onError={onError} />
+        <DepartmentsSection tenantId={tenantId} departments={deptSummaries} directorySyncEnabled={switches?.directorySyncEnabled ?? false} ssoAutoProvision={switches?.ssoAutoProvision ?? false} onChanged={refreshAfterDepartmentChange} onError={onError} />
         <form onSubmit={(event) => void add(event)} className="directory-form settings-section">
           <h3>新增使用者</h3>
           <div className="form-grid">
@@ -203,7 +217,10 @@ export default function UsersTab({ tenantId, onError }: { tenantId: string; onEr
     >
       <p style={{ marginTop: 0 }}>帳號 {pendingDelete?.id} 將從目錄移除：</p>
       <ul style={{ paddingLeft: 18 }}>
-        <li>無法再用帳密登入，已登入的工作階段會立即失效。</li>
+        {pendingDelete && canPasswordLogin(pendingDelete) && <li>無法再用帳密登入，帳密登入的工作階段會立即失效。</li>}
+        {pendingDelete && (isOaManaged(pendingDelete)
+          ? <li>自動登入的工作階段不會因此結束；要立即登出，請到「自動登入」分頁的「登入 Session」作廢。</li>
+          : <li>若此人也透過自動登入進入，不受影響，其工作階段仍然有效。</li>)}
         <li>會從其他人的代理人名單中移除。</li>
         <li>「權限」中直接指派給此帳號的角色會保留；之後以相同帳號重新加入，或透過 SSO 以此帳號登入時仍會生效。</li>
       </ul>

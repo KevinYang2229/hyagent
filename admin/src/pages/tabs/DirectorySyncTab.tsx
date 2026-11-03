@@ -184,6 +184,10 @@ export default function DirectorySyncTab({
               </span>
             )}
           </div>
+          <p className="field-hint">
+            關閉開關後，由該開關管理的帳號可在「使用者目錄」編輯。自動建立的帳號也會改回使用登入資料：
+            本人登入時以憑證為準，目錄中的修改只影響他人查詢時看到的內容。
+          </p>
         </div>
       </div>
 

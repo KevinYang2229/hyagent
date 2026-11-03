@@ -13,22 +13,31 @@ function grantSummary(d: DepartmentSummary): string {
 
 /** 後端以此值代表未指定部門 */
 const UNSPECIFIED = '—';
-const OA_OVERWRITE_HINT = 'OA 同步已開啟：部門名稱與成員以 OA 為準，這裡的改名或刪除可能在下次同步時被 OA 蓋回。';
+/** 改名與刪除可能被外部來源蓋回的提示；兩個開關都關時沒有這個風險 */
+function overwriteHint(directorySyncEnabled: boolean, ssoAutoProvision: boolean): string | null {
+  if (directorySyncEnabled && ssoAutoProvision) return 'OA 同步與登入自動建立已開啟：部門名稱與成員以 OA 與登入憑證為準，這裡的改名或刪除可能在下次同步或員工下次登入時被蓋回。';
+  if (directorySyncEnabled) return 'OA 同步已開啟：部門名稱與成員以 OA 為準，這裡的改名或刪除可能在下次同步時被 OA 蓋回。';
+  if (ssoAutoProvision) return '登入自動建立已開啟：自動建立的成員，部門以登入憑證為準，這裡的改名或刪除可能在員工下次登入時被蓋回。';
+  return null;
+}
 
 /**
  * 部門管理：部門是人員目錄上的字串，同時是權限的 key，改名／刪除由後端兩邊一起處理。
  * 「未指定」部門供網站訪客使用，不列在此處。
  */
-export default function DepartmentsSection({ tenantId, departments, directorySyncEnabled = false, onChanged, onError }: {
+export default function DepartmentsSection({ tenantId, departments, directorySyncEnabled = false, ssoAutoProvision = false, onChanged, onError }: {
   tenantId: string;
   /** 由外層載入：人員表單的部門下拉與此處共用同一份清單（null＝載入中） */
   departments: DepartmentSummary[] | null;
   /** OA 同步開啟時，改名與刪除會被下次同步蓋回，需提示 */
   directorySyncEnabled?: boolean;
+  /** 登入自動建立開啟時，改名與刪除會被員工下次登入蓋回，需提示 */
+  ssoAutoProvision?: boolean;
   /** 改名／刪除後通知外層重新載入部門與人員（改名會連帶改成員的部門） */
   onChanged: () => Promise<void>;
   onError: (error: unknown) => void;
 }) {
+  const hint = overwriteHint(directorySyncEnabled, ssoAutoProvision);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -84,7 +93,7 @@ export default function DepartmentsSection({ tenantId, departments, directorySyn
       <ul className="list">{departments.map((d) => <li className="row directory-row" key={d.name}>
         {renaming === d.name ? (
           <form className="directory-edit" aria-label={`將 ${d.name} 改名`} onSubmit={(event) => submitRename(event, d.name)} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            {directorySyncEnabled && <span className="row-sub">{OA_OVERWRITE_HINT}</span>}
+            {hint && <span className="row-sub">{hint}</span>}
             <input className="input" aria-label="新部門名稱" value={newName} onChange={(e) => setNewName(e.target.value)} maxLength={200} disabled={busy} autoFocus style={{ maxWidth: 260 }} />
             <button className="btn btn-primary btn-sm" disabled={busy || !newName.trim() || newName.trim() === d.name}>儲存</button>
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setRenaming(null); setNewName(''); }} disabled={busy}>取消</button>
@@ -122,7 +131,7 @@ export default function DepartmentsSection({ tenantId, departments, directorySyn
       onClose={() => setPendingDelete(null)}
       onConfirm={() => void confirmDelete()}
     >
-      {directorySyncEnabled && <p>{OA_OVERWRITE_HINT}</p>}
+      {hint && <p>{hint}</p>}
       {pendingDelete && (pendingDelete.directGrants > 0 || pendingDelete.roles > 0)
         ? <>會一併清掉此部門的 {grantSummary(pendingDelete)}。之後即使有人加入同名部門或透過 SSO 帶入此部門，也不會自動取得這些權限。</>
         : <>此部門沒有綁定權限，刪除後即從清單移除。</>}

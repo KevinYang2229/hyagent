@@ -114,3 +114,9 @@ it('顯示最近同步狀態；沒有資料時顯示尚未同步', async () => {
   expect(screen.getByText(/拒絕 1/)).toBeInTheDocument();
   expect(screen.queryByText('尚未同步')).not.toBeInTheDocument();
 });
+
+it('說明關閉開關後帳號可編輯，自動建立的帳號改回使用登入資料', async () => {
+  vi.mocked(api.getDirectorySync).mockResolvedValue(view());
+  render(<DirectorySyncTab tenantId="t1" onError={vi.fn()} />);
+  expect(await screen.findByText(/關閉開關後.*可在「使用者目錄」編輯.*自動建立的帳號也會改回使用登入資料/)).toBeInTheDocument();
+});

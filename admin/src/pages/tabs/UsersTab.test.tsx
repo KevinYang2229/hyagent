@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
-import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { act, render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import UsersTab from './UsersTab';
 import { api } from '../../api';
 vi.mock('../../api', () => ({ api: { listDirectoryUsers: vi.fn(), addDirectoryUser: vi.fn(), updateDirectoryUser: vi.fn(), deleteDirectoryUser: vi.fn(),
@@ -110,20 +110,96 @@ it('顯示來源標記：手動、自動登入、OA 同步', async () => {
   expect(rowOf('Sso')).toHaveTextContent('自動登入');
   expect(rowOf('Synced')).toHaveTextContent('OA 同步');
 });
-it('OA 管理的帳號沒有編輯按鈕', async () => {
-  vi.mocked(api.listDirectoryUsers).mockResolvedValue({ users: mixedUsers });
+const switches = (ssoAutoProvision: boolean, directorySyncEnabled: boolean) =>
+  vi.mocked(api.getDirectorySync).mockResolvedValue({ ssoAutoProvision, directorySyncEnabled } as never);
+/** 等開關讀取完成，免得「沒有按鈕」其實只是還在載入 */
+const settled = async () => { await screen.findByText('Manual'); await act(async () => { await Promise.resolve(); }); };
+const editButton = (name: string) => screen.queryByRole('button', { name: `編輯 ${name}` });
+const taken = { id: 'w', name: 'Taken', department: '人資', origin: 'manual' as const, syncedAt: '2026-11-01T00:00:00Z' };
+const ssoTaken = { id: 't', name: 'SsoTaken', department: '人資', origin: 'sso' as const, syncedAt: '2026-11-01T00:00:00Z' };
+it.each([
+  { sso: true, sync: true, editable: ['Manual'], locked: ['Sso', 'Synced', 'Taken', 'SsoTaken'] },
+  { sso: true, sync: false, editable: ['Manual', 'Synced', 'Taken', 'SsoTaken'], locked: ['Sso'] },
+  { sso: false, sync: true, editable: ['Manual', 'Sso'], locked: ['Synced', 'Taken', 'SsoTaken'] },
+  { sso: false, sync: false, editable: ['Manual', 'Sso', 'Synced', 'Taken', 'SsoTaken'], locked: [] },
+])('編輯按鈕跟著開關：自動建立 $sso、同步 $sync', async ({ sso, sync, editable, locked }) => {
+  vi.mocked(api.listDirectoryUsers).mockResolvedValue({ users: [...mixedUsers, taken, ssoTaken] });
+  switches(sso, sync);
   render(<UsersTab tenantId="tenant-a" onError={vi.fn()} />);
-  await screen.findByText('Manual');
-  expect(screen.getByRole('button', { name: '編輯 Manual' })).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: '編輯 Sso' })).toBeNull();
-  expect(screen.queryByRole('button', { name: '編輯 Synced' })).toBeNull();
+  await settled();
+  for (const name of editable) expect(editButton(name)).toBeInTheDocument();
+  for (const name of locked) expect(editButton(name)).toBeNull();
 });
-it('webhook 接手的 manual 帳號標示 OA 同步，也沒有編輯按鈕', async () => {
-  vi.mocked(api.listDirectoryUsers).mockResolvedValue({ users: [{ id: 'w', name: 'Taken', department: '人資', origin: 'manual', syncedAt: '2026-11-01T00:00:00Z' }] });
+it('開關讀取失敗：OA 管理的帳號維持鎖定，手動帳號可編輯', async () => {
+  vi.mocked(api.listDirectoryUsers).mockResolvedValue({ users: mixedUsers });
+  vi.mocked(api.getDirectorySync).mockRejectedValue(new Error('boom'));
+  render(<UsersTab tenantId="tenant-a" onError={vi.fn()} />);
+  await settled();
+  expect(editButton('Manual')).toBeInTheDocument();
+  expect(editButton('Sso')).toBeNull();
+  expect(editButton('Synced')).toBeNull();
+});
+it('開關還沒讀到：OA 管理的帳號先鎖定，讀到才開放', async () => {
+  vi.mocked(api.listDirectoryUsers).mockResolvedValue({ users: mixedUsers });
+  let resolve!: (v: never) => void;
+  vi.mocked(api.getDirectorySync).mockReturnValue(new Promise((r) => { resolve = r; }));
+  render(<UsersTab tenantId="tenant-a" onError={vi.fn()} />);
+  await settled();
+  expect(editButton('Sso')).toBeNull();
+  resolve({ ssoAutoProvision: false, directorySyncEnabled: false } as never);
+  expect(await screen.findByRole('button', { name: '編輯 Sso' })).toBeInTheDocument();
+});
+it('開關關閉後來源標記不變', async () => {
+  vi.mocked(api.listDirectoryUsers).mockResolvedValue({ users: mixedUsers });
+  switches(false, false);
+  render(<UsersTab tenantId="tenant-a" onError={vi.fn()} />);
+  await settled();
+  expect(rowOf('Sso')).toHaveTextContent('自動登入');
+  expect(rowOf('Synced')).toHaveTextContent('OA 同步');
+});
+it('webhook 接手的 manual 帳號標示 OA 同步，同步開啟時沒有編輯按鈕', async () => {
+  vi.mocked(api.listDirectoryUsers).mockResolvedValue({ users: [taken] });
+  switches(false, true);
   render(<UsersTab tenantId="tenant-a" onError={vi.fn()} />);
   await screen.findByText('Taken');
+  await act(async () => { await Promise.resolve(); });
   expect(rowOf('Taken')).toHaveTextContent('OA 同步');
-  expect(screen.queryByRole('button', { name: '編輯 Taken' })).toBeNull();
+  expect(editButton('Taken')).toBeNull();
+});
+describe('刪除確認文案與實際行為一致', () => {
+  const openDelete = async (name: string) => {
+    render(<UsersTab tenantId="tenant-a" onError={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: `刪除 ${name}` }));
+  };
+  const SESSION_HINT = /自動登入的工作階段不會因此結束.*「自動登入」分頁的「登入 Session」/;
+  it('手動帳號：帳密工作階段失效；同時走 SSO 的人不受影響；不提 Session 作廢', async () => {
+    vi.mocked(api.listDirectoryUsers).mockResolvedValue({ users: mixedUsers });
+    await openDelete('Manual');
+    expect(screen.getByText(/無法再用帳密登入，帳密登入的工作階段會立即失效/)).toBeInTheDocument();
+    expect(screen.getByText(/也透過自動登入.*不受影響/)).toBeInTheDocument();
+    expect(screen.queryByText(SESSION_HINT)).toBeNull();
+    expect(screen.queryByText(/已登入的工作階段會立即失效/)).toBeNull();
+  });
+  it.each(['Sso', 'Synced'])('%s：自動登入工作階段不會結束，指向登入 Session；不提帳密', async (name) => {
+    vi.mocked(api.listDirectoryUsers).mockResolvedValue({ users: mixedUsers });
+    await openDelete(name);
+    expect(screen.getByText(SESSION_HINT)).toBeInTheDocument();
+    expect(screen.queryByText(/已登入的工作階段會立即失效/)).toBeNull();
+    expect(screen.queryByText(/無法再用帳密登入/)).toBeNull();
+  });
+  it('webhook 接手的 manual 帳號兩種都有：帳密會失效、自動登入不會結束', async () => {
+    vi.mocked(api.listDirectoryUsers).mockResolvedValue({ users: [taken] });
+    await openDelete('Taken');
+    expect(screen.getByText(/無法再用帳密登入，帳密登入的工作階段會立即失效/)).toBeInTheDocument();
+    expect(screen.getByText(SESSION_HINT)).toBeInTheDocument();
+  });
+  it('開關全關時，OA 管理帳號的提示仍在', async () => {
+    vi.mocked(api.listDirectoryUsers).mockResolvedValue({ users: mixedUsers });
+    switches(false, false);
+    await openDelete('Sso');
+    expect(screen.getByText(/會重新建立，停權請在 OA 處理/)).toBeInTheDocument();
+    expect(screen.getByText(SESSION_HINT)).toBeInTheDocument();
+  });
 });
 it('刪除 OA 管理帳號時提示會重新建立，停權請在 OA 處理', async () => {
   vi.mocked(api.listDirectoryUsers).mockResolvedValue({ users: mixedUsers });
@@ -174,4 +250,13 @@ it('directorySyncEnabled 開啟時，改名或刪除部門提示會被 OA 蓋回
   fireEvent.click(screen.getByRole('button', { name: '取消' }));
   fireEvent.click(screen.getByRole('button', { name: '刪除 舊部門' }));
   expect(screen.getByText(/OA 同步已開啟.*蓋回/)).toBeInTheDocument();
+});
+it('ssoAutoProvision 開啟時，部門提示也涵蓋登入', async () => {
+  vi.mocked(api.listDirectoryUsers).mockResolvedValue({ users: [] });
+  vi.mocked(api.getDirectorySync).mockResolvedValue({ ssoAutoProvision: true, directorySyncEnabled: false } as never);
+  vi.mocked(api.listDepartments).mockResolvedValue({ departments: [{ name: '舊部門', members: 0, directGrants: 0, roles: 1 }] });
+  render(<UsersTab tenantId="tenant-a" onError={vi.fn()} />);
+  await act(async () => { await Promise.resolve(); });
+  fireEvent.click(await screen.findByRole('button', { name: '改名 舊部門' }));
+  expect(await screen.findByText(/員工下次登入時被蓋回/)).toBeInTheDocument();
 });
