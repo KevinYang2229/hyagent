@@ -77,6 +77,16 @@ export class DbWriteQueue {
       .catch((err) => logger.warn({ err }, `failed to persist ${this.label} to db`));
   }
 
+  /**
+   * 排入一筆呼叫端要知道成敗的寫入：與 enqueue 同一條佇列、順序不變，但失敗會 reject 給呼叫端，
+   * 而不是只記警告（後續寫入不受影響）。給回應前必須確定已落地的寫入使用。
+   */
+  runCritical(task: () => Promise<void>): Promise<void> {
+    const result = this.chain.then(task);
+    this.chain = result.catch((err) => logger.warn({ err }, `failed to persist ${this.label} to db`));
+    return result;
+  }
+
   flush(): Promise<void> {
     return this.chain;
   }

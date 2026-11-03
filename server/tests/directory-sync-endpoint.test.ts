@@ -3,11 +3,14 @@
  * 429 的行為另見 directory-sync-rate-limit.test.ts（需要在載入 app 前設定上限）。
  */
 import { createHash } from 'node:crypto';
+import fs from 'node:fs';
 import express from 'express';
 import request from 'supertest';
 import { createApp } from '@/app';
 import { generateHyAgentKeyPair } from '@/lib/assertion';
 import { authSessionStore } from '@/lib/auth-session.store';
+import { scopePolicy } from '@/modules/authz/scope-policy';
+import { resolveScopes } from '@/modules/authz/resolve-scopes';
 import { clockOffsetStats } from '@/modules/auth/clock-skew-monitor';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 import { directorySyncBodyParser } from '@/modules/user/directory-sync.routes';
@@ -338,4 +341,173 @@ it('一批事件只寫入一次，即使全是 stale；錯誤的請求不寫入'
   expect(update).not.toHaveBeenCalled();
   update.mockRestore();
   spy.mockRestore();
+});
+
+describe('user.deleted 清除個人授權（accounts／accountBundles）', () => {
+  // 要落在刪除紀錄的 30 天保留期內，否則重送時紀錄已被清掉，不算 stale
+  const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString();
+  const T0 = daysAgo(3);
+  const T1 = daysAgo(2);
+  const T2 = daysAgo(1);
+  const delAt = (id: string, at: string) => ({ eventId: `d_${id}_${at}`, type: 'user.deleted', occurredAt: at, userId: id });
+  const seed = (tenantId: string) => scopePolicy.setPolicy(tenantId, {
+    groups: { 資訊部: ['dept:direct'] },
+    accounts: { GONE: ['personal:direct'], STAY: ['stay:direct'] },
+    bundles: [
+      { id: 'personal-role', name: '個人角色', scopes: ['personal:role'] },
+      { id: 'dept-role', name: '部門角色', scopes: ['dept:role'] },
+      { id: 'all-role', name: '全體角色', scopes: ['all:role'] },
+    ],
+    groupBundles: { 資訊部: ['dept-role'] },
+    accountBundles: { GONE: ['personal-role'], STAY: ['personal-role'] },
+    tenantBundles: ['all-role'],
+  });
+  async function deletedFixture() {
+    const t = fixture();
+    await post(t.id, { events: [upsert('GONE', T0), upsert('STAY', T0)] });
+    seed(t.id);
+    return t;
+  }
+  /** 不碰磁碟也能看到「實際落地的內容」：攔下寫到政策檔的 payload。 */
+  function capturePolicyWrites(failOnce = false) {
+    const real = fs.writeFileSync.bind(fs);
+    const written: string[] = [];
+    let fail = failOnce;
+    const spy = jest.spyOn(fs, 'writeFileSync').mockImplementation(((file: fs.PathOrFileDescriptor, data: string, ...rest: []) => {
+      if (String(file).includes('scope-policy')) {
+        if (fail) { fail = false; throw new Error('disk full'); }
+        written.push(String(data));
+      }
+      return real(file, data, ...rest);
+    }) as typeof fs.writeFileSync);
+    return { written, spy };
+  }
+  afterEach(() => jest.restoreAllMocks());
+
+  it('刪除後 accounts 與 accountBundles 都移除此人，他人與其他政策不動', async () => {
+    const t = await deletedFixture();
+    const res = await post(t.id, { events: [delAt('GONE', T1)] });
+    expect(res.status).toBe(200);
+    const policy = scopePolicy.getPolicy(t.id);
+    expect(policy.accounts).toEqual({ STAY: ['stay:direct'] });
+    expect(policy.accountBundles).toEqual({ STAY: ['personal-role'] });
+    expect(policy.groups).toEqual({ 資訊部: ['dept:direct'] });
+    expect(policy.groupBundles).toEqual({ 資訊部: ['dept-role'] });
+    expect(policy.tenantBundles).toEqual(['all-role']);
+    expect(policy.bundles).toHaveLength(3);
+  });
+
+  it('復職後沒有個人權限，部門與全體角色照常生效', async () => {
+    const t = await deletedFixture();
+    await post(t.id, { events: [delAt('GONE', T1)] });
+    expect((await post(t.id, { events: [upsert('GONE', T2)] })).body.data.results[0].status).toBe('applied');
+    const scopes = resolveScopes({ tenantId: t.id, userId: 'GONE' });
+    expect(scopes).toEqual(expect.arrayContaining(['dept:direct', 'dept:role', 'all:role']));
+    expect(scopes).not.toEqual(expect.arrayContaining(['personal:direct']));
+    expect(scopes).not.toEqual(expect.arrayContaining(['personal:role']));
+  });
+
+  it('政策寫入失敗回 500、Session 未作廢；重送一定再寫一次（記憶體已清也一樣）並作廢', async () => {
+    const t = await deletedFixture();
+    const token = await sessionFor(t.id, 'GONE');
+    const del = { events: [delAt('GONE', T1)] };
+    const { written, spy } = capturePolicyWrites(true);
+
+    const failed = await post(t.id, del);
+    expect(failed.status).toBe(500);
+    expect(failed.body).toMatchObject({ error: 'INTERNAL_ERROR', requestId: expect.any(String) });
+    expect(written).toEqual([]);
+    expect(await authSessionStore.get(token)).toBeDefined();
+
+    const retry = await post(t.id, del);
+    spy.mockRestore();
+    expect(retry.status).toBe(200);
+    expect(retry.body.data.results[0].status).toBe('stale');
+    expect(written).toHaveLength(1);
+    const persisted = new Map(JSON.parse(written[0]) as [string, { accounts: object; accountBundles: object }][]).get(t.id)!;
+    expect(persisted.accounts).toEqual({ STAY: ['stay:direct'] });
+    expect(persisted.accountBundles).toEqual({ STAY: ['personal-role'] });
+    expect(await authSessionStore.get(token)).toBeUndefined();
+  });
+
+  it('目錄寫入失敗回 500 時還不動政策；重送才清', async () => {
+    const t = await deletedFixture();
+    const del = { events: [delAt('GONE', T1)] };
+    const spy = jest.spyOn(tenantStore, 'persistCritical').mockRejectedValueOnce(new Error('disk full'));
+    expect((await post(t.id, del)).status).toBe(500);
+    spy.mockRestore();
+    expect(scopePolicy.getPolicy(t.id).accounts.GONE).toEqual(['personal:direct']);
+
+    expect((await post(t.id, del)).status).toBe(200);
+    expect(scopePolicy.getPolicy(t.id).accounts.GONE).toBeUndefined();
+  });
+
+  it('重送相同時間的 delete 是冪等的：結果相同、不影響其他人', async () => {
+    const t = await deletedFixture();
+    const del = { events: [delAt('GONE', T1)] };
+    await post(t.id, del);
+    const after = scopePolicy.getPolicy(t.id);
+    const again = await post(t.id, del);
+    expect(again.status).toBe(200);
+    expect(again.body.data.results[0].status).toBe('stale');
+    expect(scopePolicy.getPolicy(t.id)).toEqual(after);
+  });
+
+  it('復職且重新指派後，遲到的舊 delete 不會清掉新指派的個人權限', async () => {
+    const t = await deletedFixture();
+    await post(t.id, { events: [delAt('GONE', T1)] });
+    await post(t.id, { events: [upsert('GONE', T2)] });
+    const policy = scopePolicy.getPolicy(t.id);
+    scopePolicy.setPolicy(t.id, { ...policy, accounts: { ...policy.accounts, GONE: ['personal:new'] } });
+    const replay = await post(t.id, { events: [delAt('GONE', T1)] });
+    expect(replay.body.data.results[0].status).toBe('stale');
+    expect(scopePolicy.getPolicy(t.id).accounts.GONE).toEqual(['personal:new']);
+  });
+
+  it('順序是目錄寫入 → 政策寫入 → 作廢 Session，政策寫完才回 200', async () => {
+    const t = await deletedFixture();
+    const persist = jest.spyOn(tenantStore, 'persistCritical');
+    const revoke = jest.spyOn(authSessionStore, 'revokeBySub');
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    const real = scopePolicy.clearAccountGrants.bind(scopePolicy);
+    const clear = jest.spyOn(scopePolicy, 'clearAccountGrants').mockImplementation(async (...a) => {
+      await held;
+      await real(...a);
+    });
+
+    let done = false;
+    const pending = post(t.id, { events: [delAt('GONE', T1)] }).then((r) => { done = true; return r; });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(clear).toHaveBeenCalledWith(t.id, ['GONE']);
+    expect(done).toBe(false);
+    expect(revoke).not.toHaveBeenCalled();
+
+    release();
+    expect((await pending).status).toBe(200);
+    expect(persist.mock.invocationCallOrder[0]).toBeLessThan(clear.mock.invocationCallOrder[0]);
+    expect(clear.mock.invocationCallOrder[0]).toBeLessThan(revoke.mock.invocationCallOrder[0]);
+  });
+
+  it('沒有 delete 的批次不碰政策', async () => {
+    const t = await deletedFixture();
+    const clear = jest.spyOn(scopePolicy, 'clearAccountGrants');
+    await post(t.id, { events: [upsert('NEW', T2)] });
+    expect(clear).not.toHaveBeenCalled();
+  });
+
+  it('被拒絕或過期（非同一時間）的 delete 不清權限', async () => {
+    const t = await deletedFixture();
+    await post(t.id, { events: [upsert('GONE', T2)] });
+    const res = await post(t.id, { events: [delAt('GONE', T1), { eventId: 'bad', type: 'user.deleted', occurredAt: T2, userId: 'x'.repeat(201) }] });
+    expect(res.body.data.results.map((r: { status: string }) => r.status)).toEqual(['stale', 'rejected']);
+    expect(scopePolicy.getPolicy(t.id).accounts.GONE).toEqual(['personal:direct']);
+  });
+
+  it('後台手動 DELETE 不動個人授權（維持原行為）', async () => {
+    const t = await deletedFixture();
+    await request(app).delete(`/api/admin/tenants/${t.id}/users/GONE`).set({ 'x-admin-key': 'test-admin-key' }).expect(200);
+    expect(scopePolicy.getPolicy(t.id).accounts.GONE).toEqual(['personal:direct']);
+    expect(scopePolicy.getPolicy(t.id).accountBundles?.GONE).toEqual(['personal-role']);
+  });
 });

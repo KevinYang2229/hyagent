@@ -21,6 +21,7 @@ import {
 } from '@/lib/assertion';
 import { env } from '@/config/env';
 import { authSessionStore } from '@/lib/auth-session.store';
+import { scopePolicy } from '@/modules/authz/scope-policy';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 import { resolveAssertionSettings } from '@/modules/tenant/tenant-keys';
 import type { Tenant } from '@/modules/tenant/tenant.types';
@@ -167,8 +168,10 @@ export function createDirectorySyncRouter(rateLimitMax: number = env.DIRECTORY_S
         },
       });
 
-      // 5. 先確定寫入成功才作廢 Session；失敗回 500，OA 重送時 stale 的 delete 會再觸發作廢
+      // 5. 目錄 → 個人授權 → Session，每一步都要成功才往下；任一步失敗回 500，
+      //    OA 重送時 stale 的 delete 會把授權清除與作廢再做一次（兩者都是冪等的）
       await tenantStore.persistCritical();
+      if (applied.revokeUserIds.length > 0) await scopePolicy.clearAccountGrants(tenant.id, applied.revokeUserIds);
       for (const userId of applied.revokeUserIds) await authSessionStore.revokeBySub(tenant.id, userId);
 
       // 日誌只留租戶、kid 與筆數，不留 sub 或姓名

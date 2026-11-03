@@ -142,6 +142,39 @@ export const scopePolicy = {
     }
     persistFile();
   },
+  /**
+   * 移除這些人的個人授權（accounts、accountBundles），確定落地才 resolve，失敗則 reject。
+   * 給 webhook 的離職事件用：解析權限時不查目錄，留著就會讓同帳號復職、或離職後的登入直接拿回舊權限。
+   *
+   * 與 setPolicy 不同：setPolicy 的寫入失敗只記警告，呼叫端無從得知，也等不到它落地。
+   * 這裡只要租戶有政策就一定寫——重試時記憶體可能已清掉（上次是寫入失敗），若以「沒有變動」略過，
+   * 磁碟或資料庫上的舊授權就會在下次重啟復活。
+   */
+  async clearAccountGrants(tenantId: string, userIds: string[]): Promise<void> {
+    const current = policies.get(tenantId);
+    if (!current || userIds.length === 0) return;
+    const ids = new Set(userIds);
+    const without = (m: Record<string, string[]>): Record<string, string[]> =>
+      Object.fromEntries(Object.entries(m).filter(([id]) => !ids.has(id)));
+    policies.set(tenantId, {
+      ...current,
+      accounts: without(current.accounts),
+      ...(current.accountBundles ? { accountBundles: without(current.accountBundles) } : {}),
+    });
+    if (env.DATA_BACKEND === 'db') {
+      const db = await connectDb();
+      // 排進同一條佇列，避免與先前排隊的 setPolicy 交錯；內容在輪到時才取，一定是最新的
+      await writeQueue.runCritical(async () => {
+        const latest = policies.get(tenantId);
+        if (!latest) return; // 排隊期間租戶已被刪除，不可把政策寫回去
+        const data = JSON.parse(JSON.stringify(latest)) as Prisma.InputJsonValue;
+        await db.scopePolicyRow.upsert({ where: { tenantId }, create: { tenantId, data }, update: { data } });
+      });
+      return;
+    }
+    fs.writeFileSync(STORE_FILE, JSON.stringify([...policies.entries()]));
+  },
+
   /** 清空（測試用）。 */
   clear(): void {
     policies.clear();
