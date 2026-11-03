@@ -445,6 +445,15 @@ export interface TenantPublicKey {
   revokedBy?: KeyOperator;
 }
 
+/** 人員同步的設定與專用金鑰（與自動登入的金鑰分開管理）。 */
+export interface DirectorySyncView {
+  ssoAutoProvision: boolean;
+  directorySyncEnabled: boolean;
+  keys: TenantPublicKey[];
+  /** 最近一批同步的結果；從未同步過為 null */
+  status?: { at: string; applied: number; stale: number; rejected: number } | null;
+}
+
 /** 逐租戶設定（規格 §4.3、§7.1、§10.4）。 */
 export interface AssertionSettings {
   clockSkewSeconds: number;
@@ -766,6 +775,19 @@ export const api = {
     req<{ key: TenantPublicKey; revokedSessions: number }>(
       'POST',
       `/admin/tenants/${id}/assertion-keys/${encodeURIComponent(kid)}/revoke`,
+      { reason },
+    ),
+  getDirectorySync: (id: string) => req<DirectorySyncView>('GET', `/admin/tenants/${id}/directory-sync`),
+  updateDirectorySync: (
+    id: string,
+    patch: Partial<Pick<DirectorySyncView, 'ssoAutoProvision' | 'directorySyncEnabled'>>,
+  ) => req<DirectorySyncView>('PATCH', `/admin/tenants/${id}/directory-sync`, patch),
+  addDirectorySyncKey: (id: string, input: { publicKey: string; label?: string }) =>
+    req<{ key: TenantPublicKey; created: boolean }>('POST', `/admin/tenants/${id}/directory-sync/keys`, input),
+  revokeDirectorySyncKey: (id: string, kid: string, reason: KeyRevocationReason) =>
+    req<{ key: TenantPublicKey }>(
+      'POST',
+      `/admin/tenants/${id}/directory-sync/keys/${encodeURIComponent(kid)}/revoke`,
       { reason },
     ),
   updateAssertionSettings: (id: string, patch: Partial<AssertionSettings>) =>

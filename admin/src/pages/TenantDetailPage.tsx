@@ -17,11 +17,13 @@ import FeedbackTab from './tabs/FeedbackTab';
 import ReportsTab from './tabs/ReportsTab';
 import UsersTab from './tabs/UsersTab';
 import SsoTab from './tabs/SsoTab';
+import DirectorySyncTab from './tabs/DirectorySyncTab';
 import DatabaseTab from './tabs/database/DatabaseTab';
 
 type TabKey =
   | 'sso'
   | 'users'
+  | 'directorySync'
   | 'appearance'
   | 'forms'
   | 'knowledge'
@@ -38,6 +40,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'appearance', label: '外觀' },
   { key: 'sso', label: '自動登入' },
   { key: 'users', label: '使用者目錄' },
+  { key: 'directorySync', label: '人員同步' },
   { key: 'permissions', label: '權限' },
   { key: 'forms', label: '表單' },
   { key: 'knowledge', label: '知識庫' },
@@ -133,6 +136,7 @@ export default function TenantDetailPage() {
 
           {tab === 'sso' && <SsoTab key={tenant.id} tenantId={tenant.id} onError={handleErr} />}
           {tab === 'users' && <UsersTab key={tenant.id} tenantId={tenant.id} onError={handleErr} />}
+          {tab === 'directorySync' && <DirectorySyncTab key={tenant.id} tenantId={tenant.id} onError={handleErr} />}
           {tab === 'appearance' && <AppearanceTab tenant={tenant} onSaved={handleSaved} onError={handleErr} />}
           {tab === 'forms' && <FormsTab tenantId={tenant.id} onError={handleErr} />}
           {tab === 'knowledge' && <KnowledgeTab tenantId={tenant.id} onError={handleErr} />}
