@@ -11,6 +11,7 @@ import type { AssertionClaims } from '@/lib/assertion';
 import { logger } from '@/lib/logger';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 import type { DirectoryEntry } from '@/modules/tenant/tenant.types';
+import { isStorableText } from '@/modules/user/directory-text';
 import { UNKNOWN_DEPARTMENT } from '@/modules/user/user.directory';
 
 /** 與 user.admin.ts 的 profile 一致：id 與各文字欄位上限 200 字元、目錄上限 10,000 人。 */
@@ -25,7 +26,7 @@ function warn(tenantId: string, reason: string): void {
 function text(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
   const trimmed = value.trim();
-  return trimmed && trimmed.length <= MAX_FIELD_LENGTH ? trimmed : undefined;
+  return trimmed && trimmed.length <= MAX_FIELD_LENGTH && isStorableText(trimmed) ? trimmed : undefined;
 }
 
 /** 欄位對應與 applicantFromSso 相同：name、hyagent:profile.deptName/jobPostName/companyName，另加頂層 email。 */
@@ -56,7 +57,7 @@ export function provisionFromClaims(tenantId: string, claims: AssertionClaims): 
   if (!tenant || tenant.ssoAutoProvision !== true) return;
 
   const sub = claims.sub;
-  if (typeof sub !== 'string' || !sub || sub.length > MAX_FIELD_LENGTH || sub !== sub.trim()) {
+  if (typeof sub !== 'string' || !sub || sub.length > MAX_FIELD_LENGTH || sub !== sub.trim() || !isStorableText(sub)) {
     warn(tenantId, 'invalid_sub');
     return;
   }

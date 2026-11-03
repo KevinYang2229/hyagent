@@ -130,6 +130,23 @@ describe('provisionFromClaims：上限、sub 檢查、墓碑', () => {
     expect(JSON.stringify(warn.mock.calls)).not.toContain(sub.trim());
   });
 
+  it.each([['NUL', 'E1\u0000'], ['單獨代理字元', 'E1\ud83d']])('sub 含%s：登入成功、目錄不變、警告不含 sub', async (_l, sub) => {
+    const { id, sign } = newTenant();
+    const warn = jest.spyOn(logger, 'warn').mockImplementation(() => undefined);
+    const r = await assertionExchange.exchange({ assertion: sign(sub, { name: 'N' }), origin: 'https://any.example.com' });
+    expect(r.user.sub).toBe(sub);
+    await flush();
+    expect(dir(id)).toBeUndefined();
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('E1');
+  });
+
+  it('name／部門含 NUL 視為缺：姓名退回 sub、部門退回 UNKNOWN_DEPARTMENT，仍建立', () => {
+    const { id } = newTenant();
+    provisionFromClaims(id, claims('E1', { name: 'a\u0000b', 'hyagent:profile': { deptName: 'd\u0000', jobPostName: 't\u0001' } }));
+    expect(dir(id)).toEqual([{ id: 'E1', name: 'E1', department: UNKNOWN_DEPARTMENT, origin: 'sso' }]);
+  });
+
   it('sub 剛好 200 字元可以建立', () => {
     const { id } = newTenant();
     provisionFromClaims(id, fullClaims('x'.repeat(200)));

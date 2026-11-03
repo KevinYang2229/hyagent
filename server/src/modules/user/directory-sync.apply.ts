@@ -3,6 +3,7 @@
  * 規則見 docs/superpowers/specs/2026-11-03-directory-provisioning-sync-design.md §5。
  */
 import { z } from 'zod';
+import { isStorableText } from '@/modules/user/directory-text';
 import type { DirectoryEntry } from '@/modules/tenant/tenant.types';
 
 export type SyncResult = { eventId: string; status: 'applied' | 'stale' | 'rejected'; reason?: string };
@@ -73,6 +74,7 @@ export function applyDirectoryEvents(input: {
       const parsed = syncUser.safeParse(ev.user);
       if (!parsed.success) { reject('INVALID_USER'); continue; }
       const u = parsed.data;
+      if (![u.id, u.name, u.department, u.title, u.company].every((v) => v === undefined || isStorableText(v))) { reject('INVALID_USER'); continue; }
       if (at <= knownAt(u.id)) { results.push({ eventId, status: 'stale' }); continue; }
       const current = users.get(u.id);
       if (!current && users.size >= MAX_DIRECTORY_USERS) { reject('DIRECTORY_FULL'); continue; }
@@ -93,7 +95,7 @@ export function applyDirectoryEvents(input: {
     }
 
     const userId = typeof ev.userId === 'string' ? ev.userId.trim() : '';
-    if (!userId) { reject('INVALID_EVENT'); continue; }
+    if (!userId || !isStorableText(userId)) { reject('INVALID_EVENT'); continue; }
     const known = knownAt(userId);
     if (at <= known) {
       // 重送相同時間的 delete 仍要作廢 Session（上次可能寫入失敗）；此人已不在目錄才有意義

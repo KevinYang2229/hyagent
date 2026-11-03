@@ -4,14 +4,17 @@ import { validate } from '@/middlewares/validate';
 import { asyncHandler } from '@/utils/async-handler';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 import { AppError } from '@/utils/app-error';
+import { isStorableText } from '@/modules/user/directory-text';
 import { isExternallyManaged } from '@/modules/user/user.directory';
 import type { DirectoryEntry } from '@/modules/tenant/tenant.types';
 
+// NUL／控制字元／單獨代理字元會讓快照寫入失敗，新輸入一律擋下
+const storable = (s: z.ZodString) => s.refine(isStorableText, '含有不可儲存的字元');
 const profile = z.object({
-  id: z.string().trim().min(1).max(200), name: z.string().trim().min(1).max(200),
-  department: z.string().trim().min(1).max(200).default('—'), title: z.string().max(200).optional(),
-  company: z.string().max(200).optional(),
-  region: z.string().max(200).optional(), email: z.string().email().optional(),
+  id: storable(z.string().trim().min(1).max(200)), name: storable(z.string().trim().min(1).max(200)),
+  department: storable(z.string().trim().min(1).max(200)).default('—'), title: storable(z.string().max(200)).optional(),
+  company: storable(z.string().max(200)).optional(),
+  region: storable(z.string().max(200)).optional(), email: z.string().email().optional(),
   deputyIds: z.array(z.string().min(1).max(200)).max(100).optional(),
   // 內部欄位：只存在於已存的資料，讓重新驗證通過；管理員輸入一律忽略（見 profileInput）
   origin: z.enum(['manual', 'sso', 'sync']).optional(),
