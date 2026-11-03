@@ -395,6 +395,10 @@ export const tenantStore = {
         | 'quotaMonthlyLlmTokens'
         | 'guestAccess'
         | 'egressPolicy'
+        | 'ssoAutoProvision'
+        | 'directorySyncEnabled'
+        | 'directoryTombstones'
+        | 'directorySyncStatus'
       >
     >,
   ): Tenant | undefined {
@@ -421,6 +425,10 @@ export const tenantStore = {
         : {}),
       ...(patch.egressPolicy !== undefined ? { egressPolicy: structuredClone(patch.egressPolicy) } : {}),
       ...(patch.guestAccess !== undefined ? { guestAccess: patch.guestAccess } : {}),
+      ...(patch.ssoAutoProvision !== undefined ? { ssoAutoProvision: patch.ssoAutoProvision } : {}),
+      ...(patch.directorySyncEnabled !== undefined ? { directorySyncEnabled: patch.directorySyncEnabled } : {}),
+      ...(patch.directoryTombstones !== undefined ? { directoryTombstones: structuredClone(patch.directoryTombstones) } : {}),
+      ...(patch.directorySyncStatus !== undefined ? { directorySyncStatus: { ...patch.directorySyncStatus } } : {}),
     };
     tenants.set(id, next);
     persist();

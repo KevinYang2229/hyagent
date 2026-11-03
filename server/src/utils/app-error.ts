@@ -34,8 +34,8 @@ export class AppError extends Error {
     return new AppError(404, 'NOT_FOUND', message);
   }
 
-  static conflict(message: string): AppError {
-    return new AppError(409, 'CONFLICT', message);
+  static conflict(message: string, code = 'CONFLICT'): AppError {
+    return new AppError(409, code, message);
   }
 
   static unprocessable(message: string, details?: unknown): AppError {

@@ -10,7 +10,7 @@ import { tenantStore, tenantFromRow, unsealTenant } from '@/modules/tenant/tenan
 import { env } from '@/config/env';
 import { connectDb } from '@/lib/db';
 import { securityClaims } from '@/lib/security-claims';
-import { isKnownUser } from '@/modules/user/user.directory';
+import { isPasswordLoginUser } from '@/modules/user/user.directory';
 import type { Tenant } from '@/modules/tenant/tenant.types';
 import type { JwtPayload } from '@/utils/jwt';
 import { AppError } from '@/utils/app-error';
@@ -36,7 +36,7 @@ export async function validateIdentity(payload: JwtPayload): Promise<void> {
     // 另外每次都重查租戶目錄：帳號被移出目錄後現有 token 立即失效，不必等它自然過期。
     payload.via !== 'password' ||
     !isPasswordLoginEnabled() ||
-    !isKnownUser(payload.sub, payload.tenantId)
+    !isPasswordLoginUser(payload.sub, payload.tenantId)
   ) {
     throw AppError.unauthorized('Invalid login source');
   }

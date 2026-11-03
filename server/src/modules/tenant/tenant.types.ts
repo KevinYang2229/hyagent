@@ -92,11 +92,35 @@ export interface TenantPublicKey {
   revokedBy?: KeyOperator;
 }
 
+/**
+ * 目錄帳號的來源：manual＝後台手動建立；sso＝SSO 首次登入自動建立；sync＝OA webhook 同步建立。
+ * 沒有此欄位的舊資料視同 manual。
+ */
+export type DirectoryOrigin = 'manual' | 'sso' | 'sync';
+
+/** 目錄項目：origin／syncedAt 是內部欄位，不外流給 Applicant。 */
+export type DirectoryEntry = Applicant & {
+  deputyIds?: string[];
+  origin?: DirectoryOrigin;
+  /** 最近一次被 webhook 同步的時間（ISO） */
+  syncedAt?: string;
+};
+
 export interface Tenant {
   id: string;
   name: string;
   /** Administrator-maintained directory, scoped to this tenant. */
-  userDirectory?: Array<Applicant & { deputyIds?: string[] }>;
+  userDirectory?: DirectoryEntry[];
+  /** SSO 首次登入時，自動在目錄建立帳號。未設＝關閉。 */
+  ssoAutoProvision?: boolean;
+  /** 接受 OA 以 webhook 同步人員。未設＝關閉。 */
+  directorySyncEnabled?: boolean;
+  /** 驗證同步 webhook 簽章的公鑰，與 Assertion 公鑰分開管理。 */
+  directorySyncKeys?: TenantPublicKey[];
+  /** 已刪除帳號的墓碑：userId → 刪除時間（ISO），防止過期事件讓帳號復活。 */
+  directoryTombstones?: Record<string, string>;
+  /** 最近一次同步批次的結果摘要。 */
+  directorySyncStatus?: { at: string; applied: number; stale: number; rejected: number };
   /**
    * widget/SDK 允許嵌入的來源網域清單；['*'] 代表全部放行（預設租戶用，維持改造前的 CORS '*' 行為）。
    * 動態 CORS 與 embed 來源驗證都讀這份清單。

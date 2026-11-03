@@ -94,7 +94,13 @@ function ensureTenant(id: string) {
 }
 
 function publicTenant(tenant: NonNullable<ReturnType<typeof tenantStore.getTenant>>) {
-  const { userDirectory: _userDirectory, llmConfig: _llmConfig, ...safe } = tenant;
+  const {
+    userDirectory: _userDirectory,
+    llmConfig: _llmConfig,
+    directoryTombstones: _directoryTombstones,
+    directorySyncKeys: _directorySyncKeys,
+    ...safe
+  } = tenant;
   // publicKeys 原樣帶出：它們是公鑰，不需遮罩。改造前這裡遮的 ssoSecret 已不存在。
   return {
     ...safe,

@@ -12,7 +12,7 @@ import { securityClaims } from '@/lib/security-claims';
 import { validateIdentity } from './credential-version';
 import type { Applicant } from '@hyagent/shared';
 import { env, isPasswordLoginEnabled } from '@/config/env';
-import { getApplicant, isKnownUser } from '@/modules/user/user.directory';
+import { getApplicant, isPasswordLoginUser } from '@/modules/user/user.directory';
 import { AppError } from '@/utils/app-error';
 import {
   signAccessToken,
@@ -49,7 +49,7 @@ export const authService = {
   login(userId: string, password: string, tenantId = 'default'): LoginResult {
     if (!isPasswordLoginEnabled()) throw AppError.forbidden('此環境未開放帳密登入，請使用 SSO 登入');
     // MVP：租戶目錄內的帳號 + 共用密碼。錯誤訊息不分帳號/密碼以免帳號列舉。
-    if (!isKnownUser(userId, tenantId) || password !== env.AUTH_DEV_PASSWORD) {
+    if (!isPasswordLoginUser(userId, tenantId) || password !== env.AUTH_DEV_PASSWORD) {
       throw AppError.unauthorized('帳號或密碼錯誤');
     }
     const payload: JwtPayload = { sub: userId, role: 'employee', via: 'password', tenantId };
@@ -76,7 +76,7 @@ export const authService = {
 
     // 只剩帳密登入會走到這裡：SSO 已改為 Session 模型，不簽發 refresh token。
     // 內部帳號：重新簽發前確認帳號仍有效
-    if (!isKnownUser(payload.sub, payload.tenantId)) throw AppError.unauthorized('Unknown user');
+    if (!isPasswordLoginUser(payload.sub, payload.tenantId)) throw AppError.unauthorized('Unknown user');
     return issueTokens({ sub: payload.sub, role: 'employee', via: 'password', tenantId: payload.tenantId, family: payload.family });
   },
 

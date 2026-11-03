@@ -6,6 +6,7 @@ import type { Applicant } from "@hyagent/shared";
 import { env } from '@/config/env';
 import { currentSsoIdentity } from '@/lib/sso-identity.context';
 import { tenantStore } from '@/modules/tenant/tenant.store';
+import type { DirectoryEntry } from '@/modules/tenant/tenant.types';
 
 const DIRECTORY: Record<string, Omit<Applicant, "id">> = {
   kevin: { name: "Kevin Yang", department: "行銷部", title: "技術經理", region: "台北", email: "kevin@example.com" },
@@ -42,7 +43,7 @@ const FAVORITES: Record<string, string[]> = {
 export const UNKNOWN_DEPARTMENT = '—';
 
 /** The development directory is available only in the default development tenant. */
-function directory(tenantId: string): Array<Applicant & { deputyIds?: string[] }> {
+function directory(tenantId: string): DirectoryEntry[] {
   const configured = tenantStore.getTenant(tenantId)?.userDirectory;
   if (configured !== undefined) return configured;
   if (tenantId !== 'default' || env.NODE_ENV === 'production') return [];
@@ -96,7 +97,7 @@ export function getApplicant(userId: string, tenantId = 'default'): Applicant {
   if (!profile) {
     return applicantFromSso(userId, tenantId) ?? { id: userId, name: userId, department: UNKNOWN_DEPARTMENT };
   }
-  const { deputyIds: _deputyIds, ...applicant } = profile;
+  const { deputyIds: _deputyIds, origin: _origin, syncedAt: _syncedAt, ...applicant } = profile;
   return { ...applicant };
 }
 
@@ -110,6 +111,20 @@ export function getApplicant(userId: string, tenantId = 'default'): Applicant {
  */
 export function isKnownUser(userId: string, tenantId = 'default'): boolean {
   return directory(tenantId).some((p) => p.id === userId);
+}
+
+/** 由 SSO 或 OA 同步管理的帳號：姓名、部門等基本資料以外部來源為準，後台不可手動改。 */
+export function isExternallyManaged(entry: DirectoryEntry): boolean {
+  return entry.origin === 'sso' || entry.origin === 'sync' || entry.syncedAt !== undefined;
+}
+
+/**
+ * 可用帳密登入：在目錄內，且不是 SSO／同步建立的帳號（沒有 origin 的舊資料視同手動）。
+ * SSO／同步帳號沒有人設定過密碼，若放行等於共用開發密碼就能登入任何一位同事。
+ */
+export function isPasswordLoginUser(userId: string, tenantId = 'default'): boolean {
+  const entry = directory(tenantId).find((p) => p.id === userId);
+  return entry !== undefined && (entry.origin === undefined || entry.origin === 'manual');
 }
 
 export function listUserIds(tenantId = 'default'): string[] {
