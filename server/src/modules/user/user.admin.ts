@@ -5,8 +5,8 @@ import { asyncHandler } from '@/utils/async-handler';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 import { AppError } from '@/utils/app-error';
 import { isStorableText } from '@/modules/user/directory-text';
-import { isExternallyManaged } from '@/modules/user/user.directory';
-import type { DirectoryEntry } from '@/modules/tenant/tenant.types';
+import { isFieldLocked } from '@/modules/user/user.directory';
+import type { DirectoryEntry, Tenant } from '@/modules/tenant/tenant.types';
 
 // NUL／單獨代理字元會讓快照寫入失敗，新輸入一律擋下
 const storable = (s: z.ZodString) => s.refine(isStorableText, '含有不可儲存的字元');
@@ -25,8 +25,8 @@ const profileInput = profile.omit({ origin: true, syncedAt: true })
   .extend({ origin: z.unknown().optional(), syncedAt: z.unknown().optional() })
   .transform(({ origin: _origin, syncedAt: _syncedAt, ...rest }) => rest);
 const MANAGED_FIELDS = ['name', 'department', 'email', 'title', 'company'] as const;
-function assertNotManaged(entry: DirectoryEntry, next: Partial<Record<(typeof MANAGED_FIELDS)[number], string | undefined>>) {
-  if (isExternallyManaged(entry) && MANAGED_FIELDS.some((f) => next[f] !== entry[f])) {
+function assertNotManaged(entry: DirectoryEntry, tenant: Tenant, next: Partial<Record<(typeof MANAGED_FIELDS)[number], string | undefined>>) {
+  if (isFieldLocked(entry, tenant) && MANAGED_FIELDS.some((f) => next[f] !== entry[f])) {
     throw AppError.conflict('此帳號由 SSO 或 OA 同步管理，無法在後台修改基本資料', 'DIRECTORY_FIELD_MANAGED');
   }
 }
@@ -46,12 +46,13 @@ userAdminRouter.get('/', (req: Request, res) => {
 const putBody = z.object({ users: z.array(profileInput).max(10000) }).strict();
 userAdminRouter.put('/', validate({ body: putBody }), asyncHandler(async (req, res) => {
   const tenantId = String(req.params.id);
-  const existing = new Map((tenantStore.getTenant(tenantId)!.userDirectory ?? []).map((e) => [e.id, e]));
+  const tenant = tenantStore.getTenant(tenantId)!;
+  const existing = new Map((tenant.userDirectory ?? []).map((e) => [e.id, e]));
   // origin／syncedAt 依 id 從現有資料帶回，輸入值不採信
   const merged = (req.body as z.infer<typeof putBody>).users.map((u) => {
     const current = existing.get(u.id);
     if (!current) return u;
-    assertNotManaged(current, u);
+    assertNotManaged(current, tenant, u);
     return {
       ...u,
       ...(current.origin ? { origin: current.origin } : {}),
@@ -87,11 +88,12 @@ userAdminRouter.patch('/:userId', validate({ body: patch }), asyncHandler(async 
   const tenantId = String(req.params.id);
   const userId = String(req.params.userId);
   const changes = req.body as z.infer<typeof patch>;
-  const existing = tenantStore.getTenant(tenantId)!.userDirectory ?? [];
+  const tenant = tenantStore.getTenant(tenantId)!;
+  const existing = tenant.userDirectory ?? [];
   const target = existing.find((entry) => entry.id === userId);
   if (!target) throw AppError.notFound('找不到此帳號');
   // PATCH 沒帶的欄位視為不變；email 的 null 代表清除，正規化成 undefined 後與現值比較
-  assertNotManaged(target, {
+  assertNotManaged(target, tenant, {
     name: changes.name ?? target.name,
     department: changes.department ?? target.department,
     email: changes.email === undefined ? target.email : changes.email ?? undefined,

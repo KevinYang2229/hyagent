@@ -187,6 +187,16 @@ describe('applyDirectoryEvents', () => {
     expect(r.users).toEqual([]);
   });
 
+  it('delete 的 userId 超過 200 字元回 INVALID_EVENT，剛好 200 字元可以套用', () => {
+    const r = run([del('x'.repeat(201), T1, 'long'), del('y'.repeat(200), T1, 'ok')]);
+    expect(r.results).toEqual([
+      { eventId: 'long', status: 'rejected', reason: 'INVALID_EVENT' },
+      { eventId: 'ok', status: 'applied' },
+    ]);
+    expect(Object.keys(r.tombstones)).toEqual(['y'.repeat(200)]);
+    expect(r.revokeUserIds).toEqual(['y'.repeat(200)]);
+  });
+
   it('格式錯誤的事件回 rejected INVALID_EVENT，eventId 無法取得時為空字串', () => {
     const r = run([null, 42, { type: 'user.upserted' }, { eventId: 'x', type: 'weird', occurredAt: T1 }, { eventId: 'y', type: 'user.deleted', occurredAt: T1 }]);
     expect(r.results).toEqual([

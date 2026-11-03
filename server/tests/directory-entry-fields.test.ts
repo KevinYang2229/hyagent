@@ -5,16 +5,17 @@ import { authService } from '@/modules/auth/auth.service';
 import { validateIdentity } from '@/modules/auth/credential-version';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 import type { DirectoryEntry } from '@/modules/tenant/tenant.types';
-import { getApplicant, isExternallyManaged, isPasswordLoginUser } from '@/modules/user/user.directory';
+import { getApplicant, isFieldLocked, isPasswordLoginUser } from '@/modules/user/user.directory';
 import { verifyAccessToken } from '@/utils/jwt';
 
 const app = createApp();
 const admin = { 'x-admin-key': 'test-admin-key' };
 const ISO = '2026-11-03T00:00:00.000Z';
 
-function tenantWith(name: string, userDirectory: DirectoryEntry[]) {
+type Switches = { ssoAutoProvision?: boolean; directorySyncEnabled?: boolean };
+function tenantWith(name: string, userDirectory: DirectoryEntry[], switches: Switches = {}) {
   const tenant = tenantStore.createTenant(name);
-  tenantStore.updateTenant(tenant.id, { userDirectory });
+  tenantStore.updateTenant(tenant.id, { userDirectory, ...switches });
   return tenant;
 }
 const usersUrl = (id: string) => `/api/admin/tenants/${id}/users`;
@@ -25,13 +26,35 @@ it('getApplicant 不回傳內部欄位', () => {
   expect(getApplicant('a', tenant.id)).toEqual({ id: 'a', name: 'A', department: 'D' });
 });
 
-it('isExternallyManaged：sso／sync 或有 syncedAt 才算', () => {
+describe('isFieldLocked：鎖定跟著負責的開關走', () => {
   const base = { id: 'a', name: 'A', department: 'D' };
-  expect(isExternallyManaged({ ...base, origin: 'sso' })).toBe(true);
-  expect(isExternallyManaged({ ...base, origin: 'sync' })).toBe(true);
-  expect(isExternallyManaged({ ...base, origin: 'manual', syncedAt: ISO })).toBe(true);
-  expect(isExternallyManaged({ ...base, origin: 'manual' })).toBe(false);
-  expect(isExternallyManaged(base)).toBe(false);
+  const on = { ssoAutoProvision: true, directorySyncEnabled: true };
+  const off = { ssoAutoProvision: false, directorySyncEnabled: false };
+
+  it('手動帳號永遠不鎖', () => {
+    expect(isFieldLocked(base, on)).toBe(false);
+    expect(isFieldLocked({ ...base, origin: 'manual' }, on)).toBe(false);
+  });
+
+  it('origin=sso 且沒有 syncedAt：只看 ssoAutoProvision', () => {
+    const entry = { ...base, origin: 'sso' as const };
+    expect(isFieldLocked(entry, { ssoAutoProvision: true })).toBe(true);
+    expect(isFieldLocked(entry, { directorySyncEnabled: true })).toBe(false);
+    expect(isFieldLocked(entry, off)).toBe(false);
+    expect(isFieldLocked(entry, {})).toBe(false);
+  });
+
+  it.each([
+    ['origin=sync', { origin: 'sync' as const }],
+    ['manual 被 webhook 接手', { origin: 'manual' as const, syncedAt: ISO }],
+    ['sso 被 webhook 接手', { origin: 'sso' as const, syncedAt: ISO }],
+    ['舊資料被 webhook 接手', { syncedAt: ISO }],
+  ])('%s：只看 directorySyncEnabled', (_label, over) => {
+    const entry = { ...base, ...over };
+    expect(isFieldLocked(entry, { directorySyncEnabled: true })).toBe(true);
+    expect(isFieldLocked(entry, { ssoAutoProvision: true })).toBe(false);
+    expect(isFieldLocked(entry, off)).toBe(false);
+  });
 });
 
 describe('帳密登入資格', () => {
@@ -63,14 +86,14 @@ describe('帳密登入資格', () => {
 
 describe('後台目錄 API', () => {
   it('PATCH 鎖定帳號回 409 DIRECTORY_FIELD_MANAGED，未動資料', async () => {
-    const tenant = tenantWith('fields-patch-locked', [{ id: 'a', name: 'A', department: 'D', origin: 'sso' }]);
+    const tenant = tenantWith('fields-patch-locked', [{ id: 'a', name: 'A', department: 'D', origin: 'sso' }], { ssoAutoProvision: true });
     const res = await request(app).patch(`${usersUrl(tenant.id)}/a`).set(admin).send({ name: 'B' }).expect(409);
     expect(res.body.error.code).toBe('DIRECTORY_FIELD_MANAGED');
     expect(stored(tenant.id)[0].name).toBe('A');
   });
 
   it('PATCH 鎖定帳號但值沒變則放行，並保留 origin', async () => {
-    const tenant = tenantWith('fields-patch-same', [{ id: 'a', name: 'A', department: 'D', origin: 'sync', syncedAt: ISO }]);
+    const tenant = tenantWith('fields-patch-same', [{ id: 'a', name: 'A', department: 'D', origin: 'sync', syncedAt: ISO }], { directorySyncEnabled: true });
     await request(app).patch(`${usersUrl(tenant.id)}/a`).set(admin).send({ name: 'A' }).expect(200);
     expect(stored(tenant.id)[0]).toMatchObject({ origin: 'sync', syncedAt: ISO });
   });
@@ -124,7 +147,7 @@ describe('後台目錄 API', () => {
     const tenant = tenantWith('fields-put-locked', [
       { id: 'a', name: 'A', department: 'D', origin: 'sso' },
       { id: 'b', name: 'B', department: 'D' },
-    ]);
+    ], { ssoAutoProvision: true });
     for (const change of [{ name: 'A2', department: 'D' }, { name: 'A', department: 'D2' }]) {
       const res = await request(app).put(usersUrl(tenant.id)).set(admin).send({ users: [
         { id: 'a', ...change }, { id: 'b', name: 'B2', department: 'D' },
@@ -136,7 +159,7 @@ describe('後台目錄 API', () => {
 
   it('PUT 省略或改動鎖定帳號的 email／title／company 回 409，不可藉省略清除', async () => {
     const full = { id: 'a', name: 'A', department: 'D', email: 'a@example.com', title: 'T', company: 'C' };
-    const tenant = tenantWith('fields-put-omit', [{ ...full, origin: 'sync' }]);
+    const tenant = tenantWith('fields-put-omit', [{ ...full, origin: 'sync' }], { directorySyncEnabled: true });
     const attempts = [
       { id: 'a', name: 'A', department: 'D', title: 'T', company: 'C' },
       { id: 'a', name: 'A', department: 'D', email: 'a@example.com', company: 'C' },
@@ -152,7 +175,7 @@ describe('後台目錄 API', () => {
   });
 
   it('PATCH 以 email: null 清除鎖定帳號的 email 回 409', async () => {
-    const tenant = tenantWith('fields-patch-null', [{ id: 'a', name: 'A', department: 'D', email: 'a@example.com', origin: 'sso' }]);
+    const tenant = tenantWith('fields-patch-null', [{ id: 'a', name: 'A', department: 'D', email: 'a@example.com', origin: 'sso' }], { ssoAutoProvision: true });
     await request(app).patch(`${usersUrl(tenant.id)}/a`).set(admin).send({ email: null }).expect(409);
     expect(stored(tenant.id)[0].email).toBe('a@example.com');
   });

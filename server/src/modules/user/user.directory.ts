@@ -6,7 +6,7 @@ import type { Applicant } from "@hyagent/shared";
 import { env } from '@/config/env';
 import { currentSsoIdentity } from '@/lib/sso-identity.context';
 import { tenantStore } from '@/modules/tenant/tenant.store';
-import type { DirectoryEntry } from '@/modules/tenant/tenant.types';
+import type { DirectoryEntry, Tenant } from '@/modules/tenant/tenant.types';
 
 const DIRECTORY: Record<string, Omit<Applicant, "id">> = {
   kevin: { name: "Kevin Yang", department: "行銷部", title: "技術經理", region: "台北", email: "kevin@example.com" },
@@ -91,15 +91,23 @@ function applicantFromSso(userId: string, tenantId: string): Applicant | undefin
  *      - 登入自動建立（origin 'sso'，租戶開 ssoAutoProvision）：首次登入時由 Assertion 寫入，
  *        尚未收到 webhook 前，後續登入會以 Assertion 更新；
  *      - OA webhook 同步（origin 'sync'，或已有 syncedAt）：一旦收到 webhook 就以它為準，
- *        登入不再更新，後台也唯讀（見 isExternallyManaged）。
+ *        登入不再更新。後台是否唯讀跟著負責的開關走（見 isFieldLocked）。
  *   2. 本次請求 SSO Assertion 帶進來的身分——租戶沒建目錄（或這位還沒建檔）時採用。
  *      這是 Widget SSO 的常態：整合方不必把員工資料同步給我們；未開自動建立時就一直走這條。
  *   3. 都沒有 → 以 userId 充當姓名、部門落在 UNKNOWN_DEPARTMENT（最小權限）。
+ *
+ * 例外：登入自動建立的項目，在 ssoAutoProvision 關閉後已沒有人會更新，繼續讀它會讓換了部門的人
+ * 留著舊部門的權限。所以關閉後「本人」回到開啟前的行為（第 2 條），憑證只帶 sub 才退回目錄項目；
+ * 查別人時沒有對方的憑證（currentSsoIdentity 只認本人），仍回目錄項目。
  */
 export function getApplicant(userId: string, tenantId = 'default'): Applicant {
   const profile = directory(tenantId).find((p) => p.id === userId);
   if (!profile) {
     return applicantFromSso(userId, tenantId) ?? { id: userId, name: userId, department: UNKNOWN_DEPARTMENT };
+  }
+  if (profile.origin === 'sso' && profile.syncedAt === undefined && tenantStore.getTenant(tenantId)?.ssoAutoProvision !== true) {
+    const fromLogin = applicantFromSso(userId, tenantId);
+    if (fromLogin) return fromLogin;
   }
   const { deputyIds: _deputyIds, origin: _origin, syncedAt: _syncedAt, ...applicant } = profile;
   return { ...applicant };
@@ -117,9 +125,17 @@ export function isKnownUser(userId: string, tenantId = 'default'): boolean {
   return directory(tenantId).some((p) => p.id === userId);
 }
 
-/** 由 SSO 或 OA 同步管理的帳號：姓名、部門等基本資料以外部來源為準，後台不可手動改。 */
-export function isExternallyManaged(entry: DirectoryEntry): boolean {
-  return entry.origin === 'sso' || entry.origin === 'sync' || entry.syncedAt !== undefined;
+/**
+ * 基本資料（姓名、部門等）目前是否由外部來源維護、後台不可手動改。
+ * 鎖定跟著負責的開關走：開關關閉後沒有人會再更新這筆資料，再鎖就沒有人改得動了。
+ */
+export function isFieldLocked(
+  entry: DirectoryEntry,
+  tenant: Pick<Tenant, 'ssoAutoProvision' | 'directorySyncEnabled'>,
+): boolean {
+  if (entry.syncedAt !== undefined || entry.origin === 'sync') return tenant.directorySyncEnabled === true;
+  if (entry.origin === 'sso') return tenant.ssoAutoProvision === true;
+  return false;
 }
 
 /**

@@ -9,6 +9,7 @@ import type { DirectoryEntry } from '@/modules/tenant/tenant.types';
 export type SyncResult = { eventId: string; status: 'applied' | 'stale' | 'rejected'; reason?: string };
 
 const MAX_DIRECTORY_USERS = 10000;
+const MAX_USER_ID_LENGTH = 200;
 const MAX_FUTURE_SKEW_MS = 5 * 60_000;
 const TOMBSTONE_TTL_MS = 30 * 86_400_000;
 
@@ -35,6 +36,7 @@ export function applyDirectoryEvents(input: {
   users: DirectoryEntry[];
   tombstones: Record<string, string>;
   results: SyncResult[];
+  /** 呼叫端要清除個人授權並作廢 Session 的人（applied 的 delete，以及重送相同時間的 delete）。 */
   revokeUserIds: string[];
   changed: boolean;
 } {
@@ -95,10 +97,10 @@ export function applyDirectoryEvents(input: {
     }
 
     const userId = typeof ev.userId === 'string' ? ev.userId.trim() : '';
-    if (!userId || !isStorableText(userId)) { reject('INVALID_EVENT'); continue; }
+    if (!userId || userId.length > MAX_USER_ID_LENGTH || !isStorableText(userId)) { reject('INVALID_EVENT'); continue; }
     const known = knownAt(userId);
     if (at <= known) {
-      // 重送相同時間的 delete 仍要作廢 Session（上次可能寫入失敗）；此人已不在目錄才有意義
+      // 重送相同時間的 delete 仍要清個人授權、作廢 Session（上次可能寫入失敗）；此人已不在目錄才有意義
       if (at === parseTime(tombstones[userId]) && !users.has(userId)) revoke.add(userId);
       results.push({ eventId, status: 'stale' });
       continue;

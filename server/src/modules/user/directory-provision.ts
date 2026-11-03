@@ -29,23 +29,28 @@ function text(value: unknown): string | undefined {
   return trimmed && trimmed.length <= MAX_FIELD_LENGTH && isStorableText(trimmed) ? trimmed : undefined;
 }
 
-/** 欄位對應與 applicantFromSso 相同：name、hyagent:profile.deptName/jobPostName/companyName，另加頂層 email。 */
-function entryFields(claims: AssertionClaims) {
+type CarriedFields = Partial<Pick<DirectoryEntry, 'name' | 'department' | 'title' | 'company' | 'email'>>;
+
+/**
+ * 憑證實際帶來、且可以儲存的欄位；沒帶或不可儲存（含超過 200 字元）的 key 不會出現。
+ * 欄位對應與 applicantFromSso 相同：name、hyagent:profile.deptName/jobPostName/companyName，另加頂層 email。
+ */
+function carriedFields(claims: AssertionClaims): CarriedFields {
   const raw = claims['hyagent:profile'];
   const profile = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
-  const email = text(claims.email);
+  const name = text(claims.name);
+  const department = text(profile.deptName);
   const title = text(profile.jobPostName);
   const company = text(profile.companyName);
+  const email = text(claims.email);
   return {
-    name: text(claims.name) ?? claims.sub,
-    department: text(profile.deptName) ?? UNKNOWN_DEPARTMENT,
+    ...(name ? { name } : {}),
+    ...(department ? { department } : {}),
     ...(title ? { title } : {}),
     ...(company ? { company } : {}),
     ...(email && emailSchema.safeParse(email).success ? { email } : {}),
   };
 }
-
-const COMPARED = ['name', 'department', 'title', 'company', 'email'] as const;
 
 /**
  * 同步執行，可能拋錯（由 scheduleSsoProvision 捕捉）。
@@ -64,7 +69,7 @@ export function provisionFromClaims(tenantId: string, claims: AssertionClaims): 
 
   const users = tenant.userDirectory ?? [];
   const current = users.find((u) => u.id === sub);
-  const fields = entryFields(claims);
+  const carried = carriedFields(claims);
 
   if (!current) {
     // 刪除紀錄不早於這張憑證的簽發時間：視為人已被刪除，不讓舊憑證讓他復活
@@ -77,18 +82,19 @@ export function provisionFromClaims(tenantId: string, claims: AssertionClaims): 
       warn(tenantId, 'directory_full');
       return;
     }
-    tenantStore.updateTenant(tenantId, { userDirectory: [...users, { id: sub, ...fields, origin: 'sso' }] });
+    // 只有建立時才需要後備值：目錄項目的 name、department 是必填
+    const created: DirectoryEntry = { id: sub, name: sub, department: UNKNOWN_DEPARTMENT, ...carried, origin: 'sso' };
+    tenantStore.updateTenant(tenantId, { userDirectory: [...users, created] });
     return;
   }
 
   // 只有登入自己建立、且沒被 OA 同步接手的項目才由登入維護
   if (current.origin !== 'sso' || current.syncedAt !== undefined) return;
-  if (COMPARED.every((key) => current[key] === (fields as Partial<DirectoryEntry>)[key])) return;
+  if ((Object.keys(carried) as (keyof CarriedFields)[]).every((key) => current[key] === carried[key])) return;
 
-  // 憑證是完整資料：沒帶的 title／company／email 清除；deputyIds、region 保留
-  const { title: _t, company: _c, email: _e, ...kept } = current;
+  // 憑證不一定帶齊：只覆蓋帶了的欄位，否則一張精簡憑證就會把部門打回「—」，連帶讓此人其他 Session 失去部門角色
   tenantStore.updateTenant(tenantId, {
-    userDirectory: users.map((u) => (u === current ? { ...kept, ...fields } : u)),
+    userDirectory: users.map((u) => (u === current ? { ...current, ...carried } : u)),
   });
 }
 

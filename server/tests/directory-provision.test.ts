@@ -184,12 +184,47 @@ describe('provisionFromClaims：更新既有項目', () => {
     expect(spy).not.toHaveBeenCalled();
   });
 
-  it('claim 變成缺少：清除 title/company/email，姓名退回 sub、部門退回 UNKNOWN_DEPARTMENT', () => {
-    const { id } = newTenant(true, [existing()]);
+  it('claim 缺少：既有資料全部保留，不寫入，也不退回 sub／UNKNOWN_DEPARTMENT', () => {
+    const entry = existing();
+    const { id } = newTenant(true, [entry]);
+    const spy = jest.spyOn(tenantStore, 'updateTenant');
     provisionFromClaims(id, claims('E1'));
-    const [entry] = dir(id)!;
-    expect(entry).toEqual({ id: 'E1', name: 'E1', department: UNKNOWN_DEPARTMENT, region: '台北', deputyIds: ['D1'], origin: 'sso' });
-    expect('title' in entry || 'company' in entry || 'email' in entry).toBe(false);
+    expect(dir(id)).toEqual([entry]);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('只帶部分 claim：只覆蓋帶了的欄位', () => {
+    const { id } = newTenant(true, [existing()]);
+    provisionFromClaims(id, claims('E1', { 'hyagent:profile': { deptName: '新部' } }));
+    expect(dir(id)).toEqual([{ ...existing(), department: '新部' }]);
+  });
+
+  it.each([
+    ['超過 200 字元', 'x'.repeat(201)],
+    ['含 NUL', 'a\u0000b'],
+    ['單獨代理字元', 'a\ud83d'],
+    ['只有空白', '   '],
+    ['不是字串', 42],
+  ])('claim %s 視為沒帶：保留既有值', (_label, bad) => {
+    const entry = existing();
+    const { id } = newTenant(true, [entry]);
+    provisionFromClaims(id, claims('E1', {
+      name: bad, email: bad, 'hyagent:profile': { deptName: bad, jobPostName: bad, companyName: bad },
+    }));
+    expect(dir(id)).toEqual([entry]);
+  });
+
+  it('email 格式不合視為沒帶：保留既有值，其他欄位照常更新', () => {
+    const { id } = newTenant(true, [existing()]);
+    provisionFromClaims(id, claims('E1', { name: '新名', email: 'not-an-email' }));
+    expect(dir(id)).toEqual([{ ...existing(), name: '新名' }]);
+  });
+
+  it('帶了的欄位與現值相同、其餘沒帶：不呼叫 updateTenant', () => {
+    const { id } = newTenant(true, [existing()]);
+    const spy = jest.spyOn(tenantStore, 'updateTenant');
+    provisionFromClaims(id, claims('E1', { name: '舊名' }));
+    expect(spy).not.toHaveBeenCalled();
   });
 
   it('origin=sso 且有 syncedAt：不更新', () => {
@@ -328,7 +363,8 @@ describe('exchange 整合：登入不受目錄影響', () => {
 
   it('有刪除紀錄、目錄缺人時，只要憑證有效仍可登入', async () => {
     const { id, sign } = newTenant();
-    tenantStore.updateTenant(id, { directoryTombstones: { E1: new Date().toISOString() }, userDirectory: [] });
+    // 墓碑放在未來一分鐘：用「現在」的話，簽章若剛好跨過整秒，iat 會晚於墓碑而建立（時間相依的不穩定）
+    tenantStore.updateTenant(id, { directoryTombstones: { E1: new Date(Date.now() + 60_000).toISOString() }, userDirectory: [] });
     await expect(exchange(sign('E1', profile))).resolves.toMatchObject({ user: { sub: 'E1' } });
     await flush();
     expect(dir(id)).toEqual([]);
