@@ -15,6 +15,7 @@ import { tenantRateLimit } from '@/middlewares/tenant-rate-limit';
 import { tenantMonthlyQuota } from '@/middlewares/tenant-quota';
 import { tenantService } from '@/modules/tenant/tenant.service';
 import { authRouter } from '@/modules/auth/auth.routes';
+import { directorySyncBodyParser, directorySyncRouter } from '@/modules/user/directory-sync.routes';
 import { mcpPublicRouter } from '@/modules/mcp/mcp.routes';
 import { feedbackRouter } from '@/modules/feedback/feedback.routes';
 import { conversationRouter } from '@/modules/conversation/conversation.routes';
@@ -69,6 +70,8 @@ export function createApp(): Express {
       callback(null, { origin: allowed, credentials: true });
     }),
   );
+  // 人員同步需要原始 bytes 算 SHA-256，必須在全域 express.json 之前以 raw 解析（已是 Buffer 的 body 不會被 json 重解）
+  app.use('/api/directory-sync', directorySyncBodyParser);
   app.use(express.json({ limit: '1mb' }));
   app.use(requestLogger);
 
@@ -113,6 +116,8 @@ export function createApp(): Express {
   // MCP 呼叫 JWT 的公鑰（MCP server 驗章用；公開、不需登入）
   app.use(mcpPublicRouter);
   app.use('/api/auth', authRouter);
+  // 人員同步 webhook：以同步專用金鑰簽章，不走 resolveTenant／requireAuth
+  app.use('/api/directory-sync', directorySyncRouter);
 
   // 受保護：需帶有效 access token 才能操作
   // resolveTenant 先解析 API Key → 租戶（未帶 key 落到預設租戶，向後相容），
