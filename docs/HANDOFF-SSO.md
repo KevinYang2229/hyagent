@@ -212,6 +212,9 @@ window.addEventListener('oa-agent:submitted', (e) => { /* e.detail.submission */
 
 ## 租戶與權限
 
+> **人員資料：登入與目錄。** 租戶管理員在後台「人員同步」分頁開啟「自動建立」後，員工首次登入時，HyAgent 會把憑證中的姓名、Email 與 `hyagent:profile`（`deptName`、`jobPostName`、`companyName`）寫入該租戶的人員目錄（背景處理，不影響登入速度）。目錄一旦有資料，就優先於憑證：憑證不覆蓋已存在的目錄資料，只有「由登入建立、尚未收到 webhook」的項目會在下次登入時以憑證更新。
+> 租戶若另外開啟人員同步，收到該員工的第一筆 webhook 之後，就完全以 webhook 為準，登入不再更新。對接方式見 [HANDOFF-DIRECTORY-SYNC.md](HANDOFF-DIRECTORY-SYNC.md)。兩個開關都不影響登入本身：同步失敗或關閉，員工仍可自動登入。
+
 交換後的 Token 綁定該租戶。一般業務 API 的 API Key 必須屬於同一租戶，不能拿另一租戶的公開金鑰切換身份。內部帳密登入僅綁定 default。
 
 平台管理員使用獨立 audience 的管理 Token。租戶 SSO 的 role=admin、manager 等值均不能取得平台管理 API 權限。業務角色請由 HyAgent 後台的帳號／群組／套餐 scope 配置。

@@ -1,6 +1,6 @@
 # 人員資料同步對接文件（OA → HyAgent）
 
-> **狀態：實作前草稿。** 同步端點尚未上線，正式對接前請先向 HyAgent 團隊確認環境已就緒。上線時若有差異，會更新本文件。
+> **狀態：端點已實作，每個租戶需由 HyAgent 管理員在後台「人員同步」分頁開啟後才會生效**（未開啟時回 `403 DIRECTORY_SYNC_DISABLED`）。本文件不指定任何環境已部署：正式對接前，請先向 HyAgent 團隊確認要使用的主機網址（下文的 `{hyagent-host}`），以及你們租戶的同步開關已開啟。
 
 本文件給 OA 工程師，說明 OA 要改哪些地方，才能把人員資料同步到 HyAgent 的使用者目錄。
 
@@ -97,7 +97,7 @@ Content-Type: application/json
 | header | `kid` | 公鑰依 RFC 7638 算出的值（keygen 檔名中的 `<kid>`）|
 | payload | `iss` | 貴方的 Tenant ID |
 | payload | `aud` | `hyagent:directory-sync`（固定值）|
-| payload | `sub` | `directory-sync`（固定值）|
+| payload | `sub` | `directory-sync`（固定值，填其他值會收到 `401 INVALID_CLAIMS`）|
 | payload | `iat`、`exp` | Unix 秒數；建議有效 60 秒，上限 300 秒 |
 | payload | `jti` | 每次都不同的隨機字串，長度 8–128 |
 | payload | `body_sha256` | 請求內容的 SHA-256（小寫 hex）|
@@ -192,12 +192,18 @@ const token = issueAssertion({
 | `eventId` | 是 | OA 產生的事件 ID，用於對照回應與追查 |
 | `type` | 是 | `user.upserted`（新增或異動）或 `user.deleted`（離職）|
 | `occurredAt` | 是 | **資料在 OA 異動的時間**（不是發送時間），UTC ISO 8601，含毫秒。超過 HyAgent 現在時間 5 分鐘會被拒絕（`INVALID_OCCURRED_AT`）|
-| `user.id` | 是 | 等於登入憑證的 `sub`，最長 200 字元 |
-| `user.name` | 是 | 最長 200 字元 |
-| `user.department` | 是 | 最長 200 字元 |
+| `user.id` | 是 | 等於登入憑證的 `sub`，最長 200 字元，前後空白會被去除 |
+| `user.name` | 是 | 最長 200 字元，前後空白會被去除 |
+| `user.department` | 是 | 最長 200 字元，前後空白會被去除 |
 | `user.title`、`user.company` | 否 | 最長 200 字元 |
 | `user.email` | 否 | 必須是合法 Email |
 | `userId` | delete 必填 | 要移除的員工 ID |
+
+**`user` 物件的欄位是封閉的。** 只接受上表的 `id`、`name`、`department`、`title`、`company`、`email`；多帶任何其他欄位（例如 `phone`、`origin`、`deputyIds`），整筆事件都會被拒絕（`INVALID_USER`），不會只忽略多餘的欄位。
+
+**選填欄位沒有值時，請直接省略這個 key，不要送 `null`**（`"title": null` 同樣會被拒絕為 `INVALID_USER`）。
+
+**文字不可含無法儲存的字元：** 含 NUL（`\u0000`）或單獨代理字元（沒有成對的 `\ud800`–`\udfff`）的文字會被拒絕（`INVALID_USER`；`userId` 則是 `INVALID_EVENT`）。從資料庫匯出時請先清理。
 
 **一定要送完整資料。** `user.upserted` 是整筆更新：沒帶 `title`、`company`、`email` 代表清除該欄位，不是維持原值。
 
@@ -241,6 +247,15 @@ const token = issueAssertion({
 | `stale` | `occurredAt` 不晚於 HyAgent 已有的資料，已略過 | 無，重送或亂序時屬正常 |
 | `rejected` | 這筆資料不合法或超過目錄上限（每租戶 10,000 人），其他筆不受影響 | 依 `reason` 修正後，以新的請求送出，不要無限重試 |
 
+`rejected` 的 `reason` 只有四種：
+
+| `reason` | 原因 | 修正方式 |
+| --- | --- | --- |
+| `INVALID_EVENT` | 缺 `eventId`，`type` 不是 `user.upserted`／`user.deleted`，或 `user.deleted` 的 `userId` 缺少、空白，或含 NUL／單獨代理字元 | 補齊或修正事件 |
+| `INVALID_USER` | `user` 缺必填欄位、超過長度、`email` 格式錯誤、夾帶多餘欄位、選填欄位送了 `null`，或文字含 NUL／單獨代理字元 | 見 §6 |
+| `INVALID_OCCURRED_AT` | `occurredAt` 缺少、不是合法時間字串，或比 HyAgent 現在時間晚超過 5 分鐘 | 檢查格式與主機時鐘 |
+| `DIRECTORY_FULL` | 這是新員工，但目錄已達 10,000 人 | 聯絡 HyAgent 團隊，不要重試 |
+
 ### 失敗
 
 失敗回應格式為 `{ "error": "<代碼>", "message": "…", "requestId": "…" }`。程式只判斷 `error`，`message` 僅供除錯。回報問題時請附上 `requestId`。
@@ -248,15 +263,21 @@ const token = issueAssertion({
 | HTTP | 常見代碼 | 原因 | 處理 |
 | --- | --- | --- | --- |
 | 400 | `INVALID_BODY`、`BODY_HASH_MISMATCH` | 格式錯誤、雜湊不符（§5.2）| 修正，不要原樣重試 |
-| 401 | `UNKNOWN_KID`、`KEY_REVOKED`、`INVALID_SIGNATURE`、`INVALID_AUDIENCE`、`INVALID_ISSUER`、`TOKEN_EXPIRED`、`TOKEN_REPLAYED` | 金鑰、簽章、時鐘或 `jti` 問題 | 修正，並通知負責人 |
+| 401 | `UNKNOWN_KID`、`KEY_REVOKED`、`INVALID_SIGNATURE`、`INVALID_AUDIENCE`、`INVALID_ISSUER`、`INVALID_CLAIMS`、`TOKEN_EXPIRED`、`TOKEN_REPLAYED` | 金鑰、簽章、時鐘、`jti` 或 `sub` 不是 `directory-sync` | 修正，並通知負責人 |
 | 403 | `DIRECTORY_SYNC_DISABLED` | 此租戶未開啟同步 | 聯絡 HyAgent 管理員 |
 | 413 | `TOO_MANY_EVENTS`、`ASSERTION_TOO_LARGE` | 超過大小限制 | 拆批 |
-| 429 | | 超過速率限制 | 依 `Retry-After` 稍後重試 |
+| 429 | `RATE_LIMITED` | 超過速率限制（見下）| 等待 `Retry-After` 秒後重試 |
 | 5xx、逾時 | | 暫時性失敗 | 重試 |
+
+### 速率限制
+
+預設每個來源 IP 在一個計數視窗內最多 **120 次請求**（HyAgent 端可用 `DIRECTORY_SYNC_RATE_LIMIT_MAX` 調整），視窗預設為 15 分鐘。被限制的請求也會計入。因為每次請求最多 500 筆事件，一個視窗可送的事件數遠大於 10,000 人的名單，正常使用不會碰到；只要把事件合併成批次、不要一個事件發一次請求。
+
+`429` 回應的 `Retry-After` 是**整個計數視窗的長度**（預設 `900` 秒），不是距離恢復的剩餘秒數：實際恢復可能比這更早。等待這麼久再重試一定足夠；若想更早試，可以參考回應中的 `RateLimit` header（標準草案格式，`reset` 為視窗剩餘秒數）。
 
 ### 重試規則
 
-- **要重試：** `429`、`5xx`、逾時、網路錯誤。建議以指數退避（1 秒、2 秒、4 秒…，上限 1 小時），持續失敗 24 小時就發出告警。
+- **要重試：** `429`、`5xx`、逾時、網路錯誤。建議以指數退避（1 秒、2 秒、4 秒…，上限 1 小時）；`429` 至少等到 `Retry-After` 或 `RateLimit` 的 `reset`。持續失敗 24 小時就發出告警。
 - **事件內容不變，但 JWT 要重簽：** 同一張 JWT 重送會收到 `TOKEN_REPLAYED`。逾時後即使 HyAgent 其實已處理過，重送也是安全的，舊事件會回 `stale`。
 - **順序：** 亂序送達不會出錯，HyAgent 以 `occurredAt` 判斷新舊，但 `occurredAt` 相同時，後到的那筆會被略過，所以時間請精確到毫秒。
 

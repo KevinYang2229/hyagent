@@ -86,10 +86,14 @@ function applicantFromSso(userId: string, tenantId: string): Applicant | undefin
 /**
  * 取使用者資料。來源優先序：
  *
- *   1. 該租戶在 HyAgent 建的人員目錄——後台明確維護過的資料，且只有它帶得出
- *      代理人名冊（deputyIds）與地區。
+ *   1. 該租戶在 HyAgent 的人員目錄。目錄項目有三種來源（DirectoryEntry.origin / syncedAt）：
+ *      - 後台手動維護（origin 'manual' 或沒有 origin 的舊資料），且只有它帶得出代理人名冊（deputyIds）與地區；
+ *      - 登入自動建立（origin 'sso'，租戶開 ssoAutoProvision）：首次登入時由 Assertion 寫入，
+ *        尚未收到 webhook 前，後續登入會以 Assertion 更新；
+ *      - OA webhook 同步（origin 'sync'，或已有 syncedAt）：一旦收到 webhook 就以它為準，
+ *        登入不再更新，後台也唯讀（見 isExternallyManaged）。
  *   2. 本次請求 SSO Assertion 帶進來的身分——租戶沒建目錄（或這位還沒建檔）時採用。
- *      這是 Widget SSO 的常態：整合方不必把員工資料同步給我們。
+ *      這是 Widget SSO 的常態：整合方不必把員工資料同步給我們；未開自動建立時就一直走這條。
  *   3. 都沒有 → 以 userId 充當姓名、部門落在 UNKNOWN_DEPARTMENT（最小權限）。
  */
 export function getApplicant(userId: string, tenantId = 'default'): Applicant {

@@ -6,6 +6,7 @@
 | 你需要動到的部分 | 一組金鑰對、後端一支 API、前端一行 `<script>`，以及登出時通知 Widget 的一小段程式 |
 | 預估工作量 | 半天～一天（含測試） |
 | 完整規範 | [HyAgent客戶網站自動登入規格.md](HyAgent客戶網站自動登入規格.md)。本手冊是它的操作摘要，兩者若有出入**以規格為準** |
+| 同步人員資料（選用） | 想讓 HyAgent 的使用者目錄與貴方人事資料保持一致（姓名、部門、職稱、離職即登出），請見 [HANDOFF-DIRECTORY-SYNC.md](HANDOFF-DIRECTORY-SYNC.md)。與自動登入互不影響，使用另一組金鑰，不做也能正常登入 |
 
 ---
 
@@ -544,6 +545,8 @@ context 切到面板那個 frame，或勾選 selected context only 以外的顯�
 ```
 
 順序顛倒則第 2 步無效——使用者在貴站還是登入狀態的話，Widget 會立刻再換一張新 Session。
+
+> 若貴方有開啟人員同步，離職時改為發送 `user.deleted` 事件，HyAgent 會移除此人並立即登出，不必人工作廢。同樣要先在貴方系統停權。見 [HANDOFF-DIRECTORY-SYNC.md](HANDOFF-DIRECTORY-SYNC.md) §6。
 
 若暫時沒人操作後台，既有 Session 至遲會在自然到期時失效（≤ `expiresIn`，預設 1 小時）。對停權即時性要求高的話，請把 Session 有效期調短。
 

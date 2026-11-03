@@ -532,6 +532,8 @@ HyAgent 對自訂 claims **只做型別與大小驗證，不做語意解讀**，
 > **部門層級知識庫可見範圍**的判定依據。其餘自訂 claims 一律不解讀。
 > 已建立人員目錄的 Tenant 以目錄為準，Assertion 不覆蓋它。
 >
+> **自動建立目錄（選用）：** Tenant 管理員在後台開啟「自動建立」後，員工首次經 §8 驗證成功並換發 Session 後，HyAgent 會在背景把上述三個約定鍵與 `name`、`email` 寫入該 Tenant 的人員目錄，之後即屬「已建立人員目錄」的情況，以目錄為準。由登入建立、且尚未收到 webhook 的項目，會在後續登入時以 Assertion 內容更新；**一旦收到 OA 的 webhook（人員同步），就完全以 webhook 為準**，Assertion 不再更新。此功能不影響驗證與換發的結果，背景寫入失敗也不會讓登入失敗。webhook 的簽章與格式是另一份契約，見 [HANDOFF-DIRECTORY-SYNC.md](HANDOFF-DIRECTORY-SYNC.md)，使用的是與登入分開的金鑰。
+>
 > 這代表 Tenant 得以自家私鑰宣告旗下使用者的部門，進而決定其知識庫可見範圍——Tenant 本就是
 > 自家人員資料的權威來源，若要改由 HyAgent 這側控管，請改建人員目錄。
 
