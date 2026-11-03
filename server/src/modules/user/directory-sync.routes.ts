@@ -21,7 +21,6 @@ import {
 } from '@/lib/assertion';
 import { env } from '@/config/env';
 import { authSessionStore } from '@/lib/auth-session.store';
-import { logger } from '@/lib/logger';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 import { resolveAssertionSettings } from '@/modules/tenant/tenant-keys';
 import type { Tenant } from '@/modules/tenant/tenant.types';
@@ -57,8 +56,12 @@ class SyncError extends Error {
   }
 }
 
-function requestIdOf(req: Request): string {
-  return req.header('x-request-id')?.trim() || randomUUID();
+/** 路由在 requestLogger 之後，用 req.id 才能讓回應的 requestId 對得上日誌；parser 在它之前，自行產生並回寫 header。 */
+function requestIdOf(req: Request, res?: Response): string {
+  if (req.id !== undefined) return String(req.id);
+  const id = req.header('x-request-id')?.trim() || randomUUID();
+  res?.setHeader('x-request-id', id);
+  return id;
 }
 
 function sendFlat(res: Response, status: number, error: string, message: string, requestId: string): void {
@@ -68,7 +71,7 @@ function sendFlat(res: Response, status: number, error: string, message: string,
 /** 原始內容必須保持 bytes（雜湊要對「實際送出的那串」），超限轉成 413 的扁平錯誤。 */
 const rawParser = express.raw({ type: '*/*', limit: MAX_BODY_BYTES });
 const rawParserErrors: ErrorRequestHandler = (err, req, res, next) => {
-  const requestId = requestIdOf(req);
+  const requestId = requestIdOf(req, res);
   if ((err as { type?: string })?.type === 'entity.too.large') {
     sendFlat(res, 413, 'TOO_MANY_EVENTS', '內容超過 1 MB 上限，請拆批', requestId);
     return;
@@ -99,13 +102,13 @@ export function createDirectorySyncRouter(rateLimitMax: number = env.DIRECTORY_S
     legacyHeaders: false,
     handler: (req, res) => {
       res.setHeader('Retry-After', String(Math.ceil(env.AUTH_RATE_LIMIT_WINDOW_MS / 1000)));
-      sendFlat(res, 429, 'RATE_LIMITED', '同步請求過於頻繁，請稍後再試', requestIdOf(req));
+      sendFlat(res, 429, 'RATE_LIMITED', '同步請求過於頻繁，請稍後再試', requestIdOf(req, res));
     },
   });
 
   const router = Router();
   router.post('/events', limiter, async (req: Request, res: Response) => {
-    const requestId = requestIdOf(req);
+    const requestId = requestIdOf(req, res);
     try {
       // 1. token → 租戶（未驗章的 iss 只用來挑公鑰）
       const token = bearerOf(req);
@@ -122,6 +125,9 @@ export function createDirectorySyncRouter(rateLimitMax: number = env.DIRECTORY_S
         clockSkewSeconds: resolveAssertionSettings(found).clockSkewSeconds,
       });
       const { kid, claims } = await verifier.verifyAndConsumeWithKey(token, { tenant: found.id });
+
+      // sub 為固定值（HANDOFF §5.1）；驗證器只檢查它是非空字串
+      if (claims.sub !== 'directory-sync') fail(ERROR_CODES.INVALID_CLAIMS, 'sub 必須是 directory-sync');
 
       // 3. 開關 → 內容雜湊 → JSON → 事件數
       if (!found.directorySyncEnabled) throw new SyncError(403, 'DIRECTORY_SYNC_DISABLED', '此租戶未開啟人員同步');
@@ -151,7 +157,7 @@ export function createDirectorySyncRouter(rateLimitMax: number = env.DIRECTORY_S
         nowMs,
       });
       const count = (s: string) => applied.results.filter((r) => r.status === s).length;
-      tenantStore.updateTenant(tenant.id, {
+      tenantStore.applyDirectorySyncState(tenant.id, {
         ...(applied.changed ? { userDirectory: applied.users, directoryTombstones: applied.tombstones } : {}),
         directorySyncStatus: {
           at: new Date(nowMs).toISOString(),
@@ -166,20 +172,20 @@ export function createDirectorySyncRouter(rateLimitMax: number = env.DIRECTORY_S
       for (const userId of applied.revokeUserIds) await authSessionStore.revokeBySub(tenant.id, userId);
 
       // 日誌只留租戶、kid 與筆數，不留 sub 或姓名
-      logger.info(
+      req.log.info(
         { tenantId: tenant.id, kid, events: events.length, applied: count('applied'), revoked: applied.revokeUserIds.length },
         'directory sync processed',
       );
       res.status(200).json({ data: { results: applied.results } });
     } catch (err) {
       if (err instanceof SyncError) {
-        logger.info({ code: err.code, status: err.status }, 'directory sync rejected');
+        req.log.info({ code: err.code, status: err.status }, 'directory sync rejected');
         sendFlat(res, err.status, err.code, err.message, requestId);
         return;
       }
       const { status, body } = toErrorResponse(err, requestId);
-      if (status >= 500) logger.error({ err }, 'directory sync failed');
-      else logger.info({ code: body.error, status }, 'directory sync rejected');
+      if (status >= 500) req.log.error({ err }, 'directory sync failed');
+      else req.log.info({ code: body.error, status }, 'directory sync rejected');
       res.status(status).json(body);
     }
   });

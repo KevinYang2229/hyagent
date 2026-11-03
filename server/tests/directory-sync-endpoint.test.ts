@@ -35,11 +35,11 @@ function upsert(id: string, at = new Date().toISOString(), name = '王小明') {
   };
 }
 
-function sign(tenantId: string, body: string, over: { privateKey?: string; audience?: string; hash?: string } = {}) {
+function sign(tenantId: string, body: string, over: { privateKey?: string; audience?: string; hash?: string; subject?: string } = {}) {
   return issueAssertion({
     privateKey: over.privateKey ?? syncPair.privateKeyPem,
     tenant: tenantId,
-    subject: 'directory-sync',
+    subject: over.subject ?? 'directory-sync',
     audience: over.audience ?? AUD,
     profile: { body_sha256: over.hash ?? sha(body) },
   });
@@ -294,4 +294,48 @@ it('後面的 express.json 不會動已解析成 Buffer 的 body', async () => {
   const raw = '{"events":[ ]}';
   const res = await request(probe).post('/x').set('content-type', 'application/json').send(raw);
   expect(res.body).toEqual({ isBuffer: true, text: raw });
+});
+
+it('sub 不是 directory-sync 回 401 INVALID_CLAIMS', async () => {
+  const t = fixture();
+  const res = await post(t.id, { events: [upsert('E1')] }, { subject: 'someone' });
+  expect(res.status).toBe(401);
+  expect(res.body.error).toBe('INVALID_CLAIMS');
+  expect(dirOf(t.id).find((u) => u.id === 'E1')).toBeUndefined();
+});
+
+it('回應 body 的 requestId 等於 x-request-id header（成功、驗證失敗、413 皆然）', async () => {
+  const t = fixture();
+  const bad = await post(t.id, { events: [] }, { audience: 'hyagent' });
+  expect(bad.headers['x-request-id']).toBeTruthy();
+  expect(bad.body.requestId).toBe(bad.headers['x-request-id']);
+
+  const big = await post(t.id, JSON.stringify({ events: [], pad: 'x'.repeat(1024 * 1024 + 10) }));
+  expect(big.status).toBe(413);
+  expect(big.headers['x-request-id']).toBeTruthy();
+  expect(big.body.requestId).toBe(big.headers['x-request-id']);
+
+  const body = JSON.stringify({ events: [] });
+  const echoed = await request(app).post('/api/directory-sync/events')
+    .set('content-type', 'application/json').set('x-request-id', 'trace-123')
+    .set('authorization', `Bearer ${sign(t.id, body, { audience: 'hyagent' })}`).send(body);
+  expect(echoed.body.requestId).toBe('trace-123');
+});
+
+it('一批事件只寫入一次，即使全是 stale；錯誤的請求不寫入', async () => {
+  const t = fixture();
+  const spy = jest.spyOn(tenantStore, 'persistCritical');
+  // updateTenant 內含一次 persist()；改用 applyDirectorySyncState 才不會多寫一份快照
+  const update = jest.spyOn(tenantStore, 'updateTenant');
+  await post(t.id, { events: [upsert('E1', '2026-02-01T00:00:00.000Z'), upsert('E2', '2026-02-01T00:00:00.000Z')] });
+  expect(spy).toHaveBeenCalledTimes(1);
+  spy.mockClear();
+  await post(t.id, { events: [upsert('E1', '2026-01-01T00:00:00.000Z')] });
+  expect(spy).toHaveBeenCalledTimes(1);
+  spy.mockClear();
+  await post(t.id, '{bad');
+  expect(spy).not.toHaveBeenCalled();
+  expect(update).not.toHaveBeenCalled();
+  update.mockRestore();
+  spy.mockRestore();
 });

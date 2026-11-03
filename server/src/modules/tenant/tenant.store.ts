@@ -437,6 +437,28 @@ export const tenantStore = {
     return next;
   },
 
+  /**
+   * 人員同步專用：只更新記憶體，不呼叫 persist()。
+   * 呼叫端緊接著 await persistCritical() 寫一次快照，避免每批事件寫兩次完整快照。
+   */
+  applyDirectorySyncState(
+    id: string,
+    patch: Pick<Partial<Tenant>, 'userDirectory' | 'directoryTombstones'> & {
+      directorySyncStatus: NonNullable<Tenant['directorySyncStatus']>;
+    },
+  ): Tenant | undefined {
+    const tenant = tenants.get(id);
+    if (!tenant) return undefined;
+    const next: Tenant = {
+      ...tenant,
+      ...(patch.userDirectory !== undefined ? { userDirectory: structuredClone(patch.userDirectory) } : {}),
+      ...(patch.directoryTombstones !== undefined ? { directoryTombstones: structuredClone(patch.directoryTombstones) } : {}),
+      directorySyncStatus: { ...patch.directorySyncStatus },
+    };
+    tenants.set(id, next);
+    return next;
+  },
+
   // ───────────── Assertion 公鑰（規格 §2.5、§7.3）─────────────
 
   /** 列出租戶的公鑰與狀態。公鑰可公開，不需遮罩。 */
