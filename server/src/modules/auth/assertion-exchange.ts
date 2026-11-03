@@ -31,6 +31,7 @@ import {
 import { env } from '@/config/env';
 import { authSessionStore } from '@/lib/auth-session.store';
 import { tenantStore } from '@/modules/tenant/tenant.store';
+import { scheduleSsoProvision } from '@/modules/user/directory-provision';
 import { resolveAssertionSettings } from '@/modules/tenant/tenant-keys';
 import type { Tenant } from '@/modules/tenant/tenant.types';
 import { recordClockOffset } from './clock-skew-monitor';
@@ -152,6 +153,8 @@ export const assertionExchange = {
       ...(profile ? { profile } : {}),
       expiresInSeconds: settings.sessionExpiresIn,
     });
+
+    if (tenant.ssoAutoProvision === true) scheduleSsoProvision(tenant.id, claims);
 
     return {
       sessionToken: created.sessionToken,
