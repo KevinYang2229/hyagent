@@ -12,6 +12,7 @@
 import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import type { Prisma, PrismaClient } from '@prisma/client';
+import { ERROR_CODES, HyAgentTokenError } from '@/lib/assertion';
 import { decryptSecret, encryptSecret, hashApiKey, isEncrypted } from '@/lib/crypto';
 import { dataFile } from '@/lib/data-dir';
 import { connectDb, DbWriteQueue } from '@/lib/db';
@@ -30,6 +31,7 @@ import {
   checkCanRevoke,
   migrateLegacyKey,
   parsePublicKey,
+  rejectCrossRegisteredKey,
   resolveAssertionSettings,
   validateAssertionSettings,
   type TenantAssertionSettings,
@@ -456,6 +458,8 @@ export const tenantStore = {
     const tenant = tenants.get(tenantId);
     if (!tenant) return undefined;
     const parsed = parsePublicKey(input.publicKey);
+    // 同步金鑰與登入金鑰互斥；沒有同步金鑰的租戶不受影響
+    if (tenant.directorySyncKeys?.some((k) => k.kid === parsed.kid)) rejectCrossRegisteredKey();
     const { existing } = checkCanAddKey(tenant.publicKeys, parsed.kid);
     if (existing) return { key: existing, created: false };
 
@@ -503,6 +507,68 @@ export const tenantStore = {
       return updated;
     });
     tenants.set(tenantId, { ...tenant, publicKeys });
+    persist();
+    return updated;
+  },
+
+  // ───────────── 目錄同步專用公鑰（與登入金鑰分開，互斥）─────────────
+
+  listDirectorySyncKeys(tenantId: string): TenantPublicKey[] {
+    return [...(tenants.get(tenantId)?.directorySyncKeys ?? [])];
+  },
+
+  /** 登記同步簽章公鑰。規則同 addPublicKey（kid 自算、冪等、最多 2 把 active），另與登入金鑰互斥。 */
+  addDirectorySyncKey(
+    tenantId: string,
+    input: { publicKey: string; label?: string },
+    operator?: KeyOperator,
+  ): { key: TenantPublicKey; created: boolean } | undefined {
+    const tenant = tenants.get(tenantId);
+    if (!tenant) return undefined;
+    const parsed = parsePublicKey(input.publicKey);
+    if (tenant.publicKeys?.some((k) => k.kid === parsed.kid)) rejectCrossRegisteredKey();
+    const { existing } = checkCanAddKey(tenant.directorySyncKeys, parsed.kid);
+    if (existing) return { key: existing, created: false };
+
+    const key: TenantPublicKey = {
+      kid: parsed.kid,
+      alg: parsed.alg,
+      publicKey: parsed.publicKey,
+      status: 'active',
+      ...(input.label?.trim() ? { label: input.label.trim() } : {}),
+      createdAt: new Date().toISOString(),
+      ...(operator ? { createdBy: operator } : {}),
+    };
+    tenants.set(tenantId, { ...tenant, directorySyncKeys: [...(tenant.directorySyncKeys ?? []), key] });
+    persist();
+    return { key, created: true };
+  },
+
+  /**
+   * 撤銷同步公鑰。不套用「至少保留 1 把」限制（同步可隨時停用），
+   * 也不碰登入金鑰與 Session。kid 不存在回 undefined、已撤銷拋 INVALID_REQUEST（同登入金鑰）。
+   */
+  revokeDirectorySyncKey(
+    tenantId: string,
+    kid: string,
+    reason: KeyRevocationReason,
+    operator?: KeyOperator,
+  ): TenantPublicKey | undefined {
+    const tenant = tenants.get(tenantId);
+    const target = tenant?.directorySyncKeys?.find((k) => k.kid === kid);
+    if (!tenant || !target) return undefined;
+    if (target.status === 'revoked') throw new HyAgentTokenError(ERROR_CODES.INVALID_REQUEST, '這把公鑰已經撤銷');
+    const updated: TenantPublicKey = {
+      ...target,
+      status: 'revoked',
+      revokedAt: new Date().toISOString(),
+      revokedReason: reason,
+      ...(operator ? { revokedBy: operator } : {}),
+    };
+    tenants.set(tenantId, {
+      ...tenant,
+      directorySyncKeys: tenant.directorySyncKeys!.map((k) => (k.kid === kid ? updated : k)),
+    });
     persist();
     return updated;
   },

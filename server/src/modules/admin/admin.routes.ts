@@ -1,5 +1,6 @@
 import { userAdminRouter } from '@/modules/user/user.admin';
 import { departmentAdminRouter } from '@/modules/user/department.admin';
+import { directorySyncAdminRouter } from '@/modules/user/directory-sync.admin';
 import { adminLoginRateLimit } from '@/middlewares/auth-rate-limit';
 import { Router } from 'express';
 import { z } from 'zod';
@@ -101,6 +102,7 @@ router.use(requireAdmin);
 router.use(adminAuditTrail);
 router.use('/tenants/:id/users', userAdminRouter);
 router.use('/tenants/:id/departments', departmentAdminRouter);
+router.use('/tenants/:id/directory-sync', directorySyncAdminRouter);
 
 // 平台層稽核（建立／刪除租戶、MCP 服務等）；租戶層稽核見 /tenants/:id/audit
 router.get('/audit', validate({ query: auditPageQuerySchema }), asyncHandler(adminController.getPlatformAudit));

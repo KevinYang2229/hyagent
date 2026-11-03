@@ -107,6 +107,11 @@ export function parsePublicKey(input: unknown): ParsedPublicKey {
   };
 }
 
+/** 同一把公鑰不可同時登記為登入金鑰與同步金鑰（含已撤銷者，避免繞過撤銷）。 */
+export function rejectCrossRegisteredKey(): never {
+  invalid('此公鑰已登記於另一用途，同步與登入必須使用不同金鑰');
+}
+
 export function activeKeys(keys: readonly TenantPublicKey[] = []): TenantPublicKey[] {
   return keys.filter((k) => k.status === 'active');
 }
