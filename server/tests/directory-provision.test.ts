@@ -143,7 +143,7 @@ describe('provisionFromClaims：上限、sub 檢查、墓碑', () => {
 
   it('name／部門含 NUL 視為缺：姓名退回 sub、部門退回 UNKNOWN_DEPARTMENT，仍建立', () => {
     const { id } = newTenant();
-    provisionFromClaims(id, claims('E1', { name: 'a\u0000b', 'hyagent:profile': { deptName: 'd\u0000', jobPostName: 't\u0001' } }));
+    provisionFromClaims(id, claims('E1', { name: 'a\u0000b', 'hyagent:profile': { deptName: 'd\u0000', jobPostName: 't\u0000' } }));
     expect(dir(id)).toEqual([{ id: 'E1', name: 'E1', department: UNKNOWN_DEPARTMENT, origin: 'sso' }]);
   });
 

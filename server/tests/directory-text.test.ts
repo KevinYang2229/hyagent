@@ -13,7 +13,7 @@ describe('isStorableText', () => {
     expect(isStorableText(v)).toBe(true);
   });
   it.each([
-    ['NUL', 'E1\u0000'], ['控制字元 U+001F', 'a\u001fb'], ['DEL', 'a\u007f'], ['換行', 'a\nb'],
+    ['NUL', 'E1\u0000'],
     ['單獨高代理', 'a\ud83d'], ['單獨低代理', '\ude00b'], ['顛倒的代理對', '\ude00\ud83d'],
   ])('不可儲存：%s', (_l, v) => {
     expect(isStorableText(v)).toBe(false);
@@ -55,6 +55,23 @@ describe('後台新增人員', () => {
     tenantStore.updateTenant(t.id, { userDirectory: [] });
     await request(app).post(`/api/admin/tenants/${t.id}/users`).set(admin).send({ id: 'n', name: 'N\u0000' }).expect(422);
     expect(tenantStore.getTenant(t.id)!.userDirectory).toEqual([]);
+  });
+  it('deputyIds 含 NUL → 422', async () => {
+    const t = tenantStore.createTenant('text-admin-deputy');
+    tenantStore.updateTenant(t.id, { userDirectory: [] });
+    await request(app).post(`/api/admin/tenants/${t.id}/users`).set(admin).send({ id: 'n', name: 'N', deputyIds: ['x\u0000'] }).expect(422);
+  });
+  it('已存項目含 Tab／換行時，無關的 POST 與 PATCH 仍成功', async () => {
+    const t = tenantStore.createTenant('text-admin-legacy');
+    tenantStore.updateTenant(t.id, { userDirectory: [{ id: 'old', name: 'a\tb', department: 'D', title: 'x\ny' }, { id: 'other', name: 'O', department: 'D' }] });
+    await request(app).post(`/api/admin/tenants/${t.id}/users`).set(admin).send({ id: 'n', name: 'N' }).expect(201);
+    await request(app).patch(`/api/admin/tenants/${t.id}/users/other`).set(admin).send({ name: 'O2' }).expect(200);
+    expect(tenantStore.getTenant(t.id)!.userDirectory!.find((u) => u.id === 'old')).toMatchObject({ name: 'a\tb', title: 'x\ny' });
+  });
+  it('PATCH 的 name 含 NUL → 422', async () => {
+    const t = tenantStore.createTenant('text-admin-patch');
+    tenantStore.updateTenant(t.id, { userDirectory: [{ id: 'a', name: 'A', department: 'D' }] });
+    await request(app).patch(`/api/admin/tenants/${t.id}/users/a`).set(admin).send({ name: 'x\u0000' }).expect(422);
   });
   it('正常中文與 emoji 可新增', async () => {
     const t = tenantStore.createTenant('text-admin-ok');
