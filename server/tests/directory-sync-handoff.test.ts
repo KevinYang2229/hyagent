@@ -85,9 +85,10 @@ it('文件 §5.3 的範例與本測試使用的程式碼一致', () => {
   const doc = readFileSync(path.resolve(__dirname, '../../docs/HANDOFF-DIRECTORY-SYNC.md'), 'utf8');
   const block = /```js\n([\s\S]*?)```/.exec(doc.slice(doc.indexOf('### 5.3')))![1];
   const mine = readFileSync(__filename, 'utf8');
-  const body = (src: string) => src.slice(src.indexOf('async function sendEvents'));
+  // 從 b64url 開始比：它決定 JWT 的編碼方式，文件改錯一樣會讓 OA 簽不過
+  const body = (src: string) => src.slice(src.indexOf('const b64url'));
   // 只容許 TypeScript 型別標註的差異（文件是 JS）
-  const strip = (s: string) => s.replace(/: unknown\[\]| as string/g, '').replace(/\s+/g, '');
+  const strip = (s: string) => s.replace(/: unknown(\[\])?| as string/g, '').replace(/\s+/g, '');
   const docFn = body(block);
   const testFn = body(mine).slice(0, body(mine).indexOf('// ---- §5.3 結束'));
   expect(strip(testFn)).toBe(strip(docFn));

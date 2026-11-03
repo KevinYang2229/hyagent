@@ -12,7 +12,7 @@ OA 人員異動、離職 ── webhook ─► HyAgent：更新或移除
 OA 分批推送完整名單 ─ webhook ─► HyAgent：首次匯入與定期校正
 ```
 
-規則只有一條：**OA 是姓名、部門、職稱、公司、Email 的資料來源。** 這些欄位收到 webhook 後，會在 HyAgent 後台變成唯讀。代理人與地區仍由 HyAgent 維護，不會被覆蓋。
+規則只有一條：**OA 是姓名、部門、職稱、公司、Email 的資料來源。** 這些欄位收到 webhook 後，在同步開關開啟期間，HyAgent 後台不能手動修改。代理人與地區仍由 HyAgent 維護，不會被覆蓋。
 
 HyAgent 只被動接收，不會主動向 OA 查詢資料，所以事件能否送達由 OA 負責（§6）。
 
@@ -45,6 +45,11 @@ HyAgent 只被動接收，不會主動向 OA 查詢資料，所以事件能否�
 node hyagent-keygen.mjs ES256 ./keys-directory-sync
 # 產出 hyagent-<kid>.public.pem（交給 HyAgent）與 .private.pem（OA 保管）
 ```
+
+`hyagent-keygen.mjs` 是 HyAgent 於導入時提供的單一檔案，**請向 HyAgent 團隊索取**（也就是 HyAgent repo 內的 `sdk/bin/keygen.mjs`）。它沒有相依套件，不需 `npm install`，複製到任何裝有 Node.js 18 以上的機器就能執行。其他取得金鑰對的方式：
+
+- 已安裝 `@hyagent/sdk`：`npx hyagent-keygen ES256 ./keys-directory-sync`。
+- 使用 OpenSSL 或 KMS 產生：OpenSSL 不會計算 `kid`，請用 `node hyagent-keygen.mjs --kid <公鑰 PEM>` 取得，或以後台登記後顯示的值為準。
 
 管理員會在 HyAgent 後台的「人員同步」分頁登記公鑰。**如果私鑰外洩**，請通知管理員撤銷，並產生新的一組。
 
@@ -197,7 +202,7 @@ const token = issueAssertion({
 | `user.department` | 是 | 最長 200 字元，前後空白會被去除 |
 | `user.title`、`user.company` | 否 | 最長 200 字元 |
 | `user.email` | 否 | 必須是合法 Email |
-| `userId` | delete 必填 | 要移除的員工 ID |
+| `userId` | delete 必填 | 要移除的員工 ID，最長 200 字元，前後空白會被去除 |
 
 **`user` 物件的欄位是封閉的。** 只接受上表的 `id`、`name`、`department`、`title`、`company`、`email`；多帶任何其他欄位（例如 `phone`、`origin`、`deputyIds`），整筆事件都會被拒絕（`INVALID_USER`），不會只忽略多餘的欄位。
 
@@ -215,11 +220,13 @@ const token = issueAssertion({
 | 姓名、部門、職稱、公司、Email 異動 | `user.upserted` |
 | 部門改名 | 該部門每位員工各一筆 `user.upserted`，**並先通知 HyAgent 管理員**（見下）|
 | 離職 | 先在 OA 停權，再發 `user.deleted` |
-| 復職 | `user.upserted`，`occurredAt` 為復職時間 |
+| 復職 | `user.upserted`，`occurredAt` 為復職時間（權限見下）|
 
 > **部門改名會影響權限。** HyAgent 的角色以部門名稱對應，「資訊部」改成「資訊處」後，這些人會失去原部門的角色，直到管理員更新角色設定。請事先協調改名時間。
 
 > **離職一定要先在 OA 停權。** HyAgent 會移除此人並立即登出，但如果 OA 繼續簽發登入憑證，這個人再次登入時又會被建立。
+
+> **離職會清除個人權限，復職不會自動恢復。** `user.deleted` 會一併移除 HyAgent 管理員直接指派給此人的權限與角色。復職後，部門角色會依部門名稱自動生效；原本個人的權限與角色必須請管理員重新指派。
 
 建議在 OA 異動的資料庫交易完成後才發送，例如先寫入 outbox 資料表，再由背景工作發送，避免「資料沒改成，事件卻已送出」或相反的情況。
 
@@ -251,7 +258,7 @@ const token = issueAssertion({
 
 | `reason` | 原因 | 修正方式 |
 | --- | --- | --- |
-| `INVALID_EVENT` | 缺 `eventId`，`type` 不是 `user.upserted`／`user.deleted`，或 `user.deleted` 的 `userId` 缺少、空白，或含 NUL／單獨代理字元 | 補齊或修正事件 |
+| `INVALID_EVENT` | 缺 `eventId`，`type` 不是 `user.upserted`／`user.deleted`，或 `user.deleted` 的 `userId` 缺少、空白、超過 200 字元，或含 NUL／單獨代理字元 | 補齊或修正事件 |
 | `INVALID_USER` | `user` 缺必填欄位、超過長度、`email` 格式錯誤、夾帶多餘欄位、選填欄位送了 `null`，或文字含 NUL／單獨代理字元 | 見 §6 |
 | `INVALID_OCCURRED_AT` | `occurredAt` 缺少、不是合法時間字串，或比 HyAgent 現在時間晚超過 5 分鐘 | 檢查格式與主機時鐘 |
 | `DIRECTORY_FULL` | 這是新員工，但目錄已達 10,000 人 | 聯絡 HyAgent 團隊，不要重試 |
@@ -263,22 +270,25 @@ const token = issueAssertion({
 | HTTP | 常見代碼 | 原因 | 處理 |
 | --- | --- | --- | --- |
 | 400 | `INVALID_BODY`、`BODY_HASH_MISMATCH` | 格式錯誤、雜湊不符（§5.2）| 修正，不要原樣重試 |
+| 401 | `UNAUTHORIZED` | 缺少 `Authorization: Bearer <JWT>` header | 修正請求 |
 | 401 | `UNKNOWN_KID`、`KEY_REVOKED`、`INVALID_SIGNATURE`、`INVALID_AUDIENCE`、`INVALID_ISSUER`、`INVALID_CLAIMS`、`TOKEN_EXPIRED`、`TOKEN_REPLAYED` | 金鑰、簽章、時鐘、`jti` 或 `sub` 不是 `directory-sync` | 修正，並通知負責人 |
 | 403 | `DIRECTORY_SYNC_DISABLED` | 此租戶未開啟同步 | 聯絡 HyAgent 管理員 |
+| 404 | `TENANT_NOT_FOUND` | `iss` 查無此租戶（Tenant ID 填錯）| 核對 `iss`，不要原樣重試 |
 | 413 | `TOO_MANY_EVENTS`、`ASSERTION_TOO_LARGE` | 超過大小限制 | 拆批 |
-| 429 | `RATE_LIMITED` | 超過速率限制（見下）| 等待 `Retry-After` 秒後重試 |
+| 429 | `RATE_LIMITED` | 超過速率限制（見下）| 等到 `RateLimit` 的 `reset` 後重試 |
 | 5xx、逾時 | | 暫時性失敗 | 重試 |
 
 ### 速率限制
 
 預設每個來源 IP 在一個計數視窗內最多 **120 次請求**（HyAgent 端可用 `DIRECTORY_SYNC_RATE_LIMIT_MAX` 調整），視窗預設為 15 分鐘。被限制的請求也會計入。因為每次請求最多 500 筆事件，一個視窗可送的事件數遠大於 10,000 人的名單，正常使用不會碰到；只要把事件合併成批次、不要一個事件發一次請求。
 
-`429` 回應的 `Retry-After` 是**整個計數視窗的長度**（預設 `900` 秒），不是距離恢復的剩餘秒數：實際恢復可能比這更早。等待這麼久再重試一定足夠；若想更早試，可以參考回應中的 `RateLimit` header（標準草案格式，`reset` 為視窗剩餘秒數）。
+`429` 回應的 `Retry-After` 是**上限**，固定為整個計數視窗的長度（預設 `900` 秒），不是距離恢復的剩餘秒數。**等到 `RateLimit` header 的 `reset`（標準草案格式，視窗剩餘秒數）就夠了**；沒有解析這個 header 時，等滿 `Retry-After` 也一定足夠。
 
 ### 重試規則
 
-- **要重試：** `429`、`5xx`、逾時、網路錯誤。建議以指數退避（1 秒、2 秒、4 秒…，上限 1 小時）；`429` 至少等到 `Retry-After` 或 `RateLimit` 的 `reset`。持續失敗 24 小時就發出告警。
+- **要重試：** `429`、`5xx`、逾時、網路錯誤。建議以指數退避（1 秒、2 秒、4 秒…，上限 1 小時）；`429` 等到 `RateLimit` 的 `reset` 即可（`Retry-After` 是上限）。持續失敗 24 小時就發出告警。
 - **事件內容不變，但 JWT 要重簽：** 同一張 JWT 重送會收到 `TOKEN_REPLAYED`。逾時後即使 HyAgent 其實已處理過，重送也是安全的，舊事件會回 `stale`。
+- **`user.deleted` 回 `5xx` 一定要重送：** 重送才會把沒做完的步驟（移除個人權限、登出）做完，即使這次回的是 `stale`。
 - **順序：** 亂序送達不會出錯，HyAgent 以 `occurredAt` 判斷新舊，但 `occurredAt` 相同時，後到的那筆會被略過，所以時間請精確到毫秒。
 
 ## 8. 完整名單推送
@@ -305,6 +315,7 @@ const token = issueAssertion({
 - [ ] 異動部門後，目錄更新，下一個請求就依新部門判定權限
 - [ ] 不帶 `title` 送出後，HyAgent 的職稱被清除
 - [ ] 發送 `user.deleted` 後，此人移出目錄，正在使用的 Session 被登出
+- [ ] 復職（新的 `user.upserted`）後，部門角色生效，原本的個人權限沒有恢復
 - [ ] 同一事件重送回 `stale`，資料不變
 - [ ] 舊事件晚於新事件送達，資料維持最新
 
