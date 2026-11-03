@@ -23,7 +23,7 @@ const profileInput = profile.omit({ origin: true, syncedAt: true })
   .transform(({ origin: _origin, syncedAt: _syncedAt, ...rest }) => rest);
 const MANAGED_FIELDS = ['name', 'department', 'email', 'title', 'company'] as const;
 function assertNotManaged(entry: DirectoryEntry, next: Partial<Record<(typeof MANAGED_FIELDS)[number], string | undefined>>) {
-  if (isExternallyManaged(entry) && MANAGED_FIELDS.some((f) => f in next && next[f] !== entry[f])) {
+  if (isExternallyManaged(entry) && MANAGED_FIELDS.some((f) => next[f] !== entry[f])) {
     throw AppError.conflict('此帳號由 SSO 或 OA 同步管理，無法在後台修改基本資料', 'DIRECTORY_FIELD_MANAGED');
   }
 }
@@ -87,10 +87,13 @@ userAdminRouter.patch('/:userId', validate({ body: patch }), asyncHandler(async 
   const existing = tenantStore.getTenant(tenantId)!.userDirectory ?? [];
   const target = existing.find((entry) => entry.id === userId);
   if (!target) throw AppError.notFound('找不到此帳號');
+  // PATCH 沒帶的欄位視為不變；email 的 null 代表清除，正規化成 undefined 後與現值比較
   assertNotManaged(target, {
-    ...(changes.name !== undefined ? { name: changes.name } : {}),
-    ...(changes.department !== undefined ? { department: changes.department } : {}),
-    ...(changes.email !== undefined ? { email: changes.email ?? undefined } : {}),
+    name: changes.name ?? target.name,
+    department: changes.department ?? target.department,
+    email: changes.email === undefined ? target.email : changes.email ?? undefined,
+    title: target.title,
+    company: target.company,
   });
   const users = existing.map((entry) => {
     if (entry.id !== userId) return entry;

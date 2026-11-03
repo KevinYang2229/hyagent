@@ -134,6 +134,40 @@ describe('後台目錄 API', () => {
     expect(stored(tenant.id).map((u) => u.name)).toEqual(['A', 'B']);
   });
 
+  it('PUT 省略或改動鎖定帳號的 email／title／company 回 409，不可藉省略清除', async () => {
+    const full = { id: 'a', name: 'A', department: 'D', email: 'a@example.com', title: 'T', company: 'C' };
+    const tenant = tenantWith('fields-put-omit', [{ ...full, origin: 'sync' }]);
+    const attempts = [
+      { id: 'a', name: 'A', department: 'D', title: 'T', company: 'C' },
+      { id: 'a', name: 'A', department: 'D', email: 'a@example.com', company: 'C' },
+      { id: 'a', name: 'A', department: 'D', email: 'a@example.com', title: 'T' },
+      { ...full, title: 'T2' },
+    ];
+    for (const user of attempts) {
+      const res = await request(app).put(usersUrl(tenant.id)).set(admin).send({ users: [user] }).expect(409);
+      expect(res.body.error.code).toBe('DIRECTORY_FIELD_MANAGED');
+    }
+    await request(app).put(usersUrl(tenant.id)).set(admin).send({ users: [full] }).expect(200);
+    expect(stored(tenant.id)[0]).toMatchObject({ ...full, origin: 'sync' });
+  });
+
+  it('PATCH 以 email: null 清除鎖定帳號的 email 回 409', async () => {
+    const tenant = tenantWith('fields-patch-null', [{ id: 'a', name: 'A', department: 'D', email: 'a@example.com', origin: 'sso' }]);
+    await request(app).patch(`${usersUrl(tenant.id)}/a`).set(admin).send({ email: null }).expect(409);
+    expect(stored(tenant.id)[0].email).toBe('a@example.com');
+  });
+
+  it('PUT 重複 id 或代理人不存在回 422 且不寫入（與改動前相同的驗證錯誤碼）', async () => {
+    const tenant = tenantWith('fields-put-invalid', [{ id: 'a', name: 'A', department: 'D' }]);
+    await request(app).put(usersUrl(tenant.id)).set(admin).send({ users: [
+      { id: 'x', name: 'X' }, { id: 'x', name: 'Y' },
+    ] }).expect(422);
+    await request(app).put(usersUrl(tenant.id)).set(admin).send({ users: [
+      { id: 'x', name: 'X', deputyIds: ['nobody'] },
+    ] }).expect(422);
+    expect(stored(tenant.id).map((u) => u.id)).toEqual(['a']);
+  });
+
   it('後台租戶檢視與 /api/tenant 回應不含 directoryTombstones、directorySyncKeys', async () => {
     const tenant = tenantStore.createTenant('fields-redact');
     tenantStore.updateTenant(tenant.id, {
