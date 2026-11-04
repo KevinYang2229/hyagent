@@ -46,10 +46,12 @@ export interface LLMCreateParams {
    * 只有「輸出受嚴格格式約束、答案空間很窄」的呼叫才該指定，例如推薦問句要塞進
    * 字數上限——預設 1.0 會讓同一份素材每次產出長度差很多的句子，驗證時好時壞。
    * 對話類呼叫維持不帶，避免回答變得呆板。
+   * Anthropic provider 一律不送：5.5 世代送非預設值會回 400。
    */
   temperature?: number;
   /**
-   * 強制 LLM 呼叫指定工具（取得固定格式的結構化輸出用）；'none'＝禁止呼叫任何工具
+   * 要求 LLM 呼叫指定工具（取得固定格式的結構化輸出用）；Anthropic provider 不保證一定呼叫，
+   * 提示詞要寫明，呼叫端也要檢查結果。'none'＝禁止呼叫任何工具
    * （歷史含 tool_use 時 Anthropic 仍要求帶 tools 定義，不能靠拿掉 tools 來禁止）；
    * 省略＝由模型自行決定。
    */
@@ -65,7 +67,7 @@ export interface LLMUsage {
 export interface LLMResult {
   text: string;
   toolCalls: LLMToolCall[];
-  stopReason: 'end_turn' | 'tool_use' | 'max_tokens' | 'other';
+  stopReason: 'end_turn' | 'tool_use' | 'max_tokens' | 'refusal' | 'other';
   usage?: LLMUsage;
   /** 本次實際使用的模型（計費歸戶用） */
   model: string;

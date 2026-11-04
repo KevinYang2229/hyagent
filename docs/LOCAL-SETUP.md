@@ -69,8 +69,8 @@ DEFAULT_TENANT_ORIGINS=*
 
 # LLM：金鑰留佔位字串也能啟動，但送出對話訊息會失敗
 LLM_PROVIDER=anthropic
-LLM_MODEL=claude-sonnet-4-5
-LLM_ROUTER_MODEL=claude-haiku-4-5-20251001
+LLM_MODEL=claude-sonnet-5-5
+LLM_ROUTER_MODEL=claude-haiku-5-5
 ANTHROPIC_API_KEY=sk-ant-PLACEHOLDER-請換成真實金鑰
 
 # 外部系統與寄信一律用 stub，不連任何外部服務
@@ -127,7 +127,7 @@ npm run dev:admin     # 管理後台      http://localhost:5174
 
 ```powershell
 curl.exe http://localhost:3000/healthz
-# {"status":"ok","llm":{"provider":"anthropic","model":"claude-sonnet-4-5"}}
+# {"status":"ok","llm":{"provider":"anthropic","model":"claude-sonnet-5-5"}}
 
 curl.exe http://localhost:3000/readyz
 # {"status":"ready","backend":"file","checks":{"db":"ok"}}

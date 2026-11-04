@@ -62,7 +62,7 @@ it('使用 Haiku 模型（LLM_ROUTER_MODEL），不動用主模型', async () =>
   await refreshSuggestedPrompts('sug-model', idx);
 
   expect(mockCreate).toHaveBeenCalledWith(
-    expect.objectContaining({ model: 'claude-haiku-4-5-20251001' }),
+    expect.objectContaining({ model: 'claude-haiku-5-5' }),
   );
 });
 

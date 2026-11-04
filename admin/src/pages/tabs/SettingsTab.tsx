@@ -194,7 +194,7 @@ export default function SettingsTab({
                 value={llmModel}
                 onChange={(e) => setLlmModel(e.target.value)}
                 disabled={llmProvider === ''}
-                placeholder="未填用供應商預設（如 gpt-4o-mini / claude-sonnet-4-5）"
+                placeholder="未填用供應商預設（如 gpt-4o-mini / claude-sonnet-5-5）"
               />
             </div>
           </div>

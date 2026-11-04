@@ -20,6 +20,9 @@ export const DEFAULT_MAX_ITERATIONS = 6;
 /** 收尾呼叫失敗或沒產出文字時的退路。 */
 const LIMIT_FALLBACK_REPLY = '（這個任務已達本輪步驟上限，請再補充或確認一次，我會接著處理）';
 
+/** 模型拒答且沒有任何內容時的回覆。 */
+const REFUSAL_REPLY = '抱歉，這個請求我無法處理，請換個方式描述。';
+
 const WRAP_UP_DIRECTIVE =
   '\n\n【已達本輪工具呼叫上限】不要再呼叫任何工具。根據目前已取得的結果，用簡短的話告訴使用者：' +
   '已完成什麼、還缺什麼、下一步需要使用者做什麼。尚未完成的事不可說成已完成。';
@@ -59,6 +62,13 @@ export async function runToolLoop(
     throwIfQueryCancelled();
     usageStore.recordLLMUsage(session.tenantId, result);
     cfg.onLLMResult?.(result);
+
+    // 拒答時回應是空的：寫入空的 assistant 訊息，之後每一輪都會被 API 拒絕
+    if (result.stopReason === 'refusal' && !result.text) {
+      logLoop(session, i + 1, false);
+      session.messages.push({ role: 'assistant', content: [{ type: 'text', text: REFUSAL_REPLY }] });
+      return REFUSAL_REPLY;
+    }
 
     // 重建 assistant 訊息（text + tool_use），維持對話結構合法
     const assistantContent: LLMContentBlock[] = [];

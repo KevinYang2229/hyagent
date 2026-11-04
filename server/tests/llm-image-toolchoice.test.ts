@@ -1,4 +1,4 @@
-/** image 區塊與強制工具呼叫，在兩家 provider 的請求格式。 */
+/** image 區塊與指定工具呼叫，在兩家 provider 的請求格式。 */
 const openaiCreate = jest.fn().mockResolvedValue({
   choices: [{ message: { content: '', tool_calls: [{ id: 'c1', type: 'function', function: { name: 'report', arguments: '{"a":1}' } }] }, finish_reason: 'tool_calls' }],
   usage: { prompt_tokens: 1, completion_tokens: 1 },
@@ -36,12 +36,12 @@ const params: LLMCreateParams = {
 
 beforeEach(() => jest.clearAllMocks());
 
-it('Anthropic：image 轉 base64 source，tool_choice 指定工具', async () => {
+it('Anthropic：image 轉 base64 source，指定工具時不帶強制的 tool_choice（5.5 世代會回 400）', async () => {
   const r = await getLLMProvider({ provider: 'anthropic' }).createMessage(params);
   const sent = anthropicCreate.mock.calls[0][0];
   expect(sent.messages[0].content[0]).toEqual({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: 'QUJD' } });
   expect(sent.messages[0].content[1]).toEqual({ type: 'text', text: '分析這張照片' });
-  expect(sent.tool_choice).toEqual({ type: 'tool', name: 'report' });
+  expect(sent).not.toHaveProperty('tool_choice');
   expect(r.toolCalls[0]).toEqual({ id: 't1', name: 'report', input: { a: 1 } });
 });
 

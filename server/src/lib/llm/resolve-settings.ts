@@ -14,7 +14,7 @@ export type LLMProviderName = 'anthropic' | 'openai' | 'local';
 
 /** 雲端 provider 未指定 model 時的內建預設（local 無通用預設名，改走 env.LLM_MODEL） */
 const DEFAULT_MODELS: Record<'anthropic' | 'openai', string> = {
-  anthropic: 'claude-sonnet-4-5',
+  anthropic: 'claude-sonnet-5-5',
   openai: 'gpt-4o-mini',
 };
 

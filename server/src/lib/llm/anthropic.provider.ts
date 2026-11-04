@@ -57,6 +57,16 @@ const STOP_MAP: Record<string, LLMResult['stopReason']> = {
   end_turn: 'end_turn',
   tool_use: 'tool_use',
   max_tokens: 'max_tokens',
+  refusal: 'refusal',
+};
+
+/**
+ * 5.5 世代預設開 thinking，思考量會算進 max_tokens，意圖分類這類小上限的呼叫可能還沒輸出就用完。
+ * 這裡關到各模型的最低設定（Sonnet 5.5 不接受 disabled），維持和 4.5 一樣不思考。
+ */
+const LOWEST_THINKING: Record<string, { type: string }> = {
+  'claude-sonnet-5-5': { type: 'between_tools' },
+  'claude-haiku-5-5': { type: 'disabled' },
 };
 
 export function createAnthropicProvider(settings: ResolvedLLMSettings): LLMProvider {
@@ -88,15 +98,15 @@ export function createAnthropicProvider(settings: ResolvedLLMSettings): LLMProvi
           model,
           max_tokens: params.maxTokens ?? env.LLM_MAX_TOKENS,
           system,
-          // 未指定就整個欄位不帶，沿用 provider 預設（見 LLMCreateParams.temperature）
-          ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
+          // 不帶 temperature：5.5 世代送非預設值會回 400（見 LLMCreateParams.temperature）
+          // API 已支援 thinking，但 SDK 0.32 型別尚未收錄；SDK 原樣轉送 body，執行期無礙
+          ...(LOWEST_THINKING[model] ? { thinking: LOWEST_THINKING[model] } : {}),
           tools: tools.length > 0 ? tools : undefined,
           ...(params.toolChoice === 'none'
             ? // API 已支援 type:'none'，但 SDK 0.32 型別尚未收錄；SDK 原樣轉送 body，執行期無礙
               { tool_choice: { type: 'none' } as unknown as Anthropic.Messages.ToolChoice }
-            : params.toolChoice
-              ? { tool_choice: { type: 'tool' as const, name: params.toolChoice.name } }
-              : {}),
+            : // 不帶強制的 tool_choice：Sonnet 5.5 等模型會回 400。由呼叫端的提示詞要求呼叫，並檢查是否真的呼叫
+              {}),
           messages: toMessageParams(params.messages),
         }, { signal: params.signal });
       } catch (err) {

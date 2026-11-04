@@ -61,6 +61,18 @@ describe('runToolLoop', () => {
     expect(createMessage).toHaveBeenCalledTimes(2);
   });
 
+  it('模型拒答且沒有內容：回固定話術，歷史不留空的 assistant 訊息', async () => {
+    const session = makeSession();
+    const createMessage = jest.fn(async (): Promise<LLMResult> => ({ ...base, text: '', toolCalls: [], stopReason: 'refusal' }));
+    const reply = await runToolLoop({ name: 'fake', createMessage }, session, {
+      system: 's',
+      tools,
+      dispatchTool: async () => '{"ok":true}',
+    });
+    expect(reply).toContain('無法處理');
+    expect(session.messages.at(-1)).toEqual({ role: 'assistant', content: [{ type: 'text', text: reply }] });
+  });
+
   it('maxIterations 可設定；撞上限後以 toolChoice=none 收尾，且收尾看得到最後一圈的工具結果', async () => {
     const { llm, calls } = loopingLLM({ ...base, text: '已查到前三筆，還缺第四筆。', toolCalls: [], stopReason: 'end_turn' });
     const dispatched: unknown[] = [];
