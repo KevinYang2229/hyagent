@@ -46,6 +46,45 @@ it('顯示兩個開關的目前狀態，切換後呼叫 updateDirectorySync', as
   await waitFor(() => expect(screen.getByLabelText(/接受人員同步/)).toBeChecked());
 });
 
+it('寫入還沒完成時，勾選狀態立刻更新並顯示儲存中，另一個開關仍可操作', async () => {
+  vi.mocked(api.getDirectorySync).mockResolvedValue(view());
+  // 資料庫寫入可能要好幾秒：請求一直不回應
+  vi.mocked(api.updateDirectorySync).mockReturnValue(new Promise(() => {}));
+  render(<DirectorySyncTab tenantId="t1" onError={vi.fn()} />);
+  const auto = await screen.findByLabelText(/自動登入時建立目錄資料/);
+  fireEvent.click(auto);
+  expect(screen.getByLabelText(/自動登入時建立目錄資料/)).toBeChecked();
+  expect(screen.getByRole('status')).toHaveTextContent('儲存中');
+  expect(screen.getByLabelText(/自動登入時建立目錄資料/)).toBeDisabled();
+  expect(screen.getByLabelText(/接受人員同步/)).toBeEnabled();
+});
+
+it('寫入失敗時回報錯誤，並改顯示伺服器的實際狀態', async () => {
+  const onError = vi.fn();
+  const failure = new Error('寫入失敗');
+  vi.mocked(api.getDirectorySync).mockResolvedValueOnce(view());
+  vi.mocked(api.updateDirectorySync).mockRejectedValueOnce(failure);
+  render(<DirectorySyncTab tenantId="t1" onError={onError} />);
+  const sync = await screen.findByLabelText(/接受人員同步/);
+
+  // 失敗後重新讀取：這裡模擬伺服器實際仍是關閉
+  vi.mocked(api.getDirectorySync).mockResolvedValueOnce(view());
+  fireEvent.click(sync);
+  await waitFor(() => expect(onError).toHaveBeenCalledWith(failure));
+  await waitFor(() => expect(api.getDirectorySync).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(screen.getByLabelText(/接受人員同步/)).not.toBeChecked());
+  expect(screen.getByLabelText(/接受人員同步/)).toBeEnabled();
+  expect(screen.queryByText('已更新設定')).not.toBeInTheDocument();
+  expect(screen.queryByText(/儲存中/)).not.toBeInTheDocument();
+});
+
+it('兩個開關使用共用的 Checkbox 樣式', async () => {
+  vi.mocked(api.getDirectorySync).mockResolvedValue(view());
+  render(<DirectorySyncTab tenantId="t1" onError={vi.fn()} />);
+  expect(await screen.findByLabelText(/自動登入時建立目錄資料/)).toHaveClass('form-checkbox');
+  expect(screen.getByLabelText(/接受人員同步/)).toHaveClass('form-checkbox');
+});
+
 it('開啟同步但沒有啟用中金鑰時顯示提醒', async () => {
   vi.mocked(api.getDirectorySync).mockResolvedValue(
     view({ directorySyncEnabled: true, keys: [key('old', { status: 'revoked', revokedReason: 'other' })] }),

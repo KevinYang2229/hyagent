@@ -6,6 +6,7 @@
  * 這裡只負責把後端的錯誤講清楚。
  */
 import { useCallback, useEffect, useState } from 'react';
+import { Checkbox } from '@hyagent/ui';
 import {
   api,
   type DirectorySyncView,
@@ -56,6 +57,8 @@ const PANEL_STYLE = {
   gap: 6,
 } as const;
 
+type SwitchKey = 'ssoAutoProvision' | 'directorySyncEnabled';
+
 export default function DirectorySyncTab({
   tenantId,
   onError,
@@ -69,6 +72,7 @@ export default function DirectorySyncTab({
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   const [revoking, setRevoking] = useState<TenantPublicKey | null>(null);
+  const [savingSwitches, setSavingSwitches] = useState<SwitchKey[]>([]);
 
   const load = useCallback(() => {
     void api.getDirectorySync(tenantId).then(setView).catch(onError);
@@ -76,12 +80,12 @@ export default function DirectorySyncTab({
 
   useEffect(load, [load]);
 
-  async function run(fn: () => Promise<string>, reload = true): Promise<void> {
+  async function run(fn: () => Promise<string>): Promise<void> {
     setBusy(true);
     setNotice('');
     try {
       setNotice(await fn());
-      if (reload) load();
+      load();
     } catch (e) {
       onError(e);
     } finally {
@@ -89,12 +93,25 @@ export default function DirectorySyncTab({
     }
   }
 
-  const toggle = (patch: Parameters<typeof api.updateDirectorySync>[1]) =>
-    // PATCH 已回傳最新狀態，不必再 GET 一次
-    run(async () => {
-      setView(await api.updateDirectorySync(tenantId, patch));
-      return '已更新設定';
-    }, false);
+  /**
+   * 開關先更新畫面再寫入：db 模式的寫入要等整份快照落地，可能要好幾秒，等回應才動會像沒反應。
+   * 失敗時重新讀取而不是直接還原，因為後端可能已改了記憶體、只是寫入失敗，畫面要跟它的實際狀態一致。
+   */
+  const toggle = async (key: SwitchKey, checked: boolean): Promise<void> => {
+    setView((current) => (current ? { ...current, [key]: checked } : current));
+    setSavingSwitches((current) => [...current, key]);
+    setNotice('');
+    try {
+      // PATCH 已回傳最新狀態，不必再 GET 一次
+      setView(await api.updateDirectorySync(tenantId, { [key]: checked }));
+      setNotice('已更新設定');
+    } catch (e) {
+      onError(e);
+      load();
+    } finally {
+      setSavingSwitches((current) => current.filter((k) => k !== key));
+    }
+  };
 
   const add = () =>
     run(async () => {
@@ -135,9 +152,9 @@ export default function DirectorySyncTab({
 
   return (
     <div className="settings-stack">
-      {notice && (
+      {(notice || savingSwitches.length > 0) && (
         <p className="field-hint" role="status">
-          {notice}
+          {savingSwitches.length > 0 ? '儲存中…' : notice}
         </p>
       )}
 
@@ -150,30 +167,24 @@ export default function DirectorySyncTab({
         </div>
         <div className="card-body">
           <div className="field">
-            <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              <input
-                type="checkbox"
-                checked={view.ssoAutoProvision}
-                disabled={busy}
-                onChange={(e) => void toggle({ ssoAutoProvision: e.target.checked })}
-              />
-              自動登入時建立目錄資料
-            </label>
+            <Checkbox
+              label="自動登入時建立目錄資料"
+              checked={view.ssoAutoProvision}
+              disabled={savingSwitches.includes('ssoAutoProvision')}
+              onChange={(e) => void toggle('ssoAutoProvision', e.target.checked)}
+            />
             <span className="field-hint">
               開啟後，透過自動登入進來的使用者會在背景寫入使用者目錄。以自動登入識別訪客的公開網站租戶請保持關閉，
               否則所有訪客都會被寫進目錄。
             </span>
           </div>
           <div className="field">
-            <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              <input
-                type="checkbox"
-                checked={view.directorySyncEnabled}
-                disabled={busy}
-                onChange={(e) => void toggle({ directorySyncEnabled: e.target.checked })}
-              />
-              接受人員同步
-            </label>
+            <Checkbox
+              label="接受人員同步"
+              checked={view.directorySyncEnabled}
+              disabled={savingSwitches.includes('directorySyncEnabled')}
+              onChange={(e) => void toggle('directorySyncEnabled', e.target.checked)}
+            />
             <span className="field-hint">
               開啟後，客戶的 OA 系統可推送人員異動到使用者目錄；關閉時一律拒絕。串接方式請交給 OA 團隊參閱
               <code>docs/HANDOFF-DIRECTORY-SYNC.md</code>。
