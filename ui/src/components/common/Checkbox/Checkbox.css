@@ -13,8 +13,12 @@
   @apply block h-5 w-5 shrink-0 appearance-none rounded-[4px] border-2 border-[#d9e7f0] bg-[#f4f9fd] align-middle outline-none transition-all duration-200 cursor-pointer checked:bg-[var(--highlight-color)] checked:border-[var(--highlight-color)] focus:ring-2 focus:ring-[var(--highlight-color)]/20;
 }
 
-.form-checkbox:hover:not(:checked) {
+.form-checkbox:hover:not(:checked):not(:disabled) {
   @apply border-[#b8d2e3] bg-[#eef6fb];
+}
+
+.form-checkbox:disabled {
+  @apply cursor-not-allowed opacity-50;
 }
 
 .form-checkbox-tick {
