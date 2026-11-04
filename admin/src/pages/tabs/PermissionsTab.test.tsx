@@ -104,6 +104,40 @@ it('個人權限：顯示角色來源與缺漏，並可直接替他加角色', a
   await waitFor(() => expect(api.putTenantPolicy).toHaveBeenCalledWith('t', expect.objectContaining({ accountBundles: { kevin: ['kb'] } })));
 });
 
+it('個人權限：來自部門的角色不能取消，要看得出來並說明到哪裡調整', async () => {
+  fixture.bundles.push({ id: 'kb', name: '知識庫使用者', scopes: ['service:knowledge'] });
+  await renderTab();
+  fireEvent.change(screen.getByLabelText('選擇人員'), { target: { value: 'user:kevin' } });
+  const detail = screen.getByRole('region', { name: '角色' });
+  const lockedRow = within(detail).getByText('一般員工').closest('label')!;
+  expect(lockedRow).toHaveClass('is-locked');
+  expect(within(lockedRow).getByText(/不能在這裡取消，請到此角色的「給誰」調整/)).toBeInTheDocument();
+  const openRow = within(detail).getByText('知識庫使用者').closest('label')!;
+  expect(openRow).not.toHaveClass('is-locked');
+  expect(openRow.querySelector('input')).toBeEnabled();
+});
+
+it('個人權限：直接指派又來自部門時，取消後仍勾選並說明原因', async () => {
+  fixture.accountBundles = { kevin: ['emp'] };
+  await renderTab();
+  fireEvent.change(screen.getByLabelText('選擇人員'), { target: { value: 'user:kevin' } });
+  const detail = screen.getByRole('region', { name: '角色' });
+  expect(within(detail).getByText(/取消直接指派後，仍會從其他來源取得/)).toBeInTheDocument();
+  check(detail, '一般員工');
+  const row = within(detail).getByText('一般員工').closest('label')!;
+  expect(row.querySelector('input')).toBeChecked();
+  expect(row).toHaveClass('is-locked');
+  expect(within(row).queryByText(/直接指派/)).not.toBeInTheDocument();
+});
+
+it('個人權限：網站訪客不能直接指派，並說明要怎麼開放', async () => {
+  await renderTab();
+  fireEvent.change(screen.getByLabelText('選擇人員'), { target: { value: 'guest:' } });
+  const detail = screen.getByRole('region', { name: '角色' });
+  expect(within(detail).getByText(/網站訪客沒有帳號，不能直接指派角色/)).toBeInTheDocument();
+  expect(within(detail).getByText('一般員工').closest('label')).toHaveClass('is-locked');
+});
+
 it('刪除角色前確認，並可放棄變更', async () => {
   const onDirty = await renderTab();
   fireEvent.click(screen.getByRole('button', { name: '刪除 一般員工' }));

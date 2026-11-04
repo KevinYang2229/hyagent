@@ -275,13 +275,21 @@ function PersonDetail({ person, policy, onToggle, gaps }: {
           const sources = held.find((h) => h.role.id === role.id)?.sources ?? [];
           const direct = sources.some((s) => s.via === 'direct');
           const inherited = sources.filter((s) => s.via !== 'direct');
-          return <label key={role.id} className="role-check">
-            <Checkbox checked={sources.length > 0} disabled={person.kind === 'guest' || (inherited.length > 0 && !direct)} onChange={() => onToggle(role.id)} />
-            <span>{role.name}{sources.length > 0 && <span className="role-check-sub">{sources.map(sourceText).join('、')}</span>}</span>
+          const locked = person.kind === 'guest' || (inherited.length > 0 && !direct);
+          // 個人層級只能增減直接指派，扣不掉部門或所有人給的角色，所以這些列要看得出不能操作的原因
+          const hint = person.kind === 'user' && inherited.length > 0
+            ? (direct ? '取消直接指派後，仍會從其他來源取得' : '不能在這裡取消，請到此角色的「給誰」調整')
+            : '';
+          return <label key={role.id} className={`role-check${locked ? ' is-locked' : ''}`}>
+            <Checkbox checked={sources.length > 0} disabled={locked} onChange={() => onToggle(role.id)} />
+            <span>{role.name}{sources.length > 0 && <span className="role-check-sub">{sources.map(sourceText).join('、')}</span>}
+              {hint && <span className="role-check-sub">{hint}</span>}</span>
           </label>;
         })}
       </div>
-      {person.kind === 'user' && <p className="perm-text">勾選＝直接指派給此人。來自部門或所有人的角色要到該角色的「給誰」調整。</p>}
+      {person.kind === 'user'
+        ? <p className="perm-text">勾選＝直接指派給此人。來自部門或所有人的角色要到該角色的「給誰」調整。</p>
+        : <p className="perm-text">網站訪客沒有帳號，不能直接指派角色。要開放給訪客，請到該角色的「給誰」選擇所有人或「訪客／未建檔帳號」部門。</p>}
     </section>
 
     <section aria-label="最後擁有的能力">
