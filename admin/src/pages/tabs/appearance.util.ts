@@ -32,3 +32,37 @@ export function resolvePrimaryColor(appearance: TenantAppearance): string {
 export function resolveOriginEnv(raw: string | undefined, fallback: string): string {
   return (raw ?? '').trim().replace(/\/+$/, '') || fallback;
 }
+
+/** 解析 http(s) 網址；空值或非 http(s) 回 undefined */
+function httpUrl(raw: string | undefined): URL | undefined {
+  const s = (raw ?? '').trim();
+  if (!s) return undefined;
+  try {
+    const url = new URL(s);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function httpOrigin(raw: string | undefined): string | undefined {
+  return httpUrl(raw)?.origin;
+}
+
+/** 「開啟示範網站」網址：執行期 DEMO_SITE_URL → build 時 VITE_DEMO_SITE_URL → 預設值（保留路徑） */
+export function resolveDemoSiteUrl(runtime: string | undefined, buildTime: string | undefined, fallback: string): string {
+  return httpUrl(runtime)?.href ?? httpUrl(buildTime)?.href ?? fallback;
+}
+
+/**
+ * 外觀預覽 iframe 的 client origin：執行期設定（nginx 依 WIDGET_ORIGIN 產生的
+ * /runtime-config.js）→ build 時的 VITE_WIDGET_ORIGIN → 預設值。
+ * 值同時是 postMessage 的 targetOrigin，所以只接受 http(s) 並只取 origin。
+ */
+export function resolvePreviewOrigin(
+  runtime: string | undefined,
+  buildTime: string | undefined,
+  fallback: string,
+): string {
+  return httpOrigin(runtime) ?? httpOrigin(buildTime) ?? fallback;
+}

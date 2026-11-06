@@ -3,9 +3,28 @@
 #
 #   PORT          監聽埠（Cloud Run 注入，預設 8080）
 #   API_UPSTREAM  後端 server 的 origin
+#   WIDGET_ORIGIN 外觀預覽 iframe 載入的 client 網址（產生 /runtime-config.js）
+#   DEMO_SITE_URL 外觀分頁「開啟示範網站」按鈕的網址（產生 /runtime-config.js）
 
 map $host $api_upstream {
     default "${API_UPSTREAM}";
+}
+
+# 下列值會寫進 JS 字串：只放行字元受限的 http(s) 網址，其餘一律當成未設定（前端再以 URL 驗一次）
+map $host $widget_origin_raw {
+    default "${WIDGET_ORIGIN}";
+}
+map $widget_origin_raw $widget_origin {
+    # 只取 origin，帶路徑也可以
+    "~^(?<o>https?://[A-Za-z0-9.-]+(:[0-9]+)?)(/.*)?$" $o;
+    default                                            "";
+}
+map $host $demo_site_url_raw {
+    default "${DEMO_SITE_URL}";
+}
+map $demo_site_url_raw $demo_site_url {
+    "~^https?://[A-Za-z0-9._~:/?#@!&()*+,;=%-]+$" $demo_site_url_raw;
+    default                                       "";
 }
 map $api_upstream $api_host {
     "~^https?://([^/:]+)" $1;
@@ -25,6 +44,13 @@ server {
         expires 1y;
         add_header Cache-Control "public, immutable";
         try_files $uri =404;
+    }
+
+    # 執行期設定：改環境變數重啟即生效，不必重 build（蓋過 dist 裡的開發用預設檔）
+    location = /runtime-config.js {
+        default_type application/javascript;
+        add_header Cache-Control "no-store";
+        return 200 'window.__HYAGENT_ADMIN_CONFIG__ = { widgetOrigin: "$widget_origin", demoSiteUrl: "$demo_site_url" };\n';
     }
 
     location /api/ {

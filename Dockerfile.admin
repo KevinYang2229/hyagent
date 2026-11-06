@@ -23,14 +23,14 @@ COPY . .
 
 # Vite 在 build 階段就把 VITE_* bake 進 JS bundle（不是 runtime 讀）。
 # admin 的 api.ts 走 `${VITE_API_BASE}/api`；前後端分開部署時設為後端絕對網址。
-# VITE_WIDGET_ORIGIN：外觀預覽 iframe 指向的 widget client 網址（不設會 fallback 到 localhost:5173，
-# 公開後台會因連到私有網段被瀏覽器封鎖）。設為 client 服務的對外 Domain。
-# Zeabur 會把 admin 服務的環境變數當成 build arg 傳進來。
+# VITE_WIDGET_ORIGIN：外觀預覽 iframe 的 client 網址（build 時的備援值）。
+# 建議改用下方 runtime 的 WIDGET_ORIGIN；兩者都有設時以 WIDGET_ORIGIN 為準。
+# Zeabur 會把 admin 服務的環境變數當成 build arg 傳進來；Cloud Build 觸發條件則不會。
 ARG VITE_API_BASE
 ENV VITE_API_BASE=$VITE_API_BASE
 ARG VITE_WIDGET_ORIGIN
 ENV VITE_WIDGET_ORIGIN=$VITE_WIDGET_ORIGIN
-# VITE_DEMO_SITE_URL：「開啟示範網站」按鈕連到的外部網址（不設用程式內建預設）。
+# VITE_DEMO_SITE_URL：「開啟示範網站」按鈕的網址（build 時的備援值；建議改用 runtime 的 DEMO_SITE_URL）。
 ARG VITE_DEMO_SITE_URL
 ENV VITE_DEMO_SITE_URL=$VITE_DEMO_SITE_URL
 RUN npm run build -w admin
@@ -43,13 +43,20 @@ COPY admin/nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build /app/admin/dist /usr/share/nginx/html
 
 # envsubst 預設會把「所有」環境變數都當成替換目標，$uri / $host 這類 nginx 內建變數
-# 只要撞名就會被清空。用 filter 鎖死只替換這兩個。
-ENV NGINX_ENVSUBST_FILTER='^(PORT|API_UPSTREAM)$'
+# 只要撞名就會被清空。用 filter 鎖死只替換這幾個。
+ENV NGINX_ENVSUBST_FILTER='^(PORT|API_UPSTREAM|WIDGET_ORIGIN|DEMO_SITE_URL)$'
 # Cloud Run 會注入 PORT；其他平台沿用這個預設值
 ENV PORT=8080
 # 後端 server 的 origin —— 部署時務必覆寫成實際網址（Cloud Run 上設成 server 服務的 URL）。
 # 這是 runtime 環境變數，改了重啟即可，不必重 build 映像。
 # 保持預設會讓 /api 打到容器自己的 3000 埠而回 502（比靜態站回 405 好認）。
 ENV API_UPSTREAM=http://127.0.0.1:3000
+# 外觀分頁「即時預覽」載入的 client 網址（如 https://hyagent-client-xxxx.a.run.app）。
+# 外觀分頁「開啟示範網站」按鈕的網址（不設用程式內建預設）。
+# 兩者皆為 runtime 環境變數，改了重啟即可，且優先於 build 時的 VITE_*。
+# 須預設為空：未定義時 envsubst 不會替換，字面的 ${...} 會留在設定裡。
+# 值含引號等字元時 nginx 會拒絕啟動（同 API_UPSTREAM），請只填單純網址。
+ENV WIDGET_ORIGIN=
+ENV DEMO_SITE_URL=
 
 EXPOSE 8080

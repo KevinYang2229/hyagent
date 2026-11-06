@@ -1,5 +1,65 @@
 import { describe, expect, it } from 'vitest';
-import { resolveOriginEnv, resolvePrimaryColor, WIDGET_DEFAULT_PRIMARY } from './appearance.util';
+import {
+  resolveDemoSiteUrl,
+  resolveOriginEnv,
+  resolvePreviewOrigin,
+  resolvePrimaryColor,
+  WIDGET_DEFAULT_PRIMARY,
+} from './appearance.util';
+
+describe('resolveDemoSiteUrl', () => {
+  const fallback = 'https://demo.default.example/';
+
+  it('執行期設定優先，並保留路徑', () => {
+    expect(resolveDemoSiteUrl('https://demo.example.com/login', 'https://build.example.com', fallback)).toBe(
+      'https://demo.example.com/login',
+    );
+  });
+
+  it('執行期沒設定時用 build 時的值，都沒有退回預設', () => {
+    expect(resolveDemoSiteUrl('', 'https://build.example.com/x', fallback)).toBe('https://build.example.com/x');
+    expect(resolveDemoSiteUrl(undefined, undefined, fallback)).toBe(fallback);
+  });
+
+  it('不是 http(s) 網址時視同未設定', () => {
+    expect(resolveDemoSiteUrl('javascript:alert(1)', undefined, fallback)).toBe(fallback);
+  });
+});
+
+describe('resolvePreviewOrigin', () => {
+  const fallback = 'http://localhost:5173';
+
+  // 部署時改環境變數重啟即生效，不必為了換網址重 build
+  it('執行期設定優先於 build 時的值', () => {
+    expect(resolvePreviewOrigin('https://client.example.com', 'https://old.example.com', fallback)).toBe(
+      'https://client.example.com',
+    );
+  });
+
+  it('執行期沒設定時用 build 時的值', () => {
+    expect(resolvePreviewOrigin('', 'https://build.example.com/', fallback)).toBe('https://build.example.com');
+    expect(resolvePreviewOrigin(undefined, 'https://build.example.com', fallback)).toBe('https://build.example.com');
+  });
+
+  it('兩者都沒有時退回預設', () => {
+    expect(resolvePreviewOrigin(undefined, undefined, fallback)).toBe(fallback);
+    expect(resolvePreviewOrigin('  ', '', fallback)).toBe(fallback);
+  });
+
+  // 值會成為 iframe 來源與 postMessage targetOrigin，只能是 http(s) origin
+  it('只取 origin，去掉路徑', () => {
+    expect(resolvePreviewOrigin('https://client.example.com/app/', undefined, fallback)).toBe(
+      'https://client.example.com',
+    );
+  });
+
+  it('不是 http(s) 網址時視同未設定', () => {
+    expect(resolvePreviewOrigin('javascript:alert(1)', 'https://build.example.com', fallback)).toBe(
+      'https://build.example.com',
+    );
+    expect(resolvePreviewOrigin('client.example.com', undefined, fallback)).toBe(fallback);
+  });
+});
 
 describe('resolvePrimaryColor', () => {
   it('有設定就用設定值', () => {

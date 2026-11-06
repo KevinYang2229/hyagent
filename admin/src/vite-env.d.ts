@@ -12,3 +12,13 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
+
+/** 執行期設定：由 /runtime-config.js 寫入（部署時 nginx 依環境變數產生） */
+interface Window {
+  __HYAGENT_ADMIN_CONFIG__?: {
+    /** 外觀預覽 iframe 的 client 網址（WIDGET_ORIGIN） */
+    widgetOrigin?: string;
+    /** 「開啟示範網站」按鈕的網址（DEMO_SITE_URL） */
+    demoSiteUrl?: string;
+  };
+}

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { TenantAppearance } from "@hyagent/shared";
 import { api, type Tenant } from "../../api";
-import { resolveOriginEnv, resolvePrimaryColor } from "./appearance.util";
+import { resolveDemoSiteUrl, resolvePreviewOrigin, resolvePrimaryColor } from "./appearance.util";
 
 const POSITIONS = [
   { v: "br", label: "右下" },
@@ -20,18 +20,23 @@ const LOCALES = [
 ] as const;
 
 // 預覽 widget client 來源；postMessage targetOrigin 與 iframe 來源一致。
-// production 由 VITE_WIDGET_ORIGIN 指定部署網址（避免公開後台 iframe 連到 localhost 被瀏覽器封鎖）；dev 走本機 5173。
-// 用 resolveOriginEnv 而非 `??`：變數「有定義但為空」時 Vite bake 出的是空字串，
-// `??` 攔不到，PREVIEW_ORIGIN 會變成 '' 而讓下面的 postMessage 直接丟 SyntaxError。
-const PREVIEW_ORIGIN = resolveOriginEnv(
+// 部署時由 admin 服務的 runtime 環境變數 WIDGET_ORIGIN 指定（改了重啟即可），
+// 其次為 build 時的 VITE_WIDGET_ORIGIN；都沒有時 dev 走本機 5173。
+const DEV_PREVIEW_ORIGIN = "http://localhost:5173";
+const PREVIEW_ORIGIN = resolvePreviewOrigin(
+  window.__HYAGENT_ADMIN_CONFIG__?.widgetOrigin,
   import.meta.env.VITE_WIDGET_ORIGIN,
-  "http://localhost:5173",
+  DEV_PREVIEW_ORIGIN,
 );
+// 公開後台卻落到本機預設：瀏覽器會擋（連到私有網段），提示管理員去設定
+const PREVIEW_MISCONFIGURED =
+  PREVIEW_ORIGIN === DEV_PREVIEW_ORIGIN && !["localhost", "127.0.0.1"].includes(window.location.hostname);
 
-// 「開啟示範網站」按鈕的外部網址；可由 VITE_DEMO_SITE_URL 覆寫，預設指向 presale demo 部署。
-const DEMO_SITE_URL = resolveOriginEnv(
+// 「開啟示範網站」按鈕的外部網址：runtime 的 DEMO_SITE_URL → build 時的 VITE_DEMO_SITE_URL → Hyweb OA 示範站。
+const DEMO_SITE_URL = resolveDemoSiteUrl(
+  window.__HYAGENT_ADMIN_CONFIG__?.demoSiteUrl,
   import.meta.env.VITE_DEMO_SITE_URL,
-  "https://hyagent-presale-tenant.zeabur.app",
+  "https://hyweb-oa-react-five.vercel.app",
 );
 
 export default function AppearanceTab({
@@ -297,6 +302,12 @@ export default function AppearanceTab({
           <p className="field-hint" style={{ marginTop: 10 }}>
             預覽載入自 {PREVIEW_ORIGIN}
             。外觀會即時反映；按「儲存外觀」後才會真正生效。
+            {PREVIEW_MISCONFIGURED && (
+              <>
+                <br />
+                尚未設定預覽網址：請在 admin 服務的環境變數設定 WIDGET_ORIGIN 為 client 服務網址，重新啟動後生效。
+              </>
+            )}
           </p>
         </div>
       </div>
