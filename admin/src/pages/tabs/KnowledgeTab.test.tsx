@@ -59,13 +59,21 @@ describe('KnowledgeTab 檢索測試預填', () => {
 describe('知識庫子頁', () => {
   it('預設開「來源與檔案」，切換子頁只顯示該子頁的卡片', async () => {
     render(<MemoryRouter><KnowledgeTab tenantId="t1" onError={vi.fn()} /></MemoryRouter>);
-    expect(await screen.findByText('建立知識來源')).toBeInTheDocument();
-    expect(screen.queryByText('測試查詢', { selector: '.card-title' })).toBeNull();
+    expect(await screen.findByText('建立知識來源')).toBeVisible();
+    expect(screen.getByText('測試查詢', { selector: '.card-title' })).not.toBeVisible();
     fireEvent.click(screen.getByRole('tab', { name: '開場推薦詞' }));
-    expect(screen.getByText('開場推薦詞', { selector: '.card-title' })).toBeInTheDocument();
-    expect(screen.queryByText(/建立知識來源/)).toBeNull();
-    fireEvent.click(screen.getByRole('tab', { name: '可見範圍與標籤' }));
-    expect(screen.getByText('可見性標籤', { selector: '.card-title' })).toBeInTheDocument();
+    expect(screen.getByText('開場推薦詞', { selector: '.card-title' })).toBeVisible();
+    expect(screen.getByText('建立知識來源')).not.toBeVisible();
+  });
+
+  it('切到其他子頁再回來，編輯到一半的內容仍保留', async () => {
+    render(<MemoryRouter><KnowledgeTab tenantId="t1" onError={vi.fn()} /></MemoryRouter>);
+    await screen.findByText('建立知識來源');
+    fireEvent.click(screen.getByRole('tab', { name: '測試查詢' }));
+    fireEvent.change(screen.getByPlaceholderText('例：台北分公司電話'), { target: { value: '請假規定' } });
+    fireEvent.click(screen.getByRole('tab', { name: '來源與檔案' }));
+    fireEvent.click(screen.getByRole('tab', { name: '測試查詢' }));
+    expect(screen.getByPlaceholderText('例：台北分公司電話')).toHaveValue('請假規定');
   });
 
   it('帶問題（?q=）進來時直接開「測試查詢」', async () => {
