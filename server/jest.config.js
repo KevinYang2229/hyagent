@@ -17,6 +17,8 @@ module.exports = {
   roots: ['<rootDir>/src', '<rootDir>/tests'],
   testMatch: ['**/*.test.ts'],
   moduleNameMapper: {
+    // supertest 改綁 127.0.0.1：原版綁 `::` 卻連 127.0.0.1，macOS 上會撞到別的程式的埠（見該檔）
+    '^supertest$': '<rootDir>/tests/helpers/supertest-loopback.ts',
     '^@/(.*)$': '<rootDir>/src/$1',
     '^@hyagent/shared$': '<rootDir>/../shared/src/index.ts',
     '^@hyagent/mcp-kit$': '<rootDir>/../mcp/kit/src/index.ts',
