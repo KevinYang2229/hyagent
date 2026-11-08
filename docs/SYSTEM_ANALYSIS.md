@@ -241,16 +241,28 @@ req.user.tenantId === req.tenant.id   // 不一致 → 401 'Token tenant mismatc
 ### 6.1 有效 Scope 計算
 
 ```text
-Effective Scopes
+登入使用者 Effective Scopes
   = BASE_SCOPES
-  ∪ Tenant.grantedScopes
+  ∪ Everyone scopes            （Tenant.grantedScopes ∪ tenantBundles 角色，排除 kb:／mcp:）
+  ∪ Member bundle scopes       （memberBundles：所有登入員工，不含訪客）
   ∪ Department direct scopes
   ∪ Account direct scopes
   ∪ Department bundle scopes
   ∪ Account bundle scopes
+
+網站訪客 Effective Scopes
+  = BASE_SCOPES
+  ∪ Everyone scopes
+  ∪ 「—」（網站訪客）的 direct／bundle scopes
 ```
 
-解析輸入為 `{ tenantId, userId }`；Department 目前由內建 User Directory 取得，正式部署應改由可信任的 HR／Identity Attribute 提供。
+解析輸入為 `{ tenantId, userId }`。`userId` 為空（公開 widget）或為伺服器產生的 `guest_…`（免登入訪客 Session）即視為網站訪客（`isGuestPrincipal`），不取得「所有登入員工」的角色。登入使用者的 Department 依序取自租戶人員目錄、SSO Assertion 的 `deptName`。
+
+- `—` 只代表網站訪客。已登入但沒有部門的帳號，權限上對應獨立的 `__unassigned__`（未指定部門）桶；目錄裡的部門欄位仍存 `—`，只在解析時轉換。
+- 拆桶時以一次性遷移（`unassignedDepartmentMigrated`）把 `—` 的授權複製給 `__unassigned__`，既有帳號權限不變。兩者皆為系統保留，不可改名或刪除。
+- 「所有人」（tenantBundles）包含網站訪客，因此不可含 `kb:`／`mcp:`；寫入端拒絕，解析端也會濾掉。
+- 後台權限頁只呈現「角色」：舊的直接授權在讀取時換算成等效角色（`convertedRoleIds`），管理者儲存後改由角色承載。
+- 權限是整份覆寫：讀取時回傳 `version`，寫入帶 `baseVersion`，不一致回 409，避免蓋掉期間的其他變更。沒帶 `tenantBundles`／`memberBundles` 時沿用現有值，相容舊版呼叫端。
 
 ### 6.2 Scope 類型
 
@@ -263,6 +275,12 @@ Effective Scopes
 | Knowledge Scope | `kb:finance`                                                           | 控制具該可見性標籤的文件是否可被檢索   |
 
 `service:report` 成本較高，不在新租戶預設 Service Scope 中，需管理者明確授予。
+
+#### 預設權限（最小權限）
+
+- **新租戶**不開放任何能力。系統預建「通用服務」角色（id `general-services`：`service:form`、`service:knowledge`、`service:agent` 與內建表單），預設關閉；管理者在權限頁一鍵套用給所有登入員工（memberBundles，不含網站訪客）。
+- **新建表單**不自動授權，需由管理者加進角色。刪除表單時一併撤銷各角色與授權中的 `form:<id>`。
+- 既有租戶的權限不因此變動；權限頁可另行建立通用服務群組（預設關閉）。
 
 ### 6.3 授權判斷鏈
 
