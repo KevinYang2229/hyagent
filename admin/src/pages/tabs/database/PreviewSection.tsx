@@ -63,7 +63,7 @@ export default function PreviewSection({ serverId, tenantId, sources, onError }:
           <label className="field">
             <span className="field-label">模擬的 scope（選填）</span>
             <input className="input" value={scopes} onChange={(e) => setScopes(e.target.value)} placeholder={`mcp:${serverId}:manager`} />
-            <span className="field-hint">實際查詢時由「權限」分頁的授權決定</span>
+            <span className="field-hint">實際查詢時由「角色與授權」的設定決定</span>
           </label>
         </div>
         <label className="field">

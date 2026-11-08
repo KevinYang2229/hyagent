@@ -665,8 +665,13 @@ li:not(.is-empty) > .feedback-bar { background: var(--bg-secondary); }
 
 /* ---- 鍵值 / 程式碼片段 ---- */
 .code-pill {
-  @apply break-all rounded-[8px] border border-[var(--border-color)] bg-[var(--bg-secondary)] px-2 py-[3px] text-[12.5px] text-[var(--text-primary)];
+  @apply rounded-[8px] border border-[var(--border-color)] bg-[var(--bg-secondary)] px-2 py-[3px] text-[12.5px] text-[var(--text-primary)];
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  /* 短代碼整段換行、不在字中間斷開；只有長到一行放不下（如金鑰）才斷行。
+     clone 讓斷成兩行時每段都保有圓角與內距，不會出現半個框。 */
+  overflow-wrap: anywhere;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
 }
 .icon-btn {
   @apply inline-grid h-7 w-7 flex-none cursor-pointer appearance-none place-items-center rounded-[7px] border border-[var(--border-color)] bg-[var(--card-bg)] text-[var(--text-secondary)];
@@ -691,7 +696,7 @@ li:not(.is-empty) > .feedback-bar { background: var(--bg-secondary); }
 }
 
 .empty {
-  @apply py-5 text-center text-[13.5px] text-[var(--text-secondary)];
+  @apply px-4 py-5 text-center text-[13.5px] text-[var(--text-secondary)];
 }
 
 .muted {
@@ -1312,3 +1317,9 @@ li:not(.is-empty) > .feedback-bar { background: var(--bg-secondary); }
 .directory-toolbar .select { flex: 1 1 150px; min-width: 0; }
 .directory-pagination { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .directory-pagination > div { display: flex; gap: 8px; }
+
+/* 功能尚未啟用時的設定步驟（例如資料庫查詢未登記服務） */
+/* Tailwind preflight 會清掉 ol 的編號，這裡明確要回來 */
+.setup-steps { margin: 10px 0 0; padding-left: 22px; list-style: decimal outside; display: grid; gap: 8px; color: var(--text-secondary); font-size: 13.5px; line-height: 1.7; }
+.setup-steps li::marker { color: var(--text-secondary); font-weight: 600; }
+.setup-steps strong { color: var(--text-primary); font-weight: 600; }

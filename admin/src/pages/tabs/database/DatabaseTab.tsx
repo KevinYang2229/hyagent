@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useToast } from '@hyagent/ui';
 import { api, type DbiDataSource, type McpServerListView } from '../../../api';
 import AuditSection from './AuditSection';
@@ -69,8 +70,16 @@ export default function DatabaseTab({ tenantId, onError }: { tenantId: string; o
             <div className="card-desc">讓 AI 在受控權限內查詢客戶既有的資料庫，不必為每種問題開發 API。</div>
           </div>
         </div>
-        <div className="empty">
-          尚未登記 Database Intelligence 服務。請到「MCP 服務」登記 db-intelligence 服務並重新整理工具清單，再到「權限」分頁把 <span className="code-pill">mcp:&lt;serverId&gt;</span> 加進角色。
+        <div className="card-body">
+          <p className="perm-text" style={{ marginTop: 0 }}>尚未登記 Database Intelligence 服務，完成以下兩步即可使用：</p>
+          <ol className="setup-steps">
+            <li>
+              到平台的 <Link to="/mcp-servers"><strong>MCP 服務</strong></Link> 登記 db-intelligence 服務，並按「重新整理工具清單」。
+            </li>
+            <li>
+              回到此租戶的 <strong>角色與授權</strong>，把該服務加進角色，並套用給部門、帳號或所有登入員工（外部服務不能開給網站訪客）。
+            </li>
+          </ol>
         </div>
       </div>
     );

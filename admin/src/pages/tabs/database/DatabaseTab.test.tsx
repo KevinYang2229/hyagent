@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
+import { MemoryRouter } from 'react-router-dom';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DbiCatalog, DbiDataSource, McpServerListView } from '../../../api';
@@ -89,8 +90,11 @@ const openSection = async (name: string) => fireEvent.click(await screen.findByR
 describe('DatabaseTab', () => {
   it('沒有登記 db-intelligence 服務時提示去登記', async () => {
     vi.mocked(api.listMcpServers).mockResolvedValue(servers(['rooms']));
-    render(<DatabaseTab tenantId="t1" onError={onError} />);
+    render(<MemoryRouter><DatabaseTab tenantId="t1" onError={onError} /></MemoryRouter>);
     expect(await screen.findByText(/尚未登記 Database Intelligence 服務/)).toBeInTheDocument();
+    // 兩個設定步驟，第一步可直接前往平台的 MCP 服務頁
+    expect(screen.getAllByRole('listitem')).toHaveLength(2);
+    expect(screen.getByRole('link', { name: 'MCP 服務' })).toHaveAttribute('href', '/mcp-servers');
     expect(api.dbiListDataSources).not.toHaveBeenCalled();
   });
 
