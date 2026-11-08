@@ -17,6 +17,8 @@ import {
 } from "../../api";
 import NumberField from "../../components/NumberField";
 import CollapsibleList from "../../components/CollapsibleList";
+import { useUnsavedChanges } from "../../components/unsaved";
+import UnsavedBadge from "../../components/UnsavedBadge";
 import {
   countFilesWithLabel,
   fileLabelState,
@@ -30,6 +32,15 @@ import {
 } from "./knowledgeAcl.util";
 
 const EMBEDDING_MODELS = ["text-embedding-3-large", "text-embedding-3-small"];
+
+/** 知識庫子頁：一頁塞六張卡片太擠，依工作拆開；子頁寫入網址 ?kb=，可從其他頁籤直接連過來 */
+type KbSub = "sources" | "access" | "prompts" | "test";
+const KB_SUBS: { key: KbSub; label: string }[] = [
+  { key: "sources", label: "來源與檔案" },
+  { key: "access", label: "可見範圍與標籤" },
+  { key: "prompts", label: "開場推薦詞" },
+  { key: "test", label: "測試查詢" },
+];
 type SourceKind = "website" | "file";
 
 /**
@@ -54,10 +65,20 @@ export default function KnowledgeTab({
 }) {
   const toast = useToast();
   const [src, setSrc] = useState<KnowledgeSource | null>(null);
+  // 最後一次載入／儲存的網站設定，用來判斷「儲存網站設定」是否還有未儲存的修改
+  const [savedSrc, setSavedSrc] = useState<KnowledgeSource | null>(null);
   const [meta, setMeta] = useState<KnowledgeMeta | null>(null);
   const [job, setJob] = useState<IngestJob | null>(null);
   // 從回饋分頁「用這題測試檢索」帶入：?q=問題&as=提問者，預填後由管理員按下測試
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  // 子頁：網址指定者優先；從回饋分頁帶問題（?q=）進來時直接開測試查詢
+  const rawSub = searchParams.get("kb");
+  const sub: KbSub = KB_SUBS.some((item) => item.key === rawSub) ? (rawSub as KbSub) : searchParams.get("q") ? "test" : "sources";
+  const setSub = (next: KbSub) => setSearchParams((prev) => {
+    const params = new URLSearchParams(prev);
+    params.set("kb", next);
+    return params;
+  }, { replace: true });
   const [question, setQuestion] = useState(searchParams.get("q") ?? "");
   const [asUserId, setAsUserId] = useState(searchParams.get("as") ?? ""); // 試查身分：留空＝以網站訪客身分
   const testCardRef = useRef<HTMLDivElement>(null);
@@ -118,6 +139,7 @@ export default function KnowledgeTab({
         embeddingModel: d.meta.model ?? d.source.embeddingModel,
       };
       setSrc(effectiveSource);
+      setSavedSrc(effectiveSource);
       setMeta(d.meta);
       setJob(d.runningJob);
     } catch (e) {
@@ -158,6 +180,7 @@ export default function KnowledgeTab({
     try {
       const saved = await api.saveKnowledgeSource(tenantId, src);
       setSrc(saved);
+      setSavedSrc(saved);
       await loadAcl();
       toast.success("已儲存網站設定");
     } catch (e) {
@@ -193,6 +216,7 @@ export default function KnowledgeTab({
     setUploading(sourceKind === "file");
     try {
       await api.saveKnowledgeSource(tenantId, src);
+      setSavedSrc(src);
       if (sourceKind === "website") {
         const { jobId, status } = await api.startKnowledgeIngest(tenantId);
         setJob({
@@ -426,6 +450,12 @@ export default function KnowledgeTab({
     }
   };
 
+  // 網站設定是唯一需要按儲存的區塊（標籤、檔案可見性皆立即生效）
+  const sourceDirty = !!src && !!savedSrc && JSON.stringify(src) !== JSON.stringify(savedSrc);
+  useUnsavedChanges("知識庫：網站設定", sourceDirty);
+  // 「可見範圍與標籤」子頁的待處理數：未標記檔案＋網站未設定可查詢對象
+  const accessWarnings = (aclReport?.unlabeled.length ?? 0) + (aclReport && sourceNeedsAclWarning(aclReport.source) ? 1 : 0);
+
   if (!src || !meta)
     return (
       <div className="card">
@@ -445,85 +475,24 @@ export default function KnowledgeTab({
 
   return (
     // 兩欄各自直向堆疊：欄內卡片緊密相接，不會像單一 grid 那樣在矮卡旁留出空洞
-    <div className="kb-cols">
-      {aclReport && (
-        <section className="card" style={{ gridColumn: "1 / -1" }} aria-label="知識庫可見範圍">
-          <div className="card-head">
-            <div>
-              <div className="card-title">誰可以查詢這些知識？</div>
-              <div className="card-desc">
-                網站依「可查詢對象」設定開放；檔案與進階標籤模式需要先選標籤，再到「權限」把標籤加進角色。
-              </div>
-            </div>
-            <Link className="btn btn-sm" to="?tab=permissions">設定角色</Link>
-          </div>
-          <div className="card-body">
-            <div className="row-title">訪客／未指定部門</div>
-            <p className="row-sub">以下只顯示訪客的可見範圍；其他使用者請到「測試查詢」指定身分驗證。</p>
-            <div className="kb-label-chips">
-              <span className={`kb-label-chip${guestCorpusState(aclReport.guest) === "ok" ? "" : " kb-label-chip--warn"}`}>
-                {guestCorpusState(aclReport.guest) === "ok" ? "有可查詢的內容" : "目前無法查詢任何內容"}
-              </span>
-              <span className="kb-label-chip">網站：{aclReport.guest.source ? "可查詢" : "無可查詢內容"}</span>
-              <span className="kb-label-chip">可查詢檔案：{aclReport.guest.files} 份</span>
-            </div>
-            <div className="row-sub">
-              訪客可見範圍：<CollapsibleList items={aclReport.guest.scopes} render={(scope) => labelNameFor(labels, scope)} empty="尚未授權" />
-            </div>
-            {guestCorpusState(aclReport.guest) === "no-grant" && (
-              <p className="row-sub">下一步：要開放網站，請將「網站可查詢對象」設為「所有人」；要開放檔案或進階標籤來源，請到「權限」把標籤加進套用給「{aclReport.guest.department}」部門的角色。</p>
-            )}
-            {guestCorpusState(aclReport.guest) === "no-corpus" && (
-              <p className="row-sub">下一步：替要開放的網站或檔案，選擇上方任一已授權標籤。目前沒有符合標籤的內容。</p>
-            )}
-            <p className="row-sub">公開聊天視窗與自動開場推薦詞會使用訪客可見的內容。</p>
-            <hr style={{ border: 0, borderTop: "1px solid var(--border-color)", marginBlock: 16 }} />
-            <details className="kb-acl-details">
-              <summary>待設定標籤的檔案：{aclReport.unlabeled.length} 份</summary>
-            <p className="row-sub">這些檔案尚未設定可見範圍，目前無人可查詢。網站狀態另列於下方。</p>
-            <ul className="list">
-              {aclReport.unlabeled.map((f) => (
-                <li key={f.fileId} className="row">
-                  <div className="row-main"><div className="row-title">{f.name}</div></div>
-                  <button type="button" className="btn btn-sm" onClick={() => {
-                    setFileSearch("");
-                    setFileFilter("all");
-                    setFilePage(Math.floor(sortedFiles.findIndex((file) => file.fileId === f.fileId) / pageSize) + 1);
-                    startEditFile(f);
-                    requestAnimationFrame(() => document.getElementById(`kb-file-${f.fileId}`)?.scrollIntoView({ block: "center", behavior: "smooth" }));
-                  }}>設定標籤</button>
-                </li>
-              ))}
-              {aclReport.unlabeled.length === 0 && <li className="kb-acl-empty">沒有待設定的檔案；是否可查詢仍取決於部門授權。</li>}
-            </ul>
-            </details>
-            <p className="row-sub">
-              網站：{!aclReport.source.configured ? "尚未設定網站" : aclReport.source.audience?.mode === "public" ? "所有人可查詢（包含訪客）"
-                : aclReport.source.audience?.mode === "departments" ? `僅限 ${(aclReport.source.audience.departments ?? []).join("、")} 查詢`
-                : aclReport.source.audience?.mode === "disabled" ? "暫不開放"
-                : sourceNeedsAclWarning(aclReport.source)
-                ? "尚未設定標籤，目前無人可查詢。請在「建立知識來源」選擇標籤並儲存網站設定。"
-                : aclReport.source.explicitlyEmpty ? "已設為不開放，目前無人可查詢。"
-                : "已設定標籤，可查詢對象依部門授權決定。"}
-            </p>
-            <details className="kb-acl-details">
-              <summary>已設為不開放的檔案：{aclReport.explicitlyEmpty.length} 份</summary>
-              <p className="row-sub">這些檔案的標籤已被清空，目前無人可查詢；與尚未設定的待辦分開列出。</p>
-              <ul className="list">
-                {aclReport.explicitlyEmpty.map((f) => (
-                  <li key={f.fileId} className="row"><div className="row-main"><div className="row-title">{f.name}</div></div></li>
-                ))}
-                {aclReport.explicitlyEmpty.length === 0 && <li className="kb-acl-empty">沒有設為不開放的檔案。</li>}
-              </ul>
-            </details>
-          </div>
-        </section>
-      )}
+    <div className="settings-stack">
+      <div className="tabs kb-subtabs" role="tablist" aria-label="知識庫子頁">
+        {KB_SUBS.map((item) => (
+          <button key={item.key} type="button" role="tab" aria-selected={sub === item.key}
+            className={`tab${sub === item.key ? " active" : ""}`} onClick={() => setSub(item.key)}>
+            {item.label}
+            {item.key === "access" && accessWarnings > 0 && <span className="assignment-count-badge" aria-label={`${accessWarnings} 項待處理`}>{accessWarnings}</span>}
+          </button>
+        ))}
+      </div>
+
+      {sub === "sources" && (
+      <div className="kb-cols">
       <div className="kb-col">
         <div className="card">
           <div className="card-head">
             <div>
-              <div className="card-title">建立知識來源</div>
+              <div className="card-title">建立知識來源<UnsavedBadge dirty={sourceDirty} /></div>
               <div className="card-desc">
                 選擇網站或檔案，設定參數後解析成此租戶專屬的 RAG 索引。
               </div>
@@ -813,6 +782,206 @@ export default function KnowledgeTab({
           </div>
         </div>
 
+      </div>
+      <div className="kb-col">
+        <section className="card" aria-label="已匯入檔案">
+          <div className="card-head">
+            <div>
+              <div className="card-title">已匯入檔案 <span className="row-sub">共 {sortedFiles.length} 份</span></div>
+              <div className="card-desc">依匯入時間由新到舊排列，每頁顯示 {pageSize} 份。</div>
+            </div>
+          </div>
+          <div className="card-body kb-file-toolbar">
+            <input className="input" aria-label="搜尋檔案名稱" placeholder="搜尋檔案名稱…" value={fileSearch}
+              onChange={(e) => { setFileSearch(e.target.value); setFilePage(1); }} />
+            <select className="select" aria-label="篩選檔案可見性設定" value={fileFilter}
+              onChange={(e) => { setFileFilter(e.target.value); setFilePage(1); }}>
+              <option value="all">全部設定狀態</option>
+              <option value="unlabeled">待設定標籤</option>
+              <option value="labeled">已設定標籤</option>
+              <option value="empty">不開放</option>
+            </select>
+          </div>
+          <ul className="list">
+            {visibleFiles.map((f) => {
+              const ext = f.name.split(".").pop()?.toLowerCase() ?? "";
+              const scopes = f.visibilityScopes ?? [];
+              const state = fileLabelState(f.visibilityScopes);
+              return (
+                <li key={f.fileId} id={`kb-file-${f.fileId}`} className="kb-file-item">
+                  <div className="kb-file-heading">
+                    <span className="kfile-ext" data-ext={ext}>{ext}</span>
+                    <div className="row-main">
+                      <div className="row-title">{f.name}</div>
+                      <div className="row-sub">{f.chunks} 個段落 · {new Date(f.ingestedAt).toLocaleString("zh-TW")}</div>
+                    </div>
+                  </div>
+                  <div className="kb-file-labels">
+                    <div className="row-sub">可見性標籤 · 仍需部門授權</div>
+                    <div className="kb-label-chips">
+                      {state !== "labeled" ? <span className="kb-label-chip kb-label-chip--warn">
+                        {state === "unlabeled" ? "待設定標籤（無人可查詢）" : "不開放（標籤已清空）"}
+                      </span> : scopes.slice(0, 3).map((scope) => (
+                        <span key={scope} className="kb-label-chip">{labelNameFor(labels, scope)}</span>
+                      ))}
+                    </div>
+                    {scopes.length > 3 && <details className="kb-file-more-labels">
+                      <summary>另有 {scopes.length - 3} 個標籤</summary>
+                      <div className="kb-label-chips">{scopes.slice(3).map((scope) => (
+                        <span key={scope} className="kb-label-chip">{labelNameFor(labels, scope)}</span>
+                      ))}</div>
+                    </details>}
+                  </div>
+                  <div className="kb-file-actions">
+                    <button type="button" className="btn btn-sm" disabled={savingVisibility}
+                      onClick={() => editingFileId === f.fileId ? setEditingFileId(null) : startEditFile(f)}>
+                      {editingFileId === f.fileId ? "收合編輯" : "編輯標籤"}
+                    </button>
+                    <button type="button" className="btn btn-danger btn-sm" disabled={savingVisibility}
+                      aria-label={`刪除 ${f.name}`} onClick={() => removeFile(f)}>刪除檔案</button>
+                  </div>
+                  {editingFileId === f.fileId && <div className="kb-file-editor">
+                    <div className="row-title">選擇可見性標籤 <span className="row-sub">已選 {editScopes.length} 個</span></div>
+                    <div className="kb-label-options" role="group" aria-label="可見性標籤選項">
+                      {labels.map((label) => <label key={label.id}>
+                        <Checkbox checked={editScopes.includes(label.id)} disabled={savingVisibility} onChange={() => toggleEditScope(label.id)} />
+                        <span>{label.label}</span>
+                      </label>)}
+                      {labels.length === 0 && <div className="row-sub">請先到「可見範圍與標籤」子頁新增標籤。</div>}
+                    </div>
+                    {editScopes.length === 0 && <div className="row-sub">未選擇任何標籤，儲存後無人可查詢。</div>}
+                    <div className="kb-file-actions">
+                      <button type="button" className="btn btn-primary btn-sm" disabled={savingVisibility} onClick={() => saveFileVisibility(f)}>{savingVisibility ? "儲存中…" : "儲存標籤"}</button>
+                      <button type="button" className="btn btn-sm" disabled={savingVisibility} onClick={() => setEditingFileId(null)}>取消</button>
+                    </div>
+                  </div>}
+                </li>
+              );
+            })}
+            {visibleFiles.length === 0 && <li className="empty">{sortedFiles.length ? "找不到符合條件的檔案，請調整搜尋或篩選。" : "尚未匯入檔案。"}</li>}
+          </ul>
+          <nav className="kb-file-pagination" aria-label="檔案清單分頁">
+            <span className="row-sub" aria-live="polite">共 {filteredFiles.length} 份 · 第 {currentPage} / {pageCount} 頁</span>
+            <div className="kb-file-actions">
+              <button type="button" className="btn btn-sm" disabled={currentPage <= 1 || savingVisibility} onClick={() => setFilePage(currentPage - 1)}>上一頁</button>
+              <button type="button" className="btn btn-sm" disabled={currentPage >= pageCount || savingVisibility} onClick={() => setFilePage(currentPage + 1)}>下一頁</button>
+            </div>
+          </nav>
+        </section>
+
+        <div className="card">
+          <div className="card-head">
+            <div>
+              <div className="card-title">索引狀態</div>
+              <div className="card-desc">解析進度與目前索引摘要。開場推薦詞請到「開場推薦詞」子頁。</div>
+            </div>
+            <span className="badge badge-on">權限過濾已強制啟用</span>
+          </div>
+          <div className="card-body">
+            {running ? (
+              <div className="row-sub">
+                階段：{job!.status}｜已爬 {job!.pagesCrawled} 頁｜已 embed{" "}
+                {job!.embedded} / {job!.chunks}
+              </div>
+            ) : meta.status === "ready" ? (
+              <>
+                <dl className="kb-index-summary">
+                  <div><dt>已建立段落</dt><dd>{meta.chunkCount} 個</dd></div>
+                  <div><dt>來源</dt><dd>{meta.source ?? "—"}</dd></div>
+                  <div><dt>更新時間</dt><dd>{meta.generatedAt ? new Date(meta.generatedAt).toLocaleString("zh-TW") : "—"}</dd></div>
+                </dl>
+              </>
+            ) : meta.status === "failed" ? (
+              <div className="row-sub">失敗：{meta.error ?? "未知錯誤"}</div>
+            ) : (
+              <div className="row-sub">
+                尚未建立索引，設定來源後按「開始解析」。
+              </div>
+            )}
+          </div>
+        </div>
+
+      </div>
+      </div>
+      )}
+
+      {sub === "access" && (
+      <div className="settings-stack">
+      {aclReport && (
+        <section className="card" style={{ gridColumn: "1 / -1" }} aria-label="知識庫可見範圍">
+          <div className="card-head">
+            <div>
+              <div className="card-title">誰可以查詢這些知識？</div>
+              <div className="card-desc">
+                網站依「可查詢對象」設定開放；檔案與進階標籤模式需要先選標籤，再到「權限」把標籤加進角色。
+              </div>
+            </div>
+            <Link className="btn btn-sm" to="?tab=permissions">設定角色</Link>
+          </div>
+          <div className="card-body">
+            <div className="row-title">訪客／未指定部門</div>
+            <p className="row-sub">以下只顯示訪客的可見範圍；其他使用者請到「測試查詢」指定身分驗證。</p>
+            <div className="kb-label-chips">
+              <span className={`kb-label-chip${guestCorpusState(aclReport.guest) === "ok" ? "" : " kb-label-chip--warn"}`}>
+                {guestCorpusState(aclReport.guest) === "ok" ? "有可查詢的內容" : "目前無法查詢任何內容"}
+              </span>
+              <span className="kb-label-chip">網站：{aclReport.guest.source ? "可查詢" : "無可查詢內容"}</span>
+              <span className="kb-label-chip">可查詢檔案：{aclReport.guest.files} 份</span>
+            </div>
+            <div className="row-sub">
+              訪客可見範圍：<CollapsibleList items={aclReport.guest.scopes} render={(scope) => labelNameFor(labels, scope)} empty="尚未授權" />
+            </div>
+            {guestCorpusState(aclReport.guest) === "no-grant" && (
+              <p className="row-sub">下一步：要開放網站，請將「網站可查詢對象」設為「所有人」；要開放檔案或進階標籤來源，請到「權限」把標籤加進套用給「{aclReport.guest.department}」部門的角色。</p>
+            )}
+            {guestCorpusState(aclReport.guest) === "no-corpus" && (
+              <p className="row-sub">下一步：替要開放的網站或檔案，選擇上方任一已授權標籤。目前沒有符合標籤的內容。</p>
+            )}
+            <p className="row-sub">公開聊天視窗與自動開場推薦詞會使用訪客可見的內容。</p>
+            <hr style={{ border: 0, borderTop: "1px solid var(--border-color)", marginBlock: 16 }} />
+            <details className="kb-acl-details">
+              <summary>待設定標籤的檔案：{aclReport.unlabeled.length} 份</summary>
+            <p className="row-sub">這些檔案尚未設定可見範圍，目前無人可查詢。網站狀態另列於下方。</p>
+            <ul className="list">
+              {aclReport.unlabeled.map((f) => (
+                <li key={f.fileId} className="row">
+                  <div className="row-main"><div className="row-title">{f.name}</div></div>
+                  <button type="button" className="btn btn-sm" onClick={() => {
+                    // 檔案清單在「來源與檔案」子頁：先切過去再捲到該檔案
+                    setSub("sources");
+                    setFileSearch("");
+                    setFileFilter("all");
+                    setFilePage(Math.floor(sortedFiles.findIndex((file) => file.fileId === f.fileId) / pageSize) + 1);
+                    startEditFile(f);
+                    requestAnimationFrame(() => document.getElementById(`kb-file-${f.fileId}`)?.scrollIntoView({ block: "center", behavior: "smooth" }));
+                  }}>設定標籤</button>
+                </li>
+              ))}
+              {aclReport.unlabeled.length === 0 && <li className="kb-acl-empty">沒有待設定的檔案；是否可查詢仍取決於部門授權。</li>}
+            </ul>
+            </details>
+            <p className="row-sub">
+              網站：{!aclReport.source.configured ? "尚未設定網站" : aclReport.source.audience?.mode === "public" ? "所有人可查詢（包含訪客）"
+                : aclReport.source.audience?.mode === "departments" ? `僅限 ${(aclReport.source.audience.departments ?? []).join("、")} 查詢`
+                : aclReport.source.audience?.mode === "disabled" ? "暫不開放"
+                : sourceNeedsAclWarning(aclReport.source)
+                ? "尚未設定標籤，目前無人可查詢。請在「建立知識來源」選擇標籤並儲存網站設定。"
+                : aclReport.source.explicitlyEmpty ? "已設為不開放，目前無人可查詢。"
+                : "已設定標籤，可查詢對象依部門授權決定。"}
+            </p>
+            <details className="kb-acl-details">
+              <summary>已設為不開放的檔案：{aclReport.explicitlyEmpty.length} 份</summary>
+              <p className="row-sub">這些檔案的標籤已被清空，目前無人可查詢；與尚未設定的待辦分開列出。</p>
+              <ul className="list">
+                {aclReport.explicitlyEmpty.map((f) => (
+                  <li key={f.fileId} className="row"><div className="row-main"><div className="row-title">{f.name}</div></div></li>
+                ))}
+                {aclReport.explicitlyEmpty.length === 0 && <li className="kb-acl-empty">沒有設為不開放的檔案。</li>}
+              </ul>
+            </details>
+          </div>
+        </section>
+      )}
         <div className="card">
           <div className="card-head">
             <div>
@@ -907,114 +1076,19 @@ export default function KnowledgeTab({
           </ul>
         </div>
       </div>
+      )}
 
-      <div className="kb-col">
-        <section className="card" aria-label="已匯入檔案">
-          <div className="card-head">
-            <div>
-              <div className="card-title">已匯入檔案 <span className="row-sub">共 {sortedFiles.length} 份</span></div>
-              <div className="card-desc">依匯入時間由新到舊排列，每頁顯示 {pageSize} 份。</div>
-            </div>
-          </div>
-          <div className="card-body kb-file-toolbar">
-            <input className="input" aria-label="搜尋檔案名稱" placeholder="搜尋檔案名稱…" value={fileSearch}
-              onChange={(e) => { setFileSearch(e.target.value); setFilePage(1); }} />
-            <select className="select" aria-label="篩選檔案可見性設定" value={fileFilter}
-              onChange={(e) => { setFileFilter(e.target.value); setFilePage(1); }}>
-              <option value="all">全部設定狀態</option>
-              <option value="unlabeled">待設定標籤</option>
-              <option value="labeled">已設定標籤</option>
-              <option value="empty">不開放</option>
-            </select>
-          </div>
-          <ul className="list">
-            {visibleFiles.map((f) => {
-              const ext = f.name.split(".").pop()?.toLowerCase() ?? "";
-              const scopes = f.visibilityScopes ?? [];
-              const state = fileLabelState(f.visibilityScopes);
-              return (
-                <li key={f.fileId} id={`kb-file-${f.fileId}`} className="kb-file-item">
-                  <div className="kb-file-heading">
-                    <span className="kfile-ext" data-ext={ext}>{ext}</span>
-                    <div className="row-main">
-                      <div className="row-title">{f.name}</div>
-                      <div className="row-sub">{f.chunks} 個段落 · {new Date(f.ingestedAt).toLocaleString("zh-TW")}</div>
-                    </div>
-                  </div>
-                  <div className="kb-file-labels">
-                    <div className="row-sub">可見性標籤 · 仍需部門授權</div>
-                    <div className="kb-label-chips">
-                      {state !== "labeled" ? <span className="kb-label-chip kb-label-chip--warn">
-                        {state === "unlabeled" ? "待設定標籤（無人可查詢）" : "不開放（標籤已清空）"}
-                      </span> : scopes.slice(0, 3).map((scope) => (
-                        <span key={scope} className="kb-label-chip">{labelNameFor(labels, scope)}</span>
-                      ))}
-                    </div>
-                    {scopes.length > 3 && <details className="kb-file-more-labels">
-                      <summary>另有 {scopes.length - 3} 個標籤</summary>
-                      <div className="kb-label-chips">{scopes.slice(3).map((scope) => (
-                        <span key={scope} className="kb-label-chip">{labelNameFor(labels, scope)}</span>
-                      ))}</div>
-                    </details>}
-                  </div>
-                  <div className="kb-file-actions">
-                    <button type="button" className="btn btn-sm" disabled={savingVisibility}
-                      onClick={() => editingFileId === f.fileId ? setEditingFileId(null) : startEditFile(f)}>
-                      {editingFileId === f.fileId ? "收合編輯" : "編輯標籤"}
-                    </button>
-                    <button type="button" className="btn btn-danger btn-sm" disabled={savingVisibility}
-                      aria-label={`刪除 ${f.name}`} onClick={() => removeFile(f)}>刪除檔案</button>
-                  </div>
-                  {editingFileId === f.fileId && <div className="kb-file-editor">
-                    <div className="row-title">選擇可見性標籤 <span className="row-sub">已選 {editScopes.length} 個</span></div>
-                    <div className="kb-label-options" role="group" aria-label="可見性標籤選項">
-                      {labels.map((label) => <label key={label.id}>
-                        <Checkbox checked={editScopes.includes(label.id)} disabled={savingVisibility} onChange={() => toggleEditScope(label.id)} />
-                        <span>{label.label}</span>
-                      </label>)}
-                      {labels.length === 0 && <div className="row-sub">請先在「可見性標籤」新增標籤。</div>}
-                    </div>
-                    {editScopes.length === 0 && <div className="row-sub">未選擇任何標籤，儲存後無人可查詢。</div>}
-                    <div className="kb-file-actions">
-                      <button type="button" className="btn btn-primary btn-sm" disabled={savingVisibility} onClick={() => saveFileVisibility(f)}>{savingVisibility ? "儲存中…" : "儲存標籤"}</button>
-                      <button type="button" className="btn btn-sm" disabled={savingVisibility} onClick={() => setEditingFileId(null)}>取消</button>
-                    </div>
-                  </div>}
-                </li>
-              );
-            })}
-            {visibleFiles.length === 0 && <li className="empty">{sortedFiles.length ? "找不到符合條件的檔案，請調整搜尋或篩選。" : "尚未匯入檔案。"}</li>}
-          </ul>
-          <nav className="kb-file-pagination" aria-label="檔案清單分頁">
-            <span className="row-sub" aria-live="polite">共 {filteredFiles.length} 份 · 第 {currentPage} / {pageCount} 頁</span>
-            <div className="kb-file-actions">
-              <button type="button" className="btn btn-sm" disabled={currentPage <= 1 || savingVisibility} onClick={() => setFilePage(currentPage - 1)}>上一頁</button>
-              <button type="button" className="btn btn-sm" disabled={currentPage >= pageCount || savingVisibility} onClick={() => setFilePage(currentPage + 1)}>下一頁</button>
-            </div>
-          </nav>
-        </section>
-
+      {sub === "prompts" && (
         <div className="card">
           <div className="card-head">
             <div>
-              <div className="card-title">索引狀態</div>
-              <div className="card-desc">解析進度與目前索引摘要。</div>
+              <div className="card-title">開場推薦詞</div>
+              <div className="card-desc">聊天視窗開場顯示的推薦問句。網站、檔案來源各一個，可手動改寫或另外新增。</div>
             </div>
-            <span className="badge badge-on">權限過濾已強制啟用</span>
           </div>
           <div className="card-body">
-            {running ? (
-              <div className="row-sub">
-                階段：{job!.status}｜已爬 {job!.pagesCrawled} 頁｜已 embed{" "}
-                {job!.embedded} / {job!.chunks}
-              </div>
-            ) : meta.status === "ready" ? (
+            {meta.status === "ready" ? (
               <>
-                <dl className="kb-index-summary">
-                  <div><dt>已建立段落</dt><dd>{meta.chunkCount} 個</dd></div>
-                  <div><dt>來源</dt><dd>{meta.source ?? "—"}</dd></div>
-                  <div><dt>更新時間</dt><dd>{meta.generatedAt ? new Date(meta.generatedAt).toLocaleString("zh-TW") : "—"}</dd></div>
-                </dl>
                 {/* 開場推薦詞：widget 的推薦 chip 依來源各一顆，未生成就不會有 chip */}
                 {(["website", "file"] as const).map((source) => {
                   const slot = meta.suggestedPrompts?.[source];
@@ -1113,12 +1187,8 @@ export default function KnowledgeTab({
                   );
                 })}
               </>
-            ) : meta.status === "failed" ? (
-              <div className="row-sub">失敗：{meta.error ?? "未知錯誤"}</div>
             ) : (
-              <div className="row-sub">
-                尚未建立索引，設定來源後按「開始解析」。
-              </div>
+              <p className="row-sub">尚未建立索引，推薦詞會在「來源與檔案」完成解析後自動生成。</p>
             )}
             <section className="kb-suggestion" aria-label="自訂開場提示詞">
               <div className="kb-suggestion-heading"><h3>自訂開場提示詞</h3><span className="row-sub">{meta.customSuggestedPrompts?.length ?? 0} 個</span></div>
@@ -1159,7 +1229,9 @@ export default function KnowledgeTab({
             </section>
           </div>
         </div>
+      )}
 
+      {sub === "test" && (
         <div className="card" ref={testCardRef}>
           <div className="card-head">
             <div>
@@ -1220,8 +1292,7 @@ export default function KnowledgeTab({
             {hits.length === 0 && <li className="empty">尚無查詢結果。</li>}
           </ul>
         </div>
-      </div>
-
+      )}
 
       <Dialog
         isOpen={confirmingClear}

@@ -17,7 +17,7 @@ async function settle<T>(p: Promise<T>): Promise<T | undefined> {
  */
 export default function OverviewTab({ tenant, onNavigate }: {
   tenant: Tenant;
-  onNavigate: (tab: string) => void;
+  onNavigate: (tab: string, query?: Record<string, string>) => void;
 }) {
   const [data, setData] = useState<OverviewData | null>(null);
 
@@ -76,7 +76,7 @@ export default function OverviewTab({ tenant, onNavigate }: {
               <div className="row-title">{c.title}{!c.required && <span className="row-sub" style={{ marginLeft: 6 }}>提醒</span>}</div>
               <div className="row-sub">{c.detail}</div>
             </div>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => onNavigate(c.tab)}>{c.status === 'ok' ? '查看' : '前往'}</button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => onNavigate(c.tab, c.query)}>{c.status === 'ok' ? '查看' : '前往'}</button>
           </li>)}
         </ul>
       </section>;

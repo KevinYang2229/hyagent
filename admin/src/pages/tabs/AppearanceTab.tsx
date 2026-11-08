@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useUnsavedChanges } from "../../components/unsaved";
+import UnsavedBadge from "../../components/UnsavedBadge";
 import type { TenantAppearance } from "@hyagent/shared";
 import { api, type Tenant } from "../../api";
 import { resolveDemoSiteUrl, resolvePreviewOrigin, resolvePrimaryColor } from "./appearance.util";
@@ -51,6 +53,13 @@ export default function AppearanceTab({
   const [form, setForm] = useState<TenantAppearance>(tenant.appearance ?? {});
   const [busy, setBusy] = useState(false);
 
+  // 未儲存判斷：忽略值為空的欄位與鍵的順序（清空欄位與從未設定視為相同）
+  const normalized = (a: TenantAppearance) => JSON.stringify(
+    Object.entries(a).filter(([, v]) => v !== undefined && v !== '').sort(([x], [y]) => x.localeCompare(y)),
+  );
+  const dirty = normalized(form) !== normalized(tenant.appearance ?? {});
+  useUnsavedChanges('外觀', dirty);
+
   function set<K extends keyof TenantAppearance>(k: K, v: TenantAppearance[K]) {
     setForm((f) => ({ ...f, [k]: v }));
   }
@@ -101,7 +110,7 @@ export default function AppearanceTab({
       <div className="card">
         <div className="card-head">
           <div>
-            <div className="card-title">Widget 外觀</div>
+            <div className="card-title">Widget 外觀<UnsavedBadge dirty={dirty} /></div>
             <div className="card-desc">
               儲存後依租戶套用；widget 載入時讀取，data-* 參數仍優先。
             </div>

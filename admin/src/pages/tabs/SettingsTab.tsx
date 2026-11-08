@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { api, type ApiKey, type LLMConfigPatch, type LLMConfigView, type Tenant } from '../../api';
 import { IconCopy, IconKey } from '../../components/icons';
+import { useUnsavedChanges } from '../../components/unsaved';
+import UnsavedBadge from '../../components/UnsavedBadge';
 
 export default function SettingsTab({
   tenant,
@@ -42,6 +44,18 @@ export default function SettingsTab({
       cancelled = true;
     };
   }, [tenant.id, onError]);
+
+  // 未儲存判斷：與目前生效的值比對（儲存後外層重新載入 tenant，比對結果自然歸零）
+  const originList = (text: string) => text.split('\n').map((x) => x.trim()).filter(Boolean);
+  const tenantDirty = name.trim() !== tenant.name
+    || originList(origins).join('\n') !== (tenant.allowedOrigins ?? []).join('\n')
+    || (quota.trim() === '' ? 0 : Math.max(0, Number(quota) || 0)) !== (tenant.quotaMonthlyLlmTokens ?? 0)
+    || guestAccess !== (tenant.guestAccess === true);
+  const llmDirty = !!llmCfg && (
+    llmProvider !== (llmCfg.provider ?? '') || llmModel.trim() !== (llmCfg.model ?? '')
+    || !!anthropicKey.trim() || !!openaiKey.trim());
+  useUnsavedChanges('基本設定：租戶設定', tenantDirty);
+  useUnsavedChanges('基本設定：AI 模型', llmDirty);
 
   async function saveLlm() {
     setLlmBusy(true);
@@ -103,7 +117,7 @@ export default function SettingsTab({
       <div className="card">
         <div className="card-head">
           <div>
-            <div className="card-title">租戶設定</div>
+            <div className="card-title">租戶設定<UnsavedBadge dirty={tenantDirty} /></div>
             <div className="card-desc">名稱、允許嵌入來源、用量配額與訪客使用。</div>
           </div>
         </div>
@@ -160,7 +174,7 @@ export default function SettingsTab({
       <div className="card">
         <div className="card-head">
           <div>
-            <div className="card-title">AI 模型（租戶自帶金鑰）</div>
+            <div className="card-title">AI 模型（租戶自帶金鑰）<UnsavedBadge dirty={llmDirty} /></div>
             <div className="card-desc">
               未設定時使用平台預設模型與金鑰；設定後此租戶的 AI 費用計入自帶金鑰。
             </div>

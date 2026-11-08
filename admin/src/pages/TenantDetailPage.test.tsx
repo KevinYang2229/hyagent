@@ -13,7 +13,12 @@ vi.mock('../components/AppLayout', () => ({ default: ({ children }: { children: 
 // 各頁籤內容不是此測試的重點，換成標記
 const { stub } = vi.hoisted(() => ({ stub: (name: string) => ({ default: () => `頁面:${name}` }) }));
 vi.mock('./tabs/OverviewTab', () => stub('overview'));
-vi.mock('./tabs/SettingsTab', () => stub('settings'));
+// 基本設定頁模擬「有未儲存修改」，驗證租戶頁的中央離開提醒
+vi.mock('./tabs/SettingsTab', async () => {
+  const { useUnsavedChanges } = await import('../components/unsaved');
+  function DirtySettings() { useUnsavedChanges('基本設定：租戶設定', true); return '頁面:settings'; }
+  return { default: DirtySettings };
+});
 vi.mock('./tabs/AppearanceTab', () => stub('appearance'));
 vi.mock('./tabs/WebhookTab', () => stub('webhook'));
 vi.mock('./tabs/UsageTab', () => stub('usage'));
@@ -68,4 +73,17 @@ it('窄螢幕的下拉選單與導覽同步', async () => {
   expect(select).toHaveValue('audit');
   fireEvent.change(select, { target: { value: 'permissions' } });
   expect(screen.getByText('頁面:permissions')).toBeInTheDocument();
+});
+
+it('有區塊未儲存時，切換頁籤先確認並列出是哪個區塊；留在此頁不會切走', async () => {
+  renderAt('?tab=settings');
+  await screen.findByText('頁面:settings');
+  const nav = screen.getByRole('navigation', { name: '租戶設定導覽' });
+  fireEvent.click(within(nav).getByRole('button', { name: '外觀' }));
+  expect(await screen.findByText(/基本設定：租戶設定/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '留在此頁' }));
+  expect(screen.getByText('頁面:settings')).toBeInTheDocument();
+  fireEvent.click(within(nav).getByRole('button', { name: '外觀' }));
+  fireEvent.click(await screen.findByRole('button', { name: '放棄並離開' }));
+  expect(screen.getByText('頁面:appearance')).toBeInTheDocument();
 });

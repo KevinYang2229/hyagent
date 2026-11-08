@@ -3,6 +3,7 @@ import { Checkbox, Dialog, useToast } from '@hyagent/ui';
 import { api, ConflictError, type TenantPolicyView } from '../../api';
 import { formatDepartment } from '../../components/department.util';
 import RoleEditor from './RoleEditor';
+import { useUnsavedChanges } from '../../components/unsaved';
 import CollapsibleList from '../../components/CollapsibleList';
 import {
   applyRoleDraft, capabilityGaps, GENERAL_SERVICES_ROLE_ID, generalServicesScopes, capabilityLabel, CATEGORY_LABELS, categoryOf, effectiveCapabilities, peopleOf, policyChanged,
@@ -33,11 +34,9 @@ function sourceText(source: RoleSource): string {
   return '直接指派';
 }
 
-export default function PermissionsTab({ tenantId, onError, onDirtyChange }: {
+export default function PermissionsTab({ tenantId, onError }: {
   tenantId: string;
   onError: (e: unknown) => void;
-  /** 未儲存狀態變化時通知外層，讓切換分頁時能先確認 */
-  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const toast = useToast();
   const [policy, setPolicy] = useState<TenantPolicyView | null>(null);
@@ -67,16 +66,8 @@ export default function PermissionsTab({ tenantId, onError, onDirtyChange }: {
 
   // 角色編輯器開著也算未儲存：草稿還沒「完成」就切分頁，內容會直接消失
   const dirty = !!draft || (!!policy && !!baseline && policyChanged(policy, baseline));
-  useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
-  // 離開分頁（unmount）時清掉外層的未儲存旗標
-  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
-  // 重整或關閉瀏覽器前提醒
-  useEffect(() => {
-    if (!dirty) return;
-    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
-    window.addEventListener('beforeunload', warn);
-    return () => window.removeEventListener('beforeunload', warn);
-  }, [dirty]);
+  // 回報給租戶頁：切換頁籤、離開或關閉瀏覽器前提醒
+  useUnsavedChanges('權限', dirty);
 
   if (!policy) return <div className="card"><div className="card-body">載入中…</div></div>;
 

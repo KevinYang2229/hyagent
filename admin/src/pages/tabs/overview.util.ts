@@ -20,6 +20,8 @@ export interface SetupCheck {
   detail: string;
   /** 前往處理的頁籤 key */
   tab: string;
+  /** 額外的網址參數，例如知識庫子頁 { kb: 'access' } */
+  query?: Record<string, string>;
   /** 是否為上線必要步驟（計入完成進度）；否則只是提醒 */
   required: boolean;
 }
@@ -78,10 +80,10 @@ export function setupChecks(d: OverviewData): SetupCheck[] {
 
   if (d.acl) {
     if (d.acl.unlabeled.length > 0) {
-      checks.push({ id: 'kb-unlabeled', step: '內容與能力', title: '檔案可見範圍', status: 'warn', detail: `${d.acl.unlabeled.length} 份檔案尚未設定標籤，目前無人可查詢。`, tab: 'knowledge', required: false });
+      checks.push({ id: 'kb-unlabeled', step: '內容與能力', title: '檔案可見範圍', status: 'warn', detail: `${d.acl.unlabeled.length} 份檔案尚未設定標籤，目前無人可查詢。`, tab: 'knowledge', query: { kb: 'access' }, required: false });
     }
     if (d.acl.source.configured && d.acl.source.unlabeled) {
-      checks.push({ id: 'kb-website', step: '內容與能力', title: '網站可查詢對象', status: 'warn', detail: '網站來源尚未設定可查詢對象，目前無人可查詢。', tab: 'knowledge', required: false });
+      checks.push({ id: 'kb-website', step: '內容與能力', title: '網站可查詢對象', status: 'warn', detail: '網站來源尚未設定可查詢對象，目前無人可查詢。', tab: 'knowledge', query: { kb: 'sources' }, required: false });
     }
   }
 

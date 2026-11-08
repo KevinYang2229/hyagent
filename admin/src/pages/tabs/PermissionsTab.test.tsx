@@ -3,6 +3,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import PermissionsTab from './PermissionsTab';
+import { UnsavedChangesProvider } from '../../components/unsaved';
 import { api, ConflictError, type TenantPolicyView } from '../../api';
 vi.mock('../../api', () => ({ api: { getTenantPolicy: vi.fn(), putTenantPolicy: vi.fn() }, ConflictError: class ConflictError extends Error {} }));
 vi.mock('@hyagent/ui', async () => ({ ...await vi.importActual<object>('@hyagent/ui'), useToast: () => ({ success: vi.fn() }) }));
@@ -29,7 +30,10 @@ afterEach(cleanup);
 
 async function renderTab(onDirtyChange = vi.fn()) {
   vi.mocked(api.getTenantPolicy).mockResolvedValue(fixture);
-  render(<PermissionsTab tenantId="t" onError={vi.fn()} onDirtyChange={onDirtyChange} />);
+  // 未儲存狀態經 UnsavedChangesProvider 回報；這裡只關心「權限」區塊的 dirty 值
+  render(<UnsavedChangesProvider value={(label, dirty) => { if (label === '權限') onDirtyChange(dirty); }}>
+    <PermissionsTab tenantId="t" onError={vi.fn()} />
+  </UnsavedChangesProvider>);
   await screen.findByRole('button', { name: '編輯 一般員工' });
   return onDirtyChange;
 }
