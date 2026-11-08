@@ -26,8 +26,13 @@ describe('訪客部門', () => {
     policy.groups[UNKNOWN_DEPARTMENT] = ['kb:public'];
     scopePolicy.setPolicy(t.id, policy);
 
-    const scopes = resolveScopes({ tenantId: t.id, userId: 'guest-abc-123' });
-    expect(scopes).toContain('kb:public');
-    expect(scopes).not.toContain('kb:hr');
+    // 免登入訪客 Session 的 sub（guest_…）與公開 widget（空 userId）都是訪客
+    for (const userId of ['guest_abc123', '']) {
+      const scopes = resolveScopes({ tenantId: t.id, userId });
+      expect(scopes).toContain('kb:public');
+      expect(scopes).not.toContain('kb:hr');
+    }
+    // 目錄外、沒有部門的登入帳號屬「未指定部門」，不再拿到訪客桶的授權
+    expect(resolveScopes({ tenantId: t.id, userId: 'guest-abc-123' })).not.toContain('kb:public');
   });
 });

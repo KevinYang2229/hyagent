@@ -5,7 +5,7 @@ import { logger } from '@/lib/logger';
 import { closeDb } from '@/lib/db';
 import { initAuditStore } from '@/modules/audit/audit.store';
 import { initScopePolicy } from '@/modules/authz/scope-policy';
-import { migrateTenantScopes } from '@/modules/authz/scope-migration';
+import { migrateTenantScopes, migrateUnassignedDepartment } from '@/modules/authz/scope-migration';
 import { cleanupExpiredSessions, initConversationStore } from '@/modules/conversation/conversation.store';
 import { initFormStore } from '@/modules/form/form.store';
 import { initKnowledgeStore } from '@/modules/knowledge/knowledge.store';
@@ -43,6 +43,8 @@ async function main(): Promise<void> {
 
   // 既有租戶的 disabledServices/disabledForms → grantedScopes 一次性遷移；store 已於上方 init 完成。
   migrateTenantScopes();
+  // 「未指定部門」與網站訪客拆桶：把訪客桶的授權複製一份給新桶，既有帳號權限不變
+  migrateUnassignedDepartment();
 
   // session 保留政策：開機已清一次（initConversationStore），此後每日再跑；unref 不擋關機
   // 報告 TTL 回收（產出物 + job 記錄）比照同一個每日排程：purgeExpired 不呼叫就等於 TTL

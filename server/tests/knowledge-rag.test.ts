@@ -125,4 +125,4 @@ describe('knowledgeAgentService（RAG 綜合作答）', () => {
   });
 });
 
-beforeEach(() => scopePolicy.setPolicy('rag-test', { groups: { '—': ['kb:public'] }, accounts: {} }));
+beforeEach(() => scopePolicy.setPolicy('rag-test', { groups: { '—': ['kb:public'], __unassigned__: ['kb:public'] }, accounts: {} }));

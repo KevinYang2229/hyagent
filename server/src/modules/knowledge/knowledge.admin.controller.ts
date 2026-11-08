@@ -10,7 +10,7 @@ import { assertValidLabelId, kbScopeId } from '@/modules/authz/scope-catalog';
 import { scopePolicy } from '@/modules/authz/scope-policy';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 import { sourceVisibilityScopes } from './source-access';
-import { getApplicant, isKnownUser, listDepartments, UNKNOWN_DEPARTMENT } from '@/modules/user/user.directory';
+import { getApplicant, isGuestPrincipal, isKnownUser, listDepartments, memberPermissionDepartment, UNASSIGNED_MEMBER_DEPARTMENT, UNKNOWN_DEPARTMENT } from '@/modules/user/user.directory';
 import type { IngestParams } from './ingest.service';
 import { deleteIndex, loadIndexText } from './knowledge.index.repo';
 import { ingestFile, removeFile } from './knowledge-file.service';
@@ -72,7 +72,7 @@ function prepareSource(tenantId: string, source: Omit<KnowledgeSource, 'updatedA
   }
   if (source.audience?.mode === 'departments') {
     const known = new Set([...listDepartments(tenantId), ...Object.keys(scopePolicy.getPolicy(tenantId).groups)]);
-    if (!source.audience.departments?.length || source.audience.departments.some((department) => department === UNKNOWN_DEPARTMENT || !known.has(department))) {
+    if (!source.audience.departments?.length || source.audience.departments.some((department) => department === UNKNOWN_DEPARTMENT || department === UNASSIGNED_MEMBER_DEPARTMENT || !known.has(department))) {
       throw AppError.badRequest('請選擇有效的部門');
     }
   }
@@ -113,7 +113,7 @@ function regenerateError(reason: RegenerateFailure, detail?: string): AppError {
     case 'no-visible-chunks': {
       return AppError.unprocessable(
         '該來源有索引內容，但沒有訪客可見的語料，無法生成公開推薦詞。'
-          + '若要公開網站內容，請將網站可查詢對象設為「所有人（包含訪客）」。檔案或進階標籤模式則需設定可見性標籤，再到「權限」將相同標籤授權給「訪客／未指定部門」部門。'
+          + '若要公開網站內容，請將網站可查詢對象設為「所有人（包含訪客）」。檔案或進階標籤模式則需設定可見性標籤，再到「權限」將相同標籤授權給「網站訪客」。'
           + '儲存後即可重新生成，不必重新解析。僅限登入者可見的內容不會用於公開推薦詞。',
       );
     }
@@ -187,13 +187,14 @@ export const knowledgeAdminController = {
     const userId = asUserId?.trim() ?? '';
     const hits = await retriever.search({ tenantId, userId }, question);
     // 回報這次實際用的身分與可見標籤：輸錯帳號時看得出「不在目錄、以未指定部門處理」
-    const applicant = userId ? getApplicant(userId, tenantId) : undefined;
+    const guest = isGuestPrincipal(userId);
     const principal = {
-      kind: userId ? ('user' as const) : ('guest' as const),
+      kind: guest ? ('guest' as const) : ('user' as const),
       userId,
-      department: applicant?.department ?? UNKNOWN_DEPARTMENT,
-      inDirectory: userId ? isKnownUser(userId, tenantId) : false,
-      labels: (userId ? visibilityScopesOf({ tenantId, userId }) : guestVisibilityScopesOf(tenantId)),
+      // 權限用的部門鍵：沒有部門的登入帳號回報為「未指定部門」桶，不是訪客
+      department: guest ? UNKNOWN_DEPARTMENT : memberPermissionDepartment(getApplicant(userId, tenantId).department),
+      inDirectory: guest ? false : isKnownUser(userId, tenantId),
+      labels: guest && !userId ? guestVisibilityScopesOf(tenantId) : visibilityScopesOf({ tenantId, userId }),
     };
     res.json({
       data: {

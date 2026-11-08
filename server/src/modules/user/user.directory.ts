@@ -42,6 +42,29 @@ const FAVORITES: Record<string, string[]> = {
  */
 export const UNKNOWN_DEPARTMENT = '—';
 
+/**
+ * 「已登入但沒有部門」帳號的權限桶。目錄裡這類帳號的部門仍存成 UNKNOWN_DEPARTMENT（'—'），
+ * 只在權限解析時改用此鍵——讓網站訪客（'—'）與已登入員工不再共用同一組角色。
+ * 值刻意不像部門名稱，不會與真實部門或 SSO deptName 撞名。
+ */
+export const UNASSIGNED_MEMBER_DEPARTMENT = '__unassigned__';
+
+/** 免登入訪客 Session 的 sub 前綴（guest-session 由伺服器隨機產生，呼叫端無法指定） */
+export const GUEST_SUB_PREFIX = 'guest_';
+
+/**
+ * 是否為訪客身分：沒有 userId（公開 widget），或伺服器產生的免登入訪客 sub。
+ * 訪客只取得「所有人」與網站訪客桶的權限，不算「登入員工」——權限解析一律以此判斷，不要各自比對字串。
+ */
+export function isGuestPrincipal(userId: string): boolean {
+  return !userId || userId.startsWith(GUEST_SUB_PREFIX);
+}
+
+/** 登入帳號在權限上的部門鍵：沒有部門時落在 UNASSIGNED_MEMBER_DEPARTMENT，而不是訪客桶 */
+export function memberPermissionDepartment(department: string): string {
+  return department === UNKNOWN_DEPARTMENT ? UNASSIGNED_MEMBER_DEPARTMENT : department;
+}
+
 /** The development directory is available only in the default development tenant. */
 function directory(tenantId: string): DirectoryEntry[] {
   const configured = tenantStore.getTenant(tenantId)?.userDirectory;

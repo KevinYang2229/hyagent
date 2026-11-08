@@ -6,6 +6,7 @@ import { scopePolicy } from '@/modules/authz/scope-policy';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 import { mcpStore } from '@/modules/mcp/mcp.store';
 import { resolveScopes } from '@/modules/authz/resolve-scopes';
+import { signAdminToken } from '@/utils/jwt';
 
 const app = createApp();
 
@@ -289,5 +290,29 @@ describe('新租戶預設權限', () => {
     expect(scopePolicy.getPolicy(t.id).memberBundles).toEqual(['g']);
     await expect(adminController.setPolicy({ params: { id: t.id }, body: { ...base, bundles: [], memberBundles: ['missing'] } } as never, mockRes() as never))
       .rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it('PUT 沒帶 tenantBundles／memberBundles 時沿用現有值（相容舊版後台），已刪除的角色則排除', async () => {
+    const t = tenantStore.createTenant('bundle-compat');
+    scopePolicy.setPolicy(t.id, {
+      groups: {}, accounts: {},
+      bundles: [{ id: 'g', name: '通用服務', scopes: ['service:knowledge'] }, { id: 'all', name: '全體', scopes: ['service:form'] }],
+      groupBundles: {}, accountBundles: {}, tenantBundles: ['all'], memberBundles: ['g'],
+    });
+    const legacyBody = {
+      grantedScopes: [], groups: {}, accounts: {}, groupBundles: {}, accountBundles: {},
+      bundles: [{ id: 'g', name: '通用服務', scopes: ['service:knowledge'] }, { id: 'all', name: '全體', scopes: ['service:form'] }],
+    };
+    // 走完整 HTTP 路徑，確認 schema 不會把缺少的欄位補成空陣列
+    const token = signAdminToken();
+    await request(app).put(`/api/admin/tenants/${t.id}/policy`).set('authorization', `Bearer ${token}`).send(legacyBody).expect(200);
+    expect(scopePolicy.getPolicy(t.id).memberBundles).toEqual(['g']);
+    expect(scopePolicy.getPolicy(t.id).tenantBundles).toEqual(['all']);
+
+    // 舊版後台刪掉了「全體」角色：沿用時要排除，不能留下不存在的引用
+    await request(app).put(`/api/admin/tenants/${t.id}/policy`).set('authorization', `Bearer ${token}`)
+      .send({ ...legacyBody, bundles: [legacyBody.bundles[0]] }).expect(200);
+    expect(scopePolicy.getPolicy(t.id).tenantBundles).toEqual([]);
+    expect(scopePolicy.getPolicy(t.id).memberBundles).toEqual(['g']);
   });
 });

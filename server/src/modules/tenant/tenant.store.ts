@@ -393,6 +393,7 @@ export const tenantStore = {
         | 'grantedScopes'
         | 'knowledgeLabels'
         | 'scopesMigrated'
+        | 'unassignedDepartmentMigrated'
         | 'llmConfig'
         | 'quotaMonthlyLlmTokens'
         | 'guestAccess'
@@ -419,6 +420,7 @@ export const tenantStore = {
       ...(patch.grantedScopes !== undefined ? { grantedScopes: patch.grantedScopes } : {}),
       ...(patch.knowledgeLabels !== undefined ? { knowledgeLabels: patch.knowledgeLabels } : {}),
       ...(patch.scopesMigrated !== undefined ? { scopesMigrated: patch.scopesMigrated } : {}),
+      ...(patch.unassignedDepartmentMigrated !== undefined ? { unassignedDepartmentMigrated: patch.unassignedDepartmentMigrated } : {}),
       // 用 'in' 而非 '!== undefined'：llmConfig 需支援三態（不動/覆寫/清空），
       // undefined 也是合法值（代表整包清除），要能被 patch 帶入。
       ...('llmConfig' in patch ? { llmConfig: patch.llmConfig } : {}),

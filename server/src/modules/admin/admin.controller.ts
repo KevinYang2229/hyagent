@@ -36,7 +36,7 @@ import {
 import { defaultGrantedScopes } from '@/modules/authz/scope-migration';
 import { scopePolicy } from '@/modules/authz/scope-policy';
 import { toRoleView } from '@/modules/authz/role-view';
-import { getApplicant, listDepartments, listUserIds, UNKNOWN_DEPARTMENT } from '@/modules/user/user.directory';
+import { getApplicant, listDepartments, listUserIds, memberPermissionDepartment, UNASSIGNED_MEMBER_DEPARTMENT, UNKNOWN_DEPARTMENT } from '@/modules/user/user.directory';
 import { llmConfigService } from '@/modules/tenant/llm-config.service';
 import type { PutLLMConfigInput } from '@/modules/tenant/llm-config.schema';
 import { computeUsageCost } from '@/modules/usage/usage.cost';
@@ -160,7 +160,7 @@ function policyView(tenantId: string) {
       memberBundles: policy.memberBundles ?? [],
     },
     {
-      department: (id) => (id === UNKNOWN_DEPARTMENT ? '訪客／未指定部門' : id),
+      department: (id) => (id === UNKNOWN_DEPARTMENT ? '網站訪客' : id === UNASSIGNED_MEMBER_DEPARTMENT ? '未指定部門' : id),
       account: (id) => getApplicant(id, tenantId).name,
     },
   );
@@ -172,11 +172,13 @@ function policyView(tenantId: string) {
     accounts: {} as Record<string, string[]>,
     ...view,
     // 訪客沒有目錄帳號，仍必須可在權限頁與角色指派中選取。
-    departments: [...new Set([UNKNOWN_DEPARTMENT, ...listDepartments(tenantId)])],
+    // 網站訪客與「未指定部門」的登入帳號各自一個桶，都必須可在權限頁選取
+    departments: [...new Set([UNKNOWN_DEPARTMENT, UNASSIGNED_MEMBER_DEPARTMENT, ...listDepartments(tenantId).filter((d) => d !== UNKNOWN_DEPARTMENT)])],
     // 帶部門：帳號要顯示從部門取得的角色，否則看起來像「沒有角色」
     users: listUserIds(tenantId).map((id) => {
       const person = getApplicant(id, tenantId);
-      return { id, label: person.name, department: person.department };
+      // 權限用的部門鍵：沒有部門的帳號對應「未指定部門」桶，畫面據此顯示角色來源
+      return { id, label: person.name, department: memberPermissionDepartment(person.department) };
     }),
   };
 }
@@ -209,6 +211,7 @@ export const adminController = {
       tenantBundles: [],
       memberBundles: [],
     });
+    tenantStore.updateTenant(tenant.id, { unassignedDepartmentMigrated: true });
     // 一併發一把公開金鑰，方便立即接入
     const publishable = tenantStore.createApiKey(tenant.id, 'publishable');
     await tenantStore.persistCritical();
@@ -488,13 +491,18 @@ export const adminController = {
     const bundles = body.bundles ?? [];
     const groupBundles = body.groupBundles ?? {};
     const accountBundles = body.accountBundles ?? {};
-    const tenantBundles = body.tenantBundles ?? [];
-    const memberBundles = body.memberBundles ?? [];
     for (const b of bundles) assertGrantableScopes(b.scopes, tenant.id);
     const bundleIds = new Set(bundles.map((b) => b.id));
     if (bundleIds.size !== bundles.length) {
       throw AppError.badRequest('角色 id 不可重複');
     }
+    // 「所有人」與「所有登入員工」是較晚加入的欄位：沒帶（舊版後台、其他呼叫端）時沿用現有值，
+    // 不可當成空陣列——否則部署期間一個舊版頁面存檔，就會默默關掉通用服務、全員失去能力。
+    // 沿用時排除這次已被刪除的角色，避免引用不存在的角色。
+    const current = scopePolicy.getPolicy(tenant.id);
+    const keep = (ids: string[] | undefined) => (ids ?? []).filter((id) => bundleIds.has(id));
+    const tenantBundles = body.tenantBundles ?? keep(current.tenantBundles);
+    const memberBundles = body.memberBundles ?? keep(current.memberBundles);
     for (const ids of [...Object.values(groupBundles), ...Object.values(accountBundles), tenantBundles, memberBundles]) {
       for (const id of ids) {
         if (!bundleIds.has(id)) throw AppError.badRequest(`指派了不存在的角色：${id}`);

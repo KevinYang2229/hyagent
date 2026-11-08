@@ -4,7 +4,7 @@
  * department 取自 user 目錄（之後接真實 HR 換該層即可）。
  */
 import { tenantStore } from '@/modules/tenant/tenant.store';
-import { getApplicant } from '@/modules/user/user.directory';
+import { getApplicant, isGuestPrincipal, memberPermissionDepartment, UNKNOWN_DEPARTMENT } from '@/modules/user/user.directory';
 import { BASE_SCOPE_IDS, isKbScope, isMcpScope } from './scope-catalog';
 import { scopePolicy } from './scope-policy';
 
@@ -26,9 +26,11 @@ function tenantGrantedScopes(tenantId: string): string[] {
 
 export function resolveScopes(principal: ScopePrincipal): string[] {
   const { tenantId, userId } = principal;
-  if (!userId) return resolveGuestScopes(tenantId);
+  // 訪客（公開 widget、免登入訪客 Session）只走訪客那一份：不取得「所有登入員工」與「未指定部門」的角色
+  if (isGuestPrincipal(userId)) return resolveGuestScopes(tenantId);
   const tenantScopes = tenantGrantedScopes(tenantId);
-  const department = getApplicant(userId, tenantId).department;
+  // 沒有部門的登入帳號用獨立的「未指定部門」桶，不與網站訪客（'—'）共用
+  const department = memberPermissionDepartment(getApplicant(userId, tenantId).department);
   const groupScopes = scopePolicy.groupScopes(tenantId, department);
   const accountScopes = scopePolicy.accountScopes(tenantId, userId);
   // 套餐（bundle）展開：部門/帳號被指派的具名 scope 集合，與零散 scope 聯集
@@ -54,7 +56,7 @@ export function resolveGuestScopes(tenantId: string): string[] {
   return [...new Set([
     ...BASE_SCOPE_IDS,
     ...tenantGrantedScopes(tenantId),
-    ...scopePolicy.groupScopes(tenantId, '—'),
-    ...scopePolicy.groupBundleScopes(tenantId, '—'),
+    ...scopePolicy.groupScopes(tenantId, UNKNOWN_DEPARTMENT),
+    ...scopePolicy.groupBundleScopes(tenantId, UNKNOWN_DEPARTMENT),
   ])];
 }

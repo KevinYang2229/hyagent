@@ -164,8 +164,9 @@ export const putPolicySchema = z.object({
     .default([]),
   groupBundles: z.record(z.string(), z.array(z.string())).default({}),
   accountBundles: z.record(z.string(), z.array(z.string())).default({}),
-  tenantBundles: z.array(z.string()).default([]),
-  memberBundles: z.array(z.string()).default([]),
+  // 不設 default：沒帶時由 setPolicy 沿用現有值（舊版後台不認識這兩個欄位，不能被當成清空）
+  tenantBundles: z.array(z.string()).optional(),
+  memberBundles: z.array(z.string()).optional(),
   // 讀取時拿到的版本：與目前資料不符代表期間有人改過（其他管理者、新表單、人員同步），回 409。
   // 選填以相容舊呼叫端；後台權限頁一律帶上。
   baseVersion: z.string().optional(),

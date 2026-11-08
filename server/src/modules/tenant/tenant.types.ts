@@ -170,6 +170,8 @@ export interface Tenant {
   knowledgeLabels?: KnowledgeLabel[];
   /** 是否已完成服務/表單 → scope 的一次性遷移；true 後遷移不再覆寫其授予。 */
   scopesMigrated?: boolean;
+  /** 已把訪客桶（'—'）的授權複製給「未指定部門」桶（一次性遷移，見 scope-migration） */
+  unassignedDepartmentMigrated?: boolean;
   /**
    * 租戶自帶 AI 設定（BYO key，spec 2026-07-14）：provider/model/兩家 key。
    * 未設＝平台 env 設定；讀寫一律走 llmConfigService（合併/驗證/遮罩/稽核）。

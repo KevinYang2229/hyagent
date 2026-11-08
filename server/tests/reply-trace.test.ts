@@ -30,7 +30,7 @@ const result = (over: Partial<LLMResult>): LLMResult => ({
 });
 
 // 檢索有 ACL 過濾：未授權 kb:public 時一律查無，會讓「有片段」的測試假陰性
-beforeEach(() => scopePolicy.setPolicy('trace-test', { groups: { '—': ['kb:public'] }, accounts: {} }));
+beforeEach(() => scopePolicy.setPolicy('trace-test', { groups: { '—': ['kb:public'], __unassigned__: ['kb:public'] }, accounts: {} }));
 afterEach(() => _setIndexForTest('trace-test', null));
 
 it('知識庫：trace 含檢索問句、候選數、片段（名次、節錄）與模型', async () => {

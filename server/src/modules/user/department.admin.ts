@@ -5,7 +5,7 @@ import { asyncHandler } from '@/utils/async-handler';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 import { scopePolicy, type TenantPolicy } from '@/modules/authz/scope-policy';
 import { AppError } from '@/utils/app-error';
-import { UNKNOWN_DEPARTMENT } from './user.directory';
+import { UNASSIGNED_MEMBER_DEPARTMENT, UNKNOWN_DEPARTMENT } from './user.directory';
 
 /**
  * 部門管理。部門不是獨立資料：它是人員目錄上的字串，同時是權限政策
@@ -13,8 +13,8 @@ import { UNKNOWN_DEPARTMENT } from './user.directory';
  * 或部門消失了授權卻還在（之後同名部門或 SSO deptName 一出現就靜默生效）。
  * 所以改名、刪除一律兩邊一起動。
  *
- * 「未指定」（UNKNOWN_DEPARTMENT）是訪客與未建檔帳號的桶，不可改名、刪除，也不可當改名目標：
- * 把部門改成它等於把該部門的權限併給所有網站訪客。
+ * 網站訪客桶（UNKNOWN_DEPARTMENT）與「未指定部門」桶（UNASSIGNED_MEMBER_DEPARTMENT）是系統桶，
+ * 不可改名、刪除，也不可當改名目標：把部門改成它們等於把該部門的權限併給所有訪客或所有未指定部門的帳號。
  */
 export const departmentAdminRouter = Router({ mergeParams: true });
 
@@ -27,7 +27,7 @@ const nonEmptyKeys = (map: Record<string, string[]> | undefined): string[] =>
   Object.entries(map ?? {}).filter(([, v]) => v.length > 0).map(([k]) => k);
 
 function guardGuestBucket(name: string): void {
-  if (name === UNKNOWN_DEPARTMENT) throw AppError.badRequest('「未指定」部門供網站訪客使用，不可改名或刪除');
+  if (name === UNKNOWN_DEPARTMENT || name === UNASSIGNED_MEMBER_DEPARTMENT) throw AppError.badRequest('網站訪客與「未指定部門」是系統保留的權限對象，不可改名或刪除');
 }
 
 /** 把 map 的 from key 併入 to key（取聯集），回傳新物件 */
@@ -51,7 +51,7 @@ function knownDepartments(tenantId: string, policy: TenantPolicy): Set<string> {
     ...users.map((u) => u.department),
     ...nonEmptyKeys(policy.groups),
     ...nonEmptyKeys(policy.groupBundles),
-  ].filter((d) => d && d !== UNKNOWN_DEPARTMENT));
+  ].filter((d) => d && d !== UNKNOWN_DEPARTMENT && d !== UNASSIGNED_MEMBER_DEPARTMENT));
 }
 
 departmentAdminRouter.get('/', (req: Request, res) => {

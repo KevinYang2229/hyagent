@@ -15,6 +15,7 @@ import { authSessionStore } from '@/lib/auth-session.store';
 import { resolveAssertionSettings } from '@/modules/tenant/tenant-keys';
 import type { Tenant } from '@/modules/tenant/tenant.types';
 import { AppError } from '@/utils/app-error';
+import { GUEST_SUB_PREFIX } from '@/modules/user/user.directory';
 
 /** 訪客 Session 的 kid。不是 RFC 7638 Thumbprint 的格式（那是 43 字元 base64url），不會與真公鑰撞名。 */
 export const GUEST_SESSION_KID = 'guest';
@@ -34,7 +35,8 @@ export async function issueGuestSession(tenant: Tenant | undefined): Promise<{
   if (!tenant || !isGuestAccessEnabled(tenant)) {
     throw new AppError(403, 'GUEST_ACCESS_DISABLED', '此租戶未開放訪客使用');
   }
-  const sub = `guest_${randomBytes(16).toString('hex')}`;
+  // 前綴是權限判斷的依據（isGuestPrincipal）：訪客不取得「所有登入員工」的角色
+  const sub = `${GUEST_SUB_PREFIX}${randomBytes(16).toString('hex')}`;
   const created = await authSessionStore.create({
     tenantId: tenant.id,
     sub,

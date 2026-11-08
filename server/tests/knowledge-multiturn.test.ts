@@ -28,7 +28,7 @@ let tenantId: string;
 
 beforeAll(() => {
   tenantId = tenantStore.createTenant('kb-multiturn').id;
-  scopePolicy.setPolicy(tenantId, { groups: { '—': ['kb:public'] }, accounts: {} });
+  scopePolicy.setPolicy(tenantId, { groups: { '—': ['kb:public'], __unassigned__: ['kb:public'] }, accounts: {} });
   _setIndexForTest(tenantId, {
     generatedAt: '',
     model: 'test-embed',

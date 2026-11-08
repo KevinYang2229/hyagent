@@ -48,4 +48,25 @@ describe('resolveScopes', () => {
     expect(resolveScopes({ tenantId: t.id, userId: 'kevin' })).toContain('mcp:x');
     expect(resolveScopes({ tenantId: t.id, userId: '' })).not.toContain('mcp:x');
   });
+
+  describe('未指定部門與網站訪客分開', () => {
+    it('未指定部門的登入帳號用獨立的桶；訪客（含 guest_ Session）不取得所有登入員工與未指定部門的角色', () => {
+      const t = tenantStore.createTenant('unassigned-split');
+      tenantStore.updateTenant(t.id, { userDirectory: [{ id: 'amy', name: 'Amy', department: '—' }] });
+      scopePolicy.setPolicy(t.id, {
+        groups: { '—': ['email:write'], __unassigned__: ['calendar:read'] }, accounts: {},
+        bundles: [{ id: 'g', name: '通用服務', scopes: ['service:knowledge'] }],
+        groupBundles: {}, accountBundles: {}, tenantBundles: [], memberBundles: ['g'],
+      });
+      const amy = resolveScopes({ tenantId: t.id, userId: 'amy' });
+      expect(amy).toEqual(expect.arrayContaining(['calendar:read', 'service:knowledge']));
+      expect(amy).not.toContain('email:write');
+      for (const guest of ['', 'guest_0123abcd']) {
+        const scopes = resolveScopes({ tenantId: t.id, userId: guest });
+        expect(scopes).toContain('email:write');
+        expect(scopes).not.toContain('calendar:read');
+        expect(scopes).not.toContain('service:knowledge');
+      }
+    });
+  });
 });
