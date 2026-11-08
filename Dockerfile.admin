@@ -17,7 +17,10 @@ COPY client/package.json ./client/
 COPY admin/package.json ./admin/
 # --include=dev：Zeabur build 環境預設 NODE_ENV=production，會讓 npm 跳過 devDependencies
 # （vite / tsc / @vitejs/plugin-react / tailwindcss 等在 devDeps），強制裝進來才 build 得了
-RUN npm ci --include=dev
+# 只安裝 admin 與它依賴的 workspace（ui、shared）。不要整個 repo 一起裝：server 的原生套件（bcrypt 等）
+# 要從 GitHub 下載預編譯檔，GitHub 偶發 504 時會退回原始碼編譯，而 slim 映像沒有 Python／編譯器，
+# 整個前端 build 就會因為一個用不到的後端套件失敗。其他 workspace 的 package.json 仍需複製，npm 才能核對 lockfile。
+RUN npm ci --include=dev --workspace=admin --include-workspace-root=false --no-audit --no-fund
 
 COPY . .
 
