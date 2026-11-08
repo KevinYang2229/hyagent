@@ -27,6 +27,7 @@ import {
   type TenantPublicKey,
 } from '../../api';
 import SessionsPanel from './SessionsPanel';
+import { useConfirm } from '../../components/confirm';
 
 const REASON_LABEL: Record<KeyRevocationReason, string> = {
   rotated: '輪替汰換',
@@ -523,7 +524,8 @@ function RotationPanel({
   const oldStillUsed =
     !!usage?.from.latest && Date.parse(usage.from.latest) > Date.parse(to.createdAt);
 
-  const complete = (): void => {
+  const confirm = useConfirm();
+  const complete = async (): Promise<void> => {
     let extra = '';
     if (!observed) {
       extra += `\n\n距上傳新金鑰僅 ${duration(elapsedMs)}，未滿建議的 ${OBSERVE_HOURS} 小時觀察期。`;
@@ -531,24 +533,24 @@ function RotationPanel({
     if (usage && usage.from.total > 0) {
       extra += `\n\n目前仍有 ${usage.from.total} 個以舊金鑰登入的工作階段，會一併被登出。`;
     }
-    if (
-      window.confirm(
-        `完成輪替：汰換舊金鑰 ${keyName(from)}？\n\n舊金鑰會以「輪替汰換」撤銷，之後以舊私鑰簽發的` +
-          `憑證一律被拒，此操作無法復原。請提醒客戶銷毀舊私鑰。${extra}`,
-      )
-    ) {
+    const ok = await confirm({
+      title: `完成輪替：汰換舊金鑰 ${keyName(from)}？`,
+      message: `舊金鑰會以「輪替汰換」撤銷，之後以舊私鑰簽發的憑證一律被拒，此操作無法復原。請提醒客戶銷毀舊私鑰。${extra}`,
+      confirmText: '完成輪替並撤銷舊金鑰',
+    });
+    if (ok) {
       onRevoke(from, 'rotated', `輪替完成：已汰換舊金鑰 ${keyName(from)}`);
     }
   };
 
-  const abort = (): void => {
-    if (
-      window.confirm(
-        `放棄這次輪替：撤銷新金鑰 ${keyName(to)}？\n\n舊金鑰維持使用；客戶端若已改用新私鑰簽發，` +
-          '會立刻無法登入，以新金鑰登入的工作階段也會一併被登出。\n\n' +
-          '撤銷無法復原，之後要重新輪替請產生一組新的金鑰對。',
-      )
-    ) {
+  const abort = async (): Promise<void> => {
+    const ok = await confirm({
+      title: `放棄這次輪替：撤銷新金鑰 ${keyName(to)}？`,
+      message: '舊金鑰維持使用；客戶端若已改用新私鑰簽發，會立刻無法登入，以新金鑰登入的工作階段也會一併被登出。\n\n' +
+        '撤銷無法復原，之後要重新輪替請產生一組新的金鑰對。',
+      confirmText: '撤銷新金鑰',
+    });
+    if (ok) {
       onRevoke(to, 'aborted', `已放棄輪替：撤銷新金鑰 ${keyName(to)}`);
     }
   };

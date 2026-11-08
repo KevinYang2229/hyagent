@@ -4,6 +4,7 @@ import AppLayout from '../components/AppLayout';
 import { api, UnauthorizedError, type McpServerListView, type McpServerView, type Tenant } from '../api';
 import { useAuth } from '../auth';
 import { emptyMcpForm, reapprovedOverrides, staleApprovals, statusLabel, toFormValues, toPayload, validateMcpForm, type McpServerFormValues } from './mcpForm.util';
+import { useConfirm } from '../components/confirm';
 
 /**
  * MCP 服務（平台層）：登記自建 MCP server、測試連線、檢視工具讀寫判定並覆寫。
@@ -78,8 +79,9 @@ export default function McpServersPage() {
     }
   }
 
+  const confirm = useConfirm();
   async function remove(id: string) {
-    if (!window.confirm(`確定刪除 MCP 服務「${id}」？已授予的 mcp:${id} 權限將失去作用。`)) return;
+    if (!(await confirm({ title: `刪除 MCP 服務「${id}」？`, message: `各租戶角色中的此服務（mcp:${id}）權限會失去作用。` }))) return;
     try {
       await api.deleteMcpServer(id);
       await load();
@@ -103,7 +105,13 @@ export default function McpServersPage() {
   }
 
   async function reapprove(server: McpServerView, names: string[]) {
-    if (!window.confirm(`以「${server.config.name}」目前的工具定義重新核准唯讀：\n${names.join('\n')}\n\n請先確認這些工具仍只查詢資料、不會修改任何東西。`)) return;
+    const ok = await confirm({
+      title: `重新核准「${server.config.name}」的唯讀工具？`,
+      message: `以目前的工具定義重新核准唯讀：\n${names.join('\n')}\n\n請先確認這些工具仍只查詢資料、不會修改任何東西。`,
+      confirmText: '核准',
+      danger: false,
+    });
+    if (!ok) return;
     try {
       replaceServer(await api.updateMcpServer(server.config.id, { toolOverrides: reapprovedOverrides(server, names) }));
       setErr(null);

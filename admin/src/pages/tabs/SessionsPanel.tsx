@@ -13,6 +13,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { api, type AuthSessionPage, type TenantPublicKey } from '../../api';
+import { useConfirm } from '../../components/confirm';
 
 const PAGE_SIZE = 50;
 
@@ -79,23 +80,23 @@ export default function SessionsPanel({
     setOffset(0);
   };
 
-  const revokeOne = (session: { id: string; name?: string; sub: string }): void => {
-    if (!window.confirm(`作廢 ${displayName(session)} 的這個 Session？對方會立刻被登出。`)) return;
+  const confirm = useConfirm();
+  const revokeOne = async (session: { id: string; name?: string; sub: string }): Promise<void> => {
+    if (!(await confirm({ title: `作廢 ${displayName(session)} 的這個工作階段？`, message: '對方會立刻被登出，但不會阻止重新登入。', confirmText: '作廢' }))) return;
     void run(async () => {
       await api.revokeSession(tenantId, session.id);
       return `已作廢 ${displayName(session)} 的 1 個 Session`;
     });
   };
 
-  const revokeAllOf = (session: { name?: string; sub: string }): void => {
-    if (
-      !window.confirm(
-        `作廢 ${displayName(session)} 的所有 Session？\n\n` +
-          '同一個人在多個分頁或裝置登入時會全部被登出。\n' +
-          '若是帳號停權，請先在客戶自家系統停權，否則對方的 Identity Endpoint 還會繼續簽發新憑證。',
-      )
-    )
-      return;
+  const revokeAllOf = async (session: { name?: string; sub: string }): Promise<void> => {
+    const ok = await confirm({
+      title: `作廢 ${displayName(session)} 的所有工作階段？`,
+      message: '同一個人在多個分頁或裝置登入時會全部被登出。\n' +
+        '若是帳號停權，請先在客戶自家系統停權，否則對方的 Identity Endpoint 還會繼續簽發新憑證。',
+      confirmText: '全部作廢',
+    });
+    if (!ok) return;
     void run(async () => {
       const r = await api.revokeSessionsBySub(tenantId, session.sub);
       return `已作廢 ${displayName(session)} 的 ${r.revoked} 個 Session`;

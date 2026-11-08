@@ -3,6 +3,7 @@ import { api, type ApiKey, type LLMConfigPatch, type LLMConfigView, type Tenant 
 import { IconCopy, IconKey } from '../../components/icons';
 import { useUnsavedChanges } from '../../components/unsaved';
 import UnsavedBadge from '../../components/UnsavedBadge';
+import { useConfirm } from '../../components/confirm';
 
 /**
  * 接入設定。依 section 分成兩頁：
@@ -28,6 +29,7 @@ export default function SettingsTab({
   );
   const [guestAccess, setGuestAccess] = useState(tenant.guestAccess === true);
   const [busy, setBusy] = useState(false);
+  const confirm = useConfirm();
   const [newKeys, setNewKeys] = useState<ApiKey[]>([]);
 
   const [llmCfg, setLlmCfg] = useState<LLMConfigView | null>(null);
@@ -87,6 +89,13 @@ export default function SettingsTab({
   }
 
   async function clearKey(field: 'anthropicApiKey' | 'openaiApiKey') {
+    const provider = field === 'anthropicApiKey' ? 'Anthropic' : 'OpenAI';
+    const ok = await confirm({
+      title: `清除 ${provider} 金鑰？`,
+      message: '已儲存的金鑰會被刪除且無法再查看；之後此租戶改用平台預設金鑰，要恢復需重新輸入金鑰。',
+      confirmText: '清除',
+    });
+    if (!ok) return;
     try {
       const view = await api.putLlmConfig(tenant.id, { [field]: null });
       setLlmCfg(view);

@@ -8,6 +8,7 @@ import {
   type SuggestedPromptText,
 } from "../../../api";
 import { MANUAL_PROMPT_MAX_ZH_CHARS } from "../knowledgeAcl.util";
+import { useConfirm } from "../../../components/confirm";
 
 /**
  * 「開場推薦詞」子頁：各來源的自動／手動推薦詞，以及自訂提示詞。
@@ -20,6 +21,7 @@ export default function PromptsPanel({ tenantId, meta, onMetaChange, onError }: 
   onError: (e: unknown) => void;
 }) {
   const toast = useToast();
+  const confirm = useConfirm();
   const [regenerating, setRegenerating] = useState<PromptSource | null>(null); // 手動重新生成開場推薦詞中的來源
   // 手動編輯中的來源與草稿（null = 沒有在編輯）
   const [editingSource, setEditingSource] = useState<PromptSource | null>(null);
@@ -91,7 +93,7 @@ export default function PromptsPanel({ tenantId, meta, onMetaChange, onError }: 
   };
 
   const deleteCustomPrompt = async (prompt: CustomSuggestedPrompt) => {
-    if (!confirm(`確定刪除提示詞「${prompt.text["zh-Hant"]}」？`)) return;
+    if (!(await confirm({ title: `刪除提示詞「${prompt.text["zh-Hant"]}」？`, message: "刪除後聊天視窗不再顯示這個開場提示詞。" }))) return;
     setSavingCustom(true);
     try {
       await api.deleteCustomSuggestion(tenantId, prompt.id);

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { OASchema, PolicySchema, WorkflowSchema } from '@hyagent/shared';
 import type { DraftForm } from './model';
+import { useConfirm } from '../../components/confirm';
 
 /**
  * 進階層編輯器：workflow（簽核關卡）、oa（送出映射）、agent（確認話術）、policy（JSON）。
@@ -42,6 +43,7 @@ function WorkflowEditor({ draft, setDraft }: { draft: DraftForm; setDraft: (fn: 
   const steps = draft.workflow?.steps ?? [];
   const update = (next: WorkflowSchema['steps']) =>
     setDraft((d) => ({ ...d, workflow: next.length ? { steps: next } : undefined }));
+  const confirm = useConfirm();
 
   return (
     <div className="adv-body">
@@ -60,7 +62,9 @@ function WorkflowEditor({ draft, setDraft }: { draft: DraftForm; setDraft: (fn: 
             value={s.name ?? ''}
             onChange={(e) => update(steps.map((x, n) => (n === i ? { ...x, name: e.target.value } : x)))}
           />
-          <button className="btn btn-ghost btn-sm" onClick={() => update(steps.filter((_, n) => n !== i))}>
+          <button className="btn btn-ghost btn-sm" aria-label={`移除關卡 ${s.name || i + 1}`} onClick={async () => {
+            if (await confirm({ title: `移除簽核關卡「${s.name || `第 ${i + 1} 關`}」？` })) update(steps.filter((_, n) => n !== i));
+          }}>
             ✕
           </button>
         </div>
@@ -83,6 +87,7 @@ function OAEditor({
 }) {
   const oa = draft.oa;
   const sources = [...fieldKeys, 'userId', 'hours', 'region'];
+  const confirm = useConfirm();
 
   function patchOA(patch: Partial<OASchema>) {
     setDraft((d) => {
@@ -148,7 +153,9 @@ function OAEditor({
           />
           <button
             className="btn btn-ghost btn-sm"
-            onClick={() => {
+            aria-label={`移除映射 ${src}`}
+            onClick={async () => {
+              if (!(await confirm({ title: `移除欄位映射「${src} → ${dest || '（未填）'}」？` }))) return;
               const next = { ...fieldMap };
               delete next[src];
               patchOA({ request: { ...oa.request, fieldMap: next } });
@@ -178,7 +185,11 @@ function OAEditor({
           <input className="input" value={oa.response.statusField ?? ''} onChange={(e) => patchOA({ response: { ...oa.response, statusField: e.target.value } })} />
         </label>
       </div>
-      <button className="btn btn-danger btn-sm" onClick={() => setDraft((d) => ({ ...d, oa: undefined }))}>
+      <button className="btn btn-danger btn-sm" onClick={async () => {
+        if (await confirm({ title: '移除 OA 送出設定？', message: '送出端點、欄位映射與回應欄位設定會一併清除，表單將不會送進 OA。', confirmText: '移除' })) {
+          setDraft((d) => ({ ...d, oa: undefined }));
+        }
+      }}>
         移除 OA 設定
       </button>
     </div>

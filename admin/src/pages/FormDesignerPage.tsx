@@ -31,6 +31,7 @@ import {
 } from './designer/model';
 import AdvancedPanel from './designer/AdvancedPanel';
 import './designer/designer.css';
+import { useConfirm } from '../components/confirm';
 
 const PALETTE: { component: FieldComponent; label: string; icon: string }[] = [
   { component: 'Input', label: '單行文字', icon: '🔤' },
@@ -219,7 +220,10 @@ export default function FormDesignerPage() {
     setDraft((d) => ({ ...d, fields: d.fields.map((f) => (f.key === key ? { ...f, ...patch } : f)) }));
   }
 
-  function deleteField(key: string) {
+  const confirm = useConfirm();
+  async function deleteField(key: string) {
+    const label = draft.fields.find((f) => f.key === key)?.label || key;
+    if (!(await confirm({ title: `刪除欄位「${label}」？`, message: '欄位設定與 AI 提示會一併移除；按「儲存」前都還能離開不存。' }))) return;
     setDraft((d) => ({ ...d, fields: d.fields.filter((f) => f.key !== key) }));
     if (selectedKey === key) setSelectedKey(null);
   }
@@ -229,9 +233,13 @@ export default function FormDesignerPage() {
     setActiveStep(draft.steps.length);
   }
 
-  function deleteStep(index: number) {
+  async function deleteStep(index: number) {
     const count = fieldsOfStep(draft, index).length;
-    if (count > 0 && !confirm(`刪除此步驟會一併刪除其中 ${count} 個欄位，確定？`)) return;
+    const ok = await confirm({
+      title: `刪除第 ${index + 1} 個步驟？`,
+      message: count > 0 ? `此步驟中的 ${count} 個欄位會一併刪除。` : '此步驟沒有欄位。',
+    });
+    if (!ok) return;
     setDraft((d) => ({
       ...d,
       steps: d.steps.filter((_, n) => n !== index),
@@ -648,6 +656,7 @@ function Inspector({
   onPatch: (p: Partial<DraftField>) => void;
   onGuidance: (g: string) => void;
 }) {
+  const confirm = useConfirm();
   return (
     <div className="inspector-body">
       <label>
@@ -742,7 +751,11 @@ function Inspector({
             />
             <button
               className="btn btn-ghost btn-sm"
-              onClick={() => onPatch({ links: (field.links ?? []).filter((_, n) => n !== i) })}
+              onClick={async () => {
+                if (await confirm({ title: `移除連結「${link.label || link.url || `第 ${i + 1} 個`}」？` })) {
+                  onPatch({ links: (field.links ?? []).filter((_, n) => n !== i) });
+                }
+              }}
             >
               ✕
             </button>
@@ -783,7 +796,11 @@ function Inspector({
               />
               <button
                 className="btn btn-ghost btn-sm"
-                onClick={() => onPatch({ options: (field.options ?? []).filter((_, n) => n !== i) })}
+                onClick={async () => {
+                  if (await confirm({ title: `移除選項「${o.label || o.value || `第 ${i + 1} 個`}」？` })) {
+                    onPatch({ options: (field.options ?? []).filter((_, n) => n !== i) });
+                  }
+                }}
               >
                 ✕
               </button>

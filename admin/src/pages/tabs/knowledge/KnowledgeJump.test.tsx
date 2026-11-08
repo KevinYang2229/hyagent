@@ -2,6 +2,7 @@
 import '@testing-library/jest-dom/vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import { ConfirmProvider } from '../../../components/confirm';
 import { afterEach, expect, it, vi } from 'vitest';
 import KnowledgeTab from '../KnowledgeTab';
 
@@ -35,7 +36,7 @@ afterEach(cleanup);
 it('在「可見範圍與標籤」按「設定標籤」：切到「來源與檔案」、翻到該檔案所在頁並開啟標籤編輯', async () => {
   // jsdom 沒有 scrollIntoView
   Element.prototype.scrollIntoView = vi.fn();
-  render(<MemoryRouter initialEntries={['/?tab=knowledge&kb=access']}><KnowledgeTab tenantId="t1" onError={vi.fn()} /></MemoryRouter>);
+  render(<ConfirmProvider><MemoryRouter initialEntries={['/?tab=knowledge&kb=access']}><KnowledgeTab tenantId="t1" onError={vi.fn()} /></MemoryRouter></ConfirmProvider>);
   const pending = await screen.findByText(/待設定標籤的檔案：1 份/);
   fireEvent.click(pending);
   fireEvent.click(screen.getByRole('button', { name: '設定標籤' }));

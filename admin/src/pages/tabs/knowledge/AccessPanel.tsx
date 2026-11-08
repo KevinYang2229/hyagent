@@ -10,6 +10,7 @@ import {
   labelNameFor,
   sourceNeedsAclWarning,
 } from "../knowledgeAcl.util";
+import { useConfirm } from '../../../components/confirm';
 
 /**
  * 「可見範圍與標籤」子頁：誰可以查詢這些知識（訪客可見範圍、待設定檔案、網站狀態）與可見性標籤管理。
@@ -29,6 +30,7 @@ export default function AccessPanel({ tenantId, aclReport, labels, files, onEdit
   onError: (e: unknown) => void;
 }) {
   const toast = useToast();
+  const confirm = useConfirm();
   const [newLabelId, setNewLabelId] = useState("");
   const [newLabelName, setNewLabelName] = useState("");
   const [addingLabel, setAddingLabel] = useState(false);
@@ -86,11 +88,13 @@ export default function AccessPanel({ tenantId, aclReport, labels, files, onEdit
    */
   const removeLabel = async (l: KnowledgeLabel) => {
     const affected = countFilesWithLabel(files, l.id);
-    const warn =
-      affected > 0
-        ? `\n\n${affected} 份文件目前套用此標籤，刪除後這些文件將回到未標記狀態（無人可見）。`
-        : "";
-    if (!confirm(`確定刪除標籤「${l.label}」（${l.id}）？${warn}`)) return;
+    const ok = await confirm({
+      title: `刪除標籤「${l.label}」（${l.id}）？`,
+      message: affected > 0
+        ? `${affected} 份文件目前套用此標籤，刪除後這些文件將回到未標記狀態（無人可見）。角色中的此標籤授權也會一併移除。`
+        : "目前沒有文件套用此標籤；角色中的此標籤授權會一併移除。",
+    });
+    if (!ok) return;
     try {
       const { affectedFiles } = await api.deleteKnowledgeLabel(tenantId, l.id);
       await onReload();

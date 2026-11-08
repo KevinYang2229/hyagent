@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Checkbox, useToast } from "@hyagent/ui";
 import { api, type KnowledgeFileMeta, type KnowledgeLabel } from "../../../api";
 import { fileLabelState, kbScopeId, labelNameFor, stripKbPrefix } from "../knowledgeAcl.util";
+import { useConfirm } from "../../../components/confirm";
 
 const pageSize = 5;
 
@@ -20,6 +21,7 @@ export default function FilesCard({ tenantId, files, labels, focusFileId, onFocu
   onError: (e: unknown) => void;
 }) {
   const toast = useToast();
+  const confirm = useConfirm();
   const [fileSearch, setFileSearch] = useState("");
   const [fileFilter, setFileFilter] = useState("all");
   const [filePage, setFilePage] = useState(1);
@@ -79,7 +81,7 @@ export default function FilesCard({ tenantId, files, labels, focusFileId, onFocu
   };
 
   const removeFile = async (f: KnowledgeFileMeta) => {
-    if (!confirm(`確定刪除檔案「${f.name}」？`)) return;
+    if (!(await confirm({ title: `刪除檔案「${f.name}」？`, message: `此檔案的 ${f.chunks} 個段落會從索引移除，所有人都查不到；要恢復需重新上傳。` }))) return;
     try {
       await api.deleteKnowledgeFile(tenantId, f.fileId);
       await onReload();

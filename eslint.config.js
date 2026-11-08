@@ -96,5 +96,24 @@ module.exports = [
     },
   },
 
+  // ---- 管理後台：不使用瀏覽器原生彈窗 ----
+  // 刪除、撤銷、清除等確認一律走 components/confirm 的 useConfirm()（共用 Dialog），
+  // 原生 confirm/alert/prompt 樣式無法統一、無法呈現結構化說明，深色模式下也很突兀。
+  {
+    files: ['admin/src/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-globals': ['error',
+        { name: 'confirm', message: '請改用 components/confirm 的 useConfirm()（共用確認彈窗）。' },
+        { name: 'alert', message: '請改用 toast 或 useConfirm()，不使用瀏覽器原生彈窗。' },
+        { name: 'prompt', message: '請改用頁面內的表單或 Dialog，不使用瀏覽器原生彈窗。' },
+      ],
+      'no-restricted-properties': ['error',
+        { object: 'window', property: 'confirm', message: '請改用 components/confirm 的 useConfirm()（共用確認彈窗）。' },
+        { object: 'window', property: 'alert', message: '請改用 toast 或 useConfirm()。' },
+        { object: 'window', property: 'prompt', message: '請改用頁面內的表單或 Dialog。' },
+      ],
+    },
+  },
+
   prettier,
 ];

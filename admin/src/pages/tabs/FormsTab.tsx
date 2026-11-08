@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api, type FormSummary } from '../../api';
+import { useConfirm } from '../../components/confirm';
 
 const SOURCE_LABEL: Record<FormSummary['source'], string> = {
   base: '內建共用',
@@ -16,6 +17,7 @@ export default function FormsTab({
   onError: (e: unknown) => void;
 }) {
   const navigate = useNavigate();
+  const confirm = useConfirm();
   // 從表單設計器新建後帶回：新表單尚未開放給任何人，提醒到權限頁加進角色
   const [searchParams] = useSearchParams();
   const created = searchParams.get('created');
@@ -34,7 +36,11 @@ export default function FormsTab({
   }, [reload]);
 
   async function remove(formId: string) {
-    if (!confirm(`確定刪除表單「${formId}」？（內建同名表單會自動回退顯示）`)) return;
+    const ok = await confirm({
+      title: `刪除表單「${forms?.find((f) => f.formId === formId)?.title ?? formId}」？`,
+      message: '各角色中此表單的授權會一併撤銷；若有內建同名表單，會自動回退顯示內建版本。',
+    });
+    if (!ok) return;
     try {
       await api.deleteForm(tenantId, formId);
       await reload();

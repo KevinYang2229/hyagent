@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, type WebhookEndpoint } from '../../api';
 import { IconPlus } from '../../components/icons';
+import { useConfirm } from '../../components/confirm';
 
 export default function WebhookTab({ tenantId, onError }: { tenantId: string; onError: (e: unknown) => void }) {
+  const confirm = useConfirm();
   const [list, setList] = useState<WebhookEndpoint[]>([]);
   const [url, setUrl] = useState('');
   const [secret, setSecret] = useState('');
@@ -45,6 +47,7 @@ export default function WebhookTab({ tenantId, onError }: { tenantId: string; on
   }
 
   async function remove(w: WebhookEndpoint) {
+    if (!(await confirm({ title: '刪除事件通知端點？', message: `之後表單送出不會再推送到 ${w.url}。若只是暫時不要，可改用「停用」。` }))) return;
     try {
       await api.deleteWebhook(tenantId, w.id);
       await load();

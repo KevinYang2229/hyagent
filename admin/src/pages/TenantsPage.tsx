@@ -5,6 +5,7 @@ import { useAuth } from '../auth';
 import AppLayout from '../components/AppLayout';
 import { IconChevron, IconInfo, IconPlus } from '../components/icons';
 import { Checkbox } from '@hyagent/ui';
+import { useConfirm } from '../components/confirm';
 
 export default function TenantsPage() {
   const { logout } = useAuth();
@@ -73,9 +74,16 @@ export default function TenantsPage() {
     setSelected(allSelected ? new Set() : new Set(deletable.map((t) => t.id)));
   }
 
+  const confirm = useConfirm();
   async function removeSelected() {
     if (selected.size === 0) return;
-    if (!window.confirm(`確定刪除選取的 ${selected.size} 個租戶？其 API 金鑰會一併移除，此動作無法復原。`)) return;
+    // 刪除租戶連同金鑰、設定一併移除且無法復原：要求輸入「刪除」再確認
+    const ok = await confirm({
+      title: `刪除選取的 ${selected.size} 個租戶？`,
+      message: '租戶的 API 金鑰、設定與資料會一併移除，此動作無法復原。',
+      requireText: '刪除',
+    });
+    if (!ok) return;
     try {
       await Promise.all([...selected].map((id) => api.deleteTenant(id)));
       setSelected(new Set());
