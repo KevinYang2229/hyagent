@@ -103,13 +103,18 @@ export function setupChecks(d: OverviewData): SetupCheck[] {
     if (general && !p.memberBundles.includes(GENERAL_SERVICES_ROLE_ID)) {
       checks.push({ id: 'general', step: '權限', title: '通用服務', status: 'warn', detail: '通用服務群組尚未開啟；若員工都需要這些服務，可一鍵開啟。', tab: 'permissions', required: false });
     }
-    // 開給所有人（含網站訪客）的能力：公開聊天視窗的訪客也能用，最容易被忽略
-    const guestScopes = [...new Set(p.bundles.filter((b) => p.tenantBundles.includes(b.id)).flatMap((b) => b.scopes))];
+    // 網站訪客實際可用的能力：「所有人」的角色（不含知識庫標籤／外部服務）＋直接給「網站訪客」的角色。
+    // 公開聊天視窗的訪客也能用，最容易被忽略；只看「所有人」會漏掉直接指派給訪客的角色。
+    const everyoneScopes = p.bundles.filter((b) => p.tenantBundles.includes(b.id)).flatMap((b) => b.scopes)
+      .filter((id) => !id.startsWith('kb:') && !id.startsWith('mcp:'));
+    const guestBucketScopes = p.bundles.filter((b) => (p.groupBundles[UNSPECIFIED] ?? []).includes(b.id)).flatMap((b) => b.scopes);
+    // 知識庫標籤本身不是「能力」，訪客的可見範圍另在知識庫頁檢視，這裡只列服務、表單與外部服務
+    const guestScopes = [...new Set([...everyoneScopes, ...guestBucketScopes])].filter((id) => !id.startsWith('kb:'));
     if (guestScopes.length > 0) {
       const label = (id: string) => p.capabilities.find((c) => c.id === id)?.label ?? id;
       const names = guestScopes.map(label);
       const shown = names.length > 4 ? `${names.slice(0, 4).join('、')} 等 ${names.length} 項` : names.join('、');
-      checks.push({ id: 'guest-open', step: '權限', title: '開放給網站訪客的能力', status: 'warn', detail: `公開聊天視窗的訪客也能使用：${shown}。若只想給員工，請改用「通用服務」或指定部門。`, tab: 'permissions', required: false });
+      checks.push({ id: 'guest-open', step: '權限', title: '開放給網站訪客的能力', status: 'warn', detail: `公開聊天視窗的訪客也能使用：${shown}。若只想給員工，請改用「通用服務」或指定部門，並從「所有人」與「網站訪客」的角色中移除。`, tab: 'permissions', required: false });
     }
     const idle = p.bundles.filter((b) => !applied(b.id) && b.id !== GENERAL_SERVICES_ROLE_ID);
     if (idle.length > 0) {

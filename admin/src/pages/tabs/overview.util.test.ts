@@ -65,4 +65,18 @@ describe('租戶總覽設定檢查', () => {
     expect(byId(d)['guest-open'].detail).toContain('智慧代理');
     expect(byId(fresh())['guest-open']).toBeUndefined();
   });
+
+  it('直接給「網站訪客」的角色也算訪客可用的能力；知識庫標籤不列入', () => {
+    const d = fresh();
+    d.policy = policy({
+      capabilities: [{ id: 'email:write', label: '寄送 Email', description: '', base: false }],
+      bundles: [{ id: 'emp', name: '一般員工', scopes: ['email:write', 'kb:public'] }],
+      groupBundles: { '—': ['emp'] },
+    });
+    expect(byId(d)['guest-open'].detail).toContain('寄送 Email');
+    expect(byId(d)['guest-open'].detail).not.toContain('kb:public');
+    // 只有知識庫標籤給訪客：不算開放能力
+    d.policy = policy({ bundles: [{ id: 'pub', name: '公開', scopes: ['kb:public'] }], groupBundles: { '—': ['pub'] } });
+    expect(byId(d)['guest-open']).toBeUndefined();
+  });
 });
