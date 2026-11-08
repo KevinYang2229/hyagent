@@ -11,5 +11,5 @@ export const UNKNOWN_DEPARTMENT = '—';
 
 /** 部門顯示名稱：訪客桶顯示為易懂的中文，其餘部門原樣顯示 */
 export function formatDepartment(dep: string): string {
-  return dep === UNKNOWN_DEPARTMENT ? '訪客／未建檔帳號' : dep;
+  return dep === UNKNOWN_DEPARTMENT ? '訪客／未指定部門' : dep;
 }

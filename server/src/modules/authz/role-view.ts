@@ -23,9 +23,12 @@ export interface RoleAssignments {
   groupBundles: Record<string, string[]>;
   accountBundles: Record<string, string[]>;
   tenantBundles: string[];
+  /** 所有登入員工（不含訪客）；選填以相容舊呼叫端，輸出一律帶上 */
+  memberBundles?: string[];
 }
 
 export interface RoleView extends RoleAssignments {
+  memberBundles: string[];
   /** 這次由舊直接授權換算出來的角色 id（後台據此提示「由舊設定轉換」） */
   convertedRoleIds: string[];
 }
@@ -102,5 +105,5 @@ export function toRoleView(
     }
   }
 
-  return { bundles, groupBundles, accountBundles, tenantBundles, convertedRoleIds };
+  return { bundles, groupBundles, accountBundles, tenantBundles, memberBundles: [...(roles.memberBundles ?? [])], convertedRoleIds };
 }

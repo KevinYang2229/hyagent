@@ -304,7 +304,8 @@ export default function FormDesignerPage() {
       const def = toDefinition(draft);
       if (isNew) await api.createForm(id, def);
       else await api.updateForm(id, formId, def);
-      navigate(`/tenants/${id}?tab=forms`);
+      // 新表單不會自動開放給任何人：帶回表單分頁，由那裡提示到權限頁把表單加進角色
+      navigate(isNew ? `/tenants/${id}?tab=forms&created=${encodeURIComponent(def.formId)}` : `/tenants/${id}?tab=forms`);
     } catch (e) {
       setErr((e as { message?: string }).message ?? '儲存失敗');
       const maybe = e as { details?: { field: string; message: string }[] };

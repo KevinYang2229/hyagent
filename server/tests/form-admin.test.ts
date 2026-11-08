@@ -116,8 +116,8 @@ describe('Form Designer 管理 API', () => {
       .set('x-admin-key', KEY)
       .send(validDef(fid))
       .expect(201);
-    // 建立後自動授予該表單 scope
-    expect(tenantStore.getTenant(TENANT)?.grantedScopes).toContain(`form:${fid}`);
+    // 模擬管理者事後授予（新建表單本身不自動授權）
+    tenantStore.updateTenant(TENANT, { grantedScopes: [...(tenantStore.getTenant(TENANT)?.grantedScopes ?? []), `form:${fid}`] });
 
     await request(app)
       .delete(`/api/admin/tenants/${TENANT}/forms/${fid}`)
@@ -179,8 +179,8 @@ describe('Form Designer 管理 API', () => {
   });
 });
 
-describe('新表單自動開放給所有人（角色版）', () => {
-  it('已有套用給所有人的角色時，新表單加進該角色；刪除表單時一併移除', async () => {
+describe('新表單不自動授權', () => {
+  it('建立表單不會改動角色或租戶層授權；刪除表單時一併移除角色裡的授權', async () => {
     const t = tenantStore.createTenant('form-everyone-role');
     tenantStore.updateTenant(t.id, { grantedScopes: [] });
     scopePolicy.setPolicy(t.id, {
@@ -190,8 +190,11 @@ describe('新表單自動開放給所有人（角色版）', () => {
     });
     const fid = `role-form-${Date.now()}`;
     await request(app).post(`/api/admin/tenants/${t.id}/forms`).set('x-admin-key', KEY).send(validDef(fid)).expect(201);
-    expect(scopePolicy.getPolicy(t.id).bundles![0].scopes).toContain(`form:${fid}`);
+    expect(scopePolicy.getPolicy(t.id).bundles![0].scopes).toEqual(['service:form']);
     expect(tenantStore.getTenant(t.id)!.grantedScopes).toEqual([]);
+    // 管理者事後把表單加進角色，刪除表單時要一併移除
+    const policy = scopePolicy.getPolicy(t.id);
+    scopePolicy.setPolicy(t.id, { ...policy, bundles: [{ id: 'all', name: '全體人員', scopes: ['service:form', `form:${fid}`] }] });
     await request(app).delete(`/api/admin/tenants/${t.id}/forms/${fid}`).set('x-admin-key', KEY).expect(200);
     expect(scopePolicy.getPolicy(t.id).bundles![0].scopes).not.toContain(`form:${fid}`);
   });

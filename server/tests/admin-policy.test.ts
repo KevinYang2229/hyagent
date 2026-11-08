@@ -229,4 +229,65 @@ describe('admin 權限 API', () => {
       expect(roleScopes((res.body as { data: unknown }).data, 'everyone')).toEqual(['service:agent']);
     });
   });
+
+  it('setPolicy 帶過期的 baseVersion → 409，不覆蓋期間的變更', async () => {
+    const t = tenantStore.createTenant('admin-policy-version');
+    tenantStore.updateTenant(t.id, { grantedScopes: [] });
+    const getRes = mockRes();
+    await adminController.getPolicy({ params: { id: t.id } } as never, getRes as never);
+    const { version } = (getRes.body as { data: { version: string } }).data;
+    expect(typeof version).toBe('string');
+
+    // 期間有人改了權限（例如另一位管理者）
+    scopePolicy.setPolicy(t.id, {
+      groups: {}, accounts: {},
+      bundles: [{ id: 'r1', name: '別人加的', scopes: ['service:form'] }],
+      groupBundles: {}, accountBundles: {}, tenantBundles: ['r1'],
+    });
+    const empty = { grantedScopes: [], groups: {}, accounts: {}, bundles: [], groupBundles: {}, accountBundles: {}, tenantBundles: [] };
+    await expect(
+      adminController.setPolicy({ params: { id: t.id }, body: { ...empty, baseVersion: version } } as never, mockRes() as never),
+    ).rejects.toMatchObject({ statusCode: 409 });
+    expect(scopePolicy.getPolicy(t.id).bundles).toHaveLength(1);
+
+    // 以最新版本儲存則成功
+    const fresh = mockRes();
+    await adminController.getPolicy({ params: { id: t.id } } as never, fresh as never);
+    const latest = (fresh.body as { data: { version: string } }).data.version;
+    await adminController.setPolicy({ params: { id: t.id }, body: { ...empty, baseVersion: latest } } as never, mockRes() as never);
+    expect(scopePolicy.getPolicy(t.id).bundles).toHaveLength(0);
+  });
+});
+
+describe('新租戶預設權限', () => {
+  it('最小權限：不開放任何能力；預建關閉中的「通用服務」群組，開啟後只給登入員工', async () => {
+    const res = mockRes();
+    await adminController.createTenant({ body: { name: 'new-tenant-default-role' } } as never, res as never);
+    const tenantId = (res.body as { data: { tenant: { id: string } } }).data.tenant.id;
+    expect(tenantStore.getTenant(tenantId)!.grantedScopes).toEqual([]);
+    const policy = scopePolicy.getPolicy(tenantId);
+    expect(policy.bundles).toHaveLength(1);
+    expect(policy.bundles![0]).toMatchObject({ id: 'general-services', name: '通用服務' });
+    expect(policy.bundles![0].scopes).toEqual(expect.arrayContaining(['service:form', 'service:knowledge', 'service:agent']));
+    expect(policy.tenantBundles ?? []).toEqual([]);
+    // 訪客與一般登入者都還沒有任何服務
+    expect(resolveScopes({ tenantId, userId: '' }).some((s) => s.startsWith('service:'))).toBe(false);
+    expect(resolveScopes({ tenantId, userId: 'someone' }).some((s) => s.startsWith('service:'))).toBe(false);
+
+    // 一鍵開啟：套用給所有登入員工
+    scopePolicy.setPolicy(tenantId, { ...policy, memberBundles: ['general-services'] });
+    expect(resolveScopes({ tenantId, userId: 'someone' })).toEqual(expect.arrayContaining(['service:form', 'service:knowledge']));
+    expect(resolveScopes({ tenantId, userId: '' }).some((s) => s.startsWith('service:'))).toBe(false);
+  });
+
+  it('setPolicy 接受 memberBundles，且只能引用已定義的角色', async () => {
+    const t = tenantStore.createTenant('member-bundles');
+    const base = { grantedScopes: [], groups: {}, accounts: {}, groupBundles: {}, accountBundles: {}, tenantBundles: [] };
+    await adminController.setPolicy({ params: { id: t.id }, body: {
+      ...base, bundles: [{ id: 'g', name: '通用服務', scopes: ['service:knowledge'] }], memberBundles: ['g'],
+    } } as never, mockRes() as never);
+    expect(scopePolicy.getPolicy(t.id).memberBundles).toEqual(['g']);
+    await expect(adminController.setPolicy({ params: { id: t.id }, body: { ...base, bundles: [], memberBundles: ['missing'] } } as never, mockRes() as never))
+      .rejects.toMatchObject({ statusCode: 400 });
+  });
 });

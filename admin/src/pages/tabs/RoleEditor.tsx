@@ -3,7 +3,7 @@ import { Checkbox } from '@hyagent/ui';
 import type { ScopeDef } from '../../api';
 import { formatDepartment } from '../../components/department.util';
 import {
-  capabilityGaps, capabilityLabel, everyoneBlockedScopes, groupCapabilities, isMcp, toggleCapability, type Person, type RoleDraft,
+  capabilityGaps, capabilityLabel, everyoneBlockedScopes, groupCapabilities, isKb, isMcp, toggleCapability, type Person, type RoleDraft,
 } from './permissions.util';
 
 /** 選項多於此數才顯示搜尋框 */
@@ -20,11 +20,17 @@ function CheckList({ label, items, selected, onToggle, disabled }: {
   const [query, setQuery] = useState('');
   const q = query.trim().toLocaleLowerCase();
   const shown = q ? items.filter((it) => `${it.label} ${it.sub ?? ''}`.toLocaleLowerCase().includes(q)) : items;
+  const many = items.length > SEARCH_THRESHOLD;
+  const selectedCount = items.filter((it) => selected.includes(it.id)).length;
   return <div className="role-checklist">
-    {items.length > SEARCH_THRESHOLD && (
-      <input className="input" aria-label={`搜尋${label}`} placeholder={`搜尋${label}…`} value={query} onChange={(e) => setQuery(e.target.value)} />
+    {many && (
+      <div className="role-checklist-toolbar">
+        <input className="input" aria-label={`搜尋${label}`} placeholder={`搜尋${label}…`} value={query} onChange={(e) => setQuery(e.target.value)} />
+        <span className="perm-text">已選 {selectedCount} / 共 {items.length}</span>
+      </div>
     )}
-    <div className="role-check-grid" role="group" aria-label={label}>
+    {/* 選項多時限制高度可捲動，避免數百個部門／帳號／表單把編輯器撐到看不到「完成」 */}
+    <div className={`role-check-grid${many ? ' is-scroll' : ''}`} role="group" aria-label={label}>
       {shown.map((it) => (
         <label key={it.id} className="role-check">
           <Checkbox checked={selected.includes(it.id)} disabled={disabled?.(it.id)} onChange={() => onToggle(it.id)} />
@@ -54,17 +60,14 @@ export default function RoleEditor({ draft, isNew, capabilities, departments, pe
   const groups = groupCapabilities(capabilities).filter((g) => g.items.length > 0);
   const blocked = everyoneBlockedScopes(draft.scopes);
   const gaps = capabilityGaps(draft.scopes, capabilities);
-  const hasTarget = draft.everyone || draft.departments.length > 0 || draft.accounts.length > 0;
+  const hasTarget = draft.everyone || draft.members || draft.departments.length > 0 || draft.accounts.length > 0;
 
+  // 開給所有人的角色不能含知識庫標籤或外部服務（會開放給網站訪客）。
+  // 直接停用這些選項，不再自動取消「所有人」——那會讓全公司默默失去這個角色的其他能力。
+  const blockedForEveryone = (id: string) => draft.everyone && (isKb(id) || isMcp(id)) && !draft.scopes.includes(id);
   const toggleScope = (id: string) => {
+    if (blockedForEveryone(id)) return;
     const result = toggleCapability(draft.scopes, id, capabilities);
-    const nowBlocked = everyoneBlockedScopes(result.scopes);
-    // 開給所有人的角色加入知識庫標籤或外部服務 → 改為只套用給指定對象，並提醒確認
-    if (draft.everyone && nowBlocked.length > 0) {
-      onChange({ ...draft, scopes: result.scopes, everyone: false });
-      setNotice([result.notice, '這個角色含知識庫標籤或外部服務，不能開給所有人（含網站訪客），已改為只套用給下方選擇的部門或帳號，請確認套用對象。'].filter(Boolean).join(' '));
-      return;
-    }
     onChange({ ...draft, scopes: result.scopes });
     setNotice(result.notice ?? '');
   };
@@ -94,7 +97,10 @@ export default function RoleEditor({ draft, isNew, capabilities, departments, pe
       {groups.map((g) => (
         <div key={g.key} className="role-editor-group">
           <div className="field-label">{g.label}</div>
-          <CheckList label={g.label} items={itemsOf(g.items)} selected={draft.scopes} onToggle={toggleScope} />
+          <CheckList label={g.label} items={itemsOf(g.items)} selected={draft.scopes} onToggle={toggleScope} disabled={blockedForEveryone} />
+          {draft.everyone && (g.key === 'kb' || g.key === 'external') && g.items.some((c) => isKb(c.id) || isMcp(c.id)) && (
+            <p className="perm-text">此角色開給所有人（含網站訪客），不能加入{g.key === 'kb' ? '知識庫標籤' : '外部服務'}。請另建一個角色並套用給部門或帳號。</p>
+          )}
         </div>
       ))}
       {notice && <p className="perm-notice" role="status">{notice}</p>}
@@ -110,7 +116,13 @@ export default function RoleEditor({ draft, isNew, capabilities, departments, pe
         <Checkbox checked={draft.everyone} disabled={blocked.length > 0} onChange={() => onChange({ ...draft, everyone: !draft.everyone })} />
         <span>所有人（含網站訪客）</span>
       </label>
-      {blocked.length > 0 && <p className="perm-text">含 {blocked.map((s) => `「${capabilityLabel(capabilities, s)}」`).join('、')}，不能開給所有人，請選擇部門或帳號。</p>}
+      {blocked.length > 0 && <p className="perm-text">含 {blocked.map((s) => `「${capabilityLabel(capabilities, s)}」`).join('、')}，不能開給所有人，請選擇所有登入員工、部門或帳號。</p>}
+      {!draft.everyone && (
+        <label className="role-check role-check-everyone">
+          <Checkbox checked={draft.members} onChange={() => onChange({ ...draft, members: !draft.members })} />
+          <span>所有登入員工（不含網站訪客）</span>
+        </label>
+      )}
       {draft.everyone ? (
         <p className="perm-text">已套用給所有人，不需要再選部門或帳號。{(draft.departments.length + draft.accounts.length) > 0 && `另外指定的 ${draft.departments.length + draft.accounts.length} 個部門／帳號會保留。`}</p>
       ) : <>

@@ -32,6 +32,11 @@ export interface TenantPolicy {
    * 但能力跟著角色定義走，改角色一次全生效；kb:／mcp: 不可經此開給所有人（寫入端驗證）。
    */
   tenantBundles?: string[];
+  /**
+   * 套用給「所有登入員工」（不含網站訪客）的角色 ids。用於通用服務群組：一鍵開關全員通用能力，
+   * 又不會連帶開給公開聊天視窗的訪客。
+   */
+  memberBundles?: string[];
 }
 
 const STORE_FILE = dataFile('oa-agent-scope-policy.json');
@@ -81,6 +86,7 @@ function clone(p: TenantPolicy): TenantPolicy {
     ...(p.groupBundles ? { groupBundles: copyMap(p.groupBundles) } : {}),
     ...(p.accountBundles ? { accountBundles: copyMap(p.accountBundles) } : {}),
     ...(p.tenantBundles ? { tenantBundles: [...p.tenantBundles] } : {}),
+    ...(p.memberBundles ? { memberBundles: [...p.memberBundles] } : {}),
   };
 }
 
@@ -120,6 +126,11 @@ export const scopePolicy = {
   tenantBundleScopes(tenantId: string): string[] {
     const p = policies.get(tenantId);
     return expandBundles(p, p?.tenantBundles ?? []);
+  },
+  /** 套用給所有登入員工（不含訪客）的角色展開 scopes */
+  memberBundleScopes(tenantId: string): string[] {
+    const p = policies.get(tenantId);
+    return expandBundles(p, p?.memberBundles ?? []);
   },
   /** 取某租戶政策複本（admin 讀取用）。 */
   getPolicy(tenantId: string): TenantPolicy {

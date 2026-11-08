@@ -2,6 +2,7 @@
  * 管理 API 控制器：建立 / 查詢租戶、簽發 API Key、登記 webhook、查用量。
  * 全部受 requireAdmin 保護（x-admin-key）。
  */
+import { createHash } from 'node:crypto';
 import type { Request, Response } from 'express';
 import { DEFAULT_TENANT_ID, tenantStore } from '@/modules/tenant/tenant.store';
 import { serviceRegistry } from '@/modules/conversation/service.registry';
@@ -111,6 +112,27 @@ function publicTenant(tenant: NonNullable<ReturnType<typeof tenantStore.getTenan
 }
 
 /**
+ * 權限資料的版本：直接對已儲存的原始資料（非換算後的檢視）取雜湊。
+ * 權限頁是整份覆寫，若讀取後有人改過（另一位管理者、刪表單、人員同步清掉個人授權），
+ * 拿舊資料存回會把那些變更默默蓋掉；以此版本做樂觀鎖。
+ */
+function policyVersion(tenantId: string): string {
+  const tenant = tenantStore.getTenant(tenantId)!;
+  const policy = scopePolicy.getPolicy(tenantId);
+  const raw = JSON.stringify({
+    grantedScopes: tenant.grantedScopes ?? [],
+    groups: policy.groups,
+    accounts: policy.accounts,
+    bundles: policy.bundles ?? [],
+    groupBundles: policy.groupBundles ?? {},
+    accountBundles: policy.accountBundles ?? {},
+    tenantBundles: policy.tenantBundles ?? [],
+    memberBundles: policy.memberBundles ?? [],
+  });
+  return createHash('sha256').update(raw).digest('hex').slice(0, 16);
+}
+
+/**
  * 權限頁讀取檢視：後台只呈現「角色」。舊的直接授權（全租戶／部門／帳號）在這裡換算成等效角色
  * 回傳（toRoleView），直接授權欄位一律回空——後台存檔時送回空值，資料就此改由角色承載。
  * 換算只發生在讀取，不寫回；管理員按儲存前資料不動，有效權限也不變。
@@ -135,13 +157,15 @@ function policyView(tenantId: string) {
       groupBundles: policy.groupBundles ?? {},
       accountBundles: policy.accountBundles ?? {},
       tenantBundles: policy.tenantBundles ?? [],
+      memberBundles: policy.memberBundles ?? [],
     },
     {
-      department: (id) => (id === UNKNOWN_DEPARTMENT ? '訪客／未建檔帳號' : id),
+      department: (id) => (id === UNKNOWN_DEPARTMENT ? '訪客／未指定部門' : id),
       account: (id) => getApplicant(id, tenantId).name,
     },
   );
   return {
+    version: policyVersion(tenantId),
     capabilities,
     grantedScopes: [] as string[],
     groups: {} as Record<string, string[]>,
@@ -157,14 +181,33 @@ function policyView(tenantId: string) {
   };
 }
 
+/** 通用服務群組的角色 id（後台據此顯示一鍵開關；需與 admin 端 GENERAL_SERVICES_ROLE_ID 同值） */
+const GENERAL_SERVICES_ROLE_ID = 'general-services';
+
 export const adminController = {
   async createTenant(req: Request, res: Response): Promise<void> {
     const { name, allowedOrigins } = req.body as CreateTenantInput;
     const tenant = tenantStore.createTenant(name, allowedOrigins ?? []);
-    // 新租戶自動授予標準服務 + 內建表單，並標記已完成遷移，避免之後被一次性遷移覆寫
+    // 最小權限：新租戶不開放任何能力（不再開給所有人含網站訪客）。
+    // 預建「通用服務」群組（標準服務＋內建表單），預設關閉；管理者在權限頁一鍵開給所有登入員工（不含訪客）。
+    // 標記已完成遷移，避免被一次性遷移覆寫。
     const withScopes = tenantStore.updateTenant(tenant.id, {
-      grantedScopes: defaultGrantedScopes(tenant.id),
+      grantedScopes: [],
       scopesMigrated: true,
+    });
+    scopePolicy.setPolicy(tenant.id, {
+      groups: {},
+      accounts: {},
+      bundles: [{
+        id: GENERAL_SERVICES_ROLE_ID,
+        name: '通用服務',
+        description: '全員通用的服務。預設關閉，可在權限頁一鍵開給所有登入員工（不含網站訪客）。',
+        scopes: defaultGrantedScopes(tenant.id),
+      }],
+      groupBundles: {},
+      accountBundles: {},
+      tenantBundles: [],
+      memberBundles: [],
     });
     // 一併發一把公開金鑰，方便立即接入
     const publishable = tenantStore.createApiKey(tenant.id, 'publishable');
@@ -432,6 +475,9 @@ export const adminController = {
   async setPolicy(req: Request, res: Response): Promise<void> {
     const tenant = ensureTenant(String(req.params.id));
     const body = req.body as PutPolicyInput;
+    if (body.baseVersion !== undefined && body.baseVersion !== policyVersion(tenant.id)) {
+      throw AppError.conflict('權限設定在你開啟此頁後已被變更（可能是其他管理者、表單異動或人員同步）。請重新載入後再修改。', 'POLICY_VERSION_CONFLICT');
+    }
     // 授予範圍一律限該租戶 grantable（擋 BASE / '*' / 目錄外 / 他租戶表單）
     // 租戶層（grantedScopes）會併給該租戶所有人含訪客，額外拒絕 kb: 前綴（見 assertTenantGrantable）
     assertTenantGrantable(body.grantedScopes, tenant.id);
@@ -443,12 +489,13 @@ export const adminController = {
     const groupBundles = body.groupBundles ?? {};
     const accountBundles = body.accountBundles ?? {};
     const tenantBundles = body.tenantBundles ?? [];
+    const memberBundles = body.memberBundles ?? [];
     for (const b of bundles) assertGrantableScopes(b.scopes, tenant.id);
     const bundleIds = new Set(bundles.map((b) => b.id));
     if (bundleIds.size !== bundles.length) {
       throw AppError.badRequest('角色 id 不可重複');
     }
-    for (const ids of [...Object.values(groupBundles), ...Object.values(accountBundles), tenantBundles]) {
+    for (const ids of [...Object.values(groupBundles), ...Object.values(accountBundles), tenantBundles, memberBundles]) {
       for (const id of ids) {
         if (!bundleIds.has(id)) throw AppError.badRequest(`指派了不存在的角色：${id}`);
       }
@@ -470,6 +517,7 @@ export const adminController = {
       groupBundles,
       accountBundles,
       tenantBundles,
+      memberBundles,
     });
 
     res.status(200).json({ data: policyView(tenant.id) });

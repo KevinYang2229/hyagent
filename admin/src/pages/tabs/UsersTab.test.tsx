@@ -36,7 +36,7 @@ it('部門從既有部門選擇，也可新增部門', async () => {
   vi.mocked(api.addDirectoryUser).mockResolvedValue({ users: [] });
   render(<UsersTab tenantId="tenant-a" onError={vi.fn()} />);
   const select = await screen.findByLabelText('部門（選填）');
-  expect([...(select as HTMLSelectElement).options].map((o) => o.text)).toEqual(['未指定', '人資', '＋ 新增部門…']);
+  expect([...(select as HTMLSelectElement).options].map((o) => o.text)).toEqual(['未指定（與網站訪客同權限）', '人資', '＋ 新增部門…']);
   fireEvent.change(screen.getByLabelText('登入帳號'), { target: { value: 'bob' } });
   fireEvent.change(screen.getByLabelText('顯示名稱'), { target: { value: 'Bob' } });
   fireEvent.change(select, { target: { value: '__new__' } });
@@ -90,7 +90,7 @@ it('部門下拉包含已無成員但仍存在的部門', async () => {
   render(<UsersTab tenantId="tenant-a" onError={vi.fn()} />);
   await screen.findByText('已無成員');
   const select = screen.getByLabelText('部門（選填）') as HTMLSelectElement;
-  expect([...select.options].map((o) => o.text)).toEqual(['未指定', '行銷部', '＋ 新增部門…']);
+  expect([...select.options].map((o) => o.text)).toEqual(['未指定（與網站訪客同權限）', '行銷部', '＋ 新增部門…']);
   fireEvent.click(screen.getByRole('button', { name: '編輯 Kevin' }));
   const form = screen.getByRole('form', { name: '編輯 Kevin' });
   expect([...form.querySelector('select')!.options].map((o) => o.text)).toContain('行銷部');
@@ -259,4 +259,27 @@ it('ssoAutoProvision 開啟時，部門提示也涵蓋登入', async () => {
   await act(async () => { await Promise.resolve(); });
   fireEvent.click(await screen.findByRole('button', { name: '改名 舊部門' }));
   expect(await screen.findByText(/員工下次登入時被蓋回/)).toBeInTheDocument();
+});
+it('列出未指定部門（與訪客同權限）的帳號，超過 5 位時其餘收合', async () => {
+  const users = Array.from({ length: 7 }, (_, i) => ({ id: `u${i}`, name: `User${i}`, department: '—' }));
+  vi.mocked(api.listDirectoryUsers).mockResolvedValue({ users: [...users, { id: 'amy', name: 'Amy', department: '人資' }] });
+  render(<UsersTab tenantId="tenant-a" onError={vi.fn()} />);
+  const warn = await screen.findByText(/7 位未指定部門/);
+  expect(warn).toHaveTextContent('User0（u0）');
+  expect(warn).not.toHaveTextContent('Amy');
+  expect(screen.getByText('另有 2 項')).toBeInTheDocument();
+});
+it('使用者清單可搜尋、依部門篩選，並每頁 20 位分頁', async () => {
+  const users = Array.from({ length: 25 }, (_, i) => ({ id: `u${i}`, name: `User${i}`, department: i < 3 ? '人資' : '行銷部' }));
+  vi.mocked(api.listDirectoryUsers).mockResolvedValue({ users });
+  render(<UsersTab tenantId="tenant-a" onError={vi.fn()} />);
+  expect(await screen.findByText(/共 25 位 · 第 1 \/ 2 頁/)).toBeInTheDocument();
+  expect(screen.queryByText('帳號：u24 · 部門：行銷部')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '下一頁' }));
+  expect(screen.getByText(/帳號：u24/)).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('依部門篩選'), { target: { value: '人資' } });
+  expect(screen.getAllByText(/部門：人資/)).toHaveLength(3);
+  expect(screen.queryByRole('navigation', { name: '使用者清單分頁' })).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('搜尋使用者'), { target: { value: 'User1' } });
+  expect(screen.getAllByText(/部門：人資/)).toHaveLength(1);
 });

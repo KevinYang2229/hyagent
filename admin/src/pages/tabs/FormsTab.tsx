@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api, type FormSummary } from '../../api';
 
 const SOURCE_LABEL: Record<FormSummary['source'], string> = {
@@ -16,6 +16,9 @@ export default function FormsTab({
   onError: (e: unknown) => void;
 }) {
   const navigate = useNavigate();
+  // 從表單設計器新建後帶回：新表單尚未開放給任何人，提醒到權限頁加進角色
+  const [searchParams] = useSearchParams();
+  const created = searchParams.get('created');
   const [forms, setForms] = useState<FormSummary[] | null>(null);
 
   const reload = useCallback(async () => {
@@ -55,6 +58,15 @@ export default function FormsTab({
         </button>
       </div>
 
+      {created && (
+        <div className="card-body">
+          <div className="banner" role="status">
+            已建立表單「{forms?.find((f) => f.formId === created)?.title ?? created}」。新表單尚未開放給任何人（包含網站訪客），
+            請到「權限」把它加進角色（例如「通用服務」），並確認角色含「填表申請」。
+            <Link className="btn btn-sm" to="?tab=permissions" style={{ marginLeft: 8 }}>前往權限</Link>
+          </div>
+        </div>
+      )}
       <ul className="list">
         {forms === null && <li className="empty">載入中…</li>}
         {forms?.length === 0 && <li className="empty">尚無表單</li>}

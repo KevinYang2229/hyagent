@@ -100,7 +100,7 @@ describe('POST /admin/tenants/:id/knowledge/suggestion', () => {
     const blocked = await regenerate().expect(422);
     expect(blocked.body.error.message).toContain('所有人（包含訪客）');
     expect(blocked.body.error.message).toContain('進階標籤模式');
-    expect(blocked.body.error.message).toContain('訪客／未建檔帳號');
+    expect(blocked.body.error.message).toContain('訪客／未指定部門');
     expect(blocked.body.error.message).not.toContain('關閉');
 
     await request(app).put(`/api/admin/tenants/${t.id}/knowledge/source`)

@@ -165,6 +165,10 @@ export const putPolicySchema = z.object({
   groupBundles: z.record(z.string(), z.array(z.string())).default({}),
   accountBundles: z.record(z.string(), z.array(z.string())).default({}),
   tenantBundles: z.array(z.string()).default([]),
+  memberBundles: z.array(z.string()).default([]),
+  // 讀取時拿到的版本：與目前資料不符代表期間有人改過（其他管理者、新表單、人員同步），回 409。
+  // 選填以相容舊呼叫端；後台權限頁一律帶上。
+  baseVersion: z.string().optional(),
 });
 export type PutPolicyInput = z.infer<typeof putPolicySchema>;
 

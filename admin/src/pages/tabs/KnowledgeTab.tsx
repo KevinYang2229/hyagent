@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Checkbox, useToast } from "@hyagent/ui";
+import { Checkbox, Dialog, useToast } from "@hyagent/ui";
 import {
   api,
   type IngestJob,
@@ -12,9 +12,11 @@ import {
   type KnowledgeSource,
   type PromptSource,
   type QueryHit,
+  type QueryTestPrincipal,
   type SuggestedPromptText,
 } from "../../api";
 import NumberField from "../../components/NumberField";
+import CollapsibleList from "../../components/CollapsibleList";
 import {
   countFilesWithLabel,
   fileLabelState,
@@ -57,13 +59,14 @@ export default function KnowledgeTab({
   // 從回饋分頁「用這題測試檢索」帶入：?q=問題&as=提問者，預填後由管理員按下測試
   const [searchParams] = useSearchParams();
   const [question, setQuestion] = useState(searchParams.get("q") ?? "");
-  const [asUserId, setAsUserId] = useState(searchParams.get("as") ?? ""); // 試查身分：留空＝以管理者身分（見 test()）
+  const [asUserId, setAsUserId] = useState(searchParams.get("as") ?? ""); // 試查身分：留空＝以網站訪客身分
   const testCardRef = useRef<HTMLDivElement>(null);
   const loaded = !!src && !!meta; // 載入完成前卡片還沒渲染，ref 是空的
   useEffect(() => {
     if (loaded && searchParams.get("q")) testCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [searchParams, loaded]);
   const [hits, setHits] = useState<QueryHit[]>([]);
+  const [queriedAs, setQueriedAs] = useState<QueryTestPrincipal | null>(null);
   const [fileSearch, setFileSearch] = useState("");
   const [fileFilter, setFileFilter] = useState("all");
   const [filePage, setFilePage] = useState(1);
@@ -217,14 +220,20 @@ export default function KnowledgeTab({
 
   const test = async () => {
     try {
-      const { hits } = await api.knowledgeQueryTest(tenantId, question, asUserId.trim() || undefined);
+      const { hits, principal } = await api.knowledgeQueryTest(tenantId, question, asUserId.trim() || undefined);
       setHits(hits);
+      setQueriedAs(principal ?? null);
     } catch (e) {
       onError(e);
     }
   };
 
+  // 清除索引是不可逆操作：先開確認框，輸入「清除」才放行
+  const [confirmingClear, setConfirmingClear] = useState(false);
+  const [clearTyped, setClearTyped] = useState("");
   const clear = async () => {
+    setConfirmingClear(false);
+    setClearTyped("");
     try {
       await api.deleteKnowledge(tenantId);
       await Promise.all([load(), loadAcl()]);
@@ -449,7 +458,7 @@ export default function KnowledgeTab({
             <Link className="btn btn-sm" to="?tab=permissions">設定角色</Link>
           </div>
           <div className="card-body">
-            <div className="row-title">訪客／未建檔帳號</div>
+            <div className="row-title">訪客／未指定部門</div>
             <p className="row-sub">以下只顯示訪客的可見範圍；其他使用者請到「測試查詢」指定身分驗證。</p>
             <div className="kb-label-chips">
               <span className={`kb-label-chip${guestCorpusState(aclReport.guest) === "ok" ? "" : " kb-label-chip--warn"}`}>
@@ -458,11 +467,9 @@ export default function KnowledgeTab({
               <span className="kb-label-chip">網站：{aclReport.guest.source ? "可查詢" : "無可查詢內容"}</span>
               <span className="kb-label-chip">可查詢檔案：{aclReport.guest.files} 份</span>
             </div>
-            <p className="row-sub">
-              訪客可見範圍：{aclReport.guest.scopes.length
-                ? aclReport.guest.scopes.map((scope) => labelNameFor(labels, scope)).join("、")
-                : "尚未授權"}
-            </p>
+            <div className="row-sub">
+              訪客可見範圍：<CollapsibleList items={aclReport.guest.scopes} render={(scope) => labelNameFor(labels, scope)} empty="尚未授權" />
+            </div>
             {guestCorpusState(aclReport.guest) === "no-grant" && (
               <p className="row-sub">下一步：要開放網站，請將「網站可查詢對象」設為「所有人」；要開放檔案或進階標籤來源，請到「權限」把標籤加進套用給「{aclReport.guest.department}」部門的角色。</p>
             )}
@@ -797,7 +804,7 @@ export default function KnowledgeTab({
               </button>
               <button
                 className="btn btn-danger"
-                onClick={clear}
+                onClick={() => setConfirmingClear(true)}
                 disabled={parsing || meta.status === "none"}
               >
                 清除索引
@@ -1187,9 +1194,16 @@ export default function KnowledgeTab({
                 className="input"
                 value={asUserId}
                 onChange={(e) => setAsUserId(e.target.value)}
-                placeholder="留空＝以管理者身分（權限最大，通常查得到全部）"
+                placeholder="輸入帳號；留空＝以網站訪客（未登入）身分查詢"
               />
             </div>
+            {queriedAs && (
+              <div className="row-sub" role="status" style={{ marginTop: 8 }}>
+                本次以{queriedAs.kind === "guest" ? "網站訪客" : `「${queriedAs.userId}」`}查詢
+                {queriedAs.kind === "user" && `（部門：${queriedAs.department === "—" ? "未指定，與網站訪客同權限" : queriedAs.department}${queriedAs.inDirectory ? "" : "；不在使用者目錄，若帳號輸入錯誤請更正"}）`}
+                ・可見範圍：<CollapsibleList items={queriedAs.labels} render={(scope) => labelNameFor(labels, scope)} empty="無（查不到任何檔案或網站內容）" />
+              </div>
+            )}
           </div>
           <ul className="list">
             {hits.map((h, i) => (
@@ -1209,6 +1223,24 @@ export default function KnowledgeTab({
       </div>
 
 
+      <Dialog
+        isOpen={confirmingClear}
+        title="清除整個知識庫索引？"
+        confirmText="清除索引"
+        confirmVariant="danger"
+        confirmDisabled={clearTyped.trim() !== "清除"}
+        onClose={() => { setConfirmingClear(false); setClearTyped(""); }}
+        onConfirm={() => void clear()}
+      >
+        <p style={{ marginTop: 0 }}>
+          將刪除 {meta.chunkCount ?? 0} 個段落（含 {meta.files?.length ?? 0} 份檔案與網站內容），所有人會立即查不到這些知識，無法復原。
+          要恢復必須重新上傳檔案並重新解析網站。
+        </p>
+        <label className="field">
+          <span className="field-label">請輸入「清除」以確認</span>
+          <input className="input" value={clearTyped} onChange={(e) => setClearTyped(e.target.value)} autoFocus />
+        </label>
+      </Dialog>
     </div>
   );
 }

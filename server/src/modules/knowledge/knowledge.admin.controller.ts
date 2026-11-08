@@ -10,7 +10,7 @@ import { assertValidLabelId, kbScopeId } from '@/modules/authz/scope-catalog';
 import { scopePolicy } from '@/modules/authz/scope-policy';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 import { sourceVisibilityScopes } from './source-access';
-import { listDepartments, UNKNOWN_DEPARTMENT } from '@/modules/user/user.directory';
+import { getApplicant, isKnownUser, listDepartments, UNKNOWN_DEPARTMENT } from '@/modules/user/user.directory';
 import type { IngestParams } from './ingest.service';
 import { deleteIndex, loadIndexText } from './knowledge.index.repo';
 import { ingestFile, removeFile } from './knowledge-file.service';
@@ -19,7 +19,7 @@ import { knowledgeStore, refreshKnowledgeStore, type KnowledgeFileMeta, type Kno
 import { regenerateSlot, type RegenerateFailure } from './knowledge.suggest';
 import { splitChunksBySource, type SourceKey } from './prompt-slots';
 import { pickRetriever } from './retriever.pick';
-import { guestVisibilityScopesOf, setFileVisibility, setSourceVisibility } from './knowledge.visibility';
+import { guestVisibilityScopesOf, setFileVisibility, setSourceVisibility, visibilityScopesOf } from './knowledge.visibility';
 
 /**
  * 確認租戶存在，否則 404；本檔的區域慣例，比照 admin.controller.ts:40-44、
@@ -113,7 +113,7 @@ function regenerateError(reason: RegenerateFailure, detail?: string): AppError {
     case 'no-visible-chunks': {
       return AppError.unprocessable(
         '該來源有索引內容，但沒有訪客可見的語料，無法生成公開推薦詞。'
-          + '若要公開網站內容，請將網站可查詢對象設為「所有人（包含訪客）」。檔案或進階標籤模式則需設定可見性標籤，再到「權限」將相同標籤授權給「訪客／未建檔帳號」部門。'
+          + '若要公開網站內容，請將網站可查詢對象設為「所有人（包含訪客）」。檔案或進階標籤模式則需設定可見性標籤，再到「權限」將相同標籤授權給「訪客／未指定部門」部門。'
           + '儲存後即可重新生成，不必重新解析。僅限登入者可見的內容不會用於公開推薦詞。',
       );
     }
@@ -182,12 +182,22 @@ export const knowledgeAdminController = {
     const tenantId = String(req.params.id);
     const { question, asUserId } = req.body as { question: string; asUserId?: string };
     const retriever = await pickRetriever(tenantId);
-    // 管理者權限最大，用自身身分試查永遠成功、等於沒測到。
-    // 權限上線後管理者最需要回答的是「HR 的小明看不看得到這份」。
-    const userId = asUserId ?? (req.user?.sub ?? 'admin');
+    // 未指定身分＝以網站訪客查詢。先前用管理者 token 的 sub（'admin'）查，但 'admin' 不在目錄、
+    // 部門落到「未指定」，實際上就是訪客權限，畫面卻寫「管理者（權限最大）」，誤導判斷。
+    const userId = asUserId?.trim() ?? '';
     const hits = await retriever.search({ tenantId, userId }, question);
+    // 回報這次實際用的身分與可見標籤：輸錯帳號時看得出「不在目錄、以未指定部門處理」
+    const applicant = userId ? getApplicant(userId, tenantId) : undefined;
+    const principal = {
+      kind: userId ? ('user' as const) : ('guest' as const),
+      userId,
+      department: applicant?.department ?? UNKNOWN_DEPARTMENT,
+      inDirectory: userId ? isKnownUser(userId, tenantId) : false,
+      labels: (userId ? visibilityScopesOf({ tenantId, userId }) : guestVisibilityScopesOf(tenantId)),
+    };
     res.json({
       data: {
+        principal,
         hits: hits.map((h) => ({
           title: h.title,
           url: h.url,

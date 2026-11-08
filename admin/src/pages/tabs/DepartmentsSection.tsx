@@ -86,6 +86,7 @@ export default function DepartmentsSection({ tenantId, departments, directorySyn
   return <section className="settings-section" aria-label="部門管理">
     <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>部門</h3>
     <p className="row-sub">部門由人員的「部門」欄位產生。改名會一併更新成員與權限設定；沒有成員的部門才能刪除，刪除時會清掉綁定的權限。「未指定」供網站訪客使用，不列在此處。</p>
+    {directorySyncEnabled && <p className="row-sub">已開啟 OA 同步：有成員的部門請在 OA 改名。OA 改名後，舊名稱會變成「已無成員」，可在這裡把它合併到新名稱，角色就會一起搬過去。</p>}
     {roleless.map((d) => <p key={d.name} role="status" className="badge">{d.name} 有 {d.members} 位人員，但沒有任何角色；若部門在 OA 改過名，請更新角色的適用部門。</p>)}
     {error && <p role="alert">{error}</p>}
     {message && <p role="status">{message}</p>}
@@ -105,7 +106,10 @@ export default function DepartmentsSection({ tenantId, departments, directorySyn
             <div className="row-sub">{d.members} 位成員 · {grantSummary(d)}</div>
           </div>
           <div className="toolbar" style={{ display: 'flex', gap: 8 }}>
-            <button type="button" className="btn btn-ghost btn-sm" aria-label={`改名 ${d.name}`} disabled={busy}
+            {/* OA 同步開啟時，有成員的部門改名會在下次同步被蓋回，角色卻已搬到新名稱 → 整個部門失去權限，所以停用。
+                已無成員的舊部門仍可改名／合併：這正是 OA 改名後把角色搬到新部門名稱的做法。 */}
+            <button type="button" className="btn btn-ghost btn-sm" aria-label={`改名 ${d.name}`} disabled={busy || (directorySyncEnabled && d.members > 0)}
+              title={directorySyncEnabled && d.members > 0 ? '已開啟 OA 同步，請在 OA 改名；改名後再把此處已無成員的舊部門合併到新名稱' : undefined}
               onClick={() => { setRenaming(d.name); setNewName(d.name); }}>改名</button>
             <button type="button" className="btn btn-danger btn-sm" aria-label={`刪除 ${d.name}`} disabled={busy || d.members > 0}
               title={d.members > 0 ? '請先將成員移到其他部門或刪除' : undefined} onClick={() => setPendingDelete(d)}>刪除</button>

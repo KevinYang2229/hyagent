@@ -213,6 +213,8 @@ function auditQuery(before?: string): string {
 
 /** 401 時拋出，UI 攔截導回登入 */
 export class UnauthorizedError extends Error {}
+/** 409：資料在讀取後已被他人變更（例如權限頁的版本衝突），呼叫端可據此提示重新載入 */
+export class ConflictError extends Error {}
 
 /** 後端錯誤回應的兩種形狀，見 {@link errorMessage}。 */
 interface ErrorBody {
@@ -249,6 +251,7 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
     throw new UnauthorizedError('未授權');
   }
   const json = (await res.json().catch(() => ({}))) as { data?: T } & ErrorBody;
+  if (res.status === 409) throw new ConflictError(errorMessage(json, res.status));
   if (!res.ok) throw new Error(errorMessage(json, res.status));
   return json.data as T;
 }
@@ -270,6 +273,16 @@ async function reqUpload<T>(method: string, path: string, formData: FormData): P
   const json = (await res.json().catch(() => ({}))) as { data?: T } & ErrorBody;
   if (!res.ok) throw new Error(errorMessage(json, res.status));
   return json.data as T;
+}
+
+/** 測試查詢實際使用的身分：輸錯帳號時看得出「不在目錄、以未指定部門處理」 */
+export interface QueryTestPrincipal {
+  kind: 'guest' | 'user';
+  userId: string;
+  department: string;
+  inDirectory: boolean;
+  /** 可見的知識庫標籤 scope（kb:…，含網站存取） */
+  labels: string[];
 }
 
 export interface KnowledgeSource {
@@ -400,6 +413,10 @@ export interface TenantPolicyView {
   accountBundles: Record<string, string[]>;
   /** 套用給所有人（含網站訪客）的角色 ids */
   tenantBundles: string[];
+  /** 套用給所有登入員工（不含網站訪客）的角色 ids，例如通用服務群組 */
+  memberBundles: string[];
+  /** 讀取當下的資料版本；儲存時以 baseVersion 送回，期間有人改過會回 409 */
+  version: string;
   /** 這次讀取時由舊直接授權換算出來的角色（尚未儲存） */
   convertedRoleIds: string[];
   departments: string[];
@@ -844,6 +861,8 @@ export const api = {
       groupBundles: Record<string, string[]>;
       accountBundles: Record<string, string[]>;
       tenantBundles: string[];
+      memberBundles: string[];
+      baseVersion?: string;
     },
   ) => req<TenantPolicyView>('PUT', `/admin/tenants/${id}/policy`, body),
 
@@ -936,7 +955,7 @@ export const api = {
     req<IngestJob>('GET', `/admin/tenants/${id}/knowledge/jobs/${jobId}`),
   /** asUserId 選填：留空以管理者身分查詢（權限最大，通常查得到全部，等於沒測到 ACL） */
   knowledgeQueryTest: (id: string, question: string, asUserId?: string) =>
-    req<{ hits: QueryHit[] }>('POST', `/admin/tenants/${id}/knowledge/query-test`, {
+    req<{ hits: QueryHit[]; principal?: QueryTestPrincipal }>('POST', `/admin/tenants/${id}/knowledge/query-test`, {
       question,
       ...(asUserId ? { asUserId } : {}),
     }),

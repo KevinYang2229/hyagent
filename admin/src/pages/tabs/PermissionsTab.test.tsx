@@ -3,15 +3,15 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import PermissionsTab from './PermissionsTab';
-import { api, type TenantPolicyView } from '../../api';
-vi.mock('../../api', () => ({ api: { getTenantPolicy: vi.fn(), putTenantPolicy: vi.fn() } }));
+import { api, ConflictError, type TenantPolicyView } from '../../api';
+vi.mock('../../api', () => ({ api: { getTenantPolicy: vi.fn(), putTenantPolicy: vi.fn() }, ConflictError: class ConflictError extends Error {} }));
 vi.mock('@hyagent/ui', async () => ({ ...await vi.importActual<object>('@hyagent/ui'), useToast: () => ({ success: vi.fn() }) }));
 
 let fixture: TenantPolicyView;
 beforeEach(() => {
   vi.clearAllMocks();
   fixture = {
-    grantedScopes: [], groups: {}, accounts: {}, convertedRoleIds: [],
+    version: 'v1', memberBundles: [], grantedScopes: [], groups: {}, accounts: {}, convertedRoleIds: [],
     capabilities: [
       { id: 'service:form', label: '填表申請', description: '', base: false },
       { id: 'service:knowledge', label: '知識庫問答', description: '', base: false },
@@ -64,15 +64,15 @@ it('新增角色：勾表單自動開啟填表申請，套用部門後存檔送�
   expect(body.groupBundles['行銷部']).toEqual(['emp', role.id]);
 });
 
-it('開給所有人的角色加入知識庫標籤時，自動改為指定對象並提醒', async () => {
+it('開給所有人的角色不能勾知識庫標籤，也不會因此被取消「所有人」', async () => {
   await renderTab();
   fireEvent.click(screen.getByRole('button', { name: '編輯 一般員工' }));
   check(editor(), '所有人（含網站訪客）');
-  check(editor(), '人資文件');
-  expect(within(editor()).getByRole('status')).toHaveTextContent('不能開給所有人');
+  const kb = within(editor()).getByText('人資文件').closest('label')!.querySelector('input')!;
+  expect(kb).toBeDisabled();
+  expect(within(editor()).getByText(/不能加入知識庫標籤/)).toBeInTheDocument();
   const everyone = within(editor()).getByText('所有人（含網站訪客）').closest('label')!.querySelector('input')!;
-  expect(everyone).not.toBeChecked();
-  expect(everyone).toBeDisabled();
+  expect(everyone).toBeChecked();
 });
 
 it('舊設定換算成的角色會標示，未變更也可以儲存套用', async () => {
@@ -98,8 +98,9 @@ it('個人權限：顯示角色來源與缺漏，並可直接替他加角色', a
   expect(inherited).toBeDisabled();
   expect(within(detail).getByText('來自部門「行銷部」')).toBeInTheDocument();
   check(detail, '知識庫使用者');
-  expect(screen.getByRole('region', { name: '最後擁有的能力' })).toHaveTextContent('沒有選任何知識庫標籤');
-  expect(screen.getByText(/1 位的權限可能不完整/)).toHaveTextContent('Kevin');
+  expect(screen.getByRole('region', { name: '最後擁有的能力' })).toHaveTextContent('沒有任何知識庫標籤');
+  // 只開網站內容是軟提醒，不列入「權限可能不完整」彙總
+  expect(screen.getByText('沒有發現權限缺漏。')).toBeInTheDocument();
   fireEvent.click(saveButton());
   await waitFor(() => expect(api.putTenantPolicy).toHaveBeenCalledWith('t', expect.objectContaining({ accountBundles: { kevin: ['kb'] } })));
 });
@@ -147,4 +148,57 @@ it('刪除角色前確認，並可放棄變更', async () => {
   fireEvent.click(screen.getByRole('button', { name: '放棄變更' }));
   expect(screen.getByText('能做：填表申請、請假單')).toBeInTheDocument();
   expect(onDirty).toHaveBeenLastCalledWith(false);
+});
+
+it('儲存時帶上讀取版本；版本衝突時不儲存並提示重新載入', async () => {
+  await renderTab();
+  fireEvent.click(screen.getByRole('button', { name: '刪除 一般員工' }));
+  fireEvent.click(await screen.findByRole('button', { name: '刪除' }));
+  vi.mocked(api.putTenantPolicy).mockRejectedValueOnce(new ConflictError('conflict'));
+  fireEvent.click(saveButton());
+  expect(await screen.findByRole('alert')).toHaveTextContent('已被變更');
+  expect(vi.mocked(api.putTenantPolicy).mock.calls[0][1].baseVersion).toBe('v1');
+  fireEvent.click(screen.getByRole('button', { name: '重新載入（放棄我的修改）' }));
+  await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+  expect(api.getTenantPolicy).toHaveBeenCalledTimes(2);
+});
+
+it('個人權限可用搜尋縮小人員下拉', async () => {
+  fixture.users.push({ id: 'amy', label: 'Amy', department: '人資部' });
+  await renderTab();
+  fireEvent.change(screen.getByLabelText('搜尋人員'), { target: { value: '人資' } });
+  const options = [...(screen.getByLabelText('選擇人員') as HTMLSelectElement).options].map((o) => o.text);
+  expect(options).toEqual(['請選擇…', 'Amy（人資部）']);
+});
+
+it('角色編輯器開著尚未按「完成」也算未儲存，離開分頁會被提醒', async () => {
+  const onDirtyChange = await renderTab();
+  expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+  fireEvent.click(screen.getByRole('button', { name: '編輯 一般員工' }));
+  await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(true));
+  fireEvent.click(within(editor()).getByRole('button', { name: '取消' }));
+  await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(false));
+});
+
+it('通用服務：一鍵開給所有登入員工（不含訪客），儲存送出 memberBundles', async () => {
+  fixture.bundles.push({ id: 'general-services', name: '通用服務', scopes: ['service:knowledge'] });
+  await renderTab();
+  const toggle = screen.getByLabelText('開放通用服務給所有登入員工');
+  expect(toggle).not.toBeChecked();
+  fireEvent.click(toggle);
+  expect(screen.getByText('已開放給所有登入員工')).toBeInTheDocument();
+  // 登入員工取得，網站訪客不會
+  fireEvent.change(screen.getByLabelText('選擇人員'), { target: { value: 'user:kevin' } });
+  expect(within(screen.getByRole('region', { name: '角色' })).getByText('套用給所有登入員工')).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('選擇人員'), { target: { value: 'guest:' } });
+  expect(within(screen.getByRole('region', { name: '最後擁有的能力' })).queryByText('知識庫問答')).toBeNull();
+  fireEvent.click(saveButton());
+  await waitFor(() => expect(api.putTenantPolicy).toHaveBeenCalledWith('t', expect.objectContaining({ memberBundles: ['general-services'] })));
+});
+
+it('舊租戶沒有通用服務群組時可建立，建立後預設關閉', async () => {
+  await renderTab();
+  fireEvent.click(screen.getByRole('button', { name: '建立通用服務群組' }));
+  expect(screen.getByLabelText('開放通用服務給所有登入員工')).not.toBeChecked();
+  expect(screen.getByText(/包含：/)).toHaveTextContent('填表申請');
 });

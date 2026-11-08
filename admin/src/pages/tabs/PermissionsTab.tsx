@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Checkbox, Dialog, useToast } from '@hyagent/ui';
-import { api, type TenantPolicyView } from '../../api';
+import { api, ConflictError, type TenantPolicyView } from '../../api';
 import { formatDepartment } from '../../components/department.util';
 import RoleEditor from './RoleEditor';
+import CollapsibleList from '../../components/CollapsibleList';
 import {
-  applyRoleDraft, capabilityGaps, capabilityLabel, CATEGORY_LABELS, categoryOf, effectiveCapabilities, peopleOf, policyChanged,
+  applyRoleDraft, capabilityGaps, GENERAL_SERVICES_ROLE_ID, generalServicesScopes, capabilityLabel, CATEGORY_LABELS, categoryOf, effectiveCapabilities, peopleOf, policyChanged,
   policyDepartments, removeRole, roleDraftOf, rolesOf, targetSummary, type Person, type RoleDraft, type RoleSource,
 } from './permissions.util';
 
@@ -13,6 +14,9 @@ import {
  * 舊的直接授權由後端換算成等效角色（convertedRoleIds），按儲存後改由角色承載。
  * 下方「個人權限」用來確認某人最後拿到什麼、有沒有缺漏，也可直接替他加角色。
  */
+
+/** 人員下拉最多列出幾位；更多時要求先搜尋，避免上千個選項的下拉 */
+const PERSON_OPTION_MAX = 200;
 
 /** 摘要最多列出幾項能力，其餘以「等 N 項」帶過 */
 const SUMMARY_MAX = 5;
@@ -24,6 +28,7 @@ const TEMPLATES: { name: string; description: string; scopes: string[] }[] = [
 
 function sourceText(source: RoleSource): string {
   if (source.via === 'everyone') return '套用給所有人';
+  if (source.via === 'members') return '套用給所有登入員工';
   if (source.via === 'department') return `來自部門「${formatDepartment(source.department)}」`;
   return '直接指派';
 }
@@ -43,12 +48,16 @@ export default function PermissionsTab({ tenantId, onError, onDirtyChange }: {
   const [draftIsNew, setDraftIsNew] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<RoleDraft | null>(null);
   const [personKey, setPersonKey] = useState<string>('');
+  const [personQuery, setPersonQuery] = useState('');
+  // 儲存時發現資料已被他人變更：保留畫面上的修改，讓管理者決定重新載入
+  const [conflict, setConflict] = useState(false);
 
   const load = useCallback(async () => {
     try {
       const loaded = await api.getTenantPolicy(tenantId);
       setPolicy(loaded);
       setBaseline(loaded);
+      setConflict(false);
     } catch (e) {
       onError(e);
     }
@@ -56,7 +65,8 @@ export default function PermissionsTab({ tenantId, onError, onDirtyChange }: {
 
   useEffect(() => { void load(); }, [load]);
 
-  const dirty = !!policy && !!baseline && policyChanged(policy, baseline);
+  // 角色編輯器開著也算未儲存：草稿還沒「完成」就切分頁，內容會直接消失
+  const dirty = !!draft || (!!policy && !!baseline && policyChanged(policy, baseline));
   useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
   // 離開分頁（unmount）時清掉外層的未儲存旗標
   useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
@@ -77,7 +87,9 @@ export default function PermissionsTab({ tenantId, onError, onDirtyChange }: {
   const converted = policy.convertedRoleIds.filter((id) => policy.bundles.some((b) => b.id === id));
   // 有缺漏的人（以每個人所有角色的聯集判斷才準確）
   const gapsOf = (person: Person) => capabilityGaps(effectiveCapabilities(policy, person).map((c) => c.scope), caps);
-  const peopleWithGaps = people.filter((p) => gapsOf(p).length > 0);
+  // 彙總名單只列真正會用不了的缺漏（不含軟提醒），也不列網站訪客：訪客只開部分能力通常是刻意的
+  const peopleWithGaps = people.filter((p) => p.kind === 'user'
+    && capabilityGaps(effectiveCapabilities(policy, p).map((c) => c.scope), caps, { includeSoft: false }).length > 0);
 
   const startNew = (template?: (typeof TEMPLATES)[number]) => {
     setDraft({
@@ -85,7 +97,7 @@ export default function PermissionsTab({ tenantId, onError, onDirtyChange }: {
       name: template?.name ?? '',
       ...(template ? { description: template.description } : {}),
       scopes: template ? template.scopes.filter((id) => caps.some((c) => c.id === id)) : [],
-      everyone: false, departments: [], accounts: [],
+      everyone: false, members: false, departments: [], accounts: [],
     });
     setDraftIsNew(true);
   };
@@ -123,11 +135,14 @@ export default function PermissionsTab({ tenantId, onError, onDirtyChange }: {
         groupBundles: policy.groupBundles,
         accountBundles: policy.accountBundles,
         tenantBundles: policy.tenantBundles,
+        memberBundles: policy.memberBundles,
+        baseVersion: baseline?.version ?? policy.version,
       });
       setPolicy(updated);
       setBaseline(updated);
       toast.success('已儲存變更');
     } catch (e) {
+      if (e instanceof ConflictError) { setConflict(true); return; }
       onError(e);
     } finally {
       setSaving(false);
@@ -136,17 +151,52 @@ export default function PermissionsTab({ tenantId, onError, onDirtyChange }: {
   const discard = () => { setPolicy(baseline); setDraft(null); };
 
   const selected = people.find((p) => `${p.kind}:${p.id}` === personKey) ?? null;
+  const personOptionLabel = (p: Person) =>
+    p.kind === 'guest' ? '網站訪客（未登入）' : `${p.label}（${p.inDirectory ? formatDepartment(p.department) : '未列於目前名錄'}）`;
+  const pq = personQuery.trim().toLocaleLowerCase();
+  const matchedPeople = pq
+    ? people.filter((p) => `${p.label} ${p.id} ${formatDepartment(p.department)} ${p.kind === 'guest' ? '網站訪客' : ''}`.toLocaleLowerCase().includes(pq))
+    : people;
+  const shownPeople = matchedPeople.slice(0, PERSON_OPTION_MAX);
   const editor = draft && (
     <RoleEditor draft={draft} isNew={draftIsNew} capabilities={caps} departments={departments} people={people}
       onChange={setDraft} onDone={finishDraft} onCancel={() => setDraft(null)} />
   );
 
   return <div className="settings-stack">
+    {conflict && (
+      <div className="banner banner-err" role="alert">
+        權限設定在你開啟此頁後已被變更（可能是其他管理者、表單異動或人員同步），為避免蓋掉那些變更，這次沒有儲存。
+        請記下你的修改，重新載入後再設定一次。
+        <button type="button" className="btn btn-sm" style={{ marginLeft: 8 }} onClick={() => void load()}>重新載入（放棄我的修改）</button>
+      </div>
+    )}
     {converted.length > 0 && (
       <div className="banner" role="status">
         舊的權限設定已整理成 {converted.length} 個角色（標示「由舊設定轉換」），每個人的權限都不變。按頁面底部「儲存」後改用新的角色格式；也可以先改名或合併。
       </div>
     )}
+
+    <GeneralServicesCard
+      policy={policy}
+      disabled={!!draft}
+      onToggle={(on) => setPolicy((p) => (p ? {
+        ...p,
+        memberBundles: on
+          ? [...new Set([...p.memberBundles, GENERAL_SERVICES_ROLE_ID])]
+          : p.memberBundles.filter((id) => id !== GENERAL_SERVICES_ROLE_ID),
+      } : p))}
+      onCreate={() => setPolicy((p) => (p ? {
+        ...p,
+        bundles: [...p.bundles, {
+          id: GENERAL_SERVICES_ROLE_ID,
+          name: '通用服務',
+          description: '全員通用的服務。可一鍵開給所有登入員工（不含網站訪客）。',
+          scopes: generalServicesScopes(p.capabilities),
+        }],
+      } : p))}
+      onEdit={() => startEdit(GENERAL_SERVICES_ROLE_ID)}
+    />
 
     <div className="card">
       <div className="card-head">
@@ -203,19 +253,27 @@ export default function PermissionsTab({ tenantId, onError, onDirtyChange }: {
         {peopleWithGaps.length > 0 ? (
           <div className="perm-warn" role="status">
             {peopleWithGaps.length} 位的權限可能不完整：
-            {peopleWithGaps.map((p) => <button key={`${p.kind}:${p.id}`} type="button" className="perm-link" onClick={() => setPersonKey(`${p.kind}:${p.id}`)}>{p.label}</button>)}
+            <CollapsibleList items={peopleWithGaps} separator={null}
+              render={(p) => <button type="button" className="perm-link" onClick={() => setPersonKey(`${p.kind}:${p.id}`)}>{p.label}</button>} />
           </div>
         ) : <p className="perm-ok">沒有發現權限缺漏。</p>}
 
-        <label className="field" style={{ maxWidth: 360 }}>
-          <span className="field-label">人員</span>
-          <select className="select" aria-label="選擇人員" value={personKey} onChange={(e) => setPersonKey(e.target.value)}>
-            <option value="">請選擇…</option>
-            {people.map((p) => <option key={`${p.kind}:${p.id}`} value={`${p.kind}:${p.id}`}>
-              {p.kind === 'guest' ? '網站訪客（未登入）' : `${p.label}（${p.inDirectory ? formatDepartment(p.department) : '未列於目前名錄'}）`}
-            </option>)}
-          </select>
-        </label>
+        <div className="person-picker">
+          <label className="field">
+            <span className="field-label">搜尋人員</span>
+            <input className="input" aria-label="搜尋人員" placeholder="姓名、帳號或部門…" value={personQuery} onChange={(e) => setPersonQuery(e.target.value)} />
+          </label>
+          <label className="field">
+            <span className="field-label">人員{personQuery.trim() && `（符合 ${matchedPeople.length} 位）`}</span>
+            <select className="select" aria-label="選擇人員" value={personKey} onChange={(e) => setPersonKey(e.target.value)}>
+              <option value="">請選擇…</option>
+              {/* 已選的人即使不符合搜尋也保留，下拉才不會跳回「請選擇」 */}
+              {selected && !shownPeople.includes(selected) && <option value={personKey}>{personOptionLabel(selected)}</option>}
+              {shownPeople.map((p) => <option key={`${p.kind}:${p.id}`} value={`${p.kind}:${p.id}`}>{personOptionLabel(p)}</option>)}
+            </select>
+          </label>
+          {matchedPeople.length > PERSON_OPTION_MAX && <p className="perm-text">只列出前 {PERSON_OPTION_MAX} 位，請輸入關鍵字縮小範圍。</p>}
+        </div>
 
         {selected && <PersonDetail person={selected} policy={policy} onToggle={(roleId) => toggleDirect(selected, roleId)} gaps={gapsOf(selected)} />}
       </div>
@@ -224,7 +282,7 @@ export default function PermissionsTab({ tenantId, onError, onDirtyChange }: {
     {/* 共用一顆儲存鈕；固定在底部，捲到哪都看得到是否還有未儲存的變更 */}
     <div className={`perm-savebar${dirty ? ' is-dirty' : ''}`} role="region" aria-label="儲存權限">
       <span className="perm-savebar-status" aria-live="polite">
-        {dirty ? '有未儲存的變更，按「儲存」後才會生效。' : converted.length > 0 ? '舊設定尚未改用角色格式，按「儲存」套用（權限不變）。' : '所有變更皆已儲存。'}
+        {draft ? '角色編輯中：按「完成」後再按「儲存」才會生效。' : dirty ? '有未儲存的變更，按「儲存」後才會生效。' : converted.length > 0 ? '舊設定尚未改用角色格式，按「儲存」套用（權限不變）。' : '所有變更皆已儲存。'}
       </span>
       <div className="perm-savebar-actions">
         {dirty && <button type="button" className="btn btn-ghost btn-sm" onClick={discard} disabled={saving}>放棄變更</button>}
@@ -265,7 +323,7 @@ function PersonDetail({ person, policy, onToggle, gaps }: {
 
   return <div className="person-detail">
     <div className="perm-text">
-      {person.kind === 'guest' ? '網站訪客只會取得「所有人」與「訪客／未建檔帳號」部門的角色。' : `部門：${formatDepartment(person.department)}`}
+      {person.kind === 'guest' ? '網站訪客只會取得「所有人」與「訪客／未指定部門」部門的角色。' : `部門：${formatDepartment(person.department)}`}
     </div>
 
     <section aria-label="角色">
@@ -289,7 +347,7 @@ function PersonDetail({ person, policy, onToggle, gaps }: {
       </div>
       {person.kind === 'user'
         ? <p className="perm-text">勾選＝直接指派給此人。來自部門或所有人的角色要到該角色的「給誰」調整。</p>
-        : <p className="perm-text">網站訪客沒有帳號，不能直接指派角色。要開放給訪客，請到該角色的「給誰」選擇所有人或「訪客／未建檔帳號」部門。</p>}
+        : <p className="perm-text">網站訪客沒有帳號，不能直接指派角色。要開放給訪客，請到該角色的「給誰」選擇所有人或「訪客／未指定部門」部門。</p>}
     </section>
 
     <section aria-label="最後擁有的能力">
@@ -304,5 +362,49 @@ function PersonDetail({ person, policy, onToggle, gaps }: {
         </div>
       ))}
     </section>
+  </div>;
+}
+
+/**
+ * 通用服務群組：預設最小權限（關閉），一鍵開給所有登入員工（不含網站訪客）或關閉。
+ * 內容就是一個普通角色（id 固定），要調整能力請按「編輯內容」。
+ */
+function GeneralServicesCard({ policy, disabled, onToggle, onCreate, onEdit }: {
+  policy: TenantPolicyView;
+  disabled: boolean;
+  onToggle: (on: boolean) => void;
+  onCreate: () => void;
+  onEdit: () => void;
+}) {
+  const role = policy.bundles.find((b) => b.id === GENERAL_SERVICES_ROLE_ID);
+  const on = policy.memberBundles.includes(GENERAL_SERVICES_ROLE_ID);
+  const caps = policy.capabilities;
+  return <div className="card general-services">
+    <div className="card-head">
+      <div>
+        <div className="card-title">通用服務</div>
+        <div className="card-desc">預設關閉（最小權限）。開啟後，所有登入員工都能使用下列能力；網站訪客不包含在內。</div>
+      </div>
+      {role && (
+        <label className="role-check general-services-switch">
+          <Checkbox checked={on} disabled={disabled} onChange={() => onToggle(!on)} aria-label="開放通用服務給所有登入員工" />
+          <span>{on ? '已開放給所有登入員工' : '未開放'}</span>
+        </label>
+      )}
+    </div>
+    <div className="card-body">
+      {role ? <>
+        <div className="perm-text">
+          包含：<CollapsibleList items={role.scopes} max={6} render={(scope) => capabilityLabel(caps, scope)} empty="（尚未選擇能力）" />
+        </div>
+        <div className="general-services-actions">
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onEdit} disabled={disabled}>編輯內容</button>
+          <span className="perm-text">切換或編輯後，按頁面底部「儲存」才會生效。</span>
+        </div>
+      </> : <>
+        <p className="perm-text">此租戶還沒有通用服務群組。建立後預設關閉，內容為填表申請、知識庫問答、智慧代理與所有表單，可再調整。</p>
+        <button type="button" className="btn btn-sm" onClick={onCreate} disabled={disabled}>建立通用服務群組</button>
+      </>}
+    </div>
   </div>;
 }

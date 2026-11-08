@@ -43,7 +43,7 @@ describe('相依規則', () => {
 describe('缺漏檢查', () => {
   it('開了服務沒有內容、或有內容沒有服務都會提醒', () => {
     expect(capabilityGaps(['service:form'], caps)[0]).toContain('沒有選任何表單');
-    expect(capabilityGaps(['service:knowledge'], caps)[0]).toContain('沒有選任何知識庫標籤');
+    expect(capabilityGaps(['service:knowledge'], caps)[0]).toContain('沒有任何知識庫標籤');
     expect(capabilityGaps(['kb:hr'], caps)[0]).toContain('標籤用不到');
     expect(capabilityGaps(['form:leave'], caps)[0]).toContain('表單無法使用');
     expect(capabilityGaps(['service:form', 'form:leave', 'service:knowledge', 'kb:hr'], caps)).toEqual([]);
@@ -55,7 +55,7 @@ describe('缺漏檢查', () => {
 
 function policy(): TenantPolicyView {
   return {
-    grantedScopes: [], groups: {}, accounts: {}, capabilities: caps, convertedRoleIds: [],
+    version: "v1", memberBundles: [], grantedScopes: [], groups: {}, accounts: {}, capabilities: caps, convertedRoleIds: [],
     departments: ['—', '行銷部'],
     users: [{ id: 'kevin', label: 'Kevin', department: '行銷部' }],
     bundles: [

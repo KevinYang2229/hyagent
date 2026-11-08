@@ -78,23 +78,8 @@ export const formAdminController = {
     }
     assertValid(def);
     const saved = formStore.saveDefinition(tenantId, def);
-    // 新建表單自動開放給所有人，Designer 建的表單立即可用。
-    // 已有「套用給所有人」的角色時加進該角色：權限頁只呈現角色，寫進租戶層會變成另一個換算角色，
-    // 管理者會看到多出一個來路不明的「全體人員」。
-    const scope = formScopeId(def.formId);
-    const policy = scopePolicy.getPolicy(tenantId);
-    const everyoneRole = (policy.bundles ?? []).find((b) => (policy.tenantBundles ?? []).includes(b.id));
-    if (everyoneRole) {
-      scopePolicy.setPolicy(tenantId, {
-        ...policy,
-        bundles: (policy.bundles ?? []).map((b) =>
-          b.id === everyoneRole.id && !b.scopes.includes(scope) ? { ...b, scopes: [...b.scopes, scope] } : b),
-      });
-    } else {
-      const granted = new Set(tenantStore.getTenant(tenantId)?.grantedScopes ?? []);
-      granted.add(scope);
-      tenantStore.updateTenant(tenantId, { grantedScopes: [...granted] });
-    }
+    // 新建表單不自動授權：「開給所有人」包含網站訪客，自動加進角色也會默默改掉管理者定義的角色內容。
+    // 由管理者到權限頁把表單加進角色（Designer 存檔後會引導過去）。
     res.status(201).json({ data: saved });
   },
 

@@ -1236,6 +1236,9 @@ li:not(.is-empty) > .feedback-bar { background: var(--bg-secondary); }
 .role-checklist { display: grid; gap: 8px; }
 .role-checklist .input { max-width: 320px; }
 .role-check-grid { display: flex; flex-wrap: wrap; gap: 8px 18px; }
+.role-check-grid.is-scroll { max-height: 220px; overflow-y: auto; padding: 4px 2px; border: 1px solid var(--border-color); border-radius: 6px; }
+.role-checklist-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
+.role-checklist-toolbar .input { max-width: 280px; }
 .role-check { display: inline-flex; align-items: flex-start; gap: 6px; font-size: 13.5px; cursor: pointer; max-width: 100%; }
 .role-check.is-locked { cursor: not-allowed; color: var(--text-secondary); }
 .role-check > span { min-width: 0; overflow-wrap: anywhere; }
@@ -1247,3 +1250,15 @@ li:not(.is-empty) > .feedback-bar { background: var(--bg-secondary); }
 .person-cap-group { display: grid; gap: 4px; }
 .person-caps { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13.5px; }
 .person-caps .role-check-sub { display: inline; margin-left: 8px; }
+
+/* 多筆清單的「另有 N 項」展開（CollapsibleList） */
+.collapsible-more { display: inline; margin-left: 6px; }
+.collapsible-more summary { display: inline; cursor: pointer; color: var(--accent); }
+.collapsible-more[open] { display: block; margin: 6px 0 0; }
+.collapsible-more > div { max-height: 160px; overflow-y: auto; margin-top: 4px; }
+.person-picker { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+.person-picker .field { min-width: 220px; max-width: 360px; flex: 1 1 220px; }
+.person-picker .perm-text { flex-basis: 100%; margin: 0; }
+.general-services .card-head { align-items: center; }
+.general-services-switch { font-weight: 500; white-space: nowrap; }
+.general-services-actions { display: flex; align-items: center; gap: 12px; margin-top: 8px; flex-wrap: wrap; }

@@ -51,7 +51,7 @@ describe('KnowledgeTab 檢索測試預填', () => {
       </MemoryRouter>,
     );
     expect(await screen.findByPlaceholderText('例：台北分公司電話')).toHaveValue('特休幾天？');
-    expect(screen.getByPlaceholderText(/留空＝以管理者身分/)).toHaveValue('staff-001');
+    expect(screen.getByPlaceholderText(/留空＝以網站訪客/)).toHaveValue('staff-001');
     expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
   });
 });

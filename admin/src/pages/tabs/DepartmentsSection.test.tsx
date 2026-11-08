@@ -58,7 +58,7 @@ it('有人員但沒有授權的部門顯示提醒，未指定部門與已無成�
 it('directorySyncEnabled 只在改名與刪除時提示會被 OA 蓋回', () => {
   render(<DepartmentsSection tenantId="t" onChanged={vi.fn()} onError={vi.fn()} directorySyncEnabled departments={departments} />);
   expect(screen.queryByText(/蓋回/)).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: '改名 人資' }));
+  fireEvent.click(screen.getByRole('button', { name: '改名 舊部門' }));
   expect(screen.getByText(/蓋回/)).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: '取消' }));
   fireEvent.click(screen.getByRole('button', { name: '刪除 舊部門' }));
@@ -71,7 +71,7 @@ it.each([
 ])('提示依開啟的開關說明來源：$props', ({ props, text }) => {
   render(<DepartmentsSection tenantId="t" onChanged={vi.fn()} onError={vi.fn()} {...props} departments={departments} />);
   expect(screen.queryByText(/蓋回/)).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: '改名 人資' }));
+  fireEvent.click(screen.getByRole('button', { name: '改名 舊部門' }));
   expect(screen.getByText(text)).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: '取消' }));
   fireEvent.click(screen.getByRole('button', { name: '刪除 舊部門' }));
@@ -81,4 +81,10 @@ it('兩個開關都關：改名與刪除都不提示蓋回', () => {
   render(<DepartmentsSection tenantId="t" onChanged={vi.fn()} onError={vi.fn()} departments={departments} />);
   fireEvent.click(screen.getByRole('button', { name: '改名 人資' }));
   expect(screen.queryByText(/蓋回/)).toBeNull();
+});
+it('OA 同步開啟時，有成員的部門不能改名；已無成員的舊部門仍可改名或合併', () => {
+  render(<DepartmentsSection tenantId="t" onChanged={vi.fn()} onError={vi.fn()} directorySyncEnabled departments={departments} />);
+  expect(screen.getByRole('button', { name: '改名 人資' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: '改名 舊部門' })).toBeEnabled();
+  expect(screen.getByText(/有成員的部門請在 OA 改名/)).toBeInTheDocument();
 });

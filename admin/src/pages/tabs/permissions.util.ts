@@ -84,7 +84,8 @@ export function toggleCapability(scopes: string[], id: string, capabilities: Sco
  * 缺漏檢查：開了服務卻沒有內容、或選了內容卻少了服務。
  * 用在個人（所有角色的聯集）時是準確的；用在單一角色時只是提醒，其他角色可能已補足。
  */
-export function capabilityGaps(scopes: string[], capabilities: ScopeDef[]): string[] {
+export function capabilityGaps(scopes: string[], capabilities: ScopeDef[], opts: { includeSoft?: boolean } = {}): string[] {
+  const includeSoft = opts.includeSoft ?? true;
   const label = (x: string) => capabilityLabel(capabilities, x);
   const gaps: string[] = [];
   const hasForms = capabilities.some((c) => isForm(c.id));
@@ -94,8 +95,9 @@ export function capabilityGaps(scopes: string[], capabilities: ScopeDef[]): stri
   if (!scopes.includes(FORM_SERVICE) && scopes.some(isForm)) {
     gaps.push(`選了表單，但沒有開通「${label(FORM_SERVICE)}」，表單無法使用。`);
   }
-  if (usesKnowledge(scopes) && capabilities.some((c) => isKb(c.id)) && !scopes.some(isKb)) {
-    gaps.push('已開通知識庫相關服務，但沒有選任何知識庫標籤：只查得到開放給所有人的網站內容，查不到檔案。');
+  // 軟提醒：只給網站內容是常見的刻意設定（例如網站訪客），不算缺漏，彙總名單不列入
+  if (includeSoft && usesKnowledge(scopes) && capabilities.some((c) => isKb(c.id)) && !scopes.some(isKb)) {
+    gaps.push('已開通知識庫相關服務，但沒有任何知識庫標籤：只查得到網站內容（依知識庫頁「網站可查詢對象」），查不到檔案。若是刻意的可忽略。');
   }
   if (!usesKnowledge(scopes) && scopes.some(isKb)) {
     gaps.push(`選了知識庫標籤，但沒有開通「${label(KNOWLEDGE_SERVICE)}」或「${label(REPORT_SERVICE)}」，標籤用不到。`);
@@ -118,11 +120,13 @@ export interface RoleDraft {
   description?: string;
   scopes: string[];
   everyone: boolean;
+  /** 所有登入員工（不含網站訪客） */
+  members: boolean;
   departments: string[];
   accounts: string[];
 }
 
-type RolePolicy = Pick<TenantPolicyView, 'bundles' | 'groupBundles' | 'accountBundles' | 'tenantBundles'>;
+type RolePolicy = Pick<TenantPolicyView, 'bundles' | 'groupBundles' | 'accountBundles' | 'tenantBundles' | 'memberBundles'>;
 
 const keysHolding = (map: Record<string, string[]>, roleId: string) =>
   Object.keys(map).filter((k) => (map[k] ?? []).includes(roleId));
@@ -134,6 +138,7 @@ export function roleDraftOf(policy: RolePolicy, role: SkillBundle): RoleDraft {
     ...(role.description ? { description: role.description } : {}),
     scopes: [...role.scopes],
     everyone: policy.tenantBundles.includes(role.id),
+    members: policy.memberBundles.includes(role.id),
     departments: keysHolding(policy.groupBundles, role.id),
     accounts: keysHolding(policy.accountBundles, role.id),
   };
@@ -162,6 +167,9 @@ export function applyRoleDraft<P extends RolePolicy>(policy: P, draft: RoleDraft
     tenantBundles: draft.everyone
       ? [...new Set([...policy.tenantBundles, draft.id])]
       : policy.tenantBundles.filter((id) => id !== draft.id),
+    memberBundles: draft.members
+      ? [...new Set([...policy.memberBundles, draft.id])]
+      : policy.memberBundles.filter((id) => id !== draft.id),
     groupBundles: reassign(policy.groupBundles, draft.departments),
     accountBundles: reassign(policy.accountBundles, draft.accounts),
   };
@@ -174,15 +182,16 @@ export function removeRole<P extends RolePolicy>(policy: P, roleId: string): P {
     ...policy,
     bundles: policy.bundles.filter((b) => b.id !== roleId),
     tenantBundles: policy.tenantBundles.filter((id) => id !== roleId),
+    memberBundles: policy.memberBundles.filter((id) => id !== roleId),
     groupBundles: strip(policy.groupBundles),
     accountBundles: strip(policy.accountBundles),
   };
 }
 
 /** 角色套用對象的摘要文字 */
-export function targetSummary(draft: Pick<RoleDraft, 'everyone' | 'departments' | 'accounts'>, accountLabel: (id: string) => string): string {
+export function targetSummary(draft: Pick<RoleDraft, 'everyone' | 'members' | 'departments' | 'accounts'>, accountLabel: (id: string) => string): string {
   if (draft.everyone) return '所有人（含網站訪客）';
-  const names = [...draft.departments.map(formatDepartment), ...draft.accounts.map(accountLabel)];
+  const names = [...(draft.members ? ['所有登入員工'] : []), ...draft.departments.map(formatDepartment), ...draft.accounts.map(accountLabel)];
   if (names.length === 0) return '';
   return names.length > 4 ? `${names.slice(0, 4).join('、')} 等 ${names.length} 個` : names.join('、');
 }
@@ -191,6 +200,15 @@ export function targetSummary(draft: Pick<RoleDraft, 'everyone' | 'departments' 
 export function policyDepartments(policy: Pick<TenantPolicyView, 'departments' | 'groupBundles'>): string[] {
   const withRoles = Object.keys(policy.groupBundles).filter((k) => policy.groupBundles[k].length > 0);
   return [...new Set([...policy.departments, ...withRoles])];
+}
+
+/** 通用服務群組的角色 id：需與 server 端 GENERAL_SERVICES_ROLE_ID 同值 */
+export const GENERAL_SERVICES_ROLE_ID = 'general-services';
+
+/** 尚未有通用服務群組的舊租戶，建立時預設的內容：標準服務＋所有表單（仍需管理者開啟才生效） */
+export function generalServicesScopes(capabilities: ScopeDef[]): string[] {
+  const services = ['service:form', 'service:knowledge', 'service:agent'];
+  return capabilities.filter((c) => services.includes(c.id) || c.id.startsWith('form:')).map((c) => c.id);
 }
 
 /** 可檢視的人：目錄成員、訪客，以及目錄外但有直接指派的帳號（例如 SSO 使用者） */
@@ -207,7 +225,7 @@ export function peopleOf(policy: Pick<TenantPolicyView, 'users' | 'accountBundle
 }
 
 /** 某人取得某角色的途徑 */
-export type RoleSource = { via: 'everyone' } | { via: 'department'; department: string } | { via: 'direct' };
+export type RoleSource = { via: 'everyone' } | { via: 'members' } | { via: 'department'; department: string } | { via: 'direct' };
 
 /** 某人目前擁有的角色與途徑（同一角色可能同時從多個途徑取得） */
 export function rolesOf(policy: RolePolicy, person: Person): { role: SkillBundle; sources: RoleSource[] }[] {
@@ -215,6 +233,7 @@ export function rolesOf(policy: RolePolicy, person: Person): { role: SkillBundle
     .map((role) => {
       const sources: RoleSource[] = [];
       if (policy.tenantBundles.includes(role.id)) sources.push({ via: 'everyone' });
+      if (person.kind === 'user' && policy.memberBundles.includes(role.id)) sources.push({ via: 'members' });
       if ((policy.groupBundles[person.department] ?? []).includes(role.id)) sources.push({ via: 'department', department: person.department });
       if (person.kind === 'user' && (policy.accountBundles[person.id] ?? []).includes(role.id)) sources.push({ via: 'direct' });
       return { role, sources };
@@ -239,7 +258,7 @@ export function effectiveCapabilities(policy: RolePolicy, person: Person): { sco
 }
 
 /** 權限頁會送出的欄位；用來比對是否有未儲存變更 */
-type EditablePolicy = Pick<TenantPolicyView, 'bundles' | 'groupBundles' | 'accountBundles' | 'tenantBundles'>;
+type EditablePolicy = Pick<TenantPolicyView, 'bundles' | 'groupBundles' | 'accountBundles' | 'tenantBundles' | 'memberBundles'>;
 
 /** 清單順序與空陣列不影響授權結果，正規化後再比，避免「勾了又取消」被誤判為有變更 */
 function normalize(p: EditablePolicy): string {
@@ -255,6 +274,7 @@ function normalize(p: EditablePolicy): string {
     groupBundles: map(p.groupBundles),
     accountBundles: map(p.accountBundles),
     tenantBundles: [...p.tenantBundles].sort(),
+    memberBundles: [...p.memberBundles].sort(),
   });
 }
 

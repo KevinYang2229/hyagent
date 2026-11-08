@@ -34,6 +34,8 @@ export function resolveScopes(principal: ScopePrincipal): string[] {
   // 套餐（bundle）展開：部門/帳號被指派的具名 scope 集合，與零散 scope 聯集
   const groupBundleScopes = scopePolicy.groupBundleScopes(tenantId, department);
   const accountBundleScopes = scopePolicy.accountBundleScopes(tenantId, userId);
+  // 所有登入員工的角色（通用服務群組）：只給有 userId 的登入者，訪客走 resolveGuestScopes 拿不到
+  const memberBundleScopes = scopePolicy.memberBundleScopes(tenantId);
   return [
     ...new Set([
       ...BASE_SCOPE_IDS,
@@ -42,6 +44,7 @@ export function resolveScopes(principal: ScopePrincipal): string[] {
       ...accountScopes,
       ...groupBundleScopes,
       ...accountBundleScopes,
+      ...memberBundleScopes,
     ]),
   ];
 }

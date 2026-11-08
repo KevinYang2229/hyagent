@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useState, type FormEvent } from 'react';
 import { Dialog } from '@hyagent/ui';
 import { api, type DepartmentSummary, type DirectoryUser } from '../../api';
 import DepartmentsSection from './DepartmentsSection';
+import CollapsibleList from '../../components/CollapsibleList';
 
 /** 部門下拉的「新增部門」選項值；不會與真實部門名稱衝突 */
 const NEW_DEPARTMENT = '__new__';
@@ -31,11 +32,12 @@ function DepartmentField({ departments, value, onChange, disabled }: {
   return <>
     <label className="field"><span className="field-label">部門（選填）</span>
       <select className="select" value={value.choice} onChange={(e) => onChange({ ...value, choice: e.target.value })} disabled={disabled}>
-        <option value="">未指定</option>
+        <option value="">未指定（與網站訪客同權限）</option>
         {departments.map((dep) => <option key={dep} value={dep}>{dep}</option>)}
         <option value={NEW_DEPARTMENT}>＋ 新增部門…</option>
       </select>
     </label>
+    {value.choice === '' && <span className="field-hint">未指定部門的帳號與網站訪客共用「訪客／未指定部門」的角色，不會取得任何一般部門的角色。</span>}
     {value.choice === NEW_DEPARTMENT && <div className="field"><label className="field-label" htmlFor={newDeptId}>新部門名稱</label>
       <input id={newDeptId} className="input" value={value.typed} onChange={(e) => onChange({ ...value, typed: e.target.value })} required maxLength={200} disabled={disabled} autoFocus />
       {typedExisting && <span className="field-hint">已有此部門，將直接加入。</span>}
@@ -62,6 +64,9 @@ const originLabel = (user: DirectoryUser): string =>
   user.syncedAt || user.origin === 'sync' ? 'OA 同步' : user.origin === 'sso' ? '自動登入' : '手動';
 
 interface Draft { name: string; dept: DeptState; email: string }
+
+/** 目錄每頁筆數：OA 同步後可能上千人，整份平鋪會無法使用 */
+const PAGE_SIZE = 20;
 
 export default function UsersTab({ tenantId, onError }: { tenantId: string; onError: (error: unknown) => void }) {
   const [users, setUsers] = useState<DirectoryUser[]>([]);
@@ -105,6 +110,20 @@ export default function UsersTab({ tenantId, onError }: { tenantId: string; onEr
       setUsers(dir.users);
     } catch (err) { onError(err); }
   }, [tenantId, onError, loadDepartments]);
+  // 清單的搜尋／篩選／分頁
+  const [query, setQuery] = useState('');
+  const [deptFilter, setDeptFilter] = useState('all');
+  const [originFilter, setOriginFilter] = useState('all');
+  const [page, setPage] = useState(1);
+  const q = query.trim().toLocaleLowerCase();
+  const filteredUsers = users.filter((user) =>
+    (!q || `${user.name} ${user.id} ${user.email ?? ''}`.toLocaleLowerCase().includes(q))
+    && (deptFilter === 'all' || (deptFilter === UNSPECIFIED ? (!user.department || user.department === UNSPECIFIED) : user.department === deptFilter))
+    && (originFilter === 'all' || originLabel(user) === originFilter));
+  const pageCount = Math.max(1, Math.ceil(filteredUsers.length / PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount);
+  const visibleUsers = filteredUsers.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  const noDept = users.filter((user) => !user.department || user.department === UNSPECIFIED);
   const departments = [...new Set([...users.map((user) => user.department), ...(deptSummaries ?? []).map((d) => d.name)]
     .filter((dep) => dep && dep !== UNSPECIFIED))]
     .sort((a, b) => a.localeCompare(b, 'zh-Hant'));
@@ -169,9 +188,32 @@ export default function UsersTab({ tenantId, onError }: { tenantId: string; onEr
       {message && <p role="status">{message}</p>}
       {!loaded && !error && <p role="status">載入中…</p>}
       {loaded && <>
-        <p className="row-sub">共 {users.length} 位使用者。部門會影響既有部門授權，未填寫時為「未指定」。新增不會覆蓋其他人員。</p>
-        {!users.length ? <p className="empty">尚無使用者，請先新增登入帳號。</p> :
-          <ul className="list">{users.map((user) => <li className="row directory-row" key={user.id}>
+        <p className="row-sub">共 {users.length} 位使用者。部門會決定取得哪些角色；未指定部門時與網站訪客同權限。新增不會覆蓋其他人員。</p>
+        {noDept.length > 0 && (
+          <div className="perm-warn" role="status">
+            {noDept.length} 位未指定部門，目前與網站訪客同權限：
+            <CollapsibleList items={noDept} render={(user) => `${user.name}（${user.id}）`} />
+          </div>
+        )}
+        {users.length > 0 && (
+          <div className="assignment-toolbar directory-toolbar">
+            <input className="input" aria-label="搜尋使用者" placeholder="搜尋姓名、帳號或 Email…" value={query}
+              onChange={(e) => { setQuery(e.target.value); setPage(1); }} />
+            <select className="select" aria-label="依部門篩選" value={deptFilter} onChange={(e) => { setDeptFilter(e.target.value); setPage(1); }}>
+              <option value="all">全部部門</option>
+              <option value={UNSPECIFIED}>未指定部門</option>
+              {departments.map((dep) => <option key={dep} value={dep}>{dep}</option>)}
+            </select>
+            <select className="select" aria-label="依來源篩選" value={originFilter} onChange={(e) => { setOriginFilter(e.target.value); setPage(1); }}>
+              <option value="all">全部來源</option>
+              <option value="手動">手動</option>
+              <option value="自動登入">自動登入</option>
+              <option value="OA 同步">OA 同步</option>
+            </select>
+          </div>
+        )}
+        {!users.length ? <p className="empty">尚無使用者，請先新增登入帳號。</p> : !filteredUsers.length ? <p className="empty">找不到符合條件的使用者，請調整搜尋或篩選。</p> :
+          <ul className="list">{visibleUsers.map((user) => <li className="row directory-row" key={user.id}>
             {editingId === user.id && draft ? (
               <form className="directory-form directory-edit" aria-label={`編輯 ${user.name}`} onSubmit={(event) => void saveEdit(event, user)}>
                 <div className="row-sub">帳號：{user.id}（帳號建立後不可修改）</div>
@@ -186,13 +228,22 @@ export default function UsersTab({ tenantId, onError }: { tenantId: string; onEr
                 </div>
               </form>
             ) : <>
-              <div className="row-main"><strong>{user.name}</strong><span className="badge" style={{ marginLeft: 8 }}>{originLabel(user)}</span><div className="row-sub">帳號：{user.id} · 部門：{user.department === UNSPECIFIED ? '未指定' : user.department}{user.email ? ` · ${user.email}` : ''}</div></div>
+              <div className="row-main"><strong>{user.name}</strong><span className="badge" style={{ marginLeft: 8 }}>{originLabel(user)}</span><div className="row-sub">帳號：{user.id} · 部門：{user.department === UNSPECIFIED ? '未指定（與網站訪客同權限）' : user.department}{user.email ? ` · ${user.email}` : ''}</div></div>
               <div className="toolbar" style={{ display: 'flex', gap: 8 }}>
                 {!isLocked(user, switches) && <button type="button" className="btn btn-ghost btn-sm" aria-label={`編輯 ${user.name}`} onClick={() => startEdit(user)} disabled={busy}>編輯</button>}
                 <button type="button" className="btn btn-danger btn-sm" aria-label={`刪除 ${user.name}`} onClick={() => setPendingDelete(user)} disabled={busy}>刪除</button>
               </div>
             </>}
           </li>)}</ul>}
+        {filteredUsers.length > PAGE_SIZE && (
+          <nav className="assignment-pagination" aria-label="使用者清單分頁">
+            <span className="row-sub" aria-live="polite">共 {filteredUsers.length} 位 · 第 {currentPage} / {pageCount} 頁 · 每頁 {PAGE_SIZE} 位</span>
+            <div>
+              <button type="button" className="btn btn-sm" disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)}>上一頁</button>
+              <button type="button" className="btn btn-sm" disabled={currentPage === pageCount} onClick={() => setPage(currentPage + 1)}>下一頁</button>
+            </div>
+          </nav>
+        )}
         <DepartmentsSection tenantId={tenantId} departments={deptSummaries} directorySyncEnabled={switches?.directorySyncEnabled ?? false} ssoAutoProvision={switches?.ssoAutoProvision ?? false} onChanged={refreshAfterDepartmentChange} onError={onError} />
         <form onSubmit={(event) => void add(event)} className="directory-form settings-section">
           <h3>新增使用者</h3>

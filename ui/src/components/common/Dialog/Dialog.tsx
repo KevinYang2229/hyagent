@@ -27,6 +27,8 @@ export interface DialogProps {
   onClose: () => void;
   /** 點擊確定時觸發 */
   onConfirm?: () => void;
+  /** 停用確認按鈕（例如需輸入確認字樣的危險操作）；有設定時確認鈕不自動取得焦點，讓內容裡的輸入框可以先輸入 */
+  confirmDisabled?: boolean;
 }
 
 /**
@@ -43,6 +45,7 @@ export default function Dialog({
   hideCancel = false,
   onClose,
   onConfirm,
+  confirmDisabled,
 }: DialogProps) {
   const { t } = useTranslation();
 
@@ -63,6 +66,7 @@ export default function Dialog({
   };
 
   const handleConfirm = () => {
+    if (confirmDisabled) return;
     onConfirm?.();
   };
 
@@ -96,7 +100,8 @@ export default function Dialog({
             variant={confirmBtnVariant}
             size="md"
             onClick={handleConfirm}
-            autoFocus
+            disabled={confirmDisabled}
+            autoFocus={confirmDisabled === undefined}
           >
             {confirmText ?? t("common.confirm")}
           </Button>
