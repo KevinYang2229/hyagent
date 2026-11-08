@@ -11,6 +11,7 @@ import {
   sourceNeedsAclWarning,
 } from "../knowledgeAcl.util";
 import { useConfirm } from '../../../components/confirm';
+import { useUnsavedChanges } from '../../../components/unsaved';
 
 /**
  * 「可見範圍與標籤」子頁：誰可以查詢這些知識（訪客可見範圍、待設定檔案、網站狀態）與可見性標籤管理。
@@ -37,6 +38,9 @@ export default function AccessPanel({ tenantId, aclReport, labels, files, onEdit
   const [editingLabelId, setEditingLabelId] = useState<string | null>(null);
   const [editLabelName, setEditLabelName] = useState("");
   const [savingLabel, setSavingLabel] = useState(false);
+  useUnsavedChanges('知識庫：新增標籤', newLabelId.trim() !== '' || newLabelName.trim() !== '');
+  const renamingLabel = labels.find((l) => l.id === editingLabelId);
+  useUnsavedChanges(`知識庫：標籤「${renamingLabel?.label ?? ''}」改名`, !!renamingLabel && editLabelName.trim() !== renamingLabel.label);
 
   const addLabel = async () => {
     const id = newLabelId.trim();

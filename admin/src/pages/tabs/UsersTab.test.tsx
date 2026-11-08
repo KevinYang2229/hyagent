@@ -283,3 +283,13 @@ it('使用者清單可搜尋、依部門篩選，並每頁 20 位分頁', async 
   fireEvent.change(screen.getByLabelText('搜尋使用者'), { target: { value: 'User1' } });
   expect(screen.getAllByText(/部門：人資/)).toHaveLength(1);
 });
+it('新增使用者的表單有輸入時回報未儲存，清空後撤銷', async () => {
+  const { UnsavedChangesProvider } = await import('../../components/unsaved');
+  vi.mocked(api.listDirectoryUsers).mockResolvedValue({ users: [] });
+  const report = vi.fn();
+  render(<UnsavedChangesProvider value={report}><UsersTab tenantId="tenant-a" onError={vi.fn()} /></UnsavedChangesProvider>);
+  fireEvent.change(await screen.findByLabelText('登入帳號'), { target: { value: 'amy' } });
+  await waitFor(() => expect(report).toHaveBeenLastCalledWith('使用者目錄：新增使用者', true));
+  fireEvent.change(screen.getByLabelText('登入帳號'), { target: { value: '' } });
+  await waitFor(() => expect(report).toHaveBeenCalledWith('使用者目錄：新增使用者', false));
+});

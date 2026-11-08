@@ -6,6 +6,7 @@ import AppLayout from '../components/AppLayout';
 import { IconChevron, IconInfo, IconPlus } from '../components/icons';
 import { Checkbox } from '@hyagent/ui';
 import { useConfirm } from '../components/confirm';
+import { useUnsavedChanges } from '../components/unsaved';
 
 export default function TenantsPage() {
   const { logout } = useAuth();
@@ -13,6 +14,7 @@ export default function TenantsPage() {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
+  useUnsavedChanges('租戶清單：新增租戶', creating && name.trim() !== '');
   const [busy, setBusy] = useState(false);
   const [newKey, setNewKey] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);

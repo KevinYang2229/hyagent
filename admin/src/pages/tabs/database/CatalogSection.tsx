@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, type DbiApproval, type DbiCatalog, type DbiDataSource, type DbiDataset, type DbiSensitivity } from '../../../api';
 import { buildCatalogReview, parseList, unreviewedCount } from './database.util';
+import { useUnsavedChanges } from '../../../components/unsaved';
 
 interface Props {
   serverId: string;
@@ -27,6 +28,7 @@ const ORIGIN: Record<string, string> = { foreign_key: '外鍵', inferred: '推�
 export default function CatalogSection({ serverId, sources, dataSourceId, onSelect, onChanged, onError }: Props) {
   const [original, setOriginal] = useState<DbiCatalog | null>(null);
   const [edited, setEdited] = useState<DbiCatalog | null>(null);
+  useUnsavedChanges('資料庫查詢：Catalog 註記', !!original && !!edited && JSON.stringify(original) !== JSON.stringify(edited));
   const [busy, setBusy] = useState(false);
   const [missing, setMissing] = useState(false);
   // 同義詞輸入框於失焦時才寫回；重新載入時換 key 讓它重設成伺服器上的值

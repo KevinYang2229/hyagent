@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react';
-import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { createBrowserRouter, Navigate, Outlet, RouterProvider, useLocation, type RouteObject } from 'react-router-dom';
 import { ToastProvider } from '@hyagent/ui';
 import { AuthProvider, useAuth } from './auth';
 import { ConfirmProvider } from './components/confirm';
+import UnsavedGuard from './components/UnsavedGuard';
 import LoginPage from './pages/LoginPage';
 import TenantsPage from './pages/TenantsPage';
 import TenantDetailPage from './pages/TenantDetailPage';
@@ -18,65 +19,36 @@ function RequireAuth({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
+const guarded = (element: ReactNode) => <RequireAuth>{element}</RequireAuth>;
+
+/**
+ * 路由表。最外層包 UnsavedGuard：任何頁面有未儲存的新增／編輯時，離開前都會先確認
+ * （需用 data router，useBlocker 才能攔下側邊選單、返回鍵與程式導頁）。
+ */
+const routes: RouteObject[] = [
+  {
+    element: <UnsavedGuard><Outlet /></UnsavedGuard>,
+    children: [
+      { path: '/login', element: <LoginPage /> },
+      { path: '/', element: guarded(<TenantsPage />) },
+      { path: '/tenants/:id', element: guarded(<TenantDetailPage />) },
+      { path: '/tenants/:id/forms/:formId/design', element: guarded(<FormDesignerPage />) },
+      { path: '/skills', element: guarded(<SkillsPage />) },
+      { path: '/mcp-servers', element: guarded(<McpServersPage />) },
+      { path: '/audit', element: guarded(<AuditPage />) },
+      { path: '*', element: <Navigate to="/" replace /> },
+    ],
+  },
+];
+
+const router = createBrowserRouter(routes);
+
 export default function App() {
   return (
     <AuthProvider>
       <ToastProvider>
         <ConfirmProvider>
-        <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route
-            path="/"
-            element={
-              <RequireAuth>
-                <TenantsPage />
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/tenants/:id"
-            element={
-              <RequireAuth>
-                <TenantDetailPage />
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/tenants/:id/forms/:formId/design"
-            element={
-              <RequireAuth>
-                <FormDesignerPage />
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/skills"
-            element={
-              <RequireAuth>
-                <SkillsPage />
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/mcp-servers"
-            element={
-              <RequireAuth>
-                <McpServersPage />
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/audit"
-            element={
-              <RequireAuth>
-                <AuditPage />
-              </RequireAuth>
-            }
-          />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-        </BrowserRouter>
+          <RouterProvider router={router} />
         </ConfirmProvider>
       </ToastProvider>
     </AuthProvider>

@@ -14,6 +14,7 @@ import {
   type KeyRevocationReason,
   type TenantPublicKey,
 } from '../../api';
+import { useUnsavedChanges } from '../../components/unsaved';
 
 const REASON_LABEL: Record<KeyRevocationReason, string> = {
   rotated: '輪替汰換',
@@ -69,6 +70,7 @@ export default function DirectorySyncTab({
   const [view, setView] = useState<DirectorySyncView | null>(null);
   const [pem, setPem] = useState('');
   const [label, setLabel] = useState('');
+  useUnsavedChanges('人員同步：新增同步公鑰', pem.trim() !== '' || label.trim() !== '');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   const [revoking, setRevoking] = useState<TenantPublicKey | null>(null);

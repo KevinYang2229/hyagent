@@ -3,6 +3,7 @@ import { Dialog } from '@hyagent/ui';
 import { api, type DbiDataSource, type DbiDbType } from '../../../api';
 import { IconPlus } from '../../../components/icons';
 import { CONNECTION_EXAMPLES, connectionSummary, DB_TYPE_LABELS, diffSummary, parseList } from './database.util';
+import { useUnsavedChanges } from '../../../components/unsaved';
 
 interface Props {
   serverId: string;
@@ -27,10 +28,11 @@ const EMPTY: FormValues = { id: '', dbType: 'postgres', schemas: 'public', conne
 type RowResult = { kind: 'ok' | 'err'; lines: string[]; warnings?: string[] };
 
 export default function DataSourcesSection({ serverId, tenantId, sources, reload, onReview, onError }: Props) {
-  const [form, setForm] = useState<{ isNew: boolean; values: FormValues } | null>(null);
+  const [form, setForm] = useState<{ isNew: boolean; values: FormValues; initial?: FormValues } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [results, setResults] = useState<Record<string, RowResult>>({});
   const [deleting, setDeleting] = useState<DbiDataSource | null>(null);
+  useUnsavedChanges(form?.isNew ? '資料庫查詢：新增資料來源' : `資料庫查詢：資料來源 ${form?.initial?.id ?? ''}`, !!form && JSON.stringify(form.values) !== JSON.stringify(form.initial));
 
   const setResult = (id: string, r: RowResult) => setResults((m) => ({ ...m, [id]: r }));
 
@@ -99,7 +101,7 @@ export default function DataSourcesSection({ serverId, tenantId, sources, reload
           <div className="card-desc">客戶的唯讀資料庫連線。密碼不經過 HyAgent：連線字串放在 db-intelligence 服務的環境變數，這裡只填變數名稱。</div>
         </div>
         {!form && (
-          <button className="btn btn-primary btn-sm" onClick={() => setForm({ isNew: true, values: EMPTY })}>
+          <button className="btn btn-primary btn-sm" onClick={() => setForm({ isNew: true, values: EMPTY, initial: EMPTY })}>
             <IconPlus />
             新增資料來源
           </button>
@@ -215,7 +217,7 @@ export default function DataSourcesSection({ serverId, tenantId, sources, reload
                 </button>
                 <button
                   className="btn btn-ghost btn-sm"
-                  onClick={() => setForm({ isNew: false, values: { id: ds.id, dbType: ds.dbType, schemas: ds.schemas.join(', '), connectionEnv: ds.connectionEnv, timezone: ds.timezone } })}
+                  onClick={() => { const values = { id: ds.id, dbType: ds.dbType, schemas: ds.schemas.join(', '), connectionEnv: ds.connectionEnv, timezone: ds.timezone }; setForm({ isNew: false, values, initial: values }); }}
                 >
                   編輯
                 </button>

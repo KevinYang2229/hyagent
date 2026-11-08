@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Dialog } from '@hyagent/ui';
 import { api, type DbiDataSource, type DbiSensitiveExposure } from '../../../api';
 import { parseJson, policyTemplate } from './database.util';
+import { useUnsavedChanges } from '../../../components/unsaved';
 
 interface Props {
   serverId: string;
@@ -24,6 +25,9 @@ export default function PoliciesSection({ serverId, tenantId, sources, onSaved, 
   const [version, setVersion] = useState('');
   const [warnings, setWarnings] = useState<string[]>([]);
   const [principals, setPrincipals] = useState('');
+  // 載入當下的內容：比對後判斷存取政策或帳號角色是否有未儲存的修改
+  const [loadedText, setLoadedText] = useState({ policies: '', principals: '' });
+  useUnsavedChanges('資料庫查詢：存取政策', policies !== loadedText.policies || principals !== loadedText.principals);
   const [parseError, setParseError] = useState<{ policies?: string; principals?: string }>({});
   const [busy, setBusy] = useState(false);
   /** 待確認：新開放了機密／限制欄位的政策內容 */
@@ -35,6 +39,7 @@ export default function PoliciesSection({ serverId, tenantId, sources, onSaved, 
       setPolicies(pretty(p.policies));
       setVersion(p.version);
       setPrincipals(pretty(d));
+      setLoadedText({ policies: pretty(p.policies), principals: pretty(d) });
       setWarnings([]);
       setParseError({});
     } catch (e) {

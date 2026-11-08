@@ -9,6 +9,7 @@ import {
 } from "../../../api";
 import { MANUAL_PROMPT_MAX_ZH_CHARS } from "../knowledgeAcl.util";
 import { useConfirm } from "../../../components/confirm";
+import { useUnsavedChanges } from "../../../components/unsaved";
 
 /**
  * 「開場推薦詞」子頁：各來源的自動／手動推薦詞，以及自訂提示詞。
@@ -29,6 +30,12 @@ export default function PromptsPanel({ tenantId, meta, onMetaChange, onError }: 
   const [customDraft, setCustomDraft] = useState<{ id?: string; source: PromptSource; text: SuggestedPromptText } | null>(null);
   const [savingCustom, setSavingCustom] = useState(false);
   const [savingManual, setSavingManual] = useState(false);
+  const manualOriginal = editingSource ? meta.suggestedPrompts?.[editingSource]?.manual ?? { "zh-Hant": "", en: "" } : null;
+  useUnsavedChanges("知識庫：手動推薦詞", !!manualOriginal && (manualDraft["zh-Hant"] !== manualOriginal["zh-Hant"] || manualDraft.en !== manualOriginal.en));
+  const customOriginal = customDraft?.id ? (meta.customSuggestedPrompts ?? []).find((p) => p.id === customDraft.id) : undefined;
+  useUnsavedChanges(customDraft?.id ? "知識庫：編輯自訂提示詞" : "知識庫：新增自訂提示詞", !!customDraft && (customOriginal
+    ? customDraft.source !== customOriginal.source || customDraft.text["zh-Hant"] !== customOriginal.text["zh-Hant"] || customDraft.text.en !== customOriginal.text.en
+    : !!(customDraft.text["zh-Hant"].trim() || customDraft.text.en.trim())));
 
   const setSlot = (source: PromptSource, slot: NonNullable<KnowledgeMeta["suggestedPrompts"]>[PromptSource]) =>
     onMetaChange((m) => ({ ...m, suggestedPrompts: { ...m.suggestedPrompts, [source]: slot } }));

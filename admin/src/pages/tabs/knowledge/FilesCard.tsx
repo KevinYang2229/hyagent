@@ -3,6 +3,7 @@ import { Checkbox, useToast } from "@hyagent/ui";
 import { api, type KnowledgeFileMeta, type KnowledgeLabel } from "../../../api";
 import { fileLabelState, kbScopeId, labelNameFor, stripKbPrefix } from "../knowledgeAcl.util";
 import { useConfirm } from "../../../components/confirm";
+import { useUnsavedChanges } from "../../../components/unsaved";
 
 const pageSize = 5;
 
@@ -29,6 +30,9 @@ export default function FilesCard({ tenantId, files, labels, focusFileId, onFocu
   const [editingFileId, setEditingFileId] = useState<string | null>(null);
   const [editScopes, setEditScopes] = useState<string[]>([]); // labelId（未加 kb: 前綴）
   const [savingVisibility, setSavingVisibility] = useState(false);
+  const editingFile = files.find((f) => f.fileId === editingFileId);
+  const sameScopes = (a: string[], b: string[]) => a.length === b.length && a.every((x) => b.includes(x));
+  useUnsavedChanges(`知識庫：「${editingFile?.name ?? ''}」的標籤`, !!editingFile && !sameScopes(editScopes, (editingFile.visibilityScopes ?? []).map(stripKbPrefix)));
 
   const sortedFiles = [...files].sort((a, b) => b.ingestedAt.localeCompare(a.ingestedAt));
   const filteredFiles = sortedFiles.filter((file) =>

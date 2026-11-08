@@ -4,6 +4,7 @@ import { api, type IngestJob, type KnowledgeLabel, type KnowledgeMeta, type Know
 import NumberField from "../../../components/NumberField";
 import UnsavedBadge from "../../../components/UnsavedBadge";
 import { kbScopeId } from "../knowledgeAcl.util";
+import { useUnsavedChanges } from "../../../components/unsaved";
 
 const EMBEDDING_MODELS = ["text-embedding-3-large", "text-embedding-3-small"];
 type SourceKind = "website" | "file";
@@ -56,6 +57,7 @@ export default function SourceCard({
   const [sourceKind, setSourceKind] = useState<SourceKind>("website");
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  useUnsavedChanges(`知識庫：待解析的檔案「${pendingFile?.name ?? ''}」`, !!pendingFile);
   // 清除索引是不可逆操作：先開確認框，輸入「清除」才放行
   const [confirmingClear, setConfirmingClear] = useState(false);
   const [clearTyped, setClearTyped] = useState("");

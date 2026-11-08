@@ -28,6 +28,7 @@ import {
 } from '../../api';
 import SessionsPanel from './SessionsPanel';
 import { useConfirm } from '../../components/confirm';
+import { useUnsavedChanges } from '../../components/unsaved';
 
 const REASON_LABEL: Record<KeyRevocationReason, string> = {
   rotated: '輪替汰換',
@@ -88,6 +89,7 @@ export default function SsoTab({
   const [view, setView] = useState<AssertionKeysView | null>(null);
   const [pem, setPem] = useState('');
   const [label, setLabel] = useState('');
+  useUnsavedChanges('自動登入：新增簽章公鑰', pem.trim() !== '' || label.trim() !== '');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   /** 正在選撤銷原因的那把；null＝撤銷面板收起 */
@@ -605,6 +607,8 @@ function NumberField({
   onSave: (v: number) => void;
 }) {
   const [draft, setDraft] = useState(String(value));
+  // 每個時間欄位各自儲存：輸入了新值但還沒按「儲存」也算未儲存
+  useUnsavedChanges(`自動登入：${label}`, draft !== String(value));
   useEffect(() => setDraft(String(value)), [value]);
   const changed = Number(draft) !== value;
   return (

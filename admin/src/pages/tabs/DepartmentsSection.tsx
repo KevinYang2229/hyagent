@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Dialog } from '@hyagent/ui';
 import { api, type DepartmentSummary } from '../../api';
+import { useUnsavedChanges } from '../../components/unsaved';
 
 /** 部門綁定的權限摘要文字 */
 function grantSummary(d: DepartmentSummary): string {
@@ -45,6 +46,7 @@ export default function DepartmentsSection({ tenantId, departments, directorySyn
   const [newName, setNewName] = useState('');
   const [pendingMerge, setPendingMerge] = useState<{ from: string; to: string } | null>(null);
   const [pendingDelete, setPendingDelete] = useState<DepartmentSummary | null>(null);
+  useUnsavedChanges(`部門：將「${renaming ?? ''}」改名`, !!renaming && newName.trim() !== '' && newName.trim() !== renaming);
 
   async function run(action: () => Promise<unknown>, success: string, fallbackError: string): Promise<boolean> {
     setBusy(true); setError(''); setMessage('');

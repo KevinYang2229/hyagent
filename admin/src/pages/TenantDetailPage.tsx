@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type SVGProps } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Dialog, useToast } from '@hyagent/ui';
+import { useToast } from '@hyagent/ui';
 import { api, UnauthorizedError, type Tenant } from '../api';
 import { useAuth } from '../auth';
 import AppLayout from '../components/AppLayout';
@@ -23,7 +23,6 @@ import SsoTab from './tabs/SsoTab';
 import DirectorySyncTab from './tabs/DirectorySyncTab';
 import DatabaseTab from './tabs/database/DatabaseTab';
 import OverviewTab from './tabs/OverviewTab';
-import { UnsavedChangesProvider } from '../components/unsaved';
 
 type TabKey =
   | 'overview'
@@ -89,30 +88,10 @@ export default function TenantDetailPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const rawTab = searchParams.get('tab');
   const tab: TabKey = TABS.some((t) => t.key === rawTab) ? (rawTab as TabKey) : 'overview';
-  // 各區塊以 useUnsavedChanges 回報未儲存狀態；有任何一處未儲存時，離開前先確認並列出是哪幾處
-  const [dirtyLabels, setDirtyLabels] = useState<string[]>([]);
-  const reportUnsaved = useCallback((label: string, dirty: boolean) => {
-    setDirtyLabels((prev) => {
-      const has = prev.includes(label);
-      if (dirty === has) return prev;
-      return dirty ? [...prev, label] : prev.filter((l) => l !== label);
-    });
-  }, []);
-  const [pendingLeave, setPendingLeave] = useState<(() => void) | null>(null);
-  const guardLeave = (action: () => void) => {
-    if (dirtyLabels.length > 0) setPendingLeave(() => action);
-    else action();
-  };
-  // 重整或關閉瀏覽器前提醒
-  useEffect(() => {
-    if (dirtyLabels.length === 0) return;
-    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
-    window.addEventListener('beforeunload', warn);
-    return () => window.removeEventListener('beforeunload', warn);
-  }, [dirtyLabels.length]);
   const setTab = (next: TabKey, query: Record<string, string> = {}) => {
     if (next === tab && Object.keys(query).length === 0) return;
-    guardLeave(() => setSearchParams({ tab: next, ...query }, { replace: true }));
+    // 有未儲存的變更時，由最外層的 UnsavedGuard 攔下並確認
+    setSearchParams({ tab: next, ...query }, { replace: true });
   };
 
   const handleErr = useCallback(
@@ -151,7 +130,7 @@ export default function TenantDetailPage() {
       crumb="租戶"
       title={tenant?.name ?? '載入中…'}
       actions={
-        <button className="btn btn-ghost btn-sm" onClick={() => guardLeave(() => navigate('/'))}>
+        <button className="btn btn-ghost btn-sm" onClick={() => navigate('/')}>
           <IconBack />
           租戶清單
         </button>
@@ -163,7 +142,6 @@ export default function TenantDetailPage() {
         </div>
       ) : (
         <>
-          <UnsavedChangesProvider value={reportUnsaved}>
           <div className="tenant-shell">
             <nav className="tenant-nav" aria-label="租戶設定導覽">
               {TAB_GROUPS.map((group) => (
@@ -221,24 +199,7 @@ export default function TenantDetailPage() {
           {tab === 'audit' && <AuditTab tenantId={tenant.id} onError={handleErr} />}
             </div>
           </div>
-          </UnsavedChangesProvider>
 
-          <Dialog
-            isOpen={!!pendingLeave}
-            title="放棄未儲存的變更？"
-            confirmText="放棄並離開"
-            cancelText="留在此頁"
-            confirmVariant="danger"
-            onClose={() => setPendingLeave(null)}
-            onConfirm={() => {
-              const leave = pendingLeave;
-              setPendingLeave(null);
-              setDirtyLabels([]);
-              leave?.();
-            }}
-          >
-            以下區塊有尚未儲存的變更，離開後會遺失：{dirtyLabels.join('、')}。
-          </Dialog>
         </>
       )}
     </AppLayout>

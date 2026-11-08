@@ -3,6 +3,7 @@ import { Dialog } from '@hyagent/ui';
 import { api, type DepartmentSummary, type DirectoryUser } from '../../api';
 import DepartmentsSection from './DepartmentsSection';
 import CollapsibleList from '../../components/CollapsibleList';
+import { useUnsavedChanges } from '../../components/unsaved';
 
 /** 部門下拉的「新增部門」選項值；不會與真實部門名稱衝突 */
 const NEW_DEPARTMENT = '__new__';
@@ -155,6 +156,14 @@ export default function UsersTab({ tenantId, onError }: { tenantId: string; onEr
     }), `已新增帳號 ${newId}`, '新增失敗，請稍後再試');
     if (ok) { setId(''); setName(''); setDept({ choice: '', typed: '' }); setEmail(''); }
   }
+
+  // 新增表單有輸入、或編輯中的帳號與原值不同：離開前提醒
+  const editingUser = users.find((u) => u.id === editingId);
+  useUnsavedChanges('使用者目錄：新增使用者', !!(id.trim() || name.trim() || email.trim() || dept.choice));
+  useUnsavedChanges(`使用者目錄：編輯 ${editingUser?.name ?? ''}`, !!editingUser && !!draft && (
+    draft.name.trim() !== editingUser.name
+    || (deptValueOf(draft.dept) || UNSPECIFIED) !== (editingUser.department || UNSPECIFIED)
+    || draft.email.trim() !== (editingUser.email ?? '')));
 
   function startEdit(user: DirectoryUser) {
     setEditingId(user.id);

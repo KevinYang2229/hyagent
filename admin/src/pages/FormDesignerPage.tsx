@@ -32,6 +32,7 @@ import {
 import AdvancedPanel from './designer/AdvancedPanel';
 import './designer/designer.css';
 import { useConfirm } from '../components/confirm';
+import { LEAVE_WITHOUT_PROMPT, useUnsavedChanges } from '../components/unsaved';
 
 const PALETTE: { component: FieldComponent; label: string; icon: string }[] = [
   { component: 'Input', label: '單行文字', icon: '🔤' },
@@ -166,6 +167,8 @@ export default function FormDesignerPage() {
   const navigate = useNavigate();
 
   const [draft, setDraft] = useState<DraftForm>(() => emptyDraft());
+  // 載入（或新建）當下的草稿，用來判斷是否有未儲存的修改
+  const [baseline, setBaseline] = useState<DraftForm>(() => emptyDraft());
   const [activeStep, setActiveStep] = useState(0);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -186,7 +189,7 @@ export default function FormDesignerPage() {
     (e: unknown) => {
       if (e instanceof UnauthorizedError) {
         logout();
-        navigate('/login', { replace: true });
+        navigate('/login', { replace: true, state: LEAVE_WITHOUT_PROMPT });
         return;
       }
       setErr(e instanceof Error ? e.message : '發生錯誤');
@@ -196,20 +199,26 @@ export default function FormDesignerPage() {
 
   useEffect(() => {
     if (isNew) {
-      setDraft(emptyDraft());
+      const empty = emptyDraft();
+      setDraft(empty);
+      setBaseline(empty);
       setLoaded(true);
       return;
     }
     void (async () => {
       try {
         const def = await api.getForm(id, formId);
-        setDraft(fromDefinition(def));
+        const loadedDraft = fromDefinition(def);
+        setDraft(loadedDraft);
+        setBaseline(loadedDraft);
         setLoaded(true);
       } catch (e) {
         handleErr(e);
       }
     })();
   }, [id, formId, isNew, handleErr]);
+
+  useUnsavedChanges(isNew ? '表單設計器：新表單' : `表單設計器：${draft.title || formId}`, loaded && JSON.stringify(draft) !== JSON.stringify(baseline));
 
   const step = Math.min(activeStep, draft.steps.length - 1);
   const stepFields = fieldsOfStep(draft, step);
@@ -313,7 +322,8 @@ export default function FormDesignerPage() {
       if (isNew) await api.createForm(id, def);
       else await api.updateForm(id, formId, def);
       // 新表單不會自動開放給任何人：帶回表單分頁，由那裡提示到權限頁把表單加進角色
-      navigate(isNew ? `/tenants/${id}?tab=forms&created=${encodeURIComponent(def.formId)}` : `/tenants/${id}?tab=forms`);
+      // 已存檔：導回表單清單不需要「未儲存」提醒
+      navigate(isNew ? `/tenants/${id}?tab=forms&created=${encodeURIComponent(def.formId)}` : `/tenants/${id}?tab=forms`, { state: LEAVE_WITHOUT_PROMPT });
     } catch (e) {
       setErr((e as { message?: string }).message ?? '儲存失敗');
       const maybe = e as { details?: { field: string; message: string }[] };

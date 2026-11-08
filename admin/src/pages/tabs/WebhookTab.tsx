@@ -2,12 +2,14 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, type WebhookEndpoint } from '../../api';
 import { IconPlus } from '../../components/icons';
 import { useConfirm } from '../../components/confirm';
+import { useUnsavedChanges } from '../../components/unsaved';
 
 export default function WebhookTab({ tenantId, onError }: { tenantId: string; onError: (e: unknown) => void }) {
   const confirm = useConfirm();
   const [list, setList] = useState<WebhookEndpoint[]>([]);
   const [url, setUrl] = useState('');
   const [secret, setSecret] = useState('');
+  useUnsavedChanges('事件通知：新增端點', url.trim() !== '' || secret.trim() !== '');
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {

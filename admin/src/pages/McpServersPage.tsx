@@ -5,6 +5,7 @@ import { api, UnauthorizedError, type McpServerListView, type McpServerView, typ
 import { useAuth } from '../auth';
 import { emptyMcpForm, reapprovedOverrides, staleApprovals, statusLabel, toFormValues, toPayload, validateMcpForm, type McpServerFormValues } from './mcpForm.util';
 import { useConfirm } from '../components/confirm';
+import { useUnsavedChanges } from '../components/unsaved';
 
 /**
  * MCP 服務（平台層）：登記自建 MCP server、測試連線、檢視工具讀寫判定並覆寫。
@@ -14,8 +15,9 @@ export default function McpServersPage() {
   const [view, setView] = useState<McpServerListView | null>(null);
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [err, setErr] = useState<string | null>(null);
-  const [editing, setEditing] = useState<{ isNew: boolean; values: McpServerFormValues } | null>(null);
+  const [editing, setEditing] = useState<{ isNew: boolean; values: McpServerFormValues; initial: McpServerFormValues } | null>(null);
   const [formErrors, setFormErrors] = useState<string[]>([]);
+  useUnsavedChanges(editing?.isNew ? 'MCP 服務：新增服務' : `MCP 服務：${editing?.initial.name ?? ''}`, !!editing && JSON.stringify(editing.values) !== JSON.stringify(editing.initial));
   const [busyId, setBusyId] = useState<string | null>(null);
   const { logout } = useAuth();
   const navigate = useNavigate();
@@ -223,7 +225,7 @@ export default function McpServersPage() {
                 <div className="card-title">已登記的服務</div>
                 <div className="card-desc">要讓員工使用，請到各租戶的「角色與授權」把此服務加進角色，並套用給部門、帳號或所有登入員工（外部服務不能開給網站訪客）</div>
               </div>
-              <button type="button" className="btn btn-primary" onClick={() => { setFormErrors([]); setErr(null); setEditing({ isNew: true, values: emptyMcpForm() }); }}>
+              <button type="button" className="btn btn-primary" onClick={() => { setFormErrors([]); setErr(null); setEditing({ isNew: true, values: emptyMcpForm(), initial: emptyMcpForm() }); }}>
                 新增 MCP 服務
               </button>
             </div>
@@ -245,7 +247,7 @@ export default function McpServersPage() {
                     <button type="button" className="btn btn-sm" disabled={busyId === s.config.id} onClick={() => void refresh(s.config.id)}>
                       {busyId === s.config.id ? '重新整理中…' : '重新整理工具清單'}
                     </button>
-                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setFormErrors([]); setErr(null); setEditing({ isNew: false, values: toFormValues(s.config) }); }}>編輯</button>
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setFormErrors([]); setErr(null); setEditing({ isNew: false, values: toFormValues(s.config), initial: toFormValues(s.config) }); }}>編輯</button>
                     <button type="button" className="btn btn-danger btn-sm" onClick={() => void remove(s.config.id)}>刪除</button>
                   </div>
                 </div>

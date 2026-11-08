@@ -4,6 +4,7 @@
  */
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { api, type FeedbackFilterQuery, type FeedbackItem, type FeedbackReasonKey, type FeedbackStats } from '../../api';
+import { useUnsavedChanges } from '../../components/unsaved';
 
 const REASON_LABEL: Record<FeedbackReasonKey, string> = {
   wrong: '答錯了',
@@ -143,6 +144,7 @@ export default function FeedbackTab({
   }
 
   const open = rows?.find((r) => r.id === openId);
+  useUnsavedChanges('回饋：處理說明', !!open && note.trim() !== (open.resolutionNote ?? '').trim());
 
   // 詳情卡在 480px 捲動清單下方：點開後捲過去，否則看起來像點了沒反應
   useEffect(() => {
