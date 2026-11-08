@@ -1,0 +1,71 @@
+// @vitest-environment jsdom
+import '@testing-library/jest-dom/vitest';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import TenantDetailPage from './TenantDetailPage';
+import { api } from '../api';
+
+vi.mock('../api', () => ({ api: { listTenants: vi.fn() }, UnauthorizedError: class extends Error {} }));
+vi.mock('@hyagent/ui', async () => ({ ...await vi.importActual<object>('@hyagent/ui'), useToast: () => ({ success: vi.fn(), error: vi.fn() }) }));
+vi.mock('../auth', () => ({ useAuth: () => ({ logout: vi.fn() }) }));
+vi.mock('../components/AppLayout', () => ({ default: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
+// 各頁籤內容不是此測試的重點，換成標記
+const { stub } = vi.hoisted(() => ({ stub: (name: string) => ({ default: () => `頁面:${name}` }) }));
+vi.mock('./tabs/OverviewTab', () => stub('overview'));
+vi.mock('./tabs/SettingsTab', () => stub('settings'));
+vi.mock('./tabs/AppearanceTab', () => stub('appearance'));
+vi.mock('./tabs/WebhookTab', () => stub('webhook'));
+vi.mock('./tabs/UsageTab', () => stub('usage'));
+vi.mock('./tabs/FormsTab', () => stub('forms'));
+vi.mock('./tabs/KnowledgeTab', () => stub('knowledge'));
+vi.mock('./tabs/PermissionsTab', () => stub('permissions'));
+vi.mock('./tabs/AuditTab', () => stub('audit'));
+vi.mock('./tabs/FeedbackTab', () => stub('feedback'));
+vi.mock('./tabs/ReportsTab', () => stub('reports'));
+vi.mock('./tabs/UsersTab', () => stub('users'));
+vi.mock('./tabs/SsoTab', () => stub('sso'));
+vi.mock('./tabs/DirectorySyncTab', () => stub('directorySync'));
+vi.mock('./tabs/database/DatabaseTab', () => stub('database'));
+
+function Where() { return <div data-testid="where">{useLocation().search}</div>; }
+
+beforeEach(() => {
+  vi.mocked(api.listTenants).mockResolvedValue([{ id: 't1', name: '宏碁', allowedOrigins: [], createdAt: '' }]);
+});
+afterEach(cleanup);
+
+function renderAt(search = '') {
+  render(<MemoryRouter initialEntries={[`/tenants/t1${search}`]}>
+    <Routes><Route path="/tenants/:id" element={<><TenantDetailPage /><Where /></>} /></Routes>
+  </MemoryRouter>);
+}
+
+it('預設進入總覽；導覽依導入流程分組，權限排在內容之後', async () => {
+  renderAt();
+  expect(await screen.findByText('頁面:overview')).toBeInTheDocument();
+  const nav = screen.getByRole('navigation', { name: '租戶設定導覽' });
+  const labels = [...nav.querySelectorAll('.tenant-nav-label')].map((el) => el.textContent);
+  expect(labels).toEqual(['接入', '人員與登入', '內容與能力', '權限', '前台呈現', '營運']);
+  const items = within(nav).getAllByRole('button').map((b) => b.textContent);
+  expect(items.indexOf('權限')).toBeGreaterThan(items.indexOf('表單'));
+  expect(items[0]).toBe('總覽');
+});
+
+it('點導覽切換頁面並寫入網址；舊的 tab 參數仍有效', async () => {
+  renderAt('?tab=knowledge');
+  expect(await screen.findByText('頁面:knowledge')).toBeInTheDocument();
+  const nav = screen.getByRole('navigation', { name: '租戶設定導覽' });
+  expect(within(nav).getByRole('button', { name: '知識庫' })).toHaveAttribute('aria-current', 'page');
+  fireEvent.click(within(nav).getByRole('button', { name: '使用者目錄' }));
+  expect(screen.getByText('頁面:users')).toBeInTheDocument();
+  expect(screen.getByTestId('where')).toHaveTextContent('tab=users');
+});
+
+it('窄螢幕的下拉選單與導覽同步', async () => {
+  renderAt('?tab=audit');
+  const select = await screen.findByLabelText('切換租戶設定頁面');
+  expect(select).toHaveValue('audit');
+  fireEvent.change(select, { target: { value: 'permissions' } });
+  expect(screen.getByText('頁面:permissions')).toBeInTheDocument();
+});

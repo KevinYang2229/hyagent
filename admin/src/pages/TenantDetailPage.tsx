@@ -19,8 +19,10 @@ import UsersTab from './tabs/UsersTab';
 import SsoTab from './tabs/SsoTab';
 import DirectorySyncTab from './tabs/DirectorySyncTab';
 import DatabaseTab from './tabs/database/DatabaseTab';
+import OverviewTab from './tabs/OverviewTab';
 
 type TabKey =
+  | 'overview'
   | 'sso'
   | 'users'
   | 'directorySync'
@@ -35,22 +37,38 @@ type TabKey =
   | 'reports'
   | 'feedback'
   | 'audit';
-const TABS: { key: TabKey; label: string }[] = [
-  { key: 'settings', label: '設定' },
-  { key: 'appearance', label: '外觀' },
-  { key: 'sso', label: '自動登入' },
-  { key: 'users', label: '使用者目錄' },
-  { key: 'directorySync', label: '人員同步' },
-  { key: 'permissions', label: '權限' },
-  { key: 'forms', label: '表單' },
-  { key: 'knowledge', label: '知識庫' },
-  { key: 'database', label: '資料庫查詢' },
-  { key: 'webhook', label: 'Webhook' },
-  { key: 'usage', label: '用量' },
-  { key: 'reports', label: '報告' },
-  { key: 'feedback', label: '回饋' },
-  { key: 'audit', label: '稽核' },
+
+/**
+ * 依導入流程分組：接入 → 人員與登入 → 內容與能力 → 權限（把內容開給人）→ 前台呈現 → 營運。
+ * 權限排在內容之後：要先有表單、知識庫標籤、外部服務，才有東西可以授權。
+ * 網址的 tab key 不變，既有連結與書籤仍有效。
+ */
+const TAB_GROUPS: { label: string | null; tabs: { key: TabKey; label: string }[] }[] = [
+  { label: null, tabs: [{ key: 'overview', label: '總覽' }] },
+  { label: '接入', tabs: [{ key: 'settings', label: '基本設定' }] },
+  { label: '人員與登入', tabs: [
+    { key: 'sso', label: '自動登入（SSO）' },
+    { key: 'users', label: '使用者目錄' },
+    { key: 'directorySync', label: '人員同步' },
+  ] },
+  { label: '內容與能力', tabs: [
+    { key: 'knowledge', label: '知識庫' },
+    { key: 'forms', label: '表單' },
+    { key: 'database', label: '資料庫查詢' },
+  ] },
+  { label: '權限', tabs: [{ key: 'permissions', label: '權限' }] },
+  { label: '前台呈現', tabs: [
+    { key: 'appearance', label: '外觀' },
+    { key: 'webhook', label: 'Webhook' },
+  ] },
+  { label: '營運', tabs: [
+    { key: 'usage', label: '用量' },
+    { key: 'feedback', label: '回饋' },
+    { key: 'reports', label: '報告' },
+    { key: 'audit', label: '稽核' },
+  ] },
 ];
+const TABS = TAB_GROUPS.flatMap((g) => g.tabs);
 
 export default function TenantDetailPage() {
   const { id = '' } = useParams();
@@ -61,7 +79,7 @@ export default function TenantDetailPage() {
   // 分頁狀態同步到網址（?tab=...）：重整/分享連結停留在原分頁，不再重置回第一頁
   const [searchParams, setSearchParams] = useSearchParams();
   const rawTab = searchParams.get('tab');
-  const tab: TabKey = TABS.some((t) => t.key === rawTab) ? (rawTab as TabKey) : 'settings';
+  const tab: TabKey = TABS.some((t) => t.key === rawTab) ? (rawTab as TabKey) : 'overview';
   // 權限分頁有未儲存變更時，離開前先確認（其他分頁各自即時儲存，不需要）
   const [permissionsDirty, setPermissionsDirty] = useState(false);
   const [pendingLeave, setPendingLeave] = useState<(() => void) | null>(null);
@@ -122,18 +140,37 @@ export default function TenantDetailPage() {
         </div>
       ) : (
         <>
-          <div className="tabs">
-            {TABS.map((tb) => (
-              <button
-                key={tb.key}
-                className={`tab${tab === tb.key ? ' active' : ''}`}
-                onClick={() => setTab(tb.key)}
-              >
-                {tb.label}
-              </button>
-            ))}
-          </div>
+          <div className="tenant-shell">
+            <nav className="tenant-nav" aria-label="租戶設定導覽">
+              {TAB_GROUPS.map((group) => (
+                <div key={group.label ?? 'top'} className="tenant-nav-group">
+                  {group.label && <div className="tenant-nav-label">{group.label}</div>}
+                  {group.tabs.map((tb) => (
+                    <button
+                      key={tb.key}
+                      type="button"
+                      className={`tenant-nav-item${tab === tb.key ? ' active' : ''}`}
+                      aria-current={tab === tb.key ? 'page' : undefined}
+                      onClick={() => setTab(tb.key)}
+                    >
+                      {tb.label}
+                    </button>
+                  ))}
+                </div>
+              ))}
+            </nav>
+            {/* 窄螢幕：側邊導覽收成下拉選單，分組以 optgroup 呈現 */}
+            <label className="tenant-nav-select field">
+              <span className="field-label">目前頁面</span>
+              <select className="select" aria-label="切換租戶設定頁面" value={tab} onChange={(e) => setTab(e.target.value as TabKey)}>
+                {TAB_GROUPS.map((group) => group.label
+                  ? <optgroup key={group.label} label={group.label}>{group.tabs.map((tb) => <option key={tb.key} value={tb.key}>{tb.label}</option>)}</optgroup>
+                  : group.tabs.map((tb) => <option key={tb.key} value={tb.key}>{tb.label}</option>))}
+              </select>
+            </label>
+            <div className="tenant-content">
 
+          {tab === 'overview' && <OverviewTab key={tenant.id} tenant={tenant} onNavigate={(next) => setTab(next as TabKey)} />}
           {tab === 'sso' && <SsoTab key={tenant.id} tenantId={tenant.id} onError={handleErr} />}
           {tab === 'users' && <UsersTab key={tenant.id} tenantId={tenant.id} onError={handleErr} />}
           {tab === 'directorySync' && <DirectorySyncTab key={tenant.id} tenantId={tenant.id} onError={handleErr} />}
@@ -160,6 +197,8 @@ export default function TenantDetailPage() {
             />
           )}
           {tab === 'audit' && <AuditTab tenantId={tenant.id} onError={handleErr} />}
+            </div>
+          </div>
 
           <Dialog
             isOpen={!!pendingLeave}
