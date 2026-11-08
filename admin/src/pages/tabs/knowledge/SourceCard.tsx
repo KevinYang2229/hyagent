@@ -167,7 +167,7 @@ export default function SourceCard({
           </div>
 
           {sourceKind === "website" ? (
-            <div className="form-grid">
+            <div className="form-stack">
               <div className="field">
                 <label className="field-label">起始網址</label>
                 <input
@@ -231,12 +231,12 @@ export default function SourceCard({
                   disabled={parsing}
                 />
               </div>
-              <div className="field">
-                <label className="field-label" htmlFor="website-render-javascript">
+              <div className="field check-field">
+                <label className="check-field-label" htmlFor="website-render-javascript">
                   <Checkbox id="website-render-javascript" checked={src.renderJavaScript ?? false}
                     disabled={parsing || savingSource}
                     onChange={(e) => update({ renderJavaScript: e.target.checked })} />
-                  瀏覽器渲染後解析
+                  <span>瀏覽器渲染後解析</span>
                 </label>
                 <span className="field-hint">適用於以 JavaScript 載入內容的網站，解析時間較長。僅讀取未登入即可瀏覽的內容，不會沿用你的登入狀態。變更後需重新解析。</span>
               </div>
@@ -348,7 +348,7 @@ export default function SourceCard({
           )}
 
           <div className="kb-param-block">
-            <div className="form-grid">
+            <div className="form-stack">
               <div className="field">
                 <label className="field-label">段落長度（chunk，字元）</label>
                 <NumberField
@@ -385,20 +385,18 @@ export default function SourceCard({
                 )}
                 <span className="field-hint">把文字轉成向量以進行語意檢索（找意思相近、不只字面相同的段落）。</span>
               </div>
-              <div className="field">
-                <label className="field-label">AI 重新排序（rerank）</label>
-                <label
-                  style={{ display: "flex", alignItems: "center", gap: 8 }}
-                >
+              <div className="field check-field">
+                <label className="check-field-label">
                   <Checkbox
                     checked={src.rerank}
                     onChange={(e) => update({ rerank: e.target.checked })}
                     disabled={parsing}
                   />
-                  <span className="field-hint">
-                    先找出候選段落，再請 AI 依問題重新排序。答案較精準，但每次查詢多一次 AI 呼叫（較慢、費用較高）。
-                  </span>
+                  <span>AI 重新排序（rerank）</span>
                 </label>
+                <span className="field-hint">
+                  先找出候選段落，再請 AI 依問題重新排序。答案較精準，但每次查詢多一次 AI 呼叫（較慢、費用較高）。
+                </span>
               </div>
             </div>
           </div>
