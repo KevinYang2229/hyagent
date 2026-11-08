@@ -60,3 +60,23 @@ export function resolveGuestScopes(tenantId: string): string[] {
     ...scopePolicy.groupBundleScopes(tenantId, UNKNOWN_DEPARTMENT),
   ])];
 }
+
+/**
+ * 某人目前擁有的角色 ids，與 resolveScopes 同一套規則（給前台「我的助理能力」顯示角色名稱用）：
+ * 訪客＝所有人＋網站訪客桶；登入成員＝所有人＋所有登入員工＋所屬部門（沒有部門時為「未指定部門」）＋直接指派。
+ */
+export function resolveRoleIds(principal: ScopePrincipal): string[] {
+  const { tenantId, userId } = principal;
+  const policy = scopePolicy.getPolicy(tenantId);
+  const own = (map: Record<string, string[]> | undefined, key: string): string[] =>
+    map && Object.prototype.hasOwnProperty.call(map, key) ? map[key] : [];
+  const everyone = policy.tenantBundles ?? [];
+  if (isGuestPrincipal(userId)) return [...new Set([...everyone, ...own(policy.groupBundles, UNKNOWN_DEPARTMENT)])];
+  const department = memberPermissionDepartment(getApplicant(userId, tenantId).department);
+  return [...new Set([
+    ...everyone,
+    ...(policy.memberBundles ?? []),
+    ...own(policy.groupBundles, department),
+    ...own(policy.accountBundles, userId),
+  ])];
+}

@@ -42,3 +42,16 @@ it('does not display form capability without any authorized form', async () => {
   const res = await request(app).get('/api/skills').set(auth).expect(200);
   expect(res.body.data.skills).toEqual([]);
 });
+it('角色清單包含「所有人」與「所有登入員工」的角色，不含只給網站訪客的角色', async () => {
+  scopePolicy.setPolicy('default', {
+    groups: {}, accounts: {},
+    bundles: [
+      { id: 'all', name: '全體人員', scopes: ['service:knowledge'] },
+      { id: 'members', name: '通用服務', scopes: ['service:form'] },
+      { id: 'guest', name: '網站訪客：問答', scopes: ['service:knowledge'] },
+    ],
+    groupBundles: { '—': ['guest'] }, accountBundles: {}, tenantBundles: ['all'], memberBundles: ['members'],
+  });
+  const res = await request(app).get('/api/skills').set(auth).expect(200);
+  expect(res.body.data.roles.map((r: { id: string }) => r.id).sort()).toEqual(['all', 'members']);
+});
