@@ -543,6 +543,7 @@ hyagent-client ─┼── HTTPS ──> hyagent-server ──> LLM / PostgreSQ
 - [`../DEPLOY.zeabur.md`](../DEPLOY.zeabur.md)：Zeabur 部署與環境變數。
 - [`../NOTIFICATION-CENTER.md`](../NOTIFICATION-CENTER.md)：通知規則、API 與已讀儲存限制。
 - [`ROLE-SKILLS.md`](ROLE-SKILLS.md)：角色與技能授權說明。
+- [`UPGRADE-NOTES.md`](UPGRADE-NOTES.md)：權限調整（最小權限、角色化、訪客分流）的上線注意事項與部署後檢查清單。
 - [`HyAgent客戶網站自動登入規格.md`](HyAgent客戶網站自動登入規格.md)：Assertion SSO、公鑰與 Session 規則。
 - [`superpowers/specs/2026-10-13-reply-feedback-design.md`](superpowers/specs/2026-10-13-reply-feedback-design.md)：回覆評價設計與保存政策。
 - [`../mcp/kit/README.md`](../mcp/kit/README.md)：自建 MCP 服務與呼叫身分驗證。
