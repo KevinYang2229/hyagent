@@ -54,4 +54,15 @@ describe('租戶總覽設定檢查', () => {
     expect(c.roles.status).toBe('unknown');
     expect(c.content.status).toBe('unknown');
   });
+
+  it('有角色開給所有人（含網站訪客）時提醒，並列出訪客可用的能力', () => {
+    const d = fresh();
+    d.policy = policy({
+      capabilities: [{ id: 'service:agent', label: '智慧代理', description: '', base: false }],
+      bundles: [{ id: 'all', name: '全體人員', scopes: ['service:agent'] }], tenantBundles: ['all'],
+    });
+    expect(byId(d)['guest-open']).toMatchObject({ status: 'warn', required: false });
+    expect(byId(d)['guest-open'].detail).toContain('智慧代理');
+    expect(byId(fresh())['guest-open']).toBeUndefined();
+  });
 });

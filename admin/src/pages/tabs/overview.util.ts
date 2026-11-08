@@ -103,6 +103,14 @@ export function setupChecks(d: OverviewData): SetupCheck[] {
     if (general && !p.memberBundles.includes(GENERAL_SERVICES_ROLE_ID)) {
       checks.push({ id: 'general', step: '權限', title: '通用服務', status: 'warn', detail: '通用服務群組尚未開啟；若員工都需要這些服務，可一鍵開啟。', tab: 'permissions', required: false });
     }
+    // 開給所有人（含網站訪客）的能力：公開聊天視窗的訪客也能用，最容易被忽略
+    const guestScopes = [...new Set(p.bundles.filter((b) => p.tenantBundles.includes(b.id)).flatMap((b) => b.scopes))];
+    if (guestScopes.length > 0) {
+      const label = (id: string) => p.capabilities.find((c) => c.id === id)?.label ?? id;
+      const names = guestScopes.map(label);
+      const shown = names.length > 4 ? `${names.slice(0, 4).join('、')} 等 ${names.length} 項` : names.join('、');
+      checks.push({ id: 'guest-open', step: '權限', title: '開放給網站訪客的能力', status: 'warn', detail: `公開聊天視窗的訪客也能使用：${shown}。若只想給員工，請改用「通用服務」或指定部門。`, tab: 'permissions', required: false });
+    }
     const idle = p.bundles.filter((b) => !applied(b.id) && b.id !== GENERAL_SERVICES_ROLE_ID);
     if (idle.length > 0) {
       checks.push({ id: 'idle-roles', step: '權限', title: '未套用的角色', status: 'warn', detail: `${idle.length} 個角色沒有套用給任何人，目前不會生效。`, tab: 'permissions', required: false });

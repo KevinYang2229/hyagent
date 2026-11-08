@@ -53,7 +53,7 @@ it('預設進入總覽；導覽依導入流程分組，權限排在內容之後'
   const labels = [...nav.querySelectorAll('.tenant-nav-label')].map((el) => el.textContent);
   expect(labels).toEqual(['接入', '人員與登入', '內容與能力', '權限', '前台呈現', '營運']);
   const items = within(nav).getAllByRole('button').map((b) => b.textContent);
-  expect(items.indexOf('權限')).toBeGreaterThan(items.indexOf('表單'));
+  expect(items.indexOf('角色與授權')).toBeGreaterThan(items.indexOf('表單'));
   expect(items[0]).toBe('總覽');
 });
 

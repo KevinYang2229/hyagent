@@ -503,7 +503,7 @@ export default function KnowledgeTab({
             <div>
               <div className="card-title">建立知識來源<UnsavedBadge dirty={sourceDirty} /></div>
               <div className="card-desc">
-                選擇網站或檔案，設定參數後解析成此租戶專屬的 RAG 索引。
+                選擇網站或檔案，設定參數後解析成此租戶專屬的知識索引，供 AI 回答時檢索。
               </div>
             </div>
           </div>

@@ -57,7 +57,7 @@ const TAB_GROUPS: { label: string | null; tabs: { key: TabKey; label: string }[]
     { key: 'forms', label: '表單' },
     { key: 'database', label: '資料庫查詢' },
   ] },
-  { label: '權限', tabs: [{ key: 'permissions', label: '權限' }] },
+  { label: '權限', tabs: [{ key: 'permissions', label: '角色與授權' }] },
   { label: '前台呈現', tabs: [
     { key: 'appearance', label: '外觀' },
     { key: 'webhook', label: '事件通知（Webhook）' },

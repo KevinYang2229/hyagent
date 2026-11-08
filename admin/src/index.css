@@ -1098,7 +1098,8 @@ li:not(.is-empty) > .feedback-bar { background: var(--bg-secondary); }
 
 /* 權限頁底部儲存列：固定在視窗底部，有未儲存變更時以主色框線提示 */
 .perm-savebar { position: sticky; bottom: 0; z-index: 4; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; padding: 10px 16px; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 10px; box-shadow: var(--shadow-sm); font-size: 13px; color: var(--text-secondary); }
-.perm-savebar.is-dirty { border-color: var(--primary-color); background: rgba(var(--primary-color-rgb), 0.06); color: var(--text-primary); font-weight: 500; }
+/* 黏在底部會蓋住捲動中的內容：底色必須不透明，淡藍色以漸層疊在卡片底色上 */
+.perm-savebar.is-dirty { border-color: var(--primary-color); background: linear-gradient(rgba(var(--primary-color-rgb), 0.06), rgba(var(--primary-color-rgb), 0.06)), var(--card-bg); color: var(--text-primary); font-weight: 500; }
 .perm-savebar-actions { display: flex; gap: 8px; }
 
 /* 設定頁共用節奏：卡片間 14px、內容 16px、欄位間 12px。 */
@@ -1284,8 +1285,12 @@ li:not(.is-empty) > .feedback-bar { background: var(--bg-secondary); }
 .overview-progress-bar { flex: 1 1 200px; max-width: 360px; height: 8px; border-radius: 999px; background: var(--bg-secondary); overflow: hidden; }
 .overview-progress-bar > span { display: block; height: 100%; background: var(--primary-color); transition: width 0.3s; }
 .overview-check { align-items: center; gap: 12px; }
+.overview-check .row-main { flex: 1 1 auto; }
 .overview-status { flex: none; min-width: 64px; text-align: center; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; }
 .overview-status--ok { background: var(--badge-success-bg); color: var(--status-positive); }
 .overview-status--todo { background: var(--badge-danger-bg); color: var(--status-danger); }
 .overview-status--warn { background: var(--badge-warning-bg); color: var(--status-warning); }
 .overview-status--unknown { background: var(--bg-secondary); color: var(--text-secondary); }
+
+/* 子頁籤旁的待處理數 */
+.assignment-count-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; margin-left: 6px; padding: 0 6px; border-radius: 999px; font-size: 11px; font-weight: 600; background: var(--badge-warning-bg); color: var(--status-warning); vertical-align: middle; }
