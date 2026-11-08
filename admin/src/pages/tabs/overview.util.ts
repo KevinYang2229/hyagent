@@ -64,7 +64,7 @@ export function setupChecks(d: OverviewData): SetupCheck[] {
   if (d.users) {
     const noDept = d.users.filter((u) => !u.department || u.department === UNSPECIFIED).length;
     if (noDept > 0) {
-      checks.push({ id: 'no-dept', step: '人員與登入', title: '未指定部門', status: 'warn', detail: `${noDept} 位未指定部門，目前與網站訪客同權限。`, tab: 'users', required: false });
+      checks.push({ id: 'no-dept', step: '人員與登入', title: '未指定部門', status: 'warn', detail: `${noDept} 位未指定部門，不會取得任何一般部門的角色。`, tab: 'users', required: false });
     }
   }
 

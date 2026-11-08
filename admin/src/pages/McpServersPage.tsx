@@ -122,7 +122,7 @@ export default function McpServersPage() {
       <div className="mcp-page">
         {err && !editing && <div className="card"><div className="card-body form-errors">{err}</div></div>}
         {view && !view.signingEnabled && (
-          <div className="card"><div className="card-body muted">尚未設定 MCP_SIGNING_KEY：MCP 功能停用中，AI 不會呼叫任何 MCP 工具。</div></div>
+          <div className="card"><div className="card-body muted">尚未設定簽章金鑰（環境變數 MCP_SIGNING_KEY）：外部服務功能停用中，AI 不會呼叫任何 MCP 工具。請部署人員設定後重新啟動服務。</div></div>
         )}
         {!view && !err && <div className="card"><div className="empty">載入中…</div></div>}
         {/* 核准失效：AI 查詢會變成每次要使用者確認、確認後也看不到結果，必須醒目提示 */}
@@ -153,16 +153,16 @@ export default function McpServersPage() {
               )}
               <div className="form-grid">
                 <div className="field">
-                  <label className="field-label" htmlFor="mcp-id">serverId</label>
+                  <label className="field-label" htmlFor="mcp-id">服務 ID（serverId）</label>
                   <input id="mcp-id" className="input" value={editing.values.id} disabled={!editing.isNew} placeholder="rooms" onChange={(e) => setField({ id: e.target.value })} />
-                  <div className="field-hint">小寫英數與連字號，建立後不可修改；授權用 scope 為 mcp:serverId</div>
+                  <div className="field-hint">小寫英數與連字號，建立後不可修改；權限代碼會是 mcp:服務 ID</div>
                 </div>
                 <div className="field">
                   <label className="field-label" htmlFor="mcp-name">名稱</label>
                   <input id="mcp-name" className="input" value={editing.values.name} maxLength={60} onChange={(e) => setField({ name: e.target.value })} />
                 </div>
                 <div className="field">
-                  <label className="field-label" htmlFor="mcp-url">URL（Streamable HTTP）</label>
+                  <label className="field-label" htmlFor="mcp-url">服務網址（Streamable HTTP）</label>
                   <input id="mcp-url" className="input" value={editing.values.url} placeholder="https://rooms.example.com/mcp" onChange={(e) => setField({ url: e.target.value })} />
                 </div>
                 <div className="field">
@@ -213,7 +213,7 @@ export default function McpServersPage() {
             <div className="card-head">
               <div>
                 <div className="card-title">已登記的服務</div>
-                <div className="card-desc">授權請到各租戶的權限分頁，把 mcp:serverId 授予部門或帳號</div>
+                <div className="card-desc">要讓員工使用，請到各租戶的「角色與授權」把此服務加進角色，並套用給部門、帳號或所有登入員工（外部服務不能開給網站訪客）</div>
               </div>
               <button type="button" className="btn btn-primary" onClick={() => { setFormErrors([]); setErr(null); setEditing({ isNew: true, values: emptyMcpForm() }); }}>
                 新增 MCP 服務
@@ -230,7 +230,7 @@ export default function McpServersPage() {
                       <span className={`badge ${s.config.enabled ? 'badge-on' : 'badge-off'}`}>{s.config.enabled ? '啟用' : '停用'}</span>
                       <span className="badge badge-off">{tenantName(s.config.ownerTenantId)}</span>
                     </div>
-                    <div className="row-sub">{s.config.id} · {s.config.url}</div>
+                    <div className="row-sub mono">{s.config.id} · {s.config.url}</div>
                     {s.status.lastError && <div className="mcp-error">最後錯誤：{s.status.lastError}</div>}
                   </div>
                   <div className="row-actions">
@@ -253,7 +253,7 @@ export default function McpServersPage() {
                           <tr key={t.name} className={t.problem ? 'row-error' : undefined}>
                             <td>
                               <div className="mcp-tool-name">{t.title ?? t.name}</div>
-                              <div className="row-sub">{t.name}</div>
+                              <div className="row-sub mono">{t.name}</div>
                               {t.problem && (
                                 <div className="mcp-error">
                                   {t.problem === 'name_invalid' ? '名稱不合法或過長，不會給 AI 使用' : '輸入 schema 無效，不會給 AI 使用'}

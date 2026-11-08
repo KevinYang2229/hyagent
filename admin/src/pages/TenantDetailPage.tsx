@@ -33,6 +33,7 @@ type TabKey =
   | 'database'
   | 'permissions'
   | 'settings'
+  | 'ai'
   | 'webhook'
   | 'usage'
   | 'reports'
@@ -46,7 +47,10 @@ type TabKey =
  */
 const TAB_GROUPS: { label: string | null; tabs: { key: TabKey; label: string }[] }[] = [
   { label: null, tabs: [{ key: 'overview', label: '總覽' }] },
-  { label: '接入', tabs: [{ key: 'settings', label: '基本設定' }] },
+  { label: '接入', tabs: [
+    { key: 'settings', label: '基本設定' },
+    { key: 'ai', label: 'AI 模型' },
+  ] },
   { label: '人員與登入', tabs: [
     { key: 'sso', label: '自動登入（SSO）' },
     { key: 'users', label: '使用者目錄' },
@@ -198,6 +202,7 @@ export default function TenantDetailPage() {
             <PermissionsTab tenantId={tenant.id} onError={handleErr} />
           )}
           {tab === 'settings' && <SettingsTab tenant={tenant} onSaved={handleSaved} onError={handleErr} />}
+          {tab === 'ai' && <SettingsTab tenant={tenant} onSaved={handleSaved} onError={handleErr} section="ai" />}
           {tab === 'webhook' && <WebhookTab tenantId={tenant.id} onError={handleErr} />}
           {tab === 'usage' && <UsageTab tenant={tenant} onError={handleErr} />}
           {tab === 'reports' && <ReportsTab tenantId={tenant.id} onError={handleErr} />}

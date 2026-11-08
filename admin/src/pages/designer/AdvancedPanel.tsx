@@ -117,7 +117,7 @@ function OAEditor({
   return (
     <div className="adv-body">
       <label className="adv-stack">
-        <span>端點 endpoint</span>
+        <span>送出端點（endpoint）</span>
         <input className="input" value={oa.endpoint} placeholder="/api/leave-requests" onChange={(e) => patchOA({ endpoint: e.target.value })} />
       </label>
 
@@ -170,11 +170,11 @@ function OAEditor({
 
       <div className="adv-row">
         <label className="adv-stack">
-          <span>回應 idField</span>
+          <span>回應中的單號欄位（idField）</span>
           <input className="input" value={oa.response.idField} onChange={(e) => patchOA({ response: { ...oa.response, idField: e.target.value } })} />
         </label>
         <label className="adv-stack">
-          <span>回應 statusField</span>
+          <span>回應中的狀態欄位（statusField）</span>
           <input className="input" value={oa.response.statusField ?? ''} onChange={(e) => patchOA({ response: { ...oa.response, statusField: e.target.value } })} />
         </label>
       </div>

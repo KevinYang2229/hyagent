@@ -453,7 +453,7 @@ export default function FormDesignerPage() {
             />
           </label>
           <label className="meta-wide">
-            <span>用途描述（agent.description，會餵給 LLM）</span>
+            <span>用途描述（agent.description：AI 依此判斷何時使用這份表單）</span>
             <textarea
               className="input"
               rows={3}
@@ -651,7 +651,7 @@ function Inspector({
   return (
     <div className="inspector-body">
       <label>
-        <span>機器名稱（key）</span>
+        <span>欄位代碼（key）</span>
         <input
           className="input"
           value={field.key}
@@ -659,11 +659,11 @@ function Inspector({
         />
       </label>
       <label>
-        <span>標籤（label）</span>
+        <span>欄位名稱（label）</span>
         <input className="input" value={field.label} onChange={(e) => onPatch({ label: e.target.value })} />
       </label>
       <label>
-        <span>說明（description，餵給 LLM）</span>
+        <span>說明（description：AI 理解此欄位時參考）</span>
         <input
           className="input"
           value={field.description ?? ''}
@@ -696,7 +696,7 @@ function Inspector({
         <span>必填</span>
       </label>
       <label>
-        <span>LLM 提示（fieldGuidance：如何問、如何換算）</span>
+        <span>AI 提示（fieldGuidance：如何詢問、如何換算）</span>
         <textarea
           className="input"
           rows={2}
@@ -758,7 +758,7 @@ function Inspector({
 
       {OPTION_COMPONENTS.includes(field.component) && (
         <div className="options-editor">
-          <span className="options-title">選項（value / label）</span>
+          <span className="options-title">選項（值 value／顯示文字 label）</span>
           {(field.options ?? []).map((o, i) => (
             <div className="option-row" key={i}>
               <input

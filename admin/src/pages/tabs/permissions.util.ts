@@ -1,5 +1,5 @@
 import type { ScopeDef, SkillBundle, TenantPolicyView } from '../../api';
-import { formatDepartment, UNKNOWN_DEPARTMENT } from '../../components/department.util';
+import { formatDepartment, UNASSIGNED_DEPARTMENT, UNKNOWN_DEPARTMENT } from '../../components/department.util';
 
 /**
  * 權限頁（只有角色）的純邏輯：能力分類、相依規則、缺漏檢查、個人有效權限。
@@ -216,11 +216,12 @@ export interface Person { kind: 'user' | 'guest'; id: string; label: string; dep
 
 export function peopleOf(policy: Pick<TenantPolicyView, 'users' | 'accountBundles'>): Person[] {
   const listed = policy.users.map((u) => ({
-    kind: 'user' as const, id: u.id, label: u.label, department: u.department ?? UNKNOWN_DEPARTMENT, inDirectory: true,
+    kind: 'user' as const, id: u.id, label: u.label, department: !u.department || u.department === UNKNOWN_DEPARTMENT ? UNASSIGNED_DEPARTMENT : u.department, inDirectory: true,
   }));
   const extra = Object.keys(policy.accountBundles)
     .filter((id) => policy.accountBundles[id].length > 0 && !policy.users.some((u) => u.id === id))
-    .map((id) => ({ kind: 'user' as const, id, label: id, department: UNKNOWN_DEPARTMENT, inDirectory: false }));
+    // 目錄外的帳號（例如 SSO 使用者）沒有部門資料：權限上屬「未指定部門」
+    .map((id) => ({ kind: 'user' as const, id, label: id, department: UNASSIGNED_DEPARTMENT, inDirectory: false }));
   return [...listed, ...extra, { kind: 'guest', id: '', label: '網站訪客', department: UNKNOWN_DEPARTMENT, inDirectory: false }];
 }
 

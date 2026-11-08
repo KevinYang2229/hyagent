@@ -104,3 +104,20 @@ describe('角色編輯與個人權限', () => {
     expect(effectiveCapabilities(p, guest).map((c) => c.scope)).toEqual(['service:knowledge']);
   });
 });
+
+describe('未指定部門與網站訪客分開', () => {
+  it('沒有部門的帳號與目錄外帳號歸到「未指定部門」，網站訪客仍是訪客桶；角色來源依各自的桶判斷', () => {
+    const p = { ...policy(), tenantBundles: [] };
+    p.users = [{ id: 'amy', label: 'Amy', department: '—' }];
+    p.accountBundles = { sso1: ['emp'] };
+    p.groupBundles = { '—': ['emp'] };
+    const people = peopleOf(p);
+    expect(people.find((x) => x.id === 'amy')!.department).toBe('__unassigned__');
+    expect(people.find((x) => x.id === 'sso1')!.department).toBe('__unassigned__');
+    const guest = people.find((x) => x.kind === 'guest')!;
+    expect(guest.department).toBe('—');
+    // 角色只給了網站訪客桶：訪客拿得到，未指定部門的帳號拿不到
+    expect(rolesOf(p, guest).map((r) => r.role.id)).toContain('emp');
+    expect(rolesOf(p, people.find((x) => x.id === 'amy')!)).toEqual([]);
+  });
+});

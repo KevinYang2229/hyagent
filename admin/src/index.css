@@ -460,9 +460,12 @@ a {
 }
 .row-sub {
   @apply mt-[3px] min-w-0 text-xs text-[var(--text-secondary)];
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
   /* 長 URL／雜湊沒有可斷點，不強制斷行會撐破卡片 */
   overflow-wrap: anywhere;
+}
+/* 識別碼、金鑰、網址才用等寬字型；中文說明用一般字型，避免數字前後出現大空隙 */
+.row-sub.mono {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
 }
 .row-actions {
   @apply flex flex-none gap-2;

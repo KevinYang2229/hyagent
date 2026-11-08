@@ -23,7 +23,7 @@ function overwriteHint(directorySyncEnabled: boolean, ssoAutoProvision: boolean)
 
 /**
  * 部門管理：部門是人員目錄上的字串，同時是權限的 key，改名／刪除由後端兩邊一起處理。
- * 「未指定」部門供網站訪客使用，不列在此處。
+ * 「網站訪客」與「未指定部門」是系統保留的權限對象，不列在此處（在權限頁的角色「給誰」選擇）。
  */
 export default function DepartmentsSection({ tenantId, departments, directorySyncEnabled = false, ssoAutoProvision = false, onChanged, onError }: {
   tenantId: string;
@@ -85,7 +85,7 @@ export default function DepartmentsSection({ tenantId, departments, directorySyn
 
   return <section className="settings-section" aria-label="部門管理">
     <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>部門</h3>
-    <p className="row-sub">部門由人員的「部門」欄位產生。改名會一併更新成員與權限設定；沒有成員的部門才能刪除，刪除時會清掉綁定的權限。「未指定」供網站訪客使用，不列在此處。</p>
+    <p className="row-sub">部門由人員的「部門」欄位產生。改名會一併更新成員與權限設定；沒有成員的部門才能刪除，刪除時會清掉綁定的權限。「網站訪客」與「未指定部門」是系統保留的權限對象，不列在此處，請在權限頁的角色中設定。</p>
     {directorySyncEnabled && <p className="row-sub">已開啟 OA 同步：有成員的部門請在 OA 改名。OA 改名後，舊名稱會變成「已無成員」，可在這裡把它合併到新名稱，角色就會一起搬過去。</p>}
     {roleless.map((d) => <p key={d.name} role="status" className="badge">{d.name} 有 {d.members} 位人員，但沒有任何角色；若部門在 OA 改過名，請更新角色的適用部門。</p>)}
     {error && <p role="alert">{error}</p>}

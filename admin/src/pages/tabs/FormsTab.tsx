@@ -79,7 +79,7 @@ export default function FormsTab({
                 </span>
                 <span>{f.title}</span>
               </div>
-              <div className="row-sub">{f.formId}</div>
+              <div className="row-sub mono">{f.formId}</div>
             </div>
             <div className="row-actions">
               <button

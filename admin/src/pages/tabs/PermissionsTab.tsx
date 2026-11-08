@@ -314,7 +314,7 @@ function PersonDetail({ person, policy, onToggle, gaps }: {
 
   return <div className="person-detail">
     <div className="perm-text">
-      {person.kind === 'guest' ? '網站訪客只會取得「所有人」與「訪客／未指定部門」部門的角色。' : `部門：${formatDepartment(person.department)}`}
+      {person.kind === 'guest' ? '網站訪客（公開聊天視窗、免登入訪客）只會取得「所有人」與「網站訪客」的角色，不含所有登入員工。' : `部門：${formatDepartment(person.department)}`}
     </div>
 
     <section aria-label="角色">
@@ -338,7 +338,7 @@ function PersonDetail({ person, policy, onToggle, gaps }: {
       </div>
       {person.kind === 'user'
         ? <p className="perm-text">勾選＝直接指派給此人。來自部門或所有人的角色要到該角色的「給誰」調整。</p>
-        : <p className="perm-text">網站訪客沒有帳號，不能直接指派角色。要開放給訪客，請到該角色的「給誰」選擇所有人或「訪客／未指定部門」部門。</p>}
+        : <p className="perm-text">網站訪客沒有帳號，不能直接指派角色。要開放給訪客，請到該角色的「給誰」選擇所有人或「網站訪客」。</p>}
     </section>
 
     <section aria-label="最後擁有的能力">

@@ -4,14 +4,22 @@ import { IconCopy, IconKey } from '../../components/icons';
 import { useUnsavedChanges } from '../../components/unsaved';
 import UnsavedBadge from '../../components/UnsavedBadge';
 
+/**
+ * 接入設定。依 section 分成兩頁：
+ * - basic：租戶設定（名稱、嵌入來源、用量上限、訪客）與 API 金鑰
+ * - ai：AI 模型（租戶自帶金鑰）
+ * 兩頁共用同一份狀態與儲存邏輯，只是分開呈現，讓導覽一眼找得到 AI 模型。
+ */
 export default function SettingsTab({
   tenant,
   onSaved,
   onError,
+  section = 'basic',
 }: {
   tenant: Tenant;
   onSaved: () => void;
   onError: (e: unknown) => void;
+  section?: 'basic' | 'ai';
 }) {
   const [name, setName] = useState(tenant.name);
   const [origins, setOrigins] = useState((tenant.allowedOrigins ?? []).join('\n'));
@@ -54,8 +62,8 @@ export default function SettingsTab({
   const llmDirty = !!llmCfg && (
     llmProvider !== (llmCfg.provider ?? '') || llmModel.trim() !== (llmCfg.model ?? '')
     || !!anthropicKey.trim() || !!openaiKey.trim());
-  useUnsavedChanges('基本設定：租戶設定', tenantDirty);
-  useUnsavedChanges('基本設定：AI 模型', llmDirty);
+  useUnsavedChanges('基本設定：租戶設定', section === 'basic' && tenantDirty);
+  useUnsavedChanges('AI 模型', section === 'ai' && llmDirty);
 
   async function saveLlm() {
     setLlmBusy(true);
@@ -114,6 +122,7 @@ export default function SettingsTab({
 
   return (
     <div className="settings-stack">
+      {section === 'basic' && <>
       <div className="card">
         <div className="card-head">
           <div>
@@ -171,6 +180,51 @@ export default function SettingsTab({
         </div>
       </div>
 
+      <div className="card">
+        <div className="card-head">
+          <div>
+            <div className="card-title">API 金鑰</div>
+            <div className="card-desc">公開金鑰（pk_）放在網站嵌入碼中，只能用於前台聊天視窗；私密金鑰（sk_）供伺服器呼叫 API，不可外流。金鑰只在產生當下顯示完整字串，請立即保存。</div>
+          </div>
+          <div className="toolbar">
+            <button className="btn btn-ghost btn-sm" onClick={() => genKey('publishable')}>
+              <IconKey />
+              產生公開金鑰（pk_）
+            </button>
+            <button className="btn btn-ghost btn-sm" onClick={() => genKey('secret')}>
+              <IconKey />
+              產生私密金鑰（sk_）
+            </button>
+          </div>
+        </div>
+        {newKeys.length > 0 ? (
+          <ul className="list">
+            {newKeys.map((k) => (
+              <li key={k.key} className="row">
+                <div className="row-main">
+                  <div className="row-title">
+                    <span className={`badge ${k.type === 'publishable' ? 'badge-on' : 'badge-off'}`}>
+                      {k.type === 'publishable' ? '公開（pk_）' : '私密（sk_）'}
+                    </span>
+                  </div>
+                  <div className="row-sub mono">{k.key}</div>
+                </div>
+                <button
+                  className="icon-btn"
+                  title="複製"
+                  onClick={() => void navigator.clipboard.writeText(k.key)}
+                >
+                  <IconCopy />
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="empty">尚未在本次工作階段產生金鑰。</div>
+        )}
+      </div>
+      </>}
+      {section === 'ai' && <>
       <div className="card">
         <div className="card-head">
           <div>
@@ -269,49 +323,7 @@ export default function SettingsTab({
         </div>
       </div>
 
-      <div className="card">
-        <div className="card-head">
-          <div>
-            <div className="card-title">API 金鑰</div>
-            <div className="card-desc">公開金鑰（pk_）放在網站嵌入碼中，只能用於前台聊天視窗；私密金鑰（sk_）供伺服器呼叫 API，不可外流。金鑰只在產生當下顯示完整字串，請立即保存。</div>
-          </div>
-          <div className="toolbar">
-            <button className="btn btn-ghost btn-sm" onClick={() => genKey('publishable')}>
-              <IconKey />
-              產生公開金鑰（pk_）
-            </button>
-            <button className="btn btn-ghost btn-sm" onClick={() => genKey('secret')}>
-              <IconKey />
-              產生私密金鑰（sk_）
-            </button>
-          </div>
-        </div>
-        {newKeys.length > 0 ? (
-          <ul className="list">
-            {newKeys.map((k) => (
-              <li key={k.key} className="row">
-                <div className="row-main">
-                  <div className="row-title">
-                    <span className={`badge ${k.type === 'publishable' ? 'badge-on' : 'badge-off'}`}>
-                      {k.type === 'publishable' ? '公開（pk_）' : '私密（sk_）'}
-                    </span>
-                  </div>
-                  <div className="row-sub">{k.key}</div>
-                </div>
-                <button
-                  className="icon-btn"
-                  title="複製"
-                  onClick={() => void navigator.clipboard.writeText(k.key)}
-                >
-                  <IconCopy />
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <div className="empty">尚未在本次工作階段產生金鑰。</div>
-        )}
-      </div>
+      </>}
     </div>
   );
 }

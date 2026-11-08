@@ -165,7 +165,7 @@ export default function KnowledgeTab({
         api.getTenantPolicy(tenantId),
       ]);
       setLabels(ls);
-      setDepartments([...new Set([...policy.departments, ...Object.keys(policy.groups)])].filter((department) => department !== "—"));
+      setDepartments([...new Set([...policy.departments, ...Object.keys(policy.groups)])].filter((department) => department !== "—" && department !== "__unassigned__"));
       setAclReport(report);
     } catch (e) {
       onError(e);
@@ -930,7 +930,7 @@ export default function KnowledgeTab({
             <Link className="btn btn-sm" to="?tab=permissions">設定角色</Link>
           </div>
           <div className="card-body">
-            <div className="row-title">訪客／未指定部門</div>
+            <div className="row-title">網站訪客</div>
             <p className="row-sub">以下只顯示訪客的可見範圍；其他使用者請到「測試查詢」指定身分驗證。</p>
             <div className="kb-label-chips">
               <span className={`kb-label-chip${guestCorpusState(aclReport.guest) === "ok" ? "" : " kb-label-chip--warn"}`}>
@@ -1067,7 +1067,7 @@ export default function KnowledgeTab({
                   ) : (
                     <>
                       <div className="row-title">{l.label}</div>
-                      <div className="row-sub">{l.id}</div>
+                      <div className="row-sub mono">{l.id}</div>
                     </>
                   )}
                 </div>
@@ -1283,7 +1283,7 @@ export default function KnowledgeTab({
             {queriedAs && (
               <div className="row-sub" role="status" style={{ marginTop: 8 }}>
                 本次以{queriedAs.kind === "guest" ? "網站訪客" : `「${queriedAs.userId}」`}查詢
-                {queriedAs.kind === "user" && `（部門：${queriedAs.department === "—" ? "未指定，與網站訪客同權限" : queriedAs.department}${queriedAs.inDirectory ? "" : "；不在使用者目錄，若帳號輸入錯誤請更正"}）`}
+                {queriedAs.kind === "user" && `（部門：${queriedAs.department === "__unassigned__" ? "未指定部門" : queriedAs.department}${queriedAs.inDirectory ? "" : "；不在使用者目錄，若帳號輸入錯誤請更正"}）`}
                 ・可見範圍：<CollapsibleList items={queriedAs.labels} render={(scope) => labelNameFor(labels, scope)} empty="無（查不到任何檔案或網站內容）" />
               </div>
             )}

@@ -94,7 +94,7 @@ export default function WebhookTab({ tenantId, onError }: { tenantId: string; on
                 </span>
                 <span style={{ fontFamily: 'ui-monospace, Menlo, monospace', fontWeight: 500 }}>{w.url}</span>
               </div>
-              <div className="row-sub">secret: {w.secret}</div>
+              <div className="row-sub mono">secret: {w.secret}</div>
             </div>
             <div className="row-actions">
               <button className="btn btn-ghost btn-sm" onClick={() => toggle(w)}>

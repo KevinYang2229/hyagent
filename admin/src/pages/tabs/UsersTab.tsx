@@ -32,12 +32,12 @@ function DepartmentField({ departments, value, onChange, disabled }: {
   return <>
     <label className="field"><span className="field-label">部門（選填）</span>
       <select className="select" value={value.choice} onChange={(e) => onChange({ ...value, choice: e.target.value })} disabled={disabled}>
-        <option value="">未指定（與網站訪客同權限）</option>
+        <option value="">未指定部門</option>
         {departments.map((dep) => <option key={dep} value={dep}>{dep}</option>)}
         <option value={NEW_DEPARTMENT}>＋ 新增部門…</option>
       </select>
     </label>
-    {value.choice === '' && <span className="field-hint">未指定部門的帳號與網站訪客共用「訪客／未指定部門」的角色，不會取得任何一般部門的角色。</span>}
+    {value.choice === '' && <span className="field-hint">未指定部門的帳號只取得套用給「未指定部門」與所有登入員工的角色，不會取得任何一般部門的角色。</span>}
     {value.choice === NEW_DEPARTMENT && <div className="field"><label className="field-label" htmlFor={newDeptId}>新部門名稱</label>
       <input id={newDeptId} className="input" value={value.typed} onChange={(e) => onChange({ ...value, typed: e.target.value })} required maxLength={200} disabled={disabled} autoFocus />
       {typedExisting && <span className="field-hint">已有此部門，將直接加入。</span>}
@@ -188,10 +188,10 @@ export default function UsersTab({ tenantId, onError }: { tenantId: string; onEr
       {message && <p role="status">{message}</p>}
       {!loaded && !error && <p role="status">載入中…</p>}
       {loaded && <>
-        <p className="row-sub">共 {users.length} 位使用者。部門會決定取得哪些角色；未指定部門時與網站訪客同權限。新增不會覆蓋其他人員。</p>
+        <p className="row-sub">共 {users.length} 位使用者。部門會決定取得哪些角色；未指定部門時只取得「未指定部門」與所有登入員工的角色。新增不會覆蓋其他人員。</p>
         {noDept.length > 0 && (
           <div className="perm-warn" role="status">
-            {noDept.length} 位未指定部門，目前與網站訪客同權限：
+            {noDept.length} 位未指定部門，不會取得任何一般部門的角色：
             <CollapsibleList items={noDept} render={(user) => `${user.name}（${user.id}）`} />
           </div>
         )}
@@ -228,7 +228,7 @@ export default function UsersTab({ tenantId, onError }: { tenantId: string; onEr
                 </div>
               </form>
             ) : <>
-              <div className="row-main"><strong>{user.name}</strong><span className="badge" style={{ marginLeft: 8 }}>{originLabel(user)}</span><div className="row-sub">帳號：{user.id} · 部門：{user.department === UNSPECIFIED ? '未指定（與網站訪客同權限）' : user.department}{user.email ? ` · ${user.email}` : ''}</div></div>
+              <div className="row-main"><strong>{user.name}</strong><span className="badge" style={{ marginLeft: 8 }}>{originLabel(user)}</span><div className="row-sub">帳號：{user.id} · 部門：{user.department === UNSPECIFIED ? '未指定' : user.department}{user.email ? ` · ${user.email}` : ''}</div></div>
               <div className="toolbar" style={{ display: 'flex', gap: 8 }}>
                 {!isLocked(user, switches) && <button type="button" className="btn btn-ghost btn-sm" aria-label={`編輯 ${user.name}`} onClick={() => startEdit(user)} disabled={busy}>編輯</button>}
                 <button type="button" className="btn btn-danger btn-sm" aria-label={`刪除 ${user.name}`} onClick={() => setPendingDelete(user)} disabled={busy}>刪除</button>
