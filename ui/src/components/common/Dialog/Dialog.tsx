@@ -97,8 +97,10 @@ export default function Dialog({
             </Button>
           )}
           <Button
-            variant={confirmBtnVariant}
+            // 危險確認不借用 cancel 變體：cancel 的 hover 以 !important 改成白底深字，會蓋掉紅底白字
+            variant={confirmVariant === "danger" ? undefined : confirmBtnVariant}
             size="md"
+            className={confirmVariant === "danger" ? "hy-dialog-confirm--danger" : ""}
             onClick={handleConfirm}
             disabled={confirmDisabled}
             autoFocus={confirmDisabled === undefined}

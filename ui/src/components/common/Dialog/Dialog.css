@@ -25,3 +25,33 @@
 .hy-dialog-footer {
   @apply px-6 pb-5 pt-1 flex justify-end gap-2;
 }
+
+/* 危險確認（刪除、撤銷、清除）：紅底白字，與「取消」明確區分。
+ * 各狀態都明確寫出文字色，深淺色主題一致；hover 只加深紅色，不改成白底深字。 */
+.hy-dialog-footer .hy-dialog-confirm--danger {
+  @apply inline-flex items-center justify-center rounded-lg border px-4 py-2 text-sm font-semibold transition;
+  background: var(--status-danger);
+  border-color: var(--status-danger);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.18);
+}
+.hy-dialog-footer .hy-dialog-confirm--danger:hover:not(:disabled),
+.hy-dialog-footer .hy-dialog-confirm--danger:focus-visible {
+  background: color-mix(in srgb, var(--status-danger) 85%, #000);
+  border-color: color-mix(in srgb, var(--status-danger) 85%, #000);
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(220, 38, 38, 0.28);
+}
+.hy-dialog-footer .hy-dialog-confirm--danger:active:not(:disabled) {
+  background: color-mix(in srgb, var(--status-danger) 75%, #000);
+  color: #fff;
+}
+.hy-dialog-footer .hy-dialog-confirm--danger:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--status-danger) 55%, transparent);
+  outline-offset: 2px;
+}
+.hy-dialog-footer .hy-dialog-confirm--danger:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  color: #fff;
+}
