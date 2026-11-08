@@ -110,9 +110,9 @@ export default function AppearanceTab({
       <div className="card">
         <div className="card-head">
           <div>
-            <div className="card-title">Widget 外觀<UnsavedBadge dirty={dirty} /></div>
+            <div className="card-title">聊天視窗外觀<UnsavedBadge dirty={dirty} /></div>
             <div className="card-desc">
-              儲存後依租戶套用；widget 載入時讀取，data-* 參數仍優先。
+              儲存後套用到此租戶的聊天視窗。若網站的嵌入碼另外指定了外觀參數（data-*），以嵌入碼為準。
             </div>
           </div>
         </div>

@@ -270,7 +270,7 @@ export default function UsersTab({ tenantId, onError }: { tenantId: string; onEr
       <ul style={{ paddingLeft: 18 }}>
         {pendingDelete && canPasswordLogin(pendingDelete) && <li>無法再用帳密登入，帳密登入的工作階段會立即失效。</li>}
         {pendingDelete && (isOaManaged(pendingDelete)
-          ? <li>自動登入的工作階段不會因此結束；要立即登出，請到「自動登入」分頁的「登入 Session」作廢。</li>
+          ? <li>自動登入的工作階段不會因此結束；要立即登出，請到「自動登入」分頁的「登入工作階段」作廢。</li>
           : <li>若此人也透過自動登入進入，不受影響，其工作階段仍然有效。</li>)}
         <li>會從其他人的代理人名單中移除。</li>
         <li>「權限」中直接指派給此帳號的角色會保留；之後以相同帳號重新加入，或透過 SSO 以此帳號登入時仍會生效。</li>

@@ -109,7 +109,7 @@ export default function SessionsPanel({
     <div className="card">
       <div className="card-head">
         <div>
-          <div className="card-title">登入 Session</div>
+          <div className="card-title">登入工作階段（Session）</div>
           <div className="card-desc">
             此租戶目前有效的登入。作廢後對方立刻被登出，但<strong>不會阻止重新登入</strong>
             ——帳號停權請先在客戶自家系統處理，否則對方的 Identity Endpoint 會繼續簽發新憑證。

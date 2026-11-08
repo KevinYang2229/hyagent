@@ -57,8 +57,8 @@ export default function WebhookTab({ tenantId, onError }: { tenantId: string; on
     <div className="card">
       <div className="card-head">
         <div>
-          <div className="card-title">Webhook 端點</div>
-          <div className="card-desc">表單送出成功後以 HMAC 簽章推送 form.submitted。</div>
+          <div className="card-title">事件通知端點（Webhook）</div>
+          <div className="card-desc">表單送出成功後，系統會把結果推送到這些網址（事件 form.submitted），並附上 HMAC 簽章供對方驗證來源。</div>
         </div>
       </div>
 

@@ -171,7 +171,7 @@ describe('刪除確認文案與實際行為一致', () => {
     render(<UsersTab tenantId="tenant-a" onError={vi.fn()} />);
     fireEvent.click(await screen.findByRole('button', { name: `刪除 ${name}` }));
   };
-  const SESSION_HINT = /自動登入的工作階段不會因此結束.*「自動登入」分頁的「登入 Session」/;
+  const SESSION_HINT = /自動登入的工作階段不會因此結束.*「自動登入」分頁的「登入工作階段」/;
   it('手動帳號：帳密工作階段失效；同時走 SSO 的人不受影響；不提 Session 作廢', async () => {
     vi.mocked(api.listDirectoryUsers).mockResolvedValue({ users: mixedUsers });
     await openDelete('Manual');

@@ -60,7 +60,7 @@ const TAB_GROUPS: { label: string | null; tabs: { key: TabKey; label: string }[]
   { label: '權限', tabs: [{ key: 'permissions', label: '權限' }] },
   { label: '前台呈現', tabs: [
     { key: 'appearance', label: '外觀' },
-    { key: 'webhook', label: 'Webhook' },
+    { key: 'webhook', label: '事件通知（Webhook）' },
   ] },
   { label: '營運', tabs: [
     { key: 'usage', label: '用量' },

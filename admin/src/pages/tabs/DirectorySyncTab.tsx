@@ -221,7 +221,7 @@ export default function DirectorySyncTab({
             <table style={{ width: '100%', fontSize: 13 }}>
               <thead>
                 <tr style={{ textAlign: 'left' }}>
-                  <th>kid</th>
+                  <th>金鑰編號（kid）</th>
                   <th>演算法</th>
                   <th>備註</th>
                   <th>建立</th>
@@ -300,7 +300,7 @@ export default function DirectorySyncTab({
             <table style={{ width: '100%', fontSize: 13 }}>
               <thead>
                 <tr style={{ textAlign: 'left' }}>
-                  <th>kid</th>
+                  <th>金鑰編號（kid）</th>
                   <th>撤銷原因</th>
                   <th>備註</th>
                   <th>撤銷</th>

@@ -18,7 +18,7 @@ export function tokenBreakdown(usage: Pick<Usage, 'llmByModel' | 'embeddingToken
   return [
     { key: 'input', label: '輸入', value: Math.max(0, sum((b) => b.inputTokens) - embedding) },
     { key: 'output', label: '輸出', value: sum((b) => b.outputTokens) },
-    { key: 'cache', label: 'Cache 讀取', value: sum((b) => b.cacheReadTokens) },
+    { key: 'cache', label: '快取讀取', value: sum((b) => b.cacheReadTokens) },
     { key: 'embedding', label: '向量化', value: embedding },
   ];
 }

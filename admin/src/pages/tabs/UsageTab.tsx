@@ -135,7 +135,7 @@ export default function UsageTab({ tenant, onError }: { tenant: Tenant; onError:
             </div>
 
             <div>
-              <div className="usage-section-title">Token 組成</div>
+              <div className="usage-section-title">AI 用量（Token）組成</div>
               <div className="usage-split" role="img" aria-label={parts.map((p) => `${p.label} ${p.value}`).join('、')}>
                 {partsTotal > 0 &&
                   parts
@@ -200,7 +200,7 @@ export default function UsageTab({ tenant, onError }: { tenant: Tenant; onError:
         <div className="card">
           <div className="card-head">
             <div>
-              <div className="card-title">Token 用量與預估成本</div>
+              <div className="card-title">AI 用量（Token）與預估成本</div>
               <div className="card-desc">
                 平台金鑰 ${usage.cost.platformUsd.toFixed(4)}（應收） ／ 自帶金鑰 $
                 {usage.cost.tenantUsd.toFixed(4)}（參考） ／ 合計 ${usage.cost.totalUsd.toFixed(4)} USD
@@ -215,7 +215,7 @@ export default function UsageTab({ tenant, onError }: { tenant: Tenant; onError:
                   <th style={th}>金鑰</th>
                   <th style={th}>Input</th>
                   <th style={th}>Output</th>
-                  <th style={th}>Cache 讀</th>
+                  <th style={th} title="重複使用先前內容的部分，費用較低">快取讀取</th>
                   <th style={th}>預估成本</th>
                 </tr>
               </thead>

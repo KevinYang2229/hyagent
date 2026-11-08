@@ -137,7 +137,7 @@ export default function SsoTab({
     run(async () => {
       const r = await api.revokeAssertionKey(tenantId, key.kid, reason);
       setRevoking(null);
-      return r.revokedSessions ? `${done}，並登出以它建立的 ${r.revokedSessions} 個 Session` : done;
+      return r.revokedSessions ? `${done}，並登出以它建立的 ${r.revokedSessions} 個工作階段` : done;
     });
 
   const saveSettings = (patch: Partial<AssertionSettings>) =>
@@ -171,10 +171,10 @@ export default function SsoTab({
       <div className="card">
         <div className="card-head">
           <div>
-            <div className="card-title">Assertion 簽章公鑰</div>
+            <div className="card-title">登入憑證簽章公鑰（Assertion）</div>
             <div className="card-desc">
               客戶以自家私鑰簽發身分憑證，這裡只登記對應的<strong>公鑰</strong>。平常只有 1 把；
-              換金鑰時先上傳新的讓新舊並存，確認客戶端已改用新金鑰後再完成輪替。kid 由系統依
+              換金鑰時先上傳新的讓新舊並存，確認客戶端已改用新金鑰後再完成輪替。金鑰編號（kid）由系統依
               RFC 7638 自公鑰算出，不需填寫。
             </div>
           </div>
@@ -188,7 +188,7 @@ export default function SsoTab({
             <table style={{ width: '100%', fontSize: 13 }}>
               <thead>
                 <tr style={{ textAlign: 'left' }}>
-                  <th>kid</th>
+                  <th>金鑰編號（kid）</th>
                   <th>演算法</th>
                   <th>用途</th>
                   <th>備註</th>
@@ -291,9 +291,9 @@ export default function SsoTab({
       <div className="card">
         <div className="card-head">
           <div>
-            <div className="card-title">時間與 Session 設定</div>
+            <div className="card-title">時間與登入工作階段設定</div>
             <div className="card-desc">
-              時鐘容忍 0–30 秒，且不得超過 Assertion 有效期的 ¼；Session 有效期 300–28800 秒。
+              時鐘容忍：允許雙方伺服器時間誤差，0–30 秒，且不得超過登入憑證有效期的 ¼。登入憑證有效期：客戶簽出的憑證多久內可用來登入。工作階段有效期：登入後多久需要重新登入，300–28800 秒。
               每個欄位各自儲存，按下即生效。
             </div>
           </div>
@@ -308,14 +308,14 @@ export default function SsoTab({
               onSave={(v) => void saveSettings({ clockSkewSeconds: v })}
             />
             <NumberField
-              label="Assertion 有效期（秒）"
+              label="登入憑證有效期（秒）"
               value={view.settings.assertionLifetimeSeconds}
               defaultValue={60}
               disabled={busy}
               onSave={(v) => void saveSettings({ assertionLifetimeSeconds: v })}
             />
             <NumberField
-              label="Session 有效期（秒）"
+              label="工作階段有效期（秒）"
               value={view.settings.sessionExpiresIn}
               defaultValue={3600}
               disabled={busy}
@@ -372,7 +372,7 @@ function RevokedKeysCard({ keys }: { keys: TenantPublicKey[] }) {
           <table style={{ width: '100%', fontSize: 13 }}>
             <thead>
               <tr style={{ textAlign: 'left' }}>
-                <th>kid</th>
+                <th>金鑰編號（kid）</th>
                 <th>演算法</th>
                 <th>撤銷原因</th>
                 <th>備註</th>
@@ -459,7 +459,7 @@ function RevokePanel({
         </label>
       ))}
       <span className="field-hint">
-        撤銷後，以這把金鑰建立的所有 Session 會立刻失效，包含目前正常使用中的使用者。此操作無法復原。
+        撤銷後，以這把金鑰建立的所有登入工作階段會立刻失效，包含目前正常使用中的使用者。此操作無法復原。
       </span>
       {isLast && (
         <span className="field-hint" style={{ color: '#b45309' }}>
@@ -529,7 +529,7 @@ function RotationPanel({
       extra += `\n\n距上傳新金鑰僅 ${duration(elapsedMs)}，未滿建議的 ${OBSERVE_HOURS} 小時觀察期。`;
     }
     if (usage && usage.from.total > 0) {
-      extra += `\n\n目前仍有 ${usage.from.total} 個以舊金鑰登入的 Session，會一併被登出。`;
+      extra += `\n\n目前仍有 ${usage.from.total} 個以舊金鑰登入的工作階段，會一併被登出。`;
     }
     if (
       window.confirm(
@@ -545,7 +545,7 @@ function RotationPanel({
     if (
       window.confirm(
         `放棄這次輪替：撤銷新金鑰 ${keyName(to)}？\n\n舊金鑰維持使用；客戶端若已改用新私鑰簽發，` +
-          '會立刻無法登入，以新金鑰登入的 Session 也會一併被登出。\n\n' +
+          '會立刻無法登入，以新金鑰登入的工作階段也會一併被登出。\n\n' +
           '撤銷無法復原，之後要重新輪替請產生一組新的金鑰對。',
       )
     ) {

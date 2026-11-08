@@ -33,6 +33,15 @@ import {
 
 const EMBEDDING_MODELS = ["text-embedding-3-large", "text-embedding-3-small"];
 
+/** 解析工作的階段，顯示用中文 */
+const JOB_STATUS_LABEL: Record<string, string> = {
+  queued: "排隊中",
+  crawling: "讀取網頁中",
+  embedding: "建立向量中",
+  done: "完成",
+  failed: "失敗",
+};
+
 /** 知識庫子頁：一頁塞六張卡片太擠，依工作拆開；子頁寫入網址 ?kb=，可從其他頁籤直接連過來 */
 type KbSub = "sources" | "access" | "prompts" | "test";
 const KB_SUBS: { key: KbSub; label: string }[] = [
@@ -702,7 +711,7 @@ export default function KnowledgeTab({
             <div className="kb-param-block">
               <div className="form-grid">
                 <div className="field">
-                  <label className="field-label">chunk 大小（字元）</label>
+                  <label className="field-label">段落長度（chunk，字元）</label>
                   <NumberField
                     value={src.chunkChars}
                     onChange={(chunkChars) => update({ chunkChars })}
@@ -710,9 +719,10 @@ export default function KnowledgeTab({
                     max={4000}
                     disabled={parsing}
                   />
+                  <span className="field-hint">文件會切成段落供檢索。越長脈絡越完整，但命中較不精準；一般建議 800–1200。</span>
                 </div>
                 <div className="field">
-                  <label className="field-label">embedding 模型</label>
+                  <label className="field-label">向量模型（embedding）</label>
                   {lockedModel ? (
                     <>
                       <input className="input" value={lockedModel} disabled />
@@ -734,9 +744,10 @@ export default function KnowledgeTab({
                       ))}
                     </select>
                   )}
+                  <span className="field-hint">把文字轉成向量以進行語意檢索（找意思相近、不只字面相同的段落）。</span>
                 </div>
                 <div className="field">
-                  <label className="field-label">LLM 重排</label>
+                  <label className="field-label">AI 重新排序（rerank）</label>
                   <label
                     style={{ display: "flex", alignItems: "center", gap: 8 }}
                   >
@@ -746,7 +757,7 @@ export default function KnowledgeTab({
                       disabled={parsing}
                     />
                     <span className="field-hint">
-                      啟用兩階段檢索（精準度↑，每次查詢多一次呼叫）
+                      先找出候選段落，再請 AI 依問題重新排序。答案較精準，但每次查詢多一次 AI 呼叫（較慢、費用較高）。
                     </span>
                   </label>
                 </div>
@@ -880,8 +891,8 @@ export default function KnowledgeTab({
           <div className="card-body">
             {running ? (
               <div className="row-sub">
-                階段：{job!.status}｜已爬 {job!.pagesCrawled} 頁｜已 embed{" "}
-                {job!.embedded} / {job!.chunks}
+                階段：{JOB_STATUS_LABEL[job!.status] ?? job!.status}｜已讀取 {job!.pagesCrawled} 頁｜已建立向量{" "}
+                {job!.embedded} / {job!.chunks} 個段落
               </div>
             ) : meta.status === "ready" ? (
               <>

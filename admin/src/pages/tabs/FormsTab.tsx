@@ -48,7 +48,7 @@ export default function FormsTab({
       <div className="card-head">
         <div>
           <div className="card-title">表單</div>
-          <div className="card-desc">拖曳設計表單，產生 schema 後即時生效；內建表單可「以此建立」為租戶版。</div>
+          <div className="card-desc">拖曳設計表單，存檔後即時生效；內建表單可「以此建立」為租戶版。</div>
         </div>
         <button
           className="btn btn-primary btn-sm"

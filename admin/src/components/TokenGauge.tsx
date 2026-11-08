@@ -71,7 +71,7 @@ function buildGaugeOptions(tokens: number, _theme: Theme): Highcharts.Options {
           borderWidth: 0,
           y: 34,
           formatter(this: Highcharts.PointLabelObject) {
-            return `<div style="text-align:center"><span style="font-size:26px;font-weight:800;color:${ink}">${formatTokens(tokens)}</span><br/><span style="font-size:11px;color:${sub}">全期間累計 Token</span></div>`;
+            return `<div style="text-align:center"><span style="font-size:26px;font-weight:800;color:${ink}">${formatTokens(tokens)}</span><br/><span style="font-size:11px;color:${sub}">全期間累計 AI 用量（Token）</span></div>`;
           },
         },
       },

@@ -140,9 +140,9 @@ export default function SettingsTab({
           </div>
 
           <div className="field">
-            <label className="field-label">月度 AI Token 配額</label>
+            <label className="field-label">每月 AI 用量上限（Token）</label>
             <span className="field-hint">
-              LLM＋embedding 合計；留空或 0＝不限。超過當月配額時對話 API 回 429。
+              Token 是 AI 的計費單位（一個中文字約 1–2 個）。對話與知識庫檢索合計；留空或 0＝不限。超過上限後，當月的 AI 對話會暫停到下個月。
             </span>
             <input
               className="input"
@@ -196,7 +196,7 @@ export default function SettingsTab({
               </select>
               {llmProvider === 'local' && (
                 <div className="card-desc">
-                  地端對話模型使用平台部署層設定的端點。注意：知識庫查詢的 embedding 是否地端化由平台部署層決定，非此處設定。
+                  地端對話模型使用平台部署層設定的端點。注意：知識庫查詢使用的向量模型（embedding）是否地端化由平台部署層決定，非此處設定。
                 </div>
               )}
             </div>
@@ -272,17 +272,17 @@ export default function SettingsTab({
       <div className="card">
         <div className="card-head">
           <div>
-            <div className="card-title">API Keys</div>
-            <div className="card-desc">金鑰僅在產生當下顯示完整字串，請立即保存。</div>
+            <div className="card-title">API 金鑰</div>
+            <div className="card-desc">公開金鑰（pk_）放在網站嵌入碼中，只能用於前台聊天視窗；私密金鑰（sk_）供伺服器呼叫 API，不可外流。金鑰只在產生當下顯示完整字串，請立即保存。</div>
           </div>
           <div className="toolbar">
             <button className="btn btn-ghost btn-sm" onClick={() => genKey('publishable')}>
               <IconKey />
-              產生 pk_
+              產生公開金鑰（pk_）
             </button>
             <button className="btn btn-ghost btn-sm" onClick={() => genKey('secret')}>
               <IconKey />
-              產生 sk_
+              產生私密金鑰（sk_）
             </button>
           </div>
         </div>
@@ -293,7 +293,7 @@ export default function SettingsTab({
                 <div className="row-main">
                   <div className="row-title">
                     <span className={`badge ${k.type === 'publishable' ? 'badge-on' : 'badge-off'}`}>
-                      {k.type === 'publishable' ? 'publishable' : 'secret'}
+                      {k.type === 'publishable' ? '公開（pk_）' : '私密（sk_）'}
                     </span>
                   </div>
                   <div className="row-sub">{k.key}</div>
