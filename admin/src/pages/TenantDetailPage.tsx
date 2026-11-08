@@ -1,10 +1,13 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type SVGProps } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Dialog, useToast } from '@hyagent/ui';
 import { api, UnauthorizedError, type Tenant } from '../api';
 import { useAuth } from '../auth';
 import AppLayout from '../components/AppLayout';
-import { IconBack } from '../components/icons';
+import {
+  IconAudit, IconBack, IconBook, IconChart, IconCog, IconDatabase, IconForm, IconLogin, IconMessage,
+  IconOverview, IconPalette, IconReport, IconShield, IconSparkle, IconSync, IconUsers, IconWebhook,
+} from '../components/icons';
 import AppearanceTab from './tabs/AppearanceTab';
 import SettingsTab from './tabs/SettingsTab';
 import WebhookTab from './tabs/WebhookTab';
@@ -45,32 +48,33 @@ type TabKey =
  * 權限排在內容之後：要先有表單、知識庫標籤、外部服務，才有東西可以授權。
  * 網址的 tab key 不變，既有連結與書籤仍有效。
  */
-const TAB_GROUPS: { label: string | null; tabs: { key: TabKey; label: string }[] }[] = [
-  { label: null, tabs: [{ key: 'overview', label: '總覽' }] },
+type NavIcon = (props: SVGProps<SVGSVGElement>) => JSX.Element;
+const TAB_GROUPS: { label: string | null; tabs: { key: TabKey; label: string; icon: NavIcon }[] }[] = [
+  { label: null, tabs: [{ key: 'overview', label: '總覽', icon: IconOverview }] },
   { label: '接入', tabs: [
-    { key: 'settings', label: '基本設定' },
-    { key: 'ai', label: 'AI 模型' },
+    { key: 'settings', label: '基本設定', icon: IconCog },
+    { key: 'ai', label: 'AI 模型', icon: IconSparkle },
   ] },
   { label: '人員與登入', tabs: [
-    { key: 'sso', label: '自動登入（SSO）' },
-    { key: 'users', label: '使用者目錄' },
-    { key: 'directorySync', label: '人員同步' },
+    { key: 'sso', label: '自動登入（SSO）', icon: IconLogin },
+    { key: 'users', label: '使用者目錄', icon: IconUsers },
+    { key: 'directorySync', label: '人員同步', icon: IconSync },
   ] },
   { label: '內容與能力', tabs: [
-    { key: 'knowledge', label: '知識庫' },
-    { key: 'forms', label: '表單' },
-    { key: 'database', label: '資料庫查詢' },
+    { key: 'knowledge', label: '知識庫', icon: IconBook },
+    { key: 'forms', label: '表單', icon: IconForm },
+    { key: 'database', label: '資料庫查詢', icon: IconDatabase },
   ] },
-  { label: '權限', tabs: [{ key: 'permissions', label: '角色與授權' }] },
+  { label: '權限', tabs: [{ key: 'permissions', label: '角色與授權', icon: IconShield }] },
   { label: '前台呈現', tabs: [
-    { key: 'appearance', label: '外觀' },
-    { key: 'webhook', label: '事件通知（Webhook）' },
+    { key: 'appearance', label: '外觀', icon: IconPalette },
+    { key: 'webhook', label: '事件通知（Webhook）', icon: IconWebhook },
   ] },
   { label: '營運', tabs: [
-    { key: 'usage', label: '用量' },
-    { key: 'feedback', label: '回饋' },
-    { key: 'reports', label: '報告' },
-    { key: 'audit', label: '稽核' },
+    { key: 'usage', label: '用量', icon: IconChart },
+    { key: 'feedback', label: '回饋', icon: IconMessage },
+    { key: 'reports', label: '報告', icon: IconReport },
+    { key: 'audit', label: '稽核', icon: IconAudit },
   ] },
 ];
 const TABS = TAB_GROUPS.flatMap((g) => g.tabs);
@@ -173,7 +177,8 @@ export default function TenantDetailPage() {
                       aria-current={tab === tb.key ? 'page' : undefined}
                       onClick={() => setTab(tb.key)}
                     >
-                      {tb.label}
+                      <tb.icon className="tenant-nav-ico" aria-hidden="true" />
+                      <span>{tb.label}</span>
                     </button>
                   ))}
                 </div>

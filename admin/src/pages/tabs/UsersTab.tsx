@@ -27,17 +27,19 @@ function DepartmentField({ departments, value, onChange, disabled }: {
   disabled: boolean;
 }) {
   const newDeptId = useId();
+  const deptId = useId();
   const typed = value.typed.trim();
   const typedExisting = value.choice === NEW_DEPARTMENT && departments.includes(typed);
   return <>
-    <label className="field"><span className="field-label">部門（選填）</span>
-      <select className="select" value={value.choice} onChange={(e) => onChange({ ...value, choice: e.target.value })} disabled={disabled}>
+    <div className="field"><label className="field-label" htmlFor={deptId}>部門（選填）</label>
+      <select id={deptId} className="select" value={value.choice} onChange={(e) => onChange({ ...value, choice: e.target.value })} disabled={disabled}>
         <option value="">未指定部門</option>
         {departments.map((dep) => <option key={dep} value={dep}>{dep}</option>)}
         <option value={NEW_DEPARTMENT}>＋ 新增部門…</option>
       </select>
-    </label>
-    {value.choice === '' && <span className="field-hint">未指定部門的帳號只取得套用給「未指定部門」與所有登入員工的角色，不會取得任何一般部門的角色。</span>}
+      {/* 與下拉放在同一個欄位容器：表單是兩欄格線，獨立成元素會另佔一格、跑到隔壁欄 */}
+      {value.choice === '' && <span className="field-hint">未指定部門的帳號只取得套用給「未指定部門」與所有登入員工的角色，不會取得任何一般部門的角色。</span>}
+    </div>
     {value.choice === NEW_DEPARTMENT && <div className="field"><label className="field-label" htmlFor={newDeptId}>新部門名稱</label>
       <input id={newDeptId} className="input" value={value.typed} onChange={(e) => onChange({ ...value, typed: e.target.value })} required maxLength={200} disabled={disabled} autoFocus />
       {typedExisting && <span className="field-hint">已有此部門，將直接加入。</span>}
@@ -196,7 +198,7 @@ export default function UsersTab({ tenantId, onError }: { tenantId: string; onEr
           </div>
         )}
         {users.length > 0 && (
-          <div className="assignment-toolbar directory-toolbar">
+          <div className="directory-toolbar">
             <input className="input" aria-label="搜尋使用者" placeholder="搜尋姓名、帳號或 Email…" value={query}
               onChange={(e) => { setQuery(e.target.value); setPage(1); }} />
             <select className="select" aria-label="依部門篩選" value={deptFilter} onChange={(e) => { setDeptFilter(e.target.value); setPage(1); }}>
@@ -236,7 +238,7 @@ export default function UsersTab({ tenantId, onError }: { tenantId: string; onEr
             </>}
           </li>)}</ul>}
         {filteredUsers.length > PAGE_SIZE && (
-          <nav className="assignment-pagination" aria-label="使用者清單分頁">
+          <nav className="directory-pagination" aria-label="使用者清單分頁">
             <span className="row-sub" aria-live="polite">共 {filteredUsers.length} 位 · 第 {currentPage} / {pageCount} 頁 · 每頁 {PAGE_SIZE} 位</span>
             <div>
               <button type="button" className="btn btn-sm" disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)}>上一頁</button>
