@@ -1,4 +1,4 @@
-import type { Definition, TenantAppearance } from '@hyagent/shared';
+import type { AdminMe, Definition, TenantAppearance } from '@hyagent/shared';
 
 export type { Definition };
 
@@ -810,7 +810,12 @@ export const api = {
     req<{ name: string }>('PATCH', `/admin/tenants/${encodeURIComponent(id)}/departments/${encodeURIComponent(name)}`, { name: next }),
   deleteDepartment: (id: string, name: string) =>
     req<{ name: string }>('DELETE', `/admin/tenants/${encodeURIComponent(id)}/departments/${encodeURIComponent(name)}`),
-  login: (password: string) => req<{ token: string }>('POST', '/admin/auth/login', { password }),
+  login: (username: string, password: string) =>
+    req<{ token: string; me: AdminMe }>('POST', '/admin/auth/login', { username, password }),
+  getMe: () => req<AdminMe>('GET', '/admin/me'),
+  changeMyPassword: (currentPassword: string, newPassword: string) =>
+    req<{ token: string }>('PUT', '/admin/me/password', { currentPassword, newPassword }),
+  getTenant: (id: string) => req<Tenant>('GET', `/admin/tenants/${encodeURIComponent(id)}`),
 
   listTenants: () => req<Tenant[]>('GET', '/admin/tenants'),
   createTenant: (input: { name: string; allowedOrigins?: string[] }) =>

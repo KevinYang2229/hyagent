@@ -163,7 +163,9 @@ function RowGap({ id, empty }: { id: string; empty?: boolean }) {
 export default function FormDesignerPage() {
   const { id = '', formId = '' } = useParams();
   const isNew = formId === '__new__';
-  const { logout } = useAuth();
+  const { logout, level } = useAuth();
+  // 表單分頁只有唯讀權限：可看設計，不能改、不能存
+  const readonly = level('forms') === 'read';
   const navigate = useNavigate();
 
   const [draft, setDraft] = useState<DraftForm>(() => emptyDraft());
@@ -310,6 +312,7 @@ export default function FormDesignerPage() {
   }
 
   async function save() {
+    if (readonly) return;
     setErr(null);
     setIssues([]);
     if (!draft.formId.trim()) {
@@ -405,7 +408,7 @@ export default function FormDesignerPage() {
               e.target.value = ''; // 允許再次匯入同一檔
             }}
           />
-          <button className="btn btn-ghost btn-sm" onClick={() => fileInputRef.current?.click()}>
+          <button className="btn btn-ghost btn-sm" onClick={() => fileInputRef.current?.click()} disabled={readonly}>
             匯入 schema
           </button>
           {!isNew && (
@@ -413,12 +416,14 @@ export default function FormDesignerPage() {
               匯出 schema
             </button>
           )}
-          <button className="btn btn-primary btn-sm" onClick={save} disabled={busy}>
+          <button className="btn btn-primary btn-sm" onClick={save} disabled={busy || readonly}>
             {busy ? '儲存中…' : '儲存'}
           </button>
         </div>
       }
     >
+      {readonly && <div className="banner">此分頁為唯讀，如需修改請聯絡平台管理者</div>}
+      <fieldset disabled={readonly} className="tab-readonly">
       {err && <div className="banner banner-err">{err}</div>}
       {issues.length > 0 && (
         <div className="banner banner-err">
@@ -582,6 +587,7 @@ export default function FormDesignerPage() {
               </button>
             </div>
             {selected && (
+              <fieldset disabled={readonly} className="tab-readonly">
               <Inspector
                 field={selected}
                 guidance={draft.fieldGuidance[selected.key] ?? ''}
@@ -595,6 +601,7 @@ export default function FormDesignerPage() {
                   })
                 }
               />
+              </fieldset>
             )}
           </aside>
         </div>,
@@ -603,6 +610,7 @@ export default function FormDesignerPage() {
 
       {/* 進階層：簽核 / OA / 對話 / 工時 */}
       <AdvancedPanel draft={draft} setDraft={setDraft} />
+      </fieldset>
     </AppLayout>
   );
 }

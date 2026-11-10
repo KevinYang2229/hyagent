@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, type ApiKey, type LLMConfigPatch, type LLMConfigView, type Tenant } from '../../api';
+import { useAuth } from '../../auth';
 import { IconCopy, IconKey } from '../../components/icons';
 import { useUnsavedChanges } from '../../components/unsaved';
 import UnsavedBadge from '../../components/UnsavedBadge';
@@ -22,6 +23,7 @@ export default function SettingsTab({
   onError: (e: unknown) => void;
   section?: 'basic' | 'ai';
 }) {
+  const { isSuper } = useAuth();
   const [name, setName] = useState(tenant.name);
   const [origins, setOrigins] = useState((tenant.allowedOrigins ?? []).join('\n'));
   const [quota, setQuota] = useState(
@@ -59,7 +61,7 @@ export default function SettingsTab({
   const originList = (text: string) => text.split('\n').map((x) => x.trim()).filter(Boolean);
   const tenantDirty = name.trim() !== tenant.name
     || originList(origins).join('\n') !== (tenant.allowedOrigins ?? []).join('\n')
-    || (quota.trim() === '' ? 0 : Math.max(0, Number(quota) || 0)) !== (tenant.quotaMonthlyLlmTokens ?? 0)
+    || (isSuper && (quota.trim() === '' ? 0 : Math.max(0, Number(quota) || 0)) !== (tenant.quotaMonthlyLlmTokens ?? 0))
     || guestAccess !== (tenant.guestAccess === true);
   const llmDirty = !!llmCfg && (
     llmProvider !== (llmCfg.provider ?? '') || llmModel.trim() !== (llmCfg.model ?? '')
@@ -109,8 +111,11 @@ export default function SettingsTab({
     try {
       const allowedOrigins = origins.split('\n').map((s) => s.trim()).filter(Boolean);
       const patch: Parameters<typeof api.updateTenant>[1] = { name: name.trim(), allowedOrigins, guestAccess };
-      // 空字串或 0 = 不限（送 0 以清除既有配額）
-      patch.quotaMonthlyLlmTokens = quota.trim() === '' ? 0 : Math.max(0, Number(quota) || 0);
+      // 配額只有超級管理者能改：租戶管理者的請求帶這個欄位，整個會被 403
+      if (isSuper) {
+        // 空字串或 0 = 不限（送 0 以清除既有配額）
+        patch.quotaMonthlyLlmTokens = quota.trim() === '' ? 0 : Math.max(0, Number(quota) || 0);
+      }
       await api.updateTenant(tenant.id, patch);
       onSaved();
     } catch (e) {
@@ -160,7 +165,7 @@ export default function SettingsTab({
           <div className="field">
             <label className="field-label">每月 AI 用量上限（Token）</label>
             <span className="field-hint">
-              Token 是 AI 的計費單位（一個中文字約 1–2 個）。對話與知識庫檢索合計；留空或 0＝不限。超過上限後，當月的 AI 對話會暫停到下個月。
+              Token 是 AI 的計費單位（一個中文字約 1–2 個）。對話與知識庫檢索合計；留空或 0＝不限。超過上限後，當月的 AI 對話會暫停到下個月。{!isSuper && ' 此欄位只有平台管理者能修改。'}
             </span>
             <input
               className="input"
@@ -168,6 +173,7 @@ export default function SettingsTab({
               min={0}
               value={quota}
               onChange={(e) => setQuota(e.target.value)}
+              readOnly={!isSuper}
               placeholder="例：1000000（100 萬 tokens／月）"
             />
           </div>

@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState, type SVGProps } from 'react';
+import { useCallback, useEffect, useMemo, useState, type SVGProps } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useToast } from '@hyagent/ui';
+import type { AdminTabKey } from '@hyagent/shared';
 import { api, UnauthorizedError, type Tenant } from '../api';
 import { useAuth } from '../auth';
 import AppLayout from '../components/AppLayout';
@@ -80,14 +81,25 @@ const TABS = TAB_GROUPS.flatMap((g) => g.tabs);
 
 export default function TenantDetailPage() {
   const { id = '' } = useParams();
-  const { logout } = useAuth();
+  const { logout, isSuper, level } = useAuth();
   const navigate = useNavigate();
   const toast = useToast();
   const [tenant, setTenant] = useState<Tenant | null>(null);
   // 分頁狀態同步到網址（?tab=...）：重整/分享連結停留在原分頁，不再重置回第一頁
   const [searchParams, setSearchParams] = useSearchParams();
   const rawTab = searchParams.get('tab');
-  const tab: TabKey = TABS.some((t) => t.key === rawTab) ? (rawTab as TabKey) : 'overview';
+  // 分頁可見規則：總覽一律；資料庫查詢只有超級管理者；其餘依分頁權限。網址指到看不到的分頁時退回總覽
+  const isVisible = useCallback(
+    (key: TabKey) => key === 'overview' || (key === 'database' ? isSuper : level(key as AdminTabKey) !== 'hidden'),
+    [isSuper, level],
+  );
+  const visibleGroups = useMemo(
+    () => TAB_GROUPS.map((g) => ({ ...g, tabs: g.tabs.filter((tb) => isVisible(tb.key)) })).filter((g) => g.tabs.length > 0),
+    [isVisible],
+  );
+  const tab: TabKey = TABS.some((t) => t.key === rawTab && isVisible(t.key)) ? (rawTab as TabKey) : 'overview';
+  const tabIsReadonly = tab !== 'overview' && tab !== 'database' && level(tab as AdminTabKey) === 'read';
+
   const setTab = (next: TabKey, query: Record<string, string> = {}) => {
     if (next === tab && Object.keys(query).length === 0) return;
     // 有未儲存的變更時，由最外層的 UnsavedGuard 攔下並確認
@@ -108,8 +120,7 @@ export default function TenantDetailPage() {
 
   const reload = useCallback(async () => {
     try {
-      const list = await api.listTenants();
-      setTenant(list.find((t) => t.id === id) ?? null);
+      setTenant(await api.getTenant(id));
     } catch (e) {
       handleErr(e);
     }
@@ -125,55 +136,9 @@ export default function TenantDetailPage() {
     void reload();
   }, [reload]);
 
-  return (
-    <AppLayout
-      crumb="租戶"
-      title={tenant?.name ?? '載入中…'}
-      actions={
-        <button className="btn btn-ghost btn-sm" onClick={() => navigate('/')}>
-          <IconBack />
-          租戶清單
-        </button>
-      }
-    >
-      {!tenant ? (
-        <div className="card">
-          <div className="empty">載入中…</div>
-        </div>
-      ) : (
-        <>
-          <div className="tenant-shell">
-            <nav className="tenant-nav" aria-label="租戶設定導覽">
-              {TAB_GROUPS.map((group) => (
-                <div key={group.label ?? 'top'} className="tenant-nav-group">
-                  {group.label && <div className="tenant-nav-label">{group.label}</div>}
-                  {group.tabs.map((tb) => (
-                    <button
-                      key={tb.key}
-                      type="button"
-                      className={`tenant-nav-item${tab === tb.key ? ' active' : ''}`}
-                      aria-current={tab === tb.key ? 'page' : undefined}
-                      onClick={() => setTab(tb.key)}
-                    >
-                      <tb.icon className="tenant-nav-ico" aria-hidden="true" />
-                      <span>{tb.label}</span>
-                    </button>
-                  ))}
-                </div>
-              ))}
-            </nav>
-            {/* 窄螢幕：側邊導覽收成下拉選單，分組以 optgroup 呈現 */}
-            <label className="tenant-nav-select field">
-              <span className="field-label">目前頁面</span>
-              <select className="select" aria-label="切換租戶設定頁面" value={tab} onChange={(e) => setTab(e.target.value as TabKey)}>
-                {TAB_GROUPS.map((group) => group.label
-                  ? <optgroup key={group.label} label={group.label}>{group.tabs.map((tb) => <option key={tb.key} value={tb.key}>{tb.label}</option>)}</optgroup>
-                  : group.tabs.map((tb) => <option key={tb.key} value={tb.key}>{tb.label}</option>))}
-              </select>
-            </label>
-            <div className="tenant-content">
-
-          {tab === 'overview' && <OverviewTab key={tenant.id} tenant={tenant} onNavigate={(next, query) => setTab(next as TabKey, query)} />}
+  const tabContent = tenant && (
+    <>
+          {tab === 'overview' && <OverviewTab key={tenant.id} tenant={tenant} level={level} onNavigate={(next, query) => setTab(next as TabKey, query)} />}
           {tab === 'sso' && <SsoTab key={tenant.id} tenantId={tenant.id} onError={handleErr} />}
           {tab === 'users' && <UsersTab key={tenant.id} tenantId={tenant.id} onError={handleErr} />}
           {tab === 'directorySync' && <DirectorySyncTab key={tenant.id} tenantId={tenant.id} onError={handleErr} />}
@@ -197,6 +162,59 @@ export default function TenantDetailPage() {
             />
           )}
           {tab === 'audit' && <AuditTab tenantId={tenant.id} onError={handleErr} />}
+    </>
+  );
+
+  return (
+    <AppLayout
+      crumb="租戶"
+      title={tenant?.name ?? '載入中…'}
+      actions={isSuper ? (
+        <button className="btn btn-ghost btn-sm" onClick={() => navigate('/')}>
+          <IconBack />
+          租戶清單
+        </button>
+      ) : undefined}
+    >
+      {!tenant ? (
+        <div className="card">
+          <div className="empty">載入中…</div>
+        </div>
+      ) : (
+        <>
+          <div className="tenant-shell">
+            <nav className="tenant-nav" aria-label="租戶設定導覽">
+              {visibleGroups.map((group) => (
+                <div key={group.label ?? 'top'} className="tenant-nav-group">
+                  {group.label && <div className="tenant-nav-label">{group.label}</div>}
+                  {group.tabs.map((tb) => (
+                    <button
+                      key={tb.key}
+                      type="button"
+                      className={`tenant-nav-item${tab === tb.key ? ' active' : ''}`}
+                      aria-current={tab === tb.key ? 'page' : undefined}
+                      onClick={() => setTab(tb.key)}
+                    >
+                      <tb.icon className="tenant-nav-ico" aria-hidden="true" />
+                      <span>{tb.label}</span>
+                    </button>
+                  ))}
+                </div>
+              ))}
+            </nav>
+            {/* 窄螢幕：側邊導覽收成下拉選單，分組以 optgroup 呈現 */}
+            <label className="tenant-nav-select field">
+              <span className="field-label">目前頁面</span>
+              <select className="select" aria-label="切換租戶設定頁面" value={tab} onChange={(e) => setTab(e.target.value as TabKey)}>
+                {visibleGroups.map((group) => group.label
+                  ? <optgroup key={group.label} label={group.label}>{group.tabs.map((tb) => <option key={tb.key} value={tb.key}>{tb.label}</option>)}</optgroup>
+                  : group.tabs.map((tb) => <option key={tb.key} value={tb.key}>{tb.label}</option>))}
+              </select>
+            </label>
+            <div className="tenant-content">
+
+          {tabIsReadonly && <div className="card tab-readonly-hint"><div className="card-body">此分頁為唯讀，如需修改請聯絡平台管理者</div></div>}
+          {tabIsReadonly ? <fieldset disabled className="tab-readonly">{tabContent}</fieldset> : tabContent}
             </div>
           </div>
 

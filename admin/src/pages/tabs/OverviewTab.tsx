@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import type { AdminTabKey, AdminTabLevel } from '@hyagent/shared';
 import { api, type Tenant } from '../../api';
 import CollapsibleList from '../../components/CollapsibleList';
 import { setupChecks, setupProgress, type CheckStatus, type OverviewData, type SetupCheck } from './overview.util';
@@ -15,30 +16,35 @@ async function settle<T>(p: Promise<T>): Promise<T | undefined> {
  * 租戶總覽：依導入流程列出設定進度，每項都能直接前往處理。
  * 上線後也用來快速看「現在有什麼需要處理」（未標記檔案、未指定部門、未套用角色…）。
  */
-export default function OverviewTab({ tenant, onNavigate }: {
+export default function OverviewTab({ tenant, level, onNavigate }: {
   tenant: Tenant;
+  /** 目前身分對各分頁的權限；看不到的分頁不呼叫對應 API，也不顯示對應卡片 */
+  level: (tab: AdminTabKey) => AdminTabLevel;
   onNavigate: (tab: string, query?: Record<string, string>) => void;
 }) {
   const [data, setData] = useState<OverviewData | null>(null);
 
   const load = useCallback(async () => {
     setData(null);
+    const can = (...tabs: AdminTabKey[]) => tabs.some((t) => level(t) !== 'hidden');
+    const skip = Promise.resolve(undefined);
     const [users, sync, policy, knowledge, acl, forms] = await Promise.all([
-      settle(api.listDirectoryUsers(tenant.id).then((r) => r.users)),
-      settle(api.getDirectorySync(tenant.id)),
-      settle(api.getTenantPolicy(tenant.id)),
-      settle(api.getKnowledge(tenant.id).then((r) => r.meta)),
-      settle(api.getKnowledgeAclReport(tenant.id)),
-      settle(api.listForms(tenant.id)),
+      can('users') ? settle(api.listDirectoryUsers(tenant.id).then((r) => r.users)) : skip,
+      can('directorySync', 'users') ? settle(api.getDirectorySync(tenant.id)) : skip,
+      can('permissions', 'knowledge') ? settle(api.getTenantPolicy(tenant.id)) : skip,
+      can('knowledge') ? settle(api.getKnowledge(tenant.id).then((r) => r.meta)) : skip,
+      can('knowledge') ? settle(api.getKnowledgeAclReport(tenant.id)) : skip,
+      can('forms') ? settle(api.listForms(tenant.id)) : skip,
     ]);
     setData({ tenant, users, sync, policy, knowledge, acl, forms });
-  }, [tenant]);
+  }, [tenant, level]);
 
   useEffect(() => { void load(); }, [load]);
 
   if (!data) return <div className="card"><div className="card-body">檢查中…</div></div>;
 
-  const checks = setupChecks(data);
+  // 看不到的分頁不顯示對應卡片（check.tab 對得到分頁權限才顯示）
+  const checks = setupChecks(data).filter((c) => level(c.tab as AdminTabKey) !== 'hidden');
   const { done, total } = setupProgress(checks);
   const todos = checks.filter((c) => c.status !== 'ok');
 
