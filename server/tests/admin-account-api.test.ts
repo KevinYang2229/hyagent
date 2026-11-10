@@ -116,3 +116,54 @@ describe('帳號管理 API', () => {
     expect(JSON.stringify(entries)).not.toContain('super-unique-pw-value');
   });
 });
+
+describe('帳號變更對下一個請求立即生效', () => {
+  async function makeWithToken(permissions: Record<string, string> = {}) {
+    const c = await create({ username: `live${Math.random().toString(36).slice(2, 8)}` });
+    const id = c.body.data.id as string;
+    if (Object.keys(permissions).length > 0) {
+      await request(app).patch(`${base()}/${id}`).set(SUPER).send({ permissions }).expect(200);
+    }
+    const acc = adminAccountStore.get(id)!;
+    const token = signTenantAdminToken({ accountId: id, tenantId: tid, credentialVersion: acc.credentialVersion });
+    return { id, h: { Authorization: `Bearer ${token}` } };
+  }
+
+  it('停用後舊 token 401；重新啟用後同一個舊 token 仍 401，新簽的 token 可用', async () => {
+    const { id, h } = await makeWithToken();
+    expect((await request(app).get('/api/admin/me').set(h)).status).toBe(200);
+    await request(app).patch(`${base()}/${id}`).set(SUPER).send({ status: 'disabled' }).expect(200);
+    expect((await request(app).get('/api/admin/me').set(h)).status).toBe(401);
+    await request(app).patch(`${base()}/${id}`).set(SUPER).send({ status: 'active' }).expect(200);
+    expect((await request(app).get('/api/admin/me').set(h)).status).toBe(401);
+    const acc = adminAccountStore.get(id)!;
+    const fresh = { Authorization: `Bearer ${signTenantAdminToken({ accountId: id, tenantId: tid, credentialVersion: acc.credentialVersion })}` };
+    expect((await request(app).get('/api/admin/me').set(fresh)).status).toBe(200);
+  });
+
+  it('刪除後舊 token 401', async () => {
+    const { id, h } = await makeWithToken();
+    expect((await request(app).get('/api/admin/me').set(h)).status).toBe(200);
+    await request(app).delete(`${base()}/${id}`).set(SUPER).expect(200);
+    expect((await request(app).get('/api/admin/me').set(h)).status).toBe(401);
+  });
+
+  it('收回權限後，下一個請求就 403', async () => {
+    const { id, h } = await makeWithToken({ knowledge: 'read' });
+    const url = `/api/admin/tenants/${tid}/knowledge`;
+    expect((await request(app).get(url).set(h)).status).toBe(200);
+    await request(app).patch(`${base()}/${id}`).set(SUPER).send({ permissions: {} }).expect(200);
+    expect((await request(app).get(url).set(h)).status).toBe(403);
+  });
+
+  it.each([{ tenantId: 'x' }, { passwordHash: 'x' }, { credentialVersion: 9 }])(
+    'PATCH 夾帶 %j 回 422，帳號不變（防 mass assignment）',
+    async (extra) => {
+      const { id } = await makeWithToken();
+      const before = JSON.stringify(adminAccountStore.get(id));
+      const res = await request(app).patch(`${base()}/${id}`).set(SUPER).send({ displayName: '偷改', ...extra });
+      expect(res.status).toBe(422);
+      expect(JSON.stringify(adminAccountStore.get(id))).toBe(before);
+    },
+  );
+});
