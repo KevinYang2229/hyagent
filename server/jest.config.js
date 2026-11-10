@@ -20,6 +20,8 @@ module.exports = {
     // supertest 改綁 127.0.0.1：原版綁 `::` 卻連 127.0.0.1，macOS 上會撞到別的程式的埠（見該檔）
     '^supertest$': '<rootDir>/tests/helpers/supertest-loopback.ts',
     '^@/(.*)$': '<rootDir>/src/$1',
+    // shared 套件內的相對匯入依 NodeNext 帶 .js 副檔名，測試時對回 .ts 原始碼
+    '^(\\.{1,2}/.*)\\.js$': '$1',
     '^@hyagent/shared$': '<rootDir>/../shared/src/index.ts',
     '^@hyagent/mcp-kit$': '<rootDir>/../mcp/kit/src/index.ts',
     '^@hyagent/store-demo$': '<rootDir>/../mcp/store-demo/src/index.ts',

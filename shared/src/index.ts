@@ -475,3 +475,6 @@ export interface ReplyFeedbackInput {
   reason?: FeedbackReason;
   comment?: string;
 }
+
+// ---- 後台租戶管理者分頁權限 ----
+export * from './admin-permissions.js';
