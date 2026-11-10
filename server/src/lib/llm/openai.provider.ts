@@ -102,6 +102,18 @@ const STOP_MAP: Record<string, LLMResult['stopReason']> = {
   length: 'max_tokens',
 };
 
+/**
+ * 已知「Chat Completions 上 reasoning 與 function tools 不能並用」的模型（如 gpt-6-luna）。
+ * 這類模型預設開 reasoning，帶工具就 400；但非 reasoning 模型（gpt-4o-mini 等）反而拒收
+ * reasoning_effort 欄位，故不能一律帶——改成首次撞錯後記住該模型，之後帶工具時直接送 'none'。
+ */
+const toolsNeedReasoningOff = new Set<string>();
+
+function isToolsWithReasoningError(err: unknown): boolean {
+  const e = err as { status?: number; message?: string } | null;
+  return e?.status === 400 && /reasoning_effort/i.test(e.message ?? '') && /tool/i.test(e.message ?? '');
+}
+
 export function createOpenAIProvider(settings: ResolvedLLMSettings): LLMProvider {
   return {
     name: 'openai',
@@ -118,10 +130,11 @@ export function createOpenAIProvider(settings: ResolvedLLMSettings): LLMProvider
 
       const model = pickModel(settings, params.model);
       const maxTokens = params.maxTokens ?? env.LLM_MAX_TOKENS;
-      let resp: OpenAI.Chat.Completions.ChatCompletion;
-      try {
-        resp = await getClient(settings.apiKey, settings.baseURL).chat.completions.create({
+      const hasTools = tools.length > 0;
+      const send = (reasoningOff: boolean) =>
+        getClient(settings.apiKey, settings.baseURL).chat.completions.create({
           model,
+          ...(reasoningOff ? { reasoning_effort: 'none' as const } : {}),
           // OpenAI 官方已棄用 max_tokens，reasoning／新世代模型直接 400 拒收，須改送
           // max_completion_tokens；地端 OpenAI 相容伺服器（Ollama、舊版 vLLM 等）未必認得新欄位，
           // 仍送 max_tokens 以免上限被靜默忽略。
@@ -140,6 +153,17 @@ export function createOpenAIProvider(settings: ResolvedLLMSettings): LLMProvider
               ? { tool_choice: { type: 'function' as const, function: { name: params.toolChoice.name } } }
               : {}),
         }, { signal: params.signal });
+
+      let resp: OpenAI.Chat.Completions.ChatCompletion;
+      try {
+        const reasoningOff = hasTools && toolsNeedReasoningOff.has(model);
+        try {
+          resp = await send(reasoningOff);
+        } catch (err) {
+          if (!hasTools || reasoningOff || !isToolsWithReasoningError(err)) throw err;
+          toolsNeedReasoningOff.add(model);
+          resp = await send(true);
+        }
       } catch (err) {
         throw mapProviderError(err, settings);
       }
