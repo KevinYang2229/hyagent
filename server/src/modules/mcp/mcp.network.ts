@@ -69,6 +69,20 @@ export async function mcpSecureFetch(configuredUrl: string, raw: string | URL, i
   const url = validateMcpUrl(String(raw));
   if (url.origin !== configured.origin) throw denied();
   const target = await resolveMcpAddress(url);
+  return pinnedFetch(url, target, init, denied);
+}
+
+/**
+ * 以已檢查過的位址發出請求：socket 只連到 target（沒有 DNS rebinding 的空窗），不跟隨跳轉。
+ * 遇到 3xx 時：有給 onRedirect 就以它產生的錯誤拒絕；沒給則回傳空 body 的 3xx 回應，由呼叫端自行檢查下一跳。
+ * 知識庫爬取與 webhook 的公開網段限制（lib/public-network）共用。
+ */
+export async function pinnedFetch(
+  url: URL,
+  target: { address: string; family: number },
+  init: RequestInit | undefined,
+  onRedirect?: () => Error,
+): Promise<Response> {
   const request = new Request(url, init);
   const body = request.body ? Buffer.from(await request.arrayBuffer()) : undefined;
   return new Promise<Response>((resolve, reject) => {
@@ -85,7 +99,12 @@ export async function mcpSecureFetch(configuredUrl: string, raw: string | URL, i
       const status = res.statusCode ?? 502;
       if (status >= 300 && status < 400) {
         res.destroy();
-        reject(denied());
+        if (onRedirect) {
+          reject(onRedirect());
+          return;
+        }
+        const location = res.headers.location;
+        resolve(new Response(null, { status, headers: location ? { location } : {} }));
         return;
       }
       const headers = new Headers();

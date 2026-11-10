@@ -25,6 +25,7 @@ import { contentDispositionHeader } from '@/modules/report/report.http';
 import { submissionStore } from '@/modules/workflow/submission.store';
 import { formStore } from '@/modules/form/form.store';
 import { AppError } from '@/utils/app-error';
+import { assertPublicUrl } from '@/lib/public-network';
 import { toErrorResponse } from '@/lib/assertion';
 import { authSessionStore } from '@/lib/auth-session.store';
 import { activeKeys, resolveAssertionSettings } from '@/modules/tenant/tenant-keys';
@@ -411,7 +412,11 @@ export const adminController = {
   async createWebhook(req: Request, res: Response): Promise<void> {
     const tenant = ensureTenant(String(req.params.id));
     const { url, secret, events } = req.body as CreateWebhookInput;
-    const endpoint = webhookStore.register({ tenantId: tenant.id, url, secret, events });
+    // SSRF 防護：租戶管理者只能登記公開網段的網址，並標記投遞時同樣限制（超級管理者不變）
+    const principal = res.locals.adminPrincipal as AdminPrincipal | undefined;
+    const restrictNetwork = principal?.kind === 'tenant-admin';
+    if (restrictNetwork) await assertPublicUrl(url);
+    const endpoint = webhookStore.register({ tenantId: tenant.id, url, secret, events, restrictNetwork });
     res.status(201).json({ data: endpoint });
   },
 

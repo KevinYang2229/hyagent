@@ -37,6 +37,11 @@ export interface KnowledgeSource {
   updatedAt?: string;
   /** 網站來源的可見性標籤（整個來源一組）；重爬時重新投影到 chunks */
   visibilityScopes?: string[];
+  /**
+   * 由租戶管理者設定（SSRF 防護）：爬取時只連公開網段、每次連線釘住檢查過的位址、不啟動瀏覽器渲染。
+   * 超級管理者重新儲存會清掉；舊資料沒有此欄位，行為不變。見 lib/public-network.ts。
+   */
+  restrictNetwork?: boolean;
 }
 
 /** 單一上傳檔案的索引紀錄（供 admin 顯示與刪除比對） */

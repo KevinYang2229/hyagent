@@ -94,7 +94,7 @@ export default function TenantDetailPage() {
           {tab === 'directorySync' && <DirectorySyncTab key={tenant.id} tenantId={tenant.id} onError={handleErr} readonly={ro} />}
           {tab === 'appearance' && <AppearanceTab tenant={tenant} onSaved={handleSaved} onError={handleErr} readonly={ro} />}
           {tab === 'forms' && <FormsTab tenantId={tenant.id} onError={handleErr} readonly={ro} />}
-          {tab === 'knowledge' && <KnowledgeTab tenantId={tenant.id} onError={handleErr} readonly={ro} />}
+          {tab === 'knowledge' && <KnowledgeTab tenantId={tenant.id} onError={handleErr} readonly={ro} allowRenderJavaScript={isSuper} />}
           {tab === 'database' && <DatabaseTab key={tenant.id} tenantId={tenant.id} onError={handleErr} />}
           {tab === 'permissions' && (
             <PermissionsTab tenantId={tenant.id} onError={handleErr} readonly={ro} />

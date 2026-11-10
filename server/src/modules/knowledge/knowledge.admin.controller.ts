@@ -22,6 +22,8 @@ import { pickRetriever } from './retriever.pick';
 import { accessItemsOf, accessLogRetentionDaysOf, listKnowledgeAccessLogs, recordKnowledgeAccess, type AccessLogFilter } from './access-log';
 import { env } from '@/config/env';
 import type { AdminActor } from '@/modules/audit/admin-audit';
+import type { AdminPrincipal } from '@/middlewares/require-admin';
+import { assertPublicUrl } from '@/lib/public-network';
 import { guestVisibilityScopesOf, setFileVisibility, setSourceVisibility, visibilityScopesOf } from './knowledge.visibility';
 
 /**
@@ -82,6 +84,24 @@ function prepareSource(tenantId: string, source: Omit<KnowledgeSource, 'updatedA
   return { ...source, visibilityScopes: sourceVisibilityScopes(source) };
 }
 
+/**
+ * SSRF 防護（只針對租戶管理者設定的來源）：起始網址必須是公開網段、不能開 JavaScript 渲染，
+ * 並在來源上標記 restrictNetwork，爬取時改走只連公開網段的抓取。超級管理者儲存則清掉標記。
+ */
+async function applyNetworkRestriction(
+  res: Response,
+  source: Omit<KnowledgeSource, 'updatedAt'>,
+): Promise<Omit<KnowledgeSource, 'updatedAt'>> {
+  const { restrictNetwork: _ignored, ...rest } = source;
+  const principal = res.locals.adminPrincipal as AdminPrincipal | undefined;
+  if (principal?.kind !== 'tenant-admin') return rest;
+  if (rest.renderJavaScript) {
+    throw AppError.unprocessable('租戶管理者設定的網站來源不支援 JavaScript 渲染，請關閉此選項；如需渲染請聯絡平台管理者');
+  }
+  if (rest.startUrl) await assertPublicUrl(rest.startUrl);
+  return { ...rest, restrictNetwork: true };
+}
+
 /** 由已存來源設定組出 ingest 參數；未設定起始網址則擋下 */
 function ingestParamsFor(tenantId: string): IngestParams {
   const s = knowledgeStore.getSource(tenantId);
@@ -97,6 +117,7 @@ function ingestParamsFor(tenantId: string): IngestParams {
     excludePatterns: s.excludePatterns,
     chunkChars: s.chunkChars,
     embeddingModel: s.embeddingModel,
+    ...(s.restrictNetwork ? { restrictNetwork: true } : {}),
   };
 }
 
@@ -152,7 +173,7 @@ export const knowledgeAdminController = {
   async saveSource(req: Request, res: Response): Promise<void> {
     const tenantId = String(req.params.id);
     const body = req.body as Omit<KnowledgeSource, 'updatedAt'>;
-    const prepared = prepareSource(tenantId, body);
+    const prepared = prepareSource(tenantId, await applyNetworkRestriction(res, body));
     await setSourceVisibility(tenantId, prepared.visibilityScopes ?? []);
     const saved = knowledgeStore.saveSource(tenantId, prepared);
     res.json({ data: saved });
@@ -163,7 +184,10 @@ export const knowledgeAdminController = {
     const body = req.body as Partial<KnowledgeSource>;
     // 有帶覆寫參數時先存起來，再依最終設定啟動 job
     if (body.startUrl) {
-      const prepared = prepareSource(tenantId, { ...knowledgeStore.getSource(tenantId), ...body });
+      const prepared = prepareSource(
+        tenantId,
+        await applyNetworkRestriction(res, { ...knowledgeStore.getSource(tenantId), ...body }),
+      );
       await setSourceVisibility(tenantId, prepared.visibilityScopes ?? []);
       knowledgeStore.saveSource(tenantId, prepared);
     }

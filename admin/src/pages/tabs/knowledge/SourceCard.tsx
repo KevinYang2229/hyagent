@@ -28,7 +28,7 @@ const KNOWLEDGE_EXT_LABELS = KNOWLEDGE_EXTS.filter((e) => e !== "html").map((e) 
  */
 export default function SourceCard({
   tenantId, src, dirty, meta, job, labels, departments,
-  onChange, onSaved, onJobStarted, onReload, onReloadAcl, onIndexCleared, onError, readonly = false,
+  onChange, onSaved, onJobStarted, onReload, onReloadAcl, onIndexCleared, onError, readonly = false, allowRenderJavaScript = true,
 }: {
   tenantId: string;
   src: KnowledgeSource;
@@ -49,6 +49,8 @@ export default function SourceCard({
   onError: (e: unknown) => void;
   /** 唯讀：可切換網站／檔案檢視設定，不能修改、解析或清除索引 */
   readonly?: boolean;
+  /** 租戶管理者不能開啟瀏覽器渲染（後端 SSRF 防護同樣會擋）；已開啟的仍可關閉 */
+  allowRenderJavaScript?: boolean;
 }) {
   const toast = useToast();
   const update = onChange;
@@ -239,11 +241,11 @@ export default function SourceCard({
               <div className="field check-field">
                 <label className="check-field-label" htmlFor="website-render-javascript">
                   <Checkbox id="website-render-javascript" checked={src.renderJavaScript ?? false}
-                    disabled={parsing || savingSource}
+                    disabled={parsing || savingSource || (!allowRenderJavaScript && !src.renderJavaScript)}
                     onChange={(e) => update({ renderJavaScript: e.target.checked })} />
                   <span>瀏覽器渲染後解析</span>
                 </label>
-                <span className="field-hint">適用於以 JavaScript 載入內容的網站，解析時間較長。僅讀取未登入即可瀏覽的內容，不會沿用你的登入狀態。變更後需重新解析。</span>
+                <span className="field-hint">適用於以 JavaScript 載入內容的網站，解析時間較長。僅讀取未登入即可瀏覽的內容，不會沿用你的登入狀態。變更後需重新解析。{!allowRenderJavaScript && '基於安全考量，此選項只有平台管理者能開啟。'}</span>
               </div>
               {src.renderJavaScript && <div className="field">
                 <label className="field-label">內容載入等待時間（毫秒）

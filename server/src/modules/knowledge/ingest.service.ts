@@ -3,6 +3,8 @@ import { createHash } from 'node:crypto';
 import * as cheerio from 'cheerio';
 import { getEmbeddingProvider, type EmbeddingProvider } from '@/lib/embedding';
 import { logger } from '@/lib/logger';
+import { publicOnlyFetch } from '@/lib/public-network';
+import { AppError } from '@/utils/app-error';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 import { usageStore } from '@/modules/usage/usage.store';
 import { replaceWebsiteChunks } from './knowledge.index.repo';
@@ -26,6 +28,8 @@ export interface IngestParams {
   excludePatterns?: string[];
   chunkChars: number;
   embeddingModel: string;
+  /** 租戶管理者設定的來源：只連公開網段（publicOnlyFetch），且不啟動瀏覽器渲染 */
+  restrictNetwork?: boolean;
 }
 export interface IngestProgress {
   phase: 'crawling' | 'embedding' | 'done';
@@ -357,7 +361,9 @@ export async function runIngest(
     renderJavaScript: !!params.renderJavaScript,
     heapUsedMiB: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) }, 'website crawl started');
 
-  const browser = params.renderJavaScript ? new WebsiteBrowser() : undefined;
+  const restricted = !!params.restrictNetwork;
+  // 瀏覽器自行解析 DNS、連線無法釘在檢查過的位址，旗標來源一律改用靜態抓取
+  const browser = params.renderJavaScript && !restricted ? new WebsiteBrowser() : undefined;
   try {
     assertWebsiteHeapBudget();
     if (browser) await browser.open();
@@ -375,7 +381,8 @@ export async function runIngest(
           pageUrl = rendered.url;
           if (!allowed(pageUrl, params)) throw new Error('網站跳轉至解析範圍之外');
         } else {
-          const resp = await fetch(url, { headers: { 'user-agent': 'oa-agent-knowledge-ingest' }, signal: AbortSignal.timeout(30_000) });
+          const init = { headers: { 'user-agent': 'oa-agent-knowledge-ingest' }, signal: AbortSignal.timeout(30_000) };
+          const resp = restricted ? await publicOnlyFetch(url, init) : await fetch(url, init);
           const ct = resp.headers.get('content-type') ?? '';
           if (!resp.ok || !ct.includes('text/html')) {
             await resp.body?.cancel();
@@ -413,7 +420,9 @@ export async function runIngest(
         onProgress?.({ phase: 'crawling', pagesCrawled, chunks: pending.length, embedded: 0 });
       } catch (err) {
         // 起始頁渲染失敗時直接回報，避免把登入頁或空內容寫成成功索引。
-        if (err instanceof WebsiteIngestLimitError || (browser && url === start)) throw err;
+        // 旗標來源的起始頁被公開網段限制擋下時也直接回報，讓管理者看得到原因
+        if (err instanceof WebsiteIngestLimitError || (browser && url === start)
+          || (restricted && url === start && err instanceof AppError)) throw err;
         logger.warn({ err, url }, 'ingest page failed');
       }
     }

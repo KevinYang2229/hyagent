@@ -36,11 +36,14 @@ export default function KnowledgeTab({
   tenantId,
   onError,
   readonly = false,
+  allowRenderJavaScript = true,
 }: {
   tenantId: string;
   onError: (e: unknown) => void;
   /** 唯讀：子頁切換、檔案搜尋、存取紀錄照常；寫入動作一律停用 */
   readonly?: boolean;
+  /** 是否可開啟網站來源的瀏覽器渲染（只有超級管理者） */
+  allowRenderJavaScript?: boolean;
 }) {
   const [src, setSrc] = useState<KnowledgeSource | null>(null);
   // 最後一次載入／儲存的網站設定，用來判斷「儲存網站設定」是否還有未儲存的修改
@@ -175,6 +178,7 @@ export default function KnowledgeTab({
               onIndexCleared={() => setIndexEpoch((n) => n + 1)}
               onError={onError}
               readonly={readonly}
+              allowRenderJavaScript={allowRenderJavaScript}
             />
           </div>
           <div className="kb-col">
