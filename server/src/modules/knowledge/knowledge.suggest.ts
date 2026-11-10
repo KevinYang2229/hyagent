@@ -448,6 +448,8 @@ export async function regenerateSlot(
     return { ok: true, prompts: generated };
   } catch (err) {
     logger.warn({ err, tenantId, source }, 'suggested prompt 單格重生失敗');
-    return { ok: false, reason: 'generation-failed' };
+    // 帶上錯誤訊息：沒有它，管理者只看到「生成失敗」，分不出是模型參數不相容、金鑰問題還是逾時
+    const message = err instanceof Error ? err.message : String(err);
+    return { ok: false, reason: 'generation-failed', detail: `（錯誤：${message.slice(0, OUTPUT_ECHO_CHARS)}）` };
   }
 }

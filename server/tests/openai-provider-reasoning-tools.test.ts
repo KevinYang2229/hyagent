@@ -60,3 +60,47 @@ describe('OpenAI provider：reasoning 與 tools 不相容的模型', () => {
     expect(mockCreate).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('OpenAI provider：只接受預設 temperature 的模型', () => {
+  const tempErr = Object.assign(
+    new Error("400 Unsupported value: 'temperature' does not support 0.4 with this model. Only the default (1) value is supported."),
+    { status: 400 },
+  );
+  const callWithTemp = (model: string) =>
+    getLLMProvider({ provider: 'openai', openaiApiKey: 'sk-test', model }).createMessage({
+      system: 's',
+      messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }],
+      temperature: 0.4,
+    });
+
+  it('撞錯後拿掉 temperature 重送，之後同模型直接不帶', async () => {
+    mockCreate.mockRejectedValueOnce(tempErr).mockResolvedValue(ok);
+    await expect(callWithTemp('model-t')).resolves.toMatchObject({ text: 'ok' });
+    expect(bodies()[0].temperature).toBe(0.4);
+    expect(bodies()[1]).not.toHaveProperty('temperature');
+
+    mockCreate.mockClear();
+    await callWithTemp('model-t');
+    expect(mockCreate).toHaveBeenCalledTimes(1);
+    expect(bodies()[0]).not.toHaveProperty('temperature');
+  });
+
+  it('其他模型照常帶 temperature', async () => {
+    mockCreate.mockResolvedValue(ok);
+    await callWithTemp('model-u');
+    expect(bodies()[0].temperature).toBe(0.4);
+  });
+
+  it('tools 與 temperature 兩種不相容同時發生 → 依序調整後成功', async () => {
+    mockCreate.mockRejectedValueOnce(toolsErr).mockRejectedValueOnce(tempErr).mockResolvedValue(ok);
+    await getLLMProvider({ provider: 'openai', openaiApiKey: 'sk-test', model: 'model-v' }).createMessage({
+      system: 's',
+      messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }],
+      temperature: 0.4,
+      tools: [{ name: 't', description: 'd', inputSchema: { type: 'object', properties: {} } }],
+    });
+    expect(mockCreate).toHaveBeenCalledTimes(3);
+    expect(bodies()[2]).toMatchObject({ reasoning_effort: 'none' });
+    expect(bodies()[2]).not.toHaveProperty('temperature');
+  });
+});

@@ -109,9 +109,25 @@ const STOP_MAP: Record<string, LLMResult['stopReason']> = {
  */
 const toolsNeedReasoningOff = new Set<string>();
 
-function isToolsWithReasoningError(err: unknown): boolean {
+/**
+ * 已知「只接受預設 temperature」的模型（reasoning 模型，如 gpt-6-luna）。呼叫端指定
+ * temperature（如推薦詞生成的 0.4）會被 400 拒收；一般模型則需要這個值，故同樣撞錯後才記住、改不帶。
+ */
+const temperatureUnsupported = new Set<string>();
+
+function errMessage(err: unknown): string | undefined {
   const e = err as { status?: number; message?: string } | null;
-  return e?.status === 400 && /reasoning_effort/i.test(e.message ?? '') && /tool/i.test(e.message ?? '');
+  return e?.status === 400 ? (e.message ?? '') : undefined;
+}
+
+function isToolsWithReasoningError(err: unknown): boolean {
+  const msg = errMessage(err);
+  return msg !== undefined && /reasoning_effort/i.test(msg) && /tool/i.test(msg);
+}
+
+function isTemperatureError(err: unknown): boolean {
+  const msg = errMessage(err);
+  return msg !== undefined && /temperature/i.test(msg);
 }
 
 export function createOpenAIProvider(settings: ResolvedLLMSettings): LLMProvider {
@@ -131,7 +147,8 @@ export function createOpenAIProvider(settings: ResolvedLLMSettings): LLMProvider
       const model = pickModel(settings, params.model);
       const maxTokens = params.maxTokens ?? env.LLM_MAX_TOKENS;
       const hasTools = tools.length > 0;
-      const send = (reasoningOff: boolean) =>
+      const hasTemperature = params.temperature !== undefined;
+      const send = (reasoningOff: boolean, dropTemperature: boolean) =>
         getClient(settings.apiKey, settings.baseURL).chat.completions.create({
           model,
           ...(reasoningOff ? { reasoning_effort: 'none' as const } : {}),
@@ -144,7 +161,7 @@ export function createOpenAIProvider(settings: ResolvedLLMSettings): LLMProvider
           // 未指定就整個欄位不帶，沿用 provider 預設（見 LLMCreateParams.temperature）。
           // 本 provider 也服務 OpenAI 相容的本地模型與 reasoning 模型，後者會拒絕
           // 非預設的 temperature——不帶欄位是唯一對所有後端都安全的預設。
-          ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
+          ...(hasTemperature && !dropTemperature ? { temperature: params.temperature } : {}),
           messages: toOpenAIMessages(params.system, params.messages),
           tools: tools.length > 0 ? tools : undefined,
           ...(params.toolChoice === 'none'
@@ -156,13 +173,24 @@ export function createOpenAIProvider(settings: ResolvedLLMSettings): LLMProvider
 
       let resp: OpenAI.Chat.Completions.ChatCompletion;
       try {
-        const reasoningOff = hasTools && toolsNeedReasoningOff.has(model);
-        try {
-          resp = await send(reasoningOff);
-        } catch (err) {
-          if (!hasTools || reasoningOff || !isToolsWithReasoningError(err)) throw err;
-          toolsNeedReasoningOff.add(model);
-          resp = await send(true);
+        let reasoningOff = hasTools && toolsNeedReasoningOff.has(model);
+        let dropTemperature = hasTemperature && temperatureUnsupported.has(model);
+        // 兩種不相容各自最多觸發一次調整，故最多 3 次請求
+        for (;;) {
+          try {
+            resp = await send(reasoningOff, dropTemperature);
+            break;
+          } catch (err) {
+            if (hasTools && !reasoningOff && isToolsWithReasoningError(err)) {
+              toolsNeedReasoningOff.add(model);
+              reasoningOff = true;
+            } else if (hasTemperature && !dropTemperature && isTemperatureError(err)) {
+              temperatureUnsupported.add(model);
+              dropTemperature = true;
+            } else {
+              throw err;
+            }
+          }
         }
       } catch (err) {
         throw mapProviderError(err, settings);
