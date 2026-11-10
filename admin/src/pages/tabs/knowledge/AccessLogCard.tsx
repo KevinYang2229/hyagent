@@ -34,11 +34,13 @@ function dayStartIso(day: string, offsetDays = 0): string {
  * 敏感文件存取紀錄：只記非公開（訪客看不到）檔案的取用，回答「誰看過這份文件」。
  * 不含問句與內容；保存天數可在此調整，立即生效。
  */
-export default function AccessLogCard({ tenantId, files, labels, onError }: {
+export default function AccessLogCard({ tenantId, files, labels, onError, readonly = false }: {
   tenantId: string;
   files: KnowledgeFileMeta[];
   labels: KnowledgeLabel[];
   onError: (e: unknown) => void;
+  /** 唯讀：可查詢紀錄，不能調整保存天數 */
+  readonly?: boolean;
 }) {
   const toast = useToast();
   const confirm = useConfirm();
@@ -130,7 +132,7 @@ export default function AccessLogCard({ tenantId, files, labels, onError }: {
         {settings && (editingDays === null ? (
           <p className="row-sub">
             保存 {settings.retentionDays} 天{settings.overridden ? "（此租戶單獨設定）" : "（平台預設）"}，每日清除過期紀錄。{" "}
-            <button type="button" className="btn btn-sm" onClick={() => setEditingDays(String(settings.retentionDays))}>調整</button>
+            {!readonly && <button type="button" className="btn btn-sm" onClick={() => setEditingDays(String(settings.retentionDays))}>調整</button>}
           </p>
         ) : (
           <div className="form-actions" style={{ alignItems: "center" }}>

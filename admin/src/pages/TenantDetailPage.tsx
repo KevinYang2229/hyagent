@@ -45,7 +45,10 @@ export default function TenantDetailPage() {
     [isVisible],
   );
   const tab: TabKey = TABS.some((t) => t.key === rawTab && isVisible(t.key)) ? (rawTab as TabKey) : 'overview';
+  // 唯讀分頁：不再整頁包 <fieldset disabled>（會連帶停用下載、搜尋、篩選、分頁）；
+  // 改把 readonly 傳給各分頁，由分頁只停用或隱藏會寫入的控制項
   const tabIsReadonly = tab !== 'overview' && tab !== 'database' && tab !== 'adminAccounts' && level(tab as AdminTabKey) === 'read';
+  const ro = tabIsReadonly;
 
   const setTab = (next: TabKey, query: Record<string, string> = {}) => {
     if (next === tab && Object.keys(query).length === 0) return;
@@ -86,20 +89,20 @@ export default function TenantDetailPage() {
   const tabContent = tenant && (
     <>
           {tab === 'overview' && <OverviewTab key={tenant.id} tenant={tenant} level={level} onNavigate={(next, query) => setTab(next as TabKey, query)} />}
-          {tab === 'sso' && <SsoTab key={tenant.id} tenantId={tenant.id} onError={handleErr} />}
-          {tab === 'users' && <UsersTab key={tenant.id} tenantId={tenant.id} onError={handleErr} />}
-          {tab === 'directorySync' && <DirectorySyncTab key={tenant.id} tenantId={tenant.id} onError={handleErr} />}
-          {tab === 'appearance' && <AppearanceTab tenant={tenant} onSaved={handleSaved} onError={handleErr} />}
-          {tab === 'forms' && <FormsTab tenantId={tenant.id} onError={handleErr} />}
-          {tab === 'knowledge' && <KnowledgeTab tenantId={tenant.id} onError={handleErr} />}
+          {tab === 'sso' && <SsoTab key={tenant.id} tenantId={tenant.id} onError={handleErr} readonly={ro} />}
+          {tab === 'users' && <UsersTab key={tenant.id} tenantId={tenant.id} onError={handleErr} readonly={ro} />}
+          {tab === 'directorySync' && <DirectorySyncTab key={tenant.id} tenantId={tenant.id} onError={handleErr} readonly={ro} />}
+          {tab === 'appearance' && <AppearanceTab tenant={tenant} onSaved={handleSaved} onError={handleErr} readonly={ro} />}
+          {tab === 'forms' && <FormsTab tenantId={tenant.id} onError={handleErr} readonly={ro} />}
+          {tab === 'knowledge' && <KnowledgeTab tenantId={tenant.id} onError={handleErr} readonly={ro} />}
           {tab === 'database' && <DatabaseTab key={tenant.id} tenantId={tenant.id} onError={handleErr} />}
           {tab === 'permissions' && (
-            <PermissionsTab tenantId={tenant.id} onError={handleErr} />
+            <PermissionsTab tenantId={tenant.id} onError={handleErr} readonly={ro} />
           )}
           {tab === 'adminAccounts' && <AdminAccountsTab key={tenant.id} tenantId={tenant.id} onError={handleErr} />}
-          {tab === 'settings' && <SettingsTab tenant={tenant} onSaved={handleSaved} onError={handleErr} />}
-          {tab === 'ai' && <SettingsTab tenant={tenant} onSaved={handleSaved} onError={handleErr} section="ai" />}
-          {tab === 'webhook' && <WebhookTab tenantId={tenant.id} onError={handleErr} />}
+          {tab === 'settings' && <SettingsTab tenant={tenant} onSaved={handleSaved} onError={handleErr} readonly={ro} />}
+          {tab === 'ai' && <SettingsTab tenant={tenant} onSaved={handleSaved} onError={handleErr} section="ai" readonly={ro} />}
+          {tab === 'webhook' && <WebhookTab tenantId={tenant.id} onError={handleErr} readonly={ro} />}
           {tab === 'usage' && <UsageTab tenant={tenant} onError={handleErr} />}
           {tab === 'reports' && <ReportsTab tenantId={tenant.id} onError={handleErr} />}
           {tab === 'feedback' && (
@@ -107,6 +110,7 @@ export default function TenantDetailPage() {
               tenantId={tenant.id}
               onError={handleErr}
               onTestRetrieval={(question, asUserId) => setSearchParams({ tab: 'knowledge', q: question, as: asUserId }, { replace: true })}
+              readonly={ro}
             />
           )}
           {tab === 'audit' && <AuditTab tenantId={tenant.id} onError={handleErr} />}
@@ -162,7 +166,7 @@ export default function TenantDetailPage() {
             <div className="tenant-content">
 
           {tabIsReadonly && <div className="card tab-readonly-hint"><div className="card-body">此分頁為唯讀，如需修改請聯絡平台管理者</div></div>}
-          {tabIsReadonly ? <fieldset disabled className="tab-readonly">{tabContent}</fieldset> : tabContent}
+          {tabContent}
             </div>
           </div>
 

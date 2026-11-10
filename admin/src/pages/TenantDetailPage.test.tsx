@@ -25,7 +25,9 @@ vi.mock('../auth', () => ({
 }));
 vi.mock('../components/AppLayout', () => ({ default: ({ children, actions }: { children: React.ReactNode; actions?: React.ReactNode }) => <div>{actions}{children}</div> }));
 // 各頁籤內容不是此測試的重點，換成標記
-const { stub } = vi.hoisted(() => ({ stub: (name: string) => ({ default: () => `頁面:${name}` }) }));
+const { stub } = vi.hoisted(() => ({
+  stub: (name: string) => ({ default: ({ readonly }: { readonly?: boolean }) => `頁面:${name}${readonly ? '（唯讀）' : ''}` }),
+}));
 vi.mock('./tabs/OverviewTab', () => stub('overview'));
 // 基本設定頁模擬「有未儲存修改」，驗證租戶頁的中央離開提醒
 vi.mock('./tabs/SettingsTab', async () => {
@@ -139,16 +141,15 @@ it('超級管理者看得到全部 17 個分頁', async () => {
   expect(within(nav).getByRole('button', { name: '後台管理者' })).toBeInTheDocument();
 });
 
-it('租戶管理者只看到有權限的分頁；唯讀分頁包在 disabled fieldset，可寫的不會；沒有租戶清單按鈕', async () => {
+it('租戶管理者只看到有權限的分頁；唯讀分頁收到 readonly、不再整頁包 disabled fieldset；沒有租戶清單按鈕', async () => {
   authState.perms = { knowledge: 'read', forms: 'write' };
   renderAt('?tab=knowledge');
-  const content = await screen.findByText('頁面:knowledge');
+  const content = await screen.findByText('頁面:knowledge（唯讀）');
   const nav = screen.getByRole('navigation', { name: '租戶設定導覽' });
   expect(within(nav).getAllByRole('button').map((b) => b.textContent)).toEqual(['總覽', '知識庫', '表單']);
   expect(within(nav).queryByRole('button', { name: '後台管理者' })).not.toBeInTheDocument();
-  const fs = content.closest('fieldset');
-  expect(fs).toHaveAttribute('disabled');
-  expect(fs).toHaveClass('tab-readonly');
+  // 整頁包 fieldset 會連帶停用下載、搜尋、篩選與分頁；改由各分頁只停用寫入控制項
+  expect(content.closest('fieldset')).toBeNull();
   expect(screen.getByText('此分頁為唯讀，如需修改請聯絡平台管理者')).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /租戶清單/ })).not.toBeInTheDocument();
   fireEvent.click(within(nav).getByRole('button', { name: '表單' }));

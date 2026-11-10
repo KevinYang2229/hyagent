@@ -26,7 +26,7 @@ function overwriteHint(directorySyncEnabled: boolean, ssoAutoProvision: boolean)
  * 部門管理：部門是人員目錄上的字串，同時是權限的 key，改名／刪除由後端兩邊一起處理。
  * 「網站訪客」與「未指定部門」是系統保留的權限對象，不列在此處（在權限頁的角色「給誰」選擇）。
  */
-export default function DepartmentsSection({ tenantId, departments, directorySyncEnabled = false, ssoAutoProvision = false, onChanged, onError }: {
+export default function DepartmentsSection({ tenantId, departments, directorySyncEnabled = false, ssoAutoProvision = false, onChanged, onError, readonly = false }: {
   tenantId: string;
   /** 由外層載入：人員表單的部門下拉與此處共用同一份清單（null＝載入中） */
   departments: DepartmentSummary[] | null;
@@ -37,6 +37,8 @@ export default function DepartmentsSection({ tenantId, departments, directorySyn
   /** 改名／刪除後通知外層重新載入部門與人員（改名會連帶改成員的部門） */
   onChanged: () => Promise<void>;
   onError: (error: unknown) => void;
+  /** 唯讀：只列出部門，不能改名或刪除 */
+  readonly?: boolean;
 }) {
   const hint = overwriteHint(directorySyncEnabled, ssoAutoProvision);
   const [busy, setBusy] = useState(false);
@@ -110,10 +112,10 @@ export default function DepartmentsSection({ tenantId, departments, directorySyn
           <div className="toolbar" style={{ display: 'flex', gap: 8 }}>
             {/* OA 同步開啟時，有成員的部門改名會在下次同步被蓋回，角色卻已搬到新名稱 → 整個部門失去權限，所以停用。
                 已無成員的舊部門仍可改名／合併：這正是 OA 改名後把角色搬到新部門名稱的做法。 */}
-            <button type="button" className="btn btn-ghost btn-sm" aria-label={`改名 ${d.name}`} disabled={busy || (directorySyncEnabled && d.members > 0)}
+            <button type="button" className="btn btn-ghost btn-sm" aria-label={`改名 ${d.name}`} disabled={readonly || busy || (directorySyncEnabled && d.members > 0)}
               title={directorySyncEnabled && d.members > 0 ? '已開啟 OA 同步，請在 OA 改名；改名後再把此處已無成員的舊部門合併到新名稱' : undefined}
               onClick={() => { setRenaming(d.name); setNewName(d.name); }}>改名</button>
-            <button type="button" className="btn btn-danger btn-sm" aria-label={`刪除 ${d.name}`} disabled={busy || d.members > 0}
+            <button type="button" className="btn btn-danger btn-sm" aria-label={`刪除 ${d.name}`} disabled={readonly || busy || d.members > 0}
               title={d.members > 0 ? '請先將成員移到其他部門或刪除' : undefined} onClick={() => setPendingDelete(d)}>刪除</button>
           </div>
         </>}

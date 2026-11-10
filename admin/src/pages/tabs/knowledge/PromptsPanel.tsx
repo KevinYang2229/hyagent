@@ -15,11 +15,13 @@ import { useUnsavedChanges } from "../../../components/unsaved";
  * 「開場推薦詞」子頁：各來源的自動／手動推薦詞，以及自訂提示詞。
  * 推薦詞資料屬於索引 meta，由外層持有；這裡只透過 onMetaChange 回寫。
  */
-export default function PromptsPanel({ tenantId, meta, onMetaChange, onError }: {
+export default function PromptsPanel({ tenantId, meta, onMetaChange, onError, readonly = false }: {
   tenantId: string;
   meta: KnowledgeMeta;
   onMetaChange: (update: (meta: KnowledgeMeta) => KnowledgeMeta) => void;
   onError: (e: unknown) => void;
+  /** 唯讀：只顯示推薦詞，生成／編輯／刪除停用 */
+  readonly?: boolean;
 }) {
   const toast = useToast();
   const confirm = useConfirm();
@@ -119,6 +121,7 @@ export default function PromptsPanel({ tenantId, meta, onMetaChange, onError }: 
         </div>
       </div>
       <div className="card-body">
+        <fieldset disabled={readonly} className="tab-readonly">
         {meta.status === "ready" ? (
           <>
             {/* 開場推薦詞：widget 的推薦 chip 依來源各一顆，未生成就不會有 chip */}
@@ -259,6 +262,7 @@ export default function PromptsPanel({ tenantId, meta, onMetaChange, onError }: 
           ) : <div className="kb-suggestion-actions"><button type="button" className="btn btn-sm" disabled={savingCustom}
             onClick={() => setCustomDraft({ source: "website", text: { "zh-Hant": "", en: "" } })}>＋ 新增提示詞</button></div>}
         </section>
+        </fieldset>
       </div>
     </div>
   );

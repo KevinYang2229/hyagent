@@ -1332,6 +1332,6 @@ li:not(.is-empty) > .feedback-bar { background: var(--bg-secondary); }
 .check-field-label { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--text-primary); cursor: pointer; }
 .check-field > .field-hint { display: block; padding-left: 26px; }
 
-/* 唯讀分頁：用 fieldset disabled 停用內部所有表單控制項，但不改變版面 */
+/* 唯讀區塊：分頁內只把編輯用的控制項包進 fieldset disabled，不改變版面 */
 .tab-readonly { border: 0; padding: 0; margin: 0; min-width: 0; }
 .tab-readonly-hint { margin-bottom: 12px; }

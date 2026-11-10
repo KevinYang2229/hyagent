@@ -41,10 +41,13 @@ export default function FeedbackTab({
   tenantId,
   onError,
   onTestRetrieval,
+  readonly = false,
 }: {
   tenantId: string;
   onError: (e: unknown) => void;
   onTestRetrieval: (question: string, asUserId: string) => void;
+  /** 唯讀：篩選、展開仍可用，只停用處理狀態的變更 */
+  readonly?: boolean;
 }) {
   const [days, setDays] = useState<7 | 30 | 90>(30);
   const [stats, setStats] = useState<FeedbackStats | null>(null);
@@ -362,14 +365,14 @@ export default function FeedbackTab({
             )}
             {open.trace?.tools && <div><div className="row-sub">呼叫的工具</div><div>{open.trace.tools.map((t) => `${t.name}${t.ok ? '' : '（失敗）'}`).join(' → ')}</div></div>}
             {open.trace?.model && <div className="row-sub">{`模型：${open.trace.model}`}</div>}
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <fieldset disabled={readonly} className="tab-readonly" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <input className="input" aria-label="處理說明" placeholder="處理說明（選填）" maxLength={200} value={note} onChange={(e) => setNote(e.target.value)} style={{ flex: 1 }} />
               {open.status === 'open' ? (
                 <button type="button" className="btn btn-primary" onClick={() => void updateStatus(open, 'resolved')}>標為已處理</button>
               ) : (
                 <button type="button" className="btn" onClick={() => void updateStatus(open, 'open')}>重新開啟</button>
               )}
-            </div>
+            </fieldset>
           </div>
         </div>
       )}

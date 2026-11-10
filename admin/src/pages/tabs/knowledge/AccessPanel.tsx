@@ -18,7 +18,7 @@ import { useUnsavedChanges } from '../../../components/unsaved';
  * 「可見範圍與標籤」子頁：誰可以查詢這些知識（訪客可見範圍、待設定檔案、網站狀態）與可見性標籤管理。
  * 開啟某份檔案的標籤編輯要到「來源與檔案」子頁，透過 onEditFile 交給外層切換。
  */
-export default function AccessPanel({ tenantId, aclReport, labels, files, onEditFile, onReload, onReloadAcl, onError }: {
+export default function AccessPanel({ tenantId, aclReport, labels, files, onEditFile, onReload, onReloadAcl, onError, readonly = false }: {
   tenantId: string;
   aclReport: KnowledgeAclReport;
   labels: KnowledgeLabel[];
@@ -30,6 +30,8 @@ export default function AccessPanel({ tenantId, aclReport, labels, files, onEdit
   /** 只重新載入標籤與 ACL 盤點 */
   onReloadAcl: () => Promise<void>;
   onError: (e: unknown) => void;
+  /** 唯讀：可檢視可見範圍、標籤與存取紀錄，不能新增／改名／刪除標籤或調整保留天數 */
+  readonly?: boolean;
 }) {
   const toast = useToast();
   const confirm = useConfirm();
@@ -153,7 +155,7 @@ export default function AccessPanel({ tenantId, aclReport, labels, files, onEdit
             {aclReport.unlabeled.map((f) => (
               <li key={f.fileId} className="row">
                 <div className="row-main"><div className="row-title">{f.name}</div></div>
-                <button type="button" className="btn btn-sm" onClick={() => onEditFile(f.fileId)}>設定標籤</button>
+                {!readonly && <button type="button" className="btn btn-sm" onClick={() => onEditFile(f.fileId)}>設定標籤</button>}
               </li>
             ))}
             {aclReport.unlabeled.length === 0 && <li className="kb-acl-empty">沒有待設定的檔案；是否可查詢仍取決於部門授權。</li>}
@@ -189,7 +191,7 @@ export default function AccessPanel({ tenantId, aclReport, labels, files, onEdit
             </div>
           </div>
         </div>
-        <div className="card-body">
+        {!readonly && <div className="card-body">
           <div className="form-grid">
             <div className="field">
               <label className="field-label">標籤 id</label>
@@ -222,7 +224,7 @@ export default function AccessPanel({ tenantId, aclReport, labels, files, onEdit
               {addingLabel ? "新增中…" : "新增標籤"}
             </button>
           </div>
-        </div>
+        </div>}
         <ul className="list">
           {labels.map((l) => (
             <li key={l.id} className="row">
@@ -258,7 +260,7 @@ export default function AccessPanel({ tenantId, aclReport, labels, files, onEdit
                   </>
                 )}
               </div>
-              {editingLabelId !== l.id && (
+              {!readonly && editingLabelId !== l.id && (
                 <div className="row-actions">
                   <button className="btn btn-sm" onClick={() => startEditLabel(l)}>
                     改名
@@ -273,7 +275,7 @@ export default function AccessPanel({ tenantId, aclReport, labels, files, onEdit
           {labels.length === 0 && <li className="empty">尚未建立任何標籤。</li>}
         </ul>
       </div>
-      <AccessLogCard tenantId={tenantId} files={files} labels={labels} onError={onError} />
+      <AccessLogCard tenantId={tenantId} files={files} labels={labels} onError={onError} readonly={readonly} />
     </div>
   );
 }

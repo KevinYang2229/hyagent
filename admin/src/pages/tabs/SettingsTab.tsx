@@ -17,11 +17,14 @@ export default function SettingsTab({
   onSaved,
   onError,
   section = 'basic',
+  readonly = false,
 }: {
   tenant: Tenant;
   onSaved: () => void;
   onError: (e: unknown) => void;
   section?: 'basic' | 'ai';
+  /** 唯讀：設定欄位與產生金鑰停用，只能檢視 */
+  readonly?: boolean;
 }) {
   const { isSuper } = useAuth();
   const [name, setName] = useState(tenant.name);
@@ -147,6 +150,7 @@ export default function SettingsTab({
           </div>
         </div>
         <div className="card-body">
+          <fieldset disabled={readonly} className="tab-readonly">
           <div className="field">
             <label className="field-label">名稱</label>
             <input className="input" value={name} onChange={(e) => setName(e.target.value)} />
@@ -194,6 +198,7 @@ export default function SettingsTab({
               {busy ? '儲存中…' : '儲存設定'}
             </button>
           </div>
+          </fieldset>
         </div>
       </div>
 
@@ -204,11 +209,11 @@ export default function SettingsTab({
             <div className="card-desc">公開金鑰（pk_）放在網站嵌入碼中，只能用於前台聊天視窗；私密金鑰（sk_）供伺服器呼叫 API，不可外流。金鑰只在產生當下顯示完整字串，請立即保存。</div>
           </div>
           <div className="toolbar">
-            <button className="btn btn-ghost btn-sm" onClick={() => genKey('publishable')}>
+            <button className="btn btn-ghost btn-sm" onClick={() => genKey('publishable')} disabled={readonly}>
               <IconKey />
               產生公開金鑰（pk_）
             </button>
-            <button className="btn btn-ghost btn-sm" onClick={() => genKey('secret')}>
+            <button className="btn btn-ghost btn-sm" onClick={() => genKey('secret')} disabled={readonly}>
               <IconKey />
               產生私密金鑰（sk_）
             </button>
@@ -252,6 +257,7 @@ export default function SettingsTab({
           </div>
         </div>
         <div className="card-body">
+          <fieldset disabled={readonly} className="tab-readonly">
           <div className="form-grid">
             <div className="field">
               <label className="field-label">供應商</label>
@@ -337,6 +343,7 @@ export default function SettingsTab({
               {llmBusy ? '儲存中…' : '儲存設定'}
             </button>
           </div>
+          </fieldset>
         </div>
       </div>
 

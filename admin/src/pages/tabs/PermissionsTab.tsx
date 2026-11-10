@@ -34,9 +34,11 @@ function sourceText(source: RoleSource): string {
   return '直接指派';
 }
 
-export default function PermissionsTab({ tenantId, onError }: {
+export default function PermissionsTab({ tenantId, onError, readonly = false }: {
   tenantId: string;
   onError: (e: unknown) => void;
+  /** 唯讀：可檢視角色與個人權限（含搜尋人員），不能新增、編輯、刪除或儲存 */
+  readonly?: boolean;
 }) {
   const toast = useToast();
   const [policy, setPolicy] = useState<TenantPolicyView | null>(null);
@@ -170,7 +172,7 @@ export default function PermissionsTab({ tenantId, onError }: {
 
     <GeneralServicesCard
       policy={policy}
-      disabled={!!draft}
+      disabled={readonly || !!draft}
       onToggle={(on) => setPolicy((p) => (p ? {
         ...p,
         memberBundles: on
@@ -195,10 +197,10 @@ export default function PermissionsTab({ tenantId, onError }: {
           <div className="card-title">角色</div>
           <div className="card-desc">每個角色寫明「能做什麼」與「給誰」。</div>
         </div>
-        <button className="btn btn-ghost btn-sm" onClick={() => startNew()} disabled={!!draft}>＋ 新增角色</button>
+        {!readonly && <button className="btn btn-ghost btn-sm" onClick={() => startNew()} disabled={!!draft}>＋ 新增角色</button>}
       </div>
 
-      {!draft && (
+      {!draft && !readonly && (
         <div className="card-body role-templates">
           <p className="perm-text role-tip">新人報到：在「使用者目錄」把人放進正確的部門，就會自動取得該部門的角色；需要額外權限時，到下方「個人權限」替他加角色。</p>
           <span className="perm-text">從範本開始：</span>
@@ -225,8 +227,8 @@ export default function PermissionsTab({ tenantId, onError }: {
               <div className="perm-text">給誰：{target || <span className="perm-warn-inline">尚未套用給任何人，目前不會生效</span>}</div>
             </div>
             <div className="row-actions">
-              <button className="btn btn-ghost btn-sm" onClick={() => startEdit(role.id)} disabled={!!draft} aria-label={`編輯 ${role.name}`}>編輯</button>
-              <button className="btn btn-danger btn-sm" onClick={() => setPendingDelete(d)} disabled={!!draft} aria-label={`刪除 ${role.name}`}>刪除</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => startEdit(role.id)} disabled={readonly || !!draft} aria-label={`編輯 ${role.name}`}>編輯</button>
+              <button className="btn btn-danger btn-sm" onClick={() => setPendingDelete(d)} disabled={readonly || !!draft} aria-label={`刪除 ${role.name}`}>刪除</button>
             </div>
           </li>;
         })}
@@ -266,12 +268,12 @@ export default function PermissionsTab({ tenantId, onError }: {
           {matchedPeople.length > PERSON_OPTION_MAX && <p className="perm-text">只列出前 {PERSON_OPTION_MAX} 位，請輸入關鍵字縮小範圍。</p>}
         </div>
 
-        {selected && <PersonDetail person={selected} policy={policy} onToggle={(roleId) => toggleDirect(selected, roleId)} gaps={gapsOf(selected)} />}
+        {selected && <PersonDetail person={selected} policy={policy} onToggle={(roleId) => toggleDirect(selected, roleId)} gaps={gapsOf(selected)} readonly={readonly} />}
       </div>
     </div>
 
     {/* 共用一顆儲存鈕；固定在底部，捲到哪都看得到是否還有未儲存的變更 */}
-    <div className={`perm-savebar${dirty ? ' is-dirty' : ''}`} role="region" aria-label="儲存權限">
+    {!readonly && <div className={`perm-savebar${dirty ? ' is-dirty' : ''}`} role="region" aria-label="儲存權限">
       <span className="perm-savebar-status" aria-live="polite">
         {draft ? '角色編輯中：按「完成」後再按「儲存」才會生效。' : dirty ? '有未儲存的變更，按「儲存」後才會生效。' : converted.length > 0 ? '舊設定尚未改用角色格式，按「儲存」套用（權限不變）。' : '所有變更皆已儲存。'}
       </span>
@@ -281,7 +283,7 @@ export default function PermissionsTab({ tenantId, onError }: {
           {saving ? '儲存中…' : '儲存'}
         </button>
       </div>
-    </div>
+    </div>}
     {draft && <p className="perm-text" style={{ textAlign: 'right', margin: 0 }}>請先在角色編輯器按「完成」或「取消」，再儲存。</p>}
 
     <Dialog
@@ -299,11 +301,12 @@ export default function PermissionsTab({ tenantId, onError }: {
   </div>;
 }
 
-function PersonDetail({ person, policy, onToggle, gaps }: {
+function PersonDetail({ person, policy, onToggle, gaps, readonly = false }: {
   person: Person;
   policy: TenantPolicyView;
   onToggle: (roleId: string) => void;
   gaps: string[];
+  readonly?: boolean;
 }) {
   const caps = policy.capabilities;
   const held = rolesOf(policy, person);
@@ -330,7 +333,7 @@ function PersonDetail({ person, policy, onToggle, gaps }: {
             ? (direct ? '取消直接指派後，仍會從其他來源取得' : '不能在這裡取消，請到此角色的「給誰」調整')
             : '';
           return <label key={role.id} className={`role-check${locked ? ' is-locked' : ''}`}>
-            <Checkbox checked={sources.length > 0} disabled={locked} onChange={() => onToggle(role.id)} />
+            <Checkbox checked={sources.length > 0} disabled={readonly || locked} onChange={() => onToggle(role.id)} />
             <span>{role.name}{sources.length > 0 && <span className="role-check-sub">{sources.map(sourceText).join('、')}</span>}
               {hint && <span className="role-check-sub">{hint}</span>}</span>
           </label>;

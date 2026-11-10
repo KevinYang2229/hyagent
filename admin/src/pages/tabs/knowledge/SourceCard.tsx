@@ -28,7 +28,7 @@ const KNOWLEDGE_EXT_LABELS = KNOWLEDGE_EXTS.filter((e) => e !== "html").map((e) 
  */
 export default function SourceCard({
   tenantId, src, dirty, meta, job, labels, departments,
-  onChange, onSaved, onJobStarted, onReload, onReloadAcl, onIndexCleared, onError,
+  onChange, onSaved, onJobStarted, onReload, onReloadAcl, onIndexCleared, onError, readonly = false,
 }: {
   tenantId: string;
   src: KnowledgeSource;
@@ -47,6 +47,8 @@ export default function SourceCard({
   onReloadAcl: () => Promise<void>;
   onIndexCleared: () => void;
   onError: (e: unknown) => void;
+  /** 唯讀：可切換網站／檔案檢視設定，不能修改、解析或清除索引 */
+  readonly?: boolean;
 }) {
   const toast = useToast();
   const update = onChange;
@@ -168,6 +170,7 @@ export default function SourceCard({
             </button>
           </div>
 
+          <fieldset disabled={readonly} className="tab-readonly">
           {sourceKind === "website" ? (
             <div className="form-stack">
               <div className="field">
@@ -429,6 +432,7 @@ export default function SourceCard({
               清除索引
             </button>
           </div>
+          </fieldset>
         </div>
       </div>
 

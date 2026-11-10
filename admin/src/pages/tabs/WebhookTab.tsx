@@ -4,7 +4,16 @@ import { IconCopy, IconPlus } from '../../components/icons';
 import { useConfirm } from '../../components/confirm';
 import { useUnsavedChanges } from '../../components/unsaved';
 
-export default function WebhookTab({ tenantId, onError }: { tenantId: string; onError: (e: unknown) => void }) {
+export default function WebhookTab({
+  tenantId,
+  onError,
+  readonly = false,
+}: {
+  tenantId: string;
+  onError: (e: unknown) => void;
+  /** 唯讀：只列出端點，不能新增、啟停或刪除 */
+  readonly?: boolean;
+}) {
   const confirm = useConfirm();
   const [list, setList] = useState<WebhookEndpoint[]>([]);
   const [url, setUrl] = useState('');
@@ -70,7 +79,7 @@ export default function WebhookTab({ tenantId, onError }: { tenantId: string; on
         </div>
       </div>
 
-      <div className="card-body" style={{ borderBottom: '1px solid var(--border-color)' }}>
+      {!readonly && <div className="card-body" style={{ borderBottom: '1px solid var(--border-color)' }}>
         <div className="toolbar">
           <input
             className="input"
@@ -90,7 +99,7 @@ export default function WebhookTab({ tenantId, onError }: { tenantId: string; on
             新增
           </button>
         </div>
-      </div>
+      </div>}
 
       {created && (
         <div className="card-body" style={{ borderBottom: '1px solid var(--border-color)' }}>
@@ -125,10 +134,10 @@ export default function WebhookTab({ tenantId, onError }: { tenantId: string; on
               <div className="row-sub mono">secret: {w.secret}</div>
             </div>
             <div className="row-actions">
-              <button className="btn btn-ghost btn-sm" onClick={() => toggle(w)}>
+              <button className="btn btn-ghost btn-sm" onClick={() => toggle(w)} disabled={readonly}>
                 {w.disabledAt ? '啟用' : '停用'}
               </button>
-              <button className="btn btn-danger btn-sm" onClick={() => remove(w)}>
+              <button className="btn btn-danger btn-sm" onClick={() => remove(w)} disabled={readonly}>
                 刪除
               </button>
             </div>
