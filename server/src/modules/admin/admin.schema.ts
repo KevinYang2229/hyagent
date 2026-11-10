@@ -1,6 +1,8 @@
 import { z } from 'zod';
 
 export const adminLoginSchema = z.object({
+  /** 省略或 admin（不分大小寫）＝超級管理者；其他為租戶管理者帳號 */
+  username: z.string().trim().min(1).max(64).optional(),
   password: z.string().min(1),
 });
 
@@ -172,6 +174,12 @@ export const putPolicySchema = z.object({
   baseVersion: z.string().optional(),
 });
 export type PutPolicyInput = z.infer<typeof putPolicySchema>;
+
+export const changeMyPasswordSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(10, '新密碼長度需為 10 到 128 字元').max(128, '新密碼長度需為 10 到 128 字元'),
+});
+export type ChangeMyPasswordInput = z.infer<typeof changeMyPasswordSchema>;
 
 export type AdminLoginInput = z.infer<typeof adminLoginSchema>;
 export type CreateTenantInput = z.infer<typeof createTenantSchema>;

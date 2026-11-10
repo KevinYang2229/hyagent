@@ -49,6 +49,7 @@ import { adminController } from './admin.controller';
 import { adminAuthController } from './admin.auth.controller';
 import {
   adminLoginSchema,
+  changeMyPasswordSchema,
   createKeySchema,
   addPublicKeySchema,
   createTenantSchema,
@@ -102,6 +103,10 @@ router.post('/auth/login', adminLoginRateLimit, validate({ body: adminLoginSchem
 router.use(requireAdmin);
 // 設定變更稽核：在所有管理端點之前掛上，新增端點不會漏記（見 audit/admin-audit.ts）
 router.use(adminAuditTrail);
+
+// 目前登入者資訊與自助改密碼（租戶管理者；super／api-key 的 /me 回 super）
+router.get('/me', asyncHandler(adminAuthController.me));
+router.put('/me/password', validate({ body: changeMyPasswordSchema }), asyncHandler(adminAuthController.changeMyPassword));
 router.use('/tenants/:id/users', userAdminRouter);
 router.use('/tenants/:id/departments', departmentAdminRouter);
 router.use('/tenants/:id/directory-sync', directorySyncAdminRouter);

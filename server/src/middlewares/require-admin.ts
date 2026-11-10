@@ -10,6 +10,13 @@ import { env } from '@/config/env';
 import type { AdminActor } from '@/modules/audit/admin-audit';
 import { AppError } from '@/utils/app-error';
 import { verifyAdminToken } from '@/utils/jwt';
+import type { AdminAccount } from '@/modules/admin-account/admin-account.types';
+
+/** requireAdmin 通過後寫入 res.locals.adminPrincipal，供授權與 /me 使用 */
+export type AdminPrincipal =
+  | { kind: 'super' }
+  | { kind: 'api-key' }
+  | { kind: 'tenant-admin'; account: AdminAccount };
 
 export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
   if (!env.ADMIN_API_KEY && !env.ADMIN_PASSWORD) {
@@ -20,6 +27,7 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction): v
   const key = req.header('x-admin-key');
   if (key && env.ADMIN_API_KEY && key === env.ADMIN_API_KEY) {
     res.locals.adminActor = 'admin-api-key' satisfies AdminActor;
+    res.locals.adminPrincipal = { kind: 'api-key' } satisfies AdminPrincipal;
     next();
     return;
   }
@@ -32,6 +40,7 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction): v
       const payload = verifyAdminToken(token);
       if (payload.role === 'admin' && payload.via === 'password' && !payload.tenantId) {
         res.locals.adminActor = 'admin' satisfies AdminActor;
+        res.locals.adminPrincipal = { kind: 'super' } satisfies AdminPrincipal;
         next();
         return;
       }
