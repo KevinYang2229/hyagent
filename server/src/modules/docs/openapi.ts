@@ -68,7 +68,11 @@ export const openapiSpec = {
       post: {
         tags: ["auth"],
         summary: "帳密登入 → access/refresh token",
-        security: [],
+        description:
+          "租戶由 x-api-key 決定，token 綁在該租戶；之後的請求須帶同一租戶的金鑰，否則回 401（Token tenant mismatch）。未帶金鑰時落到預設租戶。",
+        // 只列 apiKeyAuth：登入前還沒有 bearer token。不可寫成 security: []，那會讓 Swagger UI 不送 x-api-key，
+        // 登入落到預設租戶，之後帶金鑰的請求全部 tenant mismatch。
+        security: [{ apiKeyAuth: [] }],
         requestBody: {
           required: true,
           content: {
