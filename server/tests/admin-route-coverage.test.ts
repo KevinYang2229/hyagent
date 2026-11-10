@@ -5,6 +5,7 @@
  */
 import { Router } from 'express';
 import { adminRouter } from '@/modules/admin/admin.routes';
+import { adminAccountRouter } from '@/modules/admin-account/admin-account.routes';
 import { userAdminRouter } from '@/modules/user/user.admin';
 import { departmentAdminRouter } from '@/modules/user/department.admin';
 import { directorySyncAdminRouter } from '@/modules/user/directory-sync.admin';
@@ -18,6 +19,7 @@ interface Layer {
 
 /** 子 router 無法從 stack 還原掛載路徑，這裡手動對應（須與 admin.routes.ts 的 router.use 一致） */
 const SUB_ROUTERS: Array<[string, Router]> = [
+  ['/tenants/:id/admin-accounts', adminAccountRouter],
   ['/tenants/:id/users', userAdminRouter],
   ['/tenants/:id/departments', departmentAdminRouter],
   ['/tenants/:id/directory-sync', directorySyncAdminRouter],
