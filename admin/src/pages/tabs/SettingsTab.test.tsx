@@ -44,3 +44,16 @@ it('超級管理者儲存時仍會送出配額', async () => {
   expect(body.quotaMonthlyLlmTokens).toBe(500);
   expect(screen.getByPlaceholderText(/例：1000000/)).not.toHaveAttribute('readonly');
 });
+
+it('基本設定頁不呼叫 getLlmConfig（租戶管理者可能沒有 ai 權限）', async () => {
+  auth.isSuper = false;
+  render(<SettingsTab tenant={tenant} onSaved={vi.fn()} onError={vi.fn()} />);
+  await screen.findByRole('button', { name: '儲存設定' });
+  expect(api.getLlmConfig).not.toHaveBeenCalled();
+});
+
+it('AI 模型頁會呼叫 getLlmConfig', async () => {
+  auth.isSuper = false;
+  render(<SettingsTab tenant={tenant} onSaved={vi.fn()} onError={vi.fn()} section="ai" />);
+  await waitFor(() => expect(api.getLlmConfig).toHaveBeenCalledWith('t1'));
+});

@@ -42,6 +42,8 @@ export default function SettingsTab({
   const [llmBusy, setLlmBusy] = useState(false);
 
   useEffect(() => {
+    // llm-config 屬於「AI 模型」分頁權限；基本設定頁用不到，也不該為它多打一個會被 403 的請求
+    if (section !== 'ai') return;
     let cancelled = false;
     void api
       .getLlmConfig(tenant.id)
@@ -55,7 +57,7 @@ export default function SettingsTab({
     return () => {
       cancelled = true;
     };
-  }, [tenant.id, onError]);
+  }, [tenant.id, onError, section]);
 
   // 未儲存判斷：與目前生效的值比對（儲存後外層重新載入 tenant，比對結果自然歸零）
   const originList = (text: string) => text.split('\n').map((x) => x.trim()).filter(Boolean);
