@@ -5,6 +5,7 @@ import { asyncHandler } from '@/utils/async-handler';
 import { AppError } from '@/utils/app-error';
 import { toErrorResponse } from '@/lib/assertion';
 import { logger } from '@/lib/logger';
+import { redactKeyList, redactKeyOperators } from '@/modules/admin/key-operator-view';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 import type { AdminActor } from '@/modules/audit/admin-audit';
 import type { KeyOperator } from '@/modules/tenant/tenant.types';
@@ -23,12 +24,12 @@ directorySyncAdminRouter.use((req, _res, next) => {
   next();
 });
 
-function view(tenantId: string) {
+function view(tenantId: string, locals?: Response['locals']) {
   const t = tenantStore.getTenant(tenantId)!;
   return {
     ssoAutoProvision: t.ssoAutoProvision ?? false,
     directorySyncEnabled: t.directorySyncEnabled ?? false,
-    keys: tenantStore.listDirectorySyncKeys(tenantId),
+    keys: redactKeyList(tenantStore.listDirectorySyncKeys(tenantId), locals),
     status: t.directorySyncStatus ?? null,
   };
 }
@@ -52,7 +53,7 @@ async function withKeyErrors(res: Response, fn: () => Promise<void>): Promise<vo
 }
 
 directorySyncAdminRouter.get('/', (req: Request, res) => {
-  res.json({ data: view(String(req.params.id)) });
+  res.json({ data: view(String(req.params.id), res.locals) });
 });
 
 directorySyncAdminRouter.patch(
@@ -62,7 +63,7 @@ directorySyncAdminRouter.patch(
     const tenantId = String(req.params.id);
     tenantStore.updateTenant(tenantId, req.body as z.infer<typeof patchBody>);
     await tenantStore.persistCritical();
-    res.json({ data: view(tenantId) });
+    res.json({ data: view(tenantId, res.locals) });
   }),
 );
 
@@ -74,7 +75,7 @@ directorySyncAdminRouter.post(
     await withKeyErrors(res, async () => {
       const result = tenantStore.addDirectorySyncKey(tenantId, req.body, operator(req, res))!;
       await tenantStore.persistCritical();
-      res.status(result.created ? 201 : 200).json({ data: result });
+      res.status(result.created ? 201 : 200).json({ data: { ...result, key: redactKeyOperators(result.key, res.locals) } });
     });
   }),
 );
@@ -94,7 +95,7 @@ directorySyncAdminRouter.post(
       const key = tenantStore.revokeDirectorySyncKey(tenantId, kid, reason, op)!;
       await tenantStore.persistCritical();
       logger.info({ tenantId, kid, reason, operator: op }, 'directory sync key revoked');
-      res.json({ data: { key } });
+      res.json({ data: { key: redactKeyOperators(key, res.locals) } });
     });
   }),
 );

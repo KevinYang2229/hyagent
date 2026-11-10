@@ -9,6 +9,7 @@ import { DEFAULT_TENANT_ID, tenantStore } from '@/modules/tenant/tenant.store';
 import { serviceRegistry } from '@/modules/conversation/service.registry';
 import { conversationStore } from '@/modules/conversation/conversation.store';
 import type { AdminPrincipal } from '@/middlewares/require-admin';
+import { redactKeyList, redactKeyOperators } from './key-operator-view';
 import { adminAccountStore } from '@/modules/admin-account/admin-account.store';
 import { webhookStore } from '@/modules/webhook/webhook.store';
 import { feedbackStore } from '@/modules/feedback/feedback.store';
@@ -97,7 +98,7 @@ function ensureTenant(id: string) {
   return tenant;
 }
 
-function publicTenant(tenant: NonNullable<ReturnType<typeof tenantStore.getTenant>>) {
+function publicTenant(tenant: NonNullable<ReturnType<typeof tenantStore.getTenant>>, locals?: Response['locals']) {
   const {
     userDirectory: _userDirectory,
     llmConfig: _llmConfig,
@@ -108,6 +109,7 @@ function publicTenant(tenant: NonNullable<ReturnType<typeof tenantStore.getTenan
   // publicKeys 原樣帶出：它們是公鑰，不需遮罩。改造前這裡遮的 ssoSecret 已不存在。
   return {
     ...safe,
+    publicKeys: redactKeyList(tenant.publicKeys ?? [], locals),
     assertionSettings: resolveAssertionSettings(tenant),
     // 後台總覽用（規格 §11.1）：未設 active 公鑰的租戶無法登入，要能一眼看出來
     activeKeyCount: activeKeys(tenant.publicKeys).length,
@@ -222,7 +224,7 @@ export const adminController = {
   },
 
   async listTenants(_req: Request, res: Response): Promise<void> {
-    res.status(200).json({ data: tenantStore.listTenants().map(publicTenant) });
+    res.status(200).json({ data: tenantStore.listTenants().map((t) => publicTenant(t)) });
   },
 
   // ───────── Assertion 公鑰管理（規格 §7.3；僅後台，不對外開放 API）─────────
@@ -231,7 +233,7 @@ export const adminController = {
     const tenant = ensureTenant(String(req.params.id));
     res.status(200).json({
       data: {
-        keys: tenantStore.listPublicKeys(tenant.id),
+        keys: redactKeyList(tenantStore.listPublicKeys(tenant.id), res.locals),
         settings: resolveAssertionSettings(tenant),
         clockOffset: clockOffsetStats(tenant.id, resolveAssertionSettings(tenant).clockSkewSeconds) ?? null,
       },
@@ -245,7 +247,9 @@ export const adminController = {
       const result = tenantStore.addPublicKey(tenant.id, body, keyOperator(req, res))!;
       await tenantStore.persistCritical();
       // 冪等：同一把公鑰重複上傳回 200 + created:false，而不是再建一筆（§7.3）
-      res.status(result.created ? 201 : 200).json({ data: result });
+      res.status(result.created ? 201 : 200).json({
+        data: { ...result, key: redactKeyOperators(result.key, res.locals) },
+      });
     });
   },
 
@@ -267,7 +271,7 @@ export const adminController = {
         { tenantId: tenant.id, kid, reason, operator, revokedSessions },
         'tenant public key revoked',
       );
-      res.status(200).json({ data: { key, revokedSessions } });
+      res.status(200).json({ data: { key: redactKeyOperators(key, res.locals), revokedSessions } });
     });
   },
 
@@ -336,7 +340,7 @@ export const adminController = {
     const patch = req.body as PatchTenantInput;
     const updated = tenantStore.updateTenant(String(req.params.id), patch);
     await tenantStore.persistCritical();
-    res.status(200).json({ data: updated ? publicTenant(updated) : undefined });
+    res.status(200).json({ data: updated ? publicTenant(updated, res.locals) : undefined });
   },
 
   async deleteTenant(req: Request, res: Response): Promise<void> {
@@ -411,7 +415,7 @@ export const adminController = {
     const { disabled } = req.body as ToggleWebhookInput;
     const updated = webhookStore.setDisabled(tenant.id, String(req.params.webhookId), disabled);
     if (!updated) throw AppError.notFound('Webhook 不存在');
-    res.status(200).json({ data: updated });
+    res.status(200).json({ data: { ...updated, secret: maskKey(updated.secret) } });
   },
 
   async getUsage(req: Request, res: Response): Promise<void> {
@@ -435,7 +439,7 @@ export const adminController = {
 
   async getTenant(req: Request, res: Response): Promise<void> {
     const tenant = ensureTenant(String(req.params.id));
-    res.status(200).json({ data: publicTenant(tenant) });
+    res.status(200).json({ data: publicTenant(tenant, res.locals) });
   },
 
   async getAudit(req: Request, res: Response): Promise<void> {
