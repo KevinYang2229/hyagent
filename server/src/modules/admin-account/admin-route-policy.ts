@@ -6,8 +6,44 @@
  * - 比對跟 Express 一樣寬鬆：字面段落不分大小寫、結尾 `/` 先去掉；params 先 decode。
  * - HEAD 視同 GET。
  */
-import { tabLevel } from '@hyagent/shared';
-import type { AdminTabKey, AdminTabPermissions } from '@hyagent/shared';
+import type {
+  AdminTabKey as SharedAdminTabKey,
+  AdminTabLevel,
+  AdminTabPermissions,
+} from '@hyagent/shared';
+
+// Server 執行期不直接 import @hyagent/shared（部署映像僅帶編譯後的 server/dist，
+// 見 form/field-links.ts），所以分頁清單與 tabLevel 在此另存一份；只用 import type 取型別。
+export const ADMIN_TAB_KEYS = [
+  'settings',
+  'ai',
+  'sso',
+  'users',
+  'directorySync',
+  'knowledge',
+  'forms',
+  'permissions',
+  'appearance',
+  'webhook',
+  'usage',
+  'feedback',
+  'reports',
+  'audit',
+] as const;
+
+export type AdminTabKey = (typeof ADMIN_TAB_KEYS)[number];
+
+// 編譯期檢查：與 shared 的 AdminTabKey 雙向相同，任一邊漏改就會讓 tsc 失敗
+type Assert<T extends true> = T;
+export type AdminTabKeysInSync = Assert<
+  [AdminTabKey] extends [SharedAdminTabKey]
+    ? [SharedAdminTabKey] extends [AdminTabKey] ? true : false
+    : false
+>;
+
+export function tabLevel(p: AdminTabPermissions, tab: AdminTabKey): AdminTabLevel {
+  return p[tab] ?? 'hidden';
+}
 
 export type RouteAccess =
   | { kind: 'public' }
