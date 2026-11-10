@@ -109,6 +109,28 @@ describe('租戶管理者檢視', () => {
     webhookStore.purgeTenant(tenantId);
   });
 
+  it('webhook 遮罩最多只露出末 4 碼：8 碼自訂 secret 不會整串外洩（列表與啟停）', async () => {
+    const short = 'abcd1234';
+    const w = webhookStore.register({ tenantId, url: 'https://hook.example.com/s', secret: short });
+    const list = await request(app).get(`/api/admin/tenants/${tenantId}/webhooks`).set(superBearer());
+    const listed = (list.body.data as Array<{ id: string; secret: string }>).find((x) => x.id === w.id)!;
+    const toggled = await request(app)
+      .patch(`/api/admin/tenants/${tenantId}/webhooks/${w.id}`)
+      .set(superBearer())
+      .send({ disabled: true });
+    for (const masked of [listed.secret, toggled.body.data.secret as string]) {
+      expect(masked).not.toContain('abcd');
+      expect(masked.endsWith('1234')).toBe(true);
+      expect(masked.replace(/[^A-Za-z0-9]/g, '').replace(/^whsec/, '')).toBe('1234');
+    }
+    // 自動產生的 secret：whsec_ 前綴＋末 4 碼
+    const gen = webhookStore.register({ tenantId, url: 'https://hook.example.com/g' });
+    const list2 = await request(app).get(`/api/admin/tenants/${tenantId}/webhooks`).set(superBearer());
+    const g = (list2.body.data as Array<{ id: string; secret: string }>).find((x) => x.id === gen.id)!;
+    expect(g.secret).toBe(`whsec_…${gen.secret.slice(-4)}`);
+    webhookStore.purgeTenant(tenantId);
+  });
+
   it('llm-config GET 沒有明文金鑰', async () => {
     const res = await request(app).get(`/api/admin/tenants/${tenantId}/llm-config`).set(bearer(account));
     expect(res.status).toBe(200);

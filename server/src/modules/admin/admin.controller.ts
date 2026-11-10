@@ -41,7 +41,7 @@ import { defaultGrantedScopes } from '@/modules/authz/scope-migration';
 import { scopePolicy } from '@/modules/authz/scope-policy';
 import { toRoleView } from '@/modules/authz/role-view';
 import { getApplicant, listDepartments, listUserIds, memberPermissionDepartment, UNASSIGNED_MEMBER_DEPARTMENT, UNKNOWN_DEPARTMENT } from '@/modules/user/user.directory';
-import { llmConfigService, maskKey } from '@/modules/tenant/llm-config.service';
+import { llmConfigService } from '@/modules/tenant/llm-config.service';
 import type { PutLLMConfigInput } from '@/modules/tenant/llm-config.schema';
 import { computeUsageCost } from '@/modules/usage/usage.cost';
 import type {
@@ -90,6 +90,17 @@ function auditPage(tenantId: string, query: unknown) {
   const { before, limit } = auditPageQuerySchema.parse(query ?? {});
   const page = auditStore.listPage(tenantId, { before, limit });
   return { items: page.items, nextCursor: page.nextCursor === null ? null : String(page.nextCursor) };
+}
+
+/**
+ * Webhook secret 的遮罩：最多只露出末 4 碼。
+ * 不用 maskKey（前 7＋末 4）：自訂 secret 最短 8 碼，那樣等於整串外洩。
+ * 系統產生的 whsec_ 夠長，保留前綴方便辨識；其餘一律 ••••＋末 4 碼。
+ */
+export function maskWebhookSecret(secret: string): string {
+  const tail = secret.slice(-4);
+  if (secret.startsWith('whsec_') && secret.length >= 20) return `whsec_…${tail}`;
+  return `••••${tail}`;
 }
 
 function ensureTenant(id: string) {
@@ -399,7 +410,7 @@ export const adminController = {
     const tenant = ensureTenant(String(req.params.id));
     // 列表一律遮罩 secret（含超級管理者）；完整值只在建立當下回傳一次
     res.status(200).json({
-      data: webhookStore.listByTenant(tenant.id).map((w) => ({ ...w, secret: maskKey(w.secret) })),
+      data: webhookStore.listByTenant(tenant.id).map((w) => ({ ...w, secret: maskWebhookSecret(w.secret) })),
     });
   },
 
@@ -415,7 +426,7 @@ export const adminController = {
     const { disabled } = req.body as ToggleWebhookInput;
     const updated = webhookStore.setDisabled(tenant.id, String(req.params.webhookId), disabled);
     if (!updated) throw AppError.notFound('Webhook 不存在');
-    res.status(200).json({ data: { ...updated, secret: maskKey(updated.secret) } });
+    res.status(200).json({ data: { ...updated, secret: maskWebhookSecret(updated.secret) } });
   },
 
   async getUsage(req: Request, res: Response): Promise<void> {
