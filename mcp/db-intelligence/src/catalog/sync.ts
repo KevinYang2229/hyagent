@@ -2,6 +2,7 @@
  * 把掃描結果合併進 Catalog 並產生差異（規格書 4.1 步驟 8、6.2）。
  * 授權不會因重掃而擴大：新資料集待審、新欄位不可查、型別變更的欄位退回不可查，
  * 指標引用的欄位被移除或變更時，指標退回待審。管理員已審過的描述、敏感度、核准狀態都保留。
+ * 新欄位的敏感度依名稱與註解預填（sensitivity.ts），讓後台審核畫面一開始就看得到疑似個資的欄位。
  */
 import type {
   Catalog,
@@ -15,6 +16,7 @@ import type {
   MetricExpr,
 } from '../contracts/catalog';
 import { typeCategoryOf } from '../contracts/catalog';
+import { guessSensitivity } from './sensitivity';
 
 export interface SyncOptions {
   dataSourceId: string;
@@ -32,7 +34,8 @@ function newColumn(c: DiscoveredObject['columns'][number], dbType: DiscoveredSch
     description: null,
     descriptionStatus: 'none',
     synonyms: [],
-    sensitivity: 'internal',
+    // 只有新欄位會走到這裡；已審過的欄位重掃時保留管理員設定
+    sensitivity: guessSensitivity(c.name, c.comment),
     isQueryable: false,
     reviewStatus: 'new',
   };

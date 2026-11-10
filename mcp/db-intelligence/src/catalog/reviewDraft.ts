@@ -1,25 +1,18 @@
 /**
  * 由掃描後的 Catalog 產生審核檔草稿，省去逐表逐欄手寫：
  * - 資料集一律 pending、欄位一律不開放查詢，由管理員決定開放範圍
- * - 敏感度依欄位名稱猜測，只是起點
+ * - 敏感度依欄位名稱與註解猜測（規則見 sensitivity.ts），只是起點
  * - DB 原始註解不可信，帶入描述時加上 PENDING_MARK；未刪除標記的審核檔會被拒絕套用
  * - 沒有外鍵時依命名推測關聯（xxx_id → xxx.id），全部 pending
  */
-import type { Catalog, CatalogDataset, Sensitivity } from '../contracts/catalog';
+import type { Catalog, CatalogDataset } from '../contracts/catalog';
 import type { CatalogReview } from './review';
+import { guessSensitivity } from './sensitivity';
+
+export { guessSensitivity };
 
 /** 草稿中待人工確認的描述前綴 */
 export const PENDING_MARK = '【待確認】';
-
-const RESTRICTED = /(^|_)(stn_?id|id_?no|identity|national_id|ssn|passport|birthday|birth_?date|birth|salary|wage|bonus|bank|account_no|password|passwd|secret|token|blood|addr|address)(_|$)/;
-const CONFIDENTIAL = /(^|_)(e?mail|mobile|phone|tel|fax|contact|sex|gender|married|marital|degree|religion|health)(_|$)/;
-
-export function guessSensitivity(column: string): Sensitivity {
-  const n = column.toLowerCase();
-  if (RESTRICTED.test(n)) return 'restricted';
-  if (CONFIDENTIAL.test(n)) return 'confidential';
-  return 'internal';
-}
 
 const pending = (comment: string | null) => (comment?.trim() ? `${PENDING_MARK}${comment.trim()}` : undefined);
 
@@ -60,7 +53,7 @@ export function buildReviewDraft(catalog: Catalog): CatalogReview {
           c.name,
           {
             isQueryable: false,
-            sensitivity: guessSensitivity(c.name),
+            sensitivity: guessSensitivity(c.name, c.comment),
             ...(pending(c.comment) ? { description: pending(c.comment) } : {}),
           },
         ]),

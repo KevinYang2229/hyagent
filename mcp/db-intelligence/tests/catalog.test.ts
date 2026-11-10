@@ -47,6 +47,25 @@ describe('syncCatalog', () => {
     expect(name.description).toBeNull();
   });
 
+  it('新欄位的敏感度依名稱與註解預填（後台審核畫面直接看得到），猜不出來才是 internal', () => {
+    const { catalog } = syncCatalog(undefined, demoDiscovered([discoveredColumn('projects', 'remark', 'text', 7), discoveredColumn('projects', 'f1', 'text', 8, '負責人身分證字號')]), opts);
+    const cols = (key: string) => catalog.datasets.find((d) => d.key === key)!.columns;
+    const sens = (key: string, name: string) => cols(key).find((c) => c.name === name)!.sensitivity;
+    expect(sens('employee_salary', 'salary')).toBe('restricted');
+    expect(sens('employee_salary', 'employee_name')).toBe('confidential');
+    expect(sens('projects', 'remark')).toBe('confidential');
+    expect(sens('projects', 'f1')).toBe('restricted');
+    expect(sens('projects', 'name')).toBe('internal');
+    expect(sens('projects', 'estimated_hours')).toBe('internal');
+  });
+
+  it('重掃不會覆寫管理員已審過的敏感度（只有新欄位才預填）', () => {
+    const reviewed = demoCatalog();
+    const before = reviewed.datasets.flatMap((d) => d.columns.map((c) => `${d.key}.${c.name}=${c.sensitivity}`));
+    const { catalog } = syncCatalog(reviewed, demoDiscovered(), opts);
+    expect(catalog.datasets.flatMap((d) => d.columns.map((c) => `${d.key}.${c.name}=${c.sensitivity}`))).toEqual(before);
+  });
+
   it('重掃相同結構：無差異、版本不變、審核內容保留', () => {
     const reviewed = demoCatalog();
     const { catalog, diff } = syncCatalog(reviewed, demoDiscovered(), opts);
