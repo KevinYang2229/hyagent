@@ -13,6 +13,11 @@ import { createApp } from '@/app';
 import { adminAccountStore } from '@/modules/admin-account/admin-account.store';
 import type { AdminAccount } from '@/modules/admin-account/admin-account.types';
 import { hashPassword } from '@/modules/admin-account/password';
+import {
+  DENIED_AUDIT_MAX_PER_WINDOW,
+  PLATFORM_AUDIT_TENANT,
+  resetDeniedAuditLimiter,
+} from '@/modules/audit/admin-audit';
 import { auditStore } from '@/modules/audit/audit.store';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 import { signAdminToken, signTenantAdminToken } from '@/utils/jwt';
@@ -53,7 +58,10 @@ beforeAll(async () => {
   own = tenantStore.createTenant('authz-own').id;
   other = tenantStore.createTenant('authz-other').id;
 });
-afterEach(() => auditStore.clear());
+afterEach(() => {
+  auditStore.clear();
+  resetDeniedAuditLimiter();
+});
 
 describe('authorizeAdmin：依分頁權限把關租戶管理者', () => {
   it('knowledge: read 可讀自己租戶的知識庫；不能觸發 query-test、不能看別的租戶、不能列租戶', async () => {
@@ -127,6 +135,67 @@ describe('authorizeAdmin：依分頁權限把關租戶管理者', () => {
     expect((await request(app).get(`/api/admin/tenants/${own}/knowledge`).set(auth)).status).toBe(200);
     adminAccountStore.update(a.id, { permissions: {} });
     expect((await request(app).get(`/api/admin/tenants/${own}/knowledge`).set(auth)).status).toBe(403);
+  });
+});
+
+describe('被拒嘗試的稽核：不得寫進別的租戶、每帳號限流', () => {
+  it('打別的租戶被拒：該租戶桶沒有新紀錄，改記在平台桶', async () => {
+    const a = await makeAccount({});
+    const r = await request(app).post(`/api/admin/tenants/${other}/forged-path-text`).set(bearerOf(a)).send({});
+    expect(r.status).toBe(403);
+    await flush();
+    expect(auditStore.list(other)).toEqual([]);
+    const e = auditStore.list(PLATFORM_AUDIT_TENANT).find((x) => x.summary.includes(`/tenants/${other}/forged-path-text`));
+    expect(e).toMatchObject({ ok: false, error: 'HTTP 403', userId: `tenant-admin:${a.id}` });
+  });
+
+  it('URL encode 過的別租戶 id 同樣記平台桶', async () => {
+    const a = await makeAccount({});
+    const encoded = encodeURIComponent(other).replace(/^./, (c) => `%${c.charCodeAt(0).toString(16)}`);
+    const r = await request(app).post(`/api/admin/tenants/${encoded}/knowledge/ingest`).set(bearerOf(a)).send({});
+    expect(r.status).toBe(403);
+    await flush();
+    expect(auditStore.list(other)).toEqual([]);
+    expect(auditStore.list(PLATFORM_AUDIT_TENANT).some((x) => x.userId === `tenant-admin:${a.id}`)).toBe(true);
+  });
+
+  it('打自己租戶被拒仍記在自己的租戶桶', async () => {
+    const a = await makeAccount({});
+    await request(app).post(`/api/admin/tenants/${own}/knowledge/ingest`).set(bearerOf(a)).send({});
+    await flush();
+    expect(auditStore.list(own)[0]).toMatchObject({ ok: false, userId: `tenant-admin:${a.id}` });
+    expect(auditStore.list(PLATFORM_AUDIT_TENANT).some((x) => x.userId === `tenant-admin:${a.id}`)).toBe(false);
+  });
+
+  it(`同一帳號視窗內被拒超過 ${DENIED_AUDIT_MAX_PER_WINDOW} 次，之後不再寫稽核；別的帳號不受影響`, async () => {
+    const a = await makeAccount({});
+    const b = await makeAccount({});
+    const deny = (acc: AdminAccount) =>
+      request(app).post(`/api/admin/tenants/${own}/knowledge/ingest`).set(bearerOf(acc)).send({});
+    for (let i = 0; i < DENIED_AUDIT_MAX_PER_WINDOW; i += 1) expect((await deny(a)).status).toBe(403);
+    await flush();
+    const countOf = (acc: AdminAccount) => auditStore.list(own).filter((x) => x.userId === `tenant-admin:${acc.id}`).length;
+    expect(countOf(a)).toBe(DENIED_AUDIT_MAX_PER_WINDOW);
+
+    expect((await deny(a)).status).toBe(403); // 第 31 次仍拒絕，但不記稽核
+    await flush();
+    expect(countOf(a)).toBe(DENIED_AUDIT_MAX_PER_WINDOW);
+
+    expect((await deny(b)).status).toBe(403);
+    await flush();
+    expect(countOf(b)).toBe(1);
+  });
+
+  it('成功的請求不受被拒限流影響', async () => {
+    const a = await makeAccount({ forms: 'write', knowledge: 'read' });
+    for (let i = 0; i < DENIED_AUDIT_MAX_PER_WINDOW; i += 1) {
+      await request(app).post(`/api/admin/tenants/${own}/knowledge/ingest`).set(bearerOf(a)).send({});
+    }
+    const ok = await request(app).delete(`/api/admin/tenants/${own}/forms/no-such-form`).set(bearerOf(a));
+    expect(ok.status).not.toBe(403);
+    await flush();
+    const e = auditStore.list(own).find((x) => x.summary.includes(`DELETE /tenants/${own}/forms/no-such-form`));
+    expect(e).toBeDefined();
   });
 });
 

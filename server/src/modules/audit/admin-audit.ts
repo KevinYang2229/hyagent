@@ -7,7 +7,8 @@
  *   記在租戶桶等於刪除的同時銷毀證據
  * - 成功與失敗都記：被拒的變更嘗試同樣是稽核要看的；掛在 authorizeAdmin 之前，
  *   租戶管理者被權限擋下（403）的嘗試也會記到
- * - 租戶管理者的操作：userId 為 `tenant-admin:<accountId>`，summary 開頭加上 `帳號 <username>｜`
+ * - 租戶管理者的操作：userId 為 `tenant-admin:<accountId>`，summary 開頭加上 `帳號 <username>｜`；
+ *   打別的租戶一律記平台桶；被拒紀錄每帳號限流（DENIED_AUDIT_MAX_PER_WINDOW）
  */
 import type { NextFunction, Request, Response } from 'express';
 import { logger } from '@/lib/logger';
@@ -34,13 +35,55 @@ export type AdminActor = 'admin' | 'admin-api-key' | `tenant-admin:${string}`;
 /** authorizeAdmin 拒絕時寫入 res.locals 的旗標；SELF_AUDITED 路徑的 service 沒機會執行，改由這層補記 */
 export const ADMIN_AUTHZ_DENIED = 'adminAuthzDenied';
 
-function bucketFor(method: string, path: string): string {
+/** URL 指到的租戶 id（已 decode）；非租戶路徑或 encoding 壞掉回 undefined */
+function urlTenantId(path: string): string | undefined {
   const m = TENANT_PATH.exec(path);
-  if (!m) return PLATFORM_AUDIT_TENANT;
+  if (!m) return undefined;
+  try {
+    return decodeURIComponent(m[1]);
+  } catch {
+    return undefined;
+  }
+}
+
+function bucketFor(method: string, path: string, principal: AdminPrincipal | undefined): string {
+  const m = TENANT_PATH.exec(path);
+  const tenantId = urlTenantId(path);
+  if (!m || tenantId === undefined) return PLATFORM_AUDIT_TENANT;
+  // 租戶管理者打別的租戶：記平台桶，絕不寫進 URL 指到的租戶（否則可往他人稽核灌資料、洗掉歷史，
+  // 並把自己的帳號資訊洩漏給對方）
+  if (principal?.kind === 'tenant-admin' && tenantId !== principal.account.tenantId) {
+    return PLATFORM_AUDIT_TENANT;
+  }
   const isTenantDelete = method === 'DELETE' && !m[2];
-  const tenantId = decodeURIComponent(m[1]);
   // 租戶不存在（建錯 id、或剛被刪）時記平台桶，不憑空開一個租戶 bucket
   return isTenantDelete || !tenantStore.getTenant(tenantId) ? PLATFORM_AUDIT_TENANT : tenantId;
+}
+
+/**
+ * 被授權層拒絕的稽核紀錄，每個租戶管理者帳號在滾動視窗內最多記這麼多筆；
+ * 超過就不寫稽核（只記 log），避免以大量被拒請求擠掉稽核緩衝區（每桶上限見 audit.store）。
+ * 成功的請求不受限制。
+ */
+export const DENIED_AUDIT_MAX_PER_WINDOW = 30;
+export const DENIED_AUDIT_WINDOW_MS = 10 * 60 * 1000;
+
+const deniedHits = new Map<string, number[]>();
+
+/** 記一次被拒；回傳是否仍在額度內（可以寫稽核） */
+function allowDeniedAudit(accountId: string, now: number): boolean {
+  const since = now - DENIED_AUDIT_WINDOW_MS;
+  const hits = (deniedHits.get(accountId) ?? []).filter((t) => t > since);
+  const allowed = hits.length < DENIED_AUDIT_MAX_PER_WINDOW;
+  if (allowed) hits.push(now);
+  if (hits.length > 0) deniedHits.set(accountId, hits);
+  else deniedHits.delete(accountId);
+  return allowed;
+}
+
+/** 僅供測試：清空被拒稽核的限流狀態 */
+export function resetDeniedAuditLimiter(): void {
+  deniedHits.clear();
 }
 
 function fieldNames(body: unknown): string[] {
@@ -64,13 +107,24 @@ export function adminAuditTrail(req: Request, res: Response, next: NextFunction)
     try {
       const ok = res.statusCode < 400;
       const principal = res.locals.adminPrincipal as AdminPrincipal | undefined;
+      if (
+        principal?.kind === 'tenant-admin' &&
+        res.locals[ADMIN_AUTHZ_DENIED] === true &&
+        !allowDeniedAudit(principal.account.id, Date.now())
+      ) {
+        logger.warn(
+          { accountId: principal.account.id, method, path },
+          'tenant admin denied-attempt audit rate limit exceeded; audit row dropped',
+        );
+        return;
+      }
       const parts: string[] = [];
       if (principal?.kind === 'tenant-admin') parts.push(`帳號 ${principal.account.username}`);
       parts.push(`${method} ${path}`);
       if (fields.length > 0) parts.push(`欄位：${fields.join('、')}`);
       if (req.file?.originalname) parts.push(`檔案：${req.file.originalname}`);
       if (req.ip) parts.push(`來源 ${req.ip}`);
-      auditStore.record(bucketFor(method, path), {
+      auditStore.record(bucketFor(method, path, principal), {
         toolId: 'admin.config',
         userId: (res.locals.adminActor as AdminActor | undefined) ?? 'admin',
         at: new Date().toISOString(),
