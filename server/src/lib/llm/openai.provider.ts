@@ -117,11 +117,17 @@ export function createOpenAIProvider(settings: ResolvedLLMSettings): LLMProvider
       }));
 
       const model = pickModel(settings, params.model);
+      const maxTokens = params.maxTokens ?? env.LLM_MAX_TOKENS;
       let resp: OpenAI.Chat.Completions.ChatCompletion;
       try {
         resp = await getClient(settings.apiKey, settings.baseURL).chat.completions.create({
           model,
-          max_tokens: params.maxTokens ?? env.LLM_MAX_TOKENS,
+          // OpenAI 官方已棄用 max_tokens，reasoning／新世代模型直接 400 拒收，須改送
+          // max_completion_tokens；地端 OpenAI 相容伺服器（Ollama、舊版 vLLM 等）未必認得新欄位，
+          // 仍送 max_tokens 以免上限被靜默忽略。
+          ...(settings.provider === 'local'
+            ? { max_tokens: maxTokens }
+            : { max_completion_tokens: maxTokens }),
           // 未指定就整個欄位不帶，沿用 provider 預設（見 LLMCreateParams.temperature）。
           // 本 provider 也服務 OpenAI 相容的本地模型與 reasoning 模型，後者會拒絕
           // 非預設的 temperature——不帶欄位是唯一對所有後端都安全的預設。
