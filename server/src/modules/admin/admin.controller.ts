@@ -423,7 +423,9 @@ export const adminController = {
 
   async putLlmConfig(req: Request, res: Response): Promise<void> {
     const tenant = ensureTenant(String(req.params.id));
-    const view = await llmConfigService.update(tenant.id, req.body as PutLLMConfigInput, 'admin');
+    // 稽核由 service 自行記錄；帶上實際操作者（租戶管理者為 tenant-admin:<accountId>）
+    const actor = (res.locals.adminActor as AdminActor | undefined) ?? 'admin';
+    const view = await llmConfigService.update(tenant.id, req.body as PutLLMConfigInput, actor);
     res.status(200).json({ data: view });
   },
 
