@@ -2,7 +2,7 @@ import { adminAccountRouter } from '@/modules/admin-account/admin-account.routes
 import { userAdminRouter } from '@/modules/user/user.admin';
 import { departmentAdminRouter } from '@/modules/user/department.admin';
 import { directorySyncAdminRouter } from '@/modules/user/directory-sync.admin';
-import { adminLoginRateLimit } from '@/middlewares/auth-rate-limit';
+import { adminChangePasswordRateLimit, adminLoginRateLimit } from '@/middlewares/auth-rate-limit';
 import { Router } from 'express';
 import { z } from 'zod';
 import type { NextFunction, Request, Response } from 'express';
@@ -111,7 +111,7 @@ router.use(authorizeAdmin);
 
 // 目前登入者資訊與自助改密碼（租戶管理者；super／api-key 的 /me 回 super）
 router.get('/me', asyncHandler(adminAuthController.me));
-router.put('/me/password', validate({ body: changeMyPasswordSchema }), asyncHandler(adminAuthController.changeMyPassword));
+router.put('/me/password', adminChangePasswordRateLimit, validate({ body: changeMyPasswordSchema }), asyncHandler(adminAuthController.changeMyPassword));
 router.use('/tenants/:id/admin-accounts', adminAccountRouter);
 router.use('/tenants/:id/users', userAdminRouter);
 router.use('/tenants/:id/departments', departmentAdminRouter);

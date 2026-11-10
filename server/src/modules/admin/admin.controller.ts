@@ -492,12 +492,15 @@ export const adminController = {
     // 跨租戶一律當作不存在：後台雖有較高權限，租戶隔離仍是硬邊界
     if (!stored || stored.tenantId !== tenant.id) throw AppError.notFound('報告不存在');
 
+    // 與 adminAuditTrail 同格式：實際操作者（租戶管理者為 tenant-admin:<accountId>），摘要前綴帳號名稱
+    const principal = res.locals.adminPrincipal as AdminPrincipal | undefined;
+    const who = principal?.kind === 'tenant-admin' ? `帳號 ${principal.account.username}｜` : '';
     auditStore.record(tenant.id, {
       toolId: 'report.download',
-      userId: req.user?.sub ?? 'admin',
+      userId: (res.locals.adminActor as AdminActor | undefined) ?? 'admin',
       at: new Date().toISOString(),
       ok: true,
-      summary: `下載 ${stored.userId} 的報告 ${stored.filename}`,
+      summary: `${who}下載 ${stored.userId} 的報告 ${stored.filename}`,
     });
 
     res.setHeader('Content-Type', renderers[format].contentType);

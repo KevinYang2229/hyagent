@@ -256,10 +256,24 @@ describe('requireAdmin：租戶管理者 token 必須對應有效帳號', () => 
     expect((await request(app).get('/api/admin/me').set('Authorization', `Bearer ${newToken}`)).status).toBe(200);
   });
 
-  it('PUT /me/password 目前密碼錯誤回 401', async () => {
+  it('PUT /me/password 目前密碼錯誤回 422（不是 401，前端才不會當成登入過期而登出），token 仍有效', async () => {
     const a = await makeAccount({});
     const res = await request(app).put('/api/admin/me/password').set(bearerOf(a))
       .send({ currentPassword: 'wrong-password-xx', newPassword: 'another-long-password' });
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(422);
+    expect(res.body.error.message).toBe('目前密碼錯誤');
+    expect((await request(app).get('/api/admin/me').set(bearerOf(a))).status).toBe(200);
+  });
+
+  it('PUT /me/password 依帳號限制失敗次數：連續錯太多次回 429，其他帳號不受影響', async () => {
+    const a = await makeAccount({});
+    const wrong = { currentPassword: 'wrong-password-xx', newPassword: 'another-long-password' };
+    let last = 0;
+    for (let i = 0; i < 11; i += 1) {
+      last = (await request(app).put('/api/admin/me/password').set(bearerOf(a)).send(wrong)).status;
+    }
+    expect(last).toBe(429);
+    const b = await makeAccount({});
+    expect((await request(app).put('/api/admin/me/password').set(bearerOf(b)).send(wrong)).status).toBe(422);
   });
 });

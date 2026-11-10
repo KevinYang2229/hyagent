@@ -84,7 +84,8 @@ export const adminAuthController = {
     }
     const { currentPassword, newPassword } = req.body as ChangeMyPasswordInput;
     if (!(await verifyPassword(currentPassword, principal.account.passwordHash))) {
-      throw AppError.unauthorized('目前密碼錯誤');
+      // 422 而非 401：401 會被後台前端當成登入過期而強制登出
+      throw AppError.unprocessable('目前密碼錯誤');
     }
     const updated = adminAccountStore.update(principal.account.id, {
       passwordHash: await hashPassword(newPassword),
