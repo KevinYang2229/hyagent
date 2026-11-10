@@ -13,3 +13,6 @@ create table if not exists admin_accounts (
 );
 
 create index if not exists admin_accounts_tenant_idx on admin_accounts (tenant_id);
+
+-- 同 0001/0003：開 RLS 不建 policy，擋 PostgREST 匿名存取（此表含密碼雜湊）；server 直連不受影響
+alter table admin_accounts enable row level security;
