@@ -422,7 +422,7 @@ router.get(
   validate({ params: tenantParamSchema }),
   asyncHandler(knowledgeAdminController.aclReport),
 );
-// 敏感文件存取紀錄（平台管理者）
+// 敏感文件存取紀錄：權限跟著「知識庫」分頁（讀取需唯讀以上、調整保存天數需可編輯）
 router.get(
   '/tenants/:id/knowledge/access-logs',
   validate({ params: tenantParamSchema, query: accessLogQuerySchema }),

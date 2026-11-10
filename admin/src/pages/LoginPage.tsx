@@ -66,7 +66,7 @@ export default function LoginPage() {
           </div>
           <div className="field">
             <label className="field-label" htmlFor="pw">
-              管理密碼
+              密碼
             </label>
             <input
               id="pw"
@@ -74,7 +74,7 @@ export default function LoginPage() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="請輸入管理密碼"
+              placeholder="請輸入密碼"
               autoComplete="current-password"
             />
           </div>
@@ -84,7 +84,7 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <div className="login-foot">受 ADMIN_PASSWORD 保護 · 僅限管理員</div>
+        <div className="login-foot">僅限授權的管理人員</div>
       </div>
     </div>
   );

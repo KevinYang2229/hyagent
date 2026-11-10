@@ -107,10 +107,39 @@ it('刪除要先確認才會呼叫 API', async () => {
   await waitFor(() => expect(api.deleteAdminAccount).toHaveBeenCalledWith('t', 'a1'));
 });
 
-it('停用帳號呼叫 updateAdminAccount status', async () => {
+it('停用帳號先確認（會立即登出）：取消不送，確認才呼叫 updateAdminAccount status', async () => {
   renderTab();
   fireEvent.click(await screen.findByRole('button', { name: '停用' }));
+  expect(screen.getByRole('dialog')).toHaveTextContent('alice01');
+  expect(screen.getByRole('dialog')).toHaveTextContent('登出');
+  fireEvent.click(screen.getByRole('button', { name: '取消' }));
+  expect(api.updateAdminAccount).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: '停用' }));
+  const ok = screen.getAllByRole('button', { name: '停用' }).find((b) => b.closest('.hy-dialog-footer'))!;
+  fireEvent.click(ok);
   await waitFor(() => expect(api.updateAdminAccount).toHaveBeenCalledWith('t', 'a1', { status: 'disabled' }));
+});
+
+it('啟用已停用的帳號不需確認', async () => {
+  vi.mocked(api.listAdminAccounts).mockResolvedValue([{ ...acct, status: 'disabled' }]);
+  renderTab();
+  fireEvent.click(await screen.findByRole('button', { name: '啟用' }));
+  await waitFor(() => expect(api.updateAdminAccount).toHaveBeenCalledWith('t', 'a1', { status: 'active' }));
+});
+
+it('帳號先轉小寫並去空白再檢查（與後端一致）；顯示名稱上限 50 字', async () => {
+  vi.mocked(api.createAdminAccount).mockResolvedValue(acct);
+  renderTab();
+  await screen.findByText('alice01');
+  fireEvent.change(screen.getByLabelText('帳號'), { target: { value: '  Bob01 ' } });
+  fireEvent.change(screen.getByLabelText('顯示名稱'), { target: { value: '名'.repeat(51) } });
+  fireEvent.change(screen.getByLabelText('初始密碼'), { target: { value: 'longenough123' } });
+  fireEvent.click(screen.getByRole('button', { name: '新增帳號' }));
+  expect(await screen.findByText(/50 字以內/)).toBeInTheDocument();
+  expect(api.createAdminAccount).not.toHaveBeenCalled();
+  fireEvent.change(screen.getByLabelText('顯示名稱'), { target: { value: '名'.repeat(50) } });
+  fireEvent.click(screen.getByRole('button', { name: '新增帳號' }));
+  await waitFor(() => expect(api.createAdminAccount).toHaveBeenCalledWith('t', { username: 'bob01', displayName: '名'.repeat(50), password: 'longenough123' }));
 });
 
 it('重設密碼：太短不送；成功提示已登入裝置會被登出', async () => {

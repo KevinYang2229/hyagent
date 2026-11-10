@@ -52,11 +52,12 @@ export default function AdminAccountsTab({ tenantId, onError }: { tenantId: stri
 
   async function create() {
     if (busy) return;
-    const u = username.trim();
+    // 與後端 usernameSchema 一致：先去空白、轉小寫再檢查
+    const u = username.trim().toLowerCase();
     const d = displayName.trim();
     if (!USERNAME_RE.test(u)) return setFormErr('帳號格式不符：3 到 32 個字元，只能用小寫英數、點、底線、連字號，且開頭須為英數');
     if (u === 'admin') return setFormErr('admin 為保留帳號');
-    if (!d || d.length > 100) return setFormErr('請輸入顯示名稱（100 字以內）');
+    if (!d || d.length > 50) return setFormErr('請輸入顯示名稱（50 字以內）');
     if (!pwOk(password)) return setFormErr(PASSWORD_ERR);
     setFormErr('');
     setBusy(true);
@@ -74,6 +75,11 @@ export default function AdminAccountsTab({ tenantId, onError }: { tenantId: stri
 
   async function toggleStatus(a: AdminAccount) {
     const next = a.status === 'active' ? 'disabled' : 'active';
+    if (next === 'disabled' && !(await confirm({
+      title: `停用管理者「${a.username}」？`,
+      message: '停用後該帳號會立即被登出且無法登入，之後可再啟用。',
+      confirmText: '停用',
+    }))) return;
     try {
       await api.updateAdminAccount(tenantId, a.id, { status: next });
       await load();
@@ -147,7 +153,7 @@ export default function AdminAccountsTab({ tenantId, onError }: { tenantId: stri
           </label>
           <label className="field">
             <span className="field-label">顯示名稱</span>
-            <input className="input" value={displayName} onChange={(e) => setDisplayName(e.target.value)} autoComplete="off" />
+            <input className="input" value={displayName} onChange={(e) => setDisplayName(e.target.value)} autoComplete="off" maxLength={50} />
           </label>
           <label className="field">
             <span className="field-label">初始密碼</span>
