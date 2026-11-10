@@ -140,6 +140,12 @@ router.use('/db-intelligence/:serverId', dbiAdminRouter);
 router.post('/tenants', validate({ body: createTenantSchema }), asyncHandler(adminController.createTenant));
 router.get('/tenants', asyncHandler(adminController.listTenants));
 
+router.get(
+  '/tenants/:id',
+  validate({ params: tenantParamSchema }),
+  asyncHandler(adminController.getTenant),
+);
+
 router.patch(
   '/tenants/:id',
   validate({ params: tenantParamSchema, body: patchTenantSchema }),

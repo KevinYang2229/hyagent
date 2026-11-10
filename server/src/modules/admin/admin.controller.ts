@@ -8,6 +8,7 @@ import type { Request, Response } from 'express';
 import { DEFAULT_TENANT_ID, tenantStore } from '@/modules/tenant/tenant.store';
 import { serviceRegistry } from '@/modules/conversation/service.registry';
 import { conversationStore } from '@/modules/conversation/conversation.store';
+import type { AdminPrincipal } from '@/middlewares/require-admin';
 import { adminAccountStore } from '@/modules/admin-account/admin-account.store';
 import { webhookStore } from '@/modules/webhook/webhook.store';
 import { feedbackStore } from '@/modules/feedback/feedback.store';
@@ -39,7 +40,7 @@ import { defaultGrantedScopes } from '@/modules/authz/scope-migration';
 import { scopePolicy } from '@/modules/authz/scope-policy';
 import { toRoleView } from '@/modules/authz/role-view';
 import { getApplicant, listDepartments, listUserIds, memberPermissionDepartment, UNASSIGNED_MEMBER_DEPARTMENT, UNKNOWN_DEPARTMENT } from '@/modules/user/user.directory';
-import { llmConfigService } from '@/modules/tenant/llm-config.service';
+import { llmConfigService, maskKey } from '@/modules/tenant/llm-config.service';
 import type { PutLLMConfigInput } from '@/modules/tenant/llm-config.schema';
 import { computeUsageCost } from '@/modules/usage/usage.cost';
 import type {
@@ -392,7 +393,10 @@ export const adminController = {
 
   async listWebhooks(req: Request, res: Response): Promise<void> {
     const tenant = ensureTenant(String(req.params.id));
-    res.status(200).json({ data: webhookStore.listByTenant(tenant.id) });
+    // 列表一律遮罩 secret（含超級管理者）；完整值只在建立當下回傳一次
+    res.status(200).json({
+      data: webhookStore.listByTenant(tenant.id).map((w) => ({ ...w, secret: maskKey(w.secret) })),
+    });
   },
 
   async deleteWebhook(req: Request, res: Response): Promise<void> {
@@ -429,9 +433,23 @@ export const adminController = {
     res.status(200).json({ data: view });
   },
 
+  async getTenant(req: Request, res: Response): Promise<void> {
+    const tenant = ensureTenant(String(req.params.id));
+    res.status(200).json({ data: publicTenant(tenant) });
+  },
+
   async getAudit(req: Request, res: Response): Promise<void> {
     const tenant = ensureTenant(String(req.params.id));
-    res.status(200).json({ data: auditPage(tenant.id, req.query) });
+    const page = auditPage(tenant.id, req.query);
+    const principal = (res.locals as { adminPrincipal?: AdminPrincipal } | undefined)?.adminPrincipal;
+    if (principal?.kind === 'tenant-admin') {
+      // 租戶管理者看不到別人（含超級管理者）的來源 IP；自己的保留
+      const self = `tenant-admin:${principal.account.id}`;
+      page.items = page.items.map((e) =>
+        e.userId === self ? e : { ...e, summary: e.summary.replace(/｜來源 [^｜]*/g, '') },
+      );
+    }
+    res.status(200).json({ data: page });
   },
 
   async getPlatformAudit(req: Request, res: Response): Promise<void> {
