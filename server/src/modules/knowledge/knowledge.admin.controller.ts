@@ -145,6 +145,8 @@ export const knowledgeAdminController = {
         source: knowledgeStore.getSource(tenantId),
         meta: knowledgeStore.getMeta(tenantId),
         runningJob: getRunningJobForTenant(tenantId) ?? null,
+        // 單檔上傳上限（MB），前端提示文字用；與上傳把關讀同一個 env，改設定不必改前端
+        fileMaxMb: env.KNOWLEDGE_FILE_MAX_MB,
       },
     });
   },

@@ -6,6 +6,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import type { NextFunction, Request, Response } from 'express';
 import multer, { MulterError } from 'multer';
+import { env } from '@/config/env';
 import { validate } from '@/middlewares/validate';
 import { requireAdmin } from '@/middlewares/require-admin';
 import { adminAuditTrail } from '@/modules/audit/admin-audit';
@@ -71,11 +72,11 @@ import {
 const router = Router();
 
 /**
- * 知識庫檔案上傳限制：memoryStorage、單檔 10MB。
+ * 知識庫檔案上傳限制：memoryStorage、單檔上限由 env.KNOWLEDGE_FILE_MAX_MB 決定（預設 10MB）。
  * 格式白名單交由 knowledge/doc-parse 的 SUPPORTED_EXTENSIONS 依副檔名＋magic bytes 把關（400），
  * 這裡只把關檔案大小/數量，multer 的 MulterError 轉成統一 AppError（超限 413、其他 400）。
  */
-const KNOWLEDGE_FILE_MAX_MB = 10;
+const KNOWLEDGE_FILE_MAX_MB = env.KNOWLEDGE_FILE_MAX_MB;
 const knowledgeFileUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: KNOWLEDGE_FILE_MAX_MB * 1024 * 1024, files: 1 },
