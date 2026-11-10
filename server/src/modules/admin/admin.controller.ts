@@ -8,6 +8,7 @@ import type { Request, Response } from 'express';
 import { DEFAULT_TENANT_ID, tenantStore } from '@/modules/tenant/tenant.store';
 import { serviceRegistry } from '@/modules/conversation/service.registry';
 import { conversationStore } from '@/modules/conversation/conversation.store';
+import { adminAccountStore } from '@/modules/admin-account/admin-account.store';
 import { webhookStore } from '@/modules/webhook/webhook.store';
 import { feedbackStore } from '@/modules/feedback/feedback.store';
 import { mcpStore } from '@/modules/mcp/mcp.store';
@@ -355,6 +356,7 @@ export const adminController = {
     mcpStore.purgeTenant(id);
     feedbackStore.purgeTenant(id);
     purgeTenantAccessLogs(id);
+    adminAccountStore.removeByTenant(id);
     res.status(200).json({ data: { id } });
   },
 
