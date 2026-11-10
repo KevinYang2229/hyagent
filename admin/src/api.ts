@@ -62,10 +62,14 @@ export interface DepartmentSummary {
   roles: number;
 }
 
+/**
+ * 租戶（GET /admin/tenants/:id）。租戶管理者只會拿到可見分頁所需的欄位（後端 tenant-view.ts），
+ * 所以除了 id、name、createdAt、activeKeyCount 以外都可能不存在。
+ */
 export interface Tenant {
   id: string;
   name: string;
-  allowedOrigins: string[];
+  allowedOrigins?: string[];
   /** 目前 active 的 Assertion 公鑰數。0 代表此租戶還無法登入（規格 §11.1 的收斂標示） */
   activeKeyCount?: number;
   /** 逐租戶設定的現行值（未設者為規格預設） */

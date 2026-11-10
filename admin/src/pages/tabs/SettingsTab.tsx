@@ -26,7 +26,9 @@ export default function SettingsTab({
   /** 唯讀：設定欄位與產生金鑰停用，只能檢視 */
   readonly?: boolean;
 }) {
-  const { isSuper } = useAuth();
+  const { isSuper, level } = useAuth();
+  // 私密金鑰（sk_）可呼叫 /api/tenant/llm-config，等同 AI 模型的編輯權；後端同樣把關（admin-route-policy）
+  const canCreateSecretKey = level('ai') === 'write';
   const [name, setName] = useState(tenant.name);
   const [origins, setOrigins] = useState((tenant.allowedOrigins ?? []).join('\n'));
   const [quota, setQuota] = useState(
@@ -213,7 +215,12 @@ export default function SettingsTab({
               <IconKey />
               產生公開金鑰（pk_）
             </button>
-            <button className="btn btn-ghost btn-sm" onClick={() => genKey('secret')} disabled={readonly}>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => genKey('secret')}
+              disabled={readonly || !canCreateSecretKey}
+              title={!canCreateSecretKey ? '私密金鑰可變更 AI 模型設定，需要「AI 模型」的編輯權限' : undefined}
+            >
               <IconKey />
               產生私密金鑰（sk_）
             </button>

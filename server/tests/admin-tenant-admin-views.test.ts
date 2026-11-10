@@ -96,6 +96,69 @@ describe('租戶管理者檢視', () => {
     expect((await request(app).get('/api/admin/tenants/no-such-tenant').set(superBearer())).status).toBe(404);
   });
 
+  it('GET /tenants/:id：租戶管理者只拿到可見分頁的欄位；超級管理者拿到全部', async () => {
+    tenantStore.updateTenant(tenantId, {
+      appearance: { primaryColor: '#123456' },
+      egressPolicy: { allowedEmailDomains: ['example.com'] },
+      grantedScopes: ['email:write'],
+      knowledgeLabels: [{ id: 'hr', label: '人資' }],
+      quotaMonthlyLlmTokens: 1000,
+    } as never);
+    const mk = (username: string, permissions: AdminAccount['permissions']) =>
+      adminAccountStore.create({ tenantId, username, displayName: username, passwordHash: 'x', permissions });
+
+    const none = mk('views-none', {});
+    const r0 = await request(app).get(`/api/admin/tenants/${tenantId}`).set(bearer(none));
+    expect(r0.status).toBe(200);
+    expect(Object.keys(r0.body.data).sort()).toEqual(['activeKeyCount', 'createdAt', 'id', 'name']);
+
+    const app1 = mk('views-appearance', { appearance: 'read' });
+    const r1 = (await request(app).get(`/api/admin/tenants/${tenantId}`).set(bearer(app1))).body.data;
+    expect(r1.appearance).toEqual({ primaryColor: '#123456' });
+    for (const k of ['publicKeys', 'assertionSettings', 'egressPolicy', 'allowedOrigins', 'grantedScopes', 'knowledgeLabels', 'quotaMonthlyLlmTokens']) {
+      expect(r1).not.toHaveProperty(k);
+    }
+
+    const usage = mk('views-usage', { usage: 'read' });
+    const r2 = (await request(app).get(`/api/admin/tenants/${tenantId}`).set(bearer(usage))).body.data;
+    expect(r2.quotaMonthlyLlmTokens).toBe(1000);
+    expect(r2).not.toHaveProperty('allowedOrigins');
+
+    // account 有 settings / sso 讀取權
+    const r3 = (await request(app).get(`/api/admin/tenants/${tenantId}`).set(bearer(account))).body.data;
+    expect(r3.egressPolicy).toBeDefined();
+    expect(r3.allowedOrigins).toBeDefined();
+    expect(r3.quotaMonthlyLlmTokens).toBe(1000);
+    expect(r3.publicKeys).toBeDefined();
+    expect(r3.assertionSettings).toBeDefined();
+    expect(r3).not.toHaveProperty('appearance');
+    expect(r3).not.toHaveProperty('grantedScopes');
+
+    const perms = mk('views-perm-kb', { permissions: 'read', knowledge: 'read' });
+    const r4 = (await request(app).get(`/api/admin/tenants/${tenantId}`).set(bearer(perms))).body.data;
+    expect(r4.grantedScopes).toEqual(['email:write']);
+    expect(r4.knowledgeLabels).toEqual([{ id: 'hr', label: '人資' }]);
+
+    const sup = (await request(app).get(`/api/admin/tenants/${tenantId}`).set(superBearer())).body.data;
+    for (const k of ['appearance', 'egressPolicy', 'grantedScopes', 'knowledgeLabels', 'publicKeys', 'quotaMonthlyLlmTokens']) {
+      expect(sup).toHaveProperty(k);
+    }
+  });
+
+  it('PATCH /tenants/:id 的回應同樣依分頁過濾', async () => {
+    const writer = adminAccountStore.create({
+      tenantId, username: 'views-appearance-writer', displayName: 'w', passwordHash: 'x', permissions: { appearance: 'write' },
+    });
+    const res = await request(app)
+      .patch(`/api/admin/tenants/${tenantId}`)
+      .set(bearer(writer))
+      .send({ appearance: { primaryColor: '#654321' } });
+    expect(res.status).toBe(200);
+    expect(res.body.data.appearance).toEqual({ primaryColor: '#654321' });
+    expect(res.body.data).not.toHaveProperty('publicKeys');
+    expect(res.body.data).not.toHaveProperty('egressPolicy');
+  });
+
   it('webhook 啟停回應的 secret 也是遮罩的', async () => {
     const w = webhookStore.register({ tenantId, url: 'https://hook.example.com/t', secret: SECRET });
     const res = await request(app)

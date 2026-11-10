@@ -51,7 +51,8 @@ export type RouteAccess =
   | { kind: 'self' }
   | { kind: 'tenant' }
   | { kind: 'tab'; tab: AdminTabKey; alsoReadableBy?: AdminTabKey[] }
-  | { kind: 'tenantPatch' };
+  | { kind: 'tenantPatch' }
+  | { kind: 'createKey' };
 
 export interface RouteRule {
   method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | '*';
@@ -69,7 +70,8 @@ export const ADMIN_ROUTE_RULES: RouteRule[] = [
   { method: '*', pattern: '/tenants/:id/admin-accounts/**', access: { kind: 'super' } },
   { method: 'GET', pattern: '/tenants/:id', access: { kind: 'tenant' } },
   { method: 'PATCH', pattern: '/tenants/:id', access: { kind: 'tenantPatch' } },
-  { method: 'POST', pattern: '/tenants/:id/keys', access: tab('settings') },
+  // 私密金鑰（sk_）可呼叫 /api/tenant/llm-config，等同 AI 模型的編輯權：依 body.type 判斷（見 decideCreateKey）
+  { method: 'POST', pattern: '/tenants/:id/keys', access: { kind: 'createKey' } },
   { method: '*', pattern: '/tenants/:id/llm-config', access: tab('ai') },
   { method: '*', pattern: '/tenants/:id/assertion-keys/**', access: tab('sso') },
   { method: '*', pattern: '/tenants/:id/assertion-settings', access: tab('sso') },
@@ -100,17 +102,18 @@ export const TENANT_PATCH_FIELDS: Record<string, AdminTabKey | 'super'> = {
   quotaMonthlyLlmTokens: 'super',
 };
 
+/** 403 原因裡的分頁名稱：與後台介面（admin/src/pages/tabGroups.ts）一致 */
 const TAB_LABELS: Record<AdminTabKey, string> = {
   settings: '基本設定',
-  ai: 'AI 設定',
-  sso: '單一登入',
-  users: '使用者',
-  directorySync: '目錄同步',
+  ai: 'AI 模型',
+  sso: '自動登入（SSO）',
+  users: '使用者目錄',
+  directorySync: '人員同步',
   knowledge: '知識庫',
   forms: '表單',
-  permissions: '權限',
+  permissions: '角色與授權',
   appearance: '外觀',
-  webhook: 'Webhook',
+  webhook: '事件通知（Webhook）',
   usage: '用量',
   feedback: '回饋',
   reports: '報告',
@@ -208,6 +211,17 @@ export function decideTenantAdmin(input: {
     return tabLevel(permissions, access.tab) === 'write'
       ? { allow: true }
       : deny(`沒有『${TAB_LABELS[access.tab]}』的編輯權限`);
+  }
+
+  if (access.kind === 'createKey') {
+    if (tabLevel(permissions, 'settings') !== 'write') return deny(`沒有『${TAB_LABELS.settings}』的編輯權限`);
+    const b = input.body;
+    const type = typeof b === 'object' && b !== null && !Array.isArray(b) ? (b as { type?: unknown }).type : undefined;
+    // 只有明確的公開金鑰免 ai 權限；其餘（含沒帶 type）一律從嚴當成私密金鑰
+    if (type !== 'publishable' && tabLevel(permissions, 'ai') !== 'write') {
+      return deny(`私密金鑰可變更 AI 模型設定，需要『${TAB_LABELS.settings}』與『${TAB_LABELS.ai}』的編輯權限`);
+    }
+    return { allow: true };
   }
 
   // tenantPatch：每個欄位都要有對應分頁的編輯權限

@@ -24,6 +24,13 @@ describe('租戶總覽設定檢查', () => {
     expect(setupProgress(setupChecks(fresh()))).toEqual({ done: 0, total: 5 });
   });
 
+  it('租戶管理者看不到基本設定時後端不帶 allowedOrigins：檢查不會因此丟錯', () => {
+    const d = fresh();
+    d.tenant = { id: 't', name: 'T', activeKeyCount: 0, createdAt: '' };
+    expect(() => setupChecks(d)).not.toThrow();
+    expect(byId(d).origins.status).toBe('todo');
+  });
+
   it('設定完成：必要步驟全部完成；開啟通用服務後不再提醒', () => {
     const d = fresh();
     d.tenant = { ...d.tenant, allowedOrigins: ['https://a.com'], activeKeyCount: 1 };

@@ -10,6 +10,7 @@ import { serviceRegistry } from '@/modules/conversation/service.registry';
 import { conversationStore } from '@/modules/conversation/conversation.store';
 import type { AdminPrincipal } from '@/middlewares/require-admin';
 import { redactKeyList, redactKeyOperators } from './key-operator-view';
+import { filterTenantViewForTenantAdmin, type TenantView } from './tenant-view';
 import { adminAccountStore } from '@/modules/admin-account/admin-account.store';
 import { webhookStore } from '@/modules/webhook/webhook.store';
 import { feedbackStore } from '@/modules/feedback/feedback.store';
@@ -109,7 +110,10 @@ function ensureTenant(id: string) {
   return tenant;
 }
 
-function publicTenant(tenant: NonNullable<ReturnType<typeof tenantStore.getTenant>>, locals?: Response['locals']) {
+function publicTenant(
+  tenant: NonNullable<ReturnType<typeof tenantStore.getTenant>>,
+  locals?: Response['locals'],
+): TenantView | Partial<TenantView> {
   const {
     userDirectory: _userDirectory,
     llmConfig: _llmConfig,
@@ -117,14 +121,19 @@ function publicTenant(tenant: NonNullable<ReturnType<typeof tenantStore.getTenan
     directorySyncKeys: _directorySyncKeys,
     ...safe
   } = tenant;
-  // publicKeys 原樣帶出：它們是公鑰，不需遮罩。改造前這裡遮的 ssoSecret 已不存在。
-  return {
+  // publicKeys 是公鑰，內容不需遮罩；但租戶管理者看不到別人操作時的來源 IP（redactKeyList）
+  const view: TenantView = {
     ...safe,
     publicKeys: redactKeyList(tenant.publicKeys ?? [], locals),
     assertionSettings: resolveAssertionSettings(tenant),
     // 後台總覽用（規格 §11.1）：未設 active 公鑰的租戶無法登入，要能一眼看出來
     activeKeyCount: activeKeys(tenant.publicKeys).length,
   };
+  // 租戶管理者只帶出看得到的分頁所需的欄位（見 tenant-view.ts）
+  const principal = (locals as { adminPrincipal?: AdminPrincipal } | undefined)?.adminPrincipal;
+  return principal?.kind === 'tenant-admin'
+    ? filterTenantViewForTenantAdmin(view, principal.account.permissions)
+    : view;
 }
 
 /**

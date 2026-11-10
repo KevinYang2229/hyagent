@@ -5,11 +5,13 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import SettingsTab from './SettingsTab';
 import { api } from '../../api';
 
-const { auth } = vi.hoisted(() => ({ auth: { isSuper: false } }));
+const { auth } = vi.hoisted(() => ({ auth: { isSuper: false, ai: 'write' as 'hidden' | 'read' | 'write' } }));
 vi.mock('../../api', () => ({
   api: { updateTenant: vi.fn(), getLlmConfig: vi.fn(), putLlmConfig: vi.fn(), createKey: vi.fn() },
 }));
-vi.mock('../../auth', () => ({ useAuth: () => ({ isSuper: auth.isSuper }) }));
+vi.mock('../../auth', () => ({
+  useAuth: () => ({ isSuper: auth.isSuper, level: (k: string) => (auth.isSuper ? 'write' : k === 'ai' ? auth.ai : 'write') }),
+}));
 vi.mock('../../components/confirm', () => ({ useConfirm: () => vi.fn() }));
 vi.mock('../../components/unsaved', () => ({ useUnsavedChanges: vi.fn() }));
 
@@ -56,4 +58,28 @@ it('AI 模型頁會呼叫 getLlmConfig', async () => {
   auth.isSuper = false;
   render(<SettingsTab tenant={tenant} onSaved={vi.fn()} onError={vi.fn()} section="ai" />);
   await waitFor(() => expect(api.getLlmConfig).toHaveBeenCalledWith('t1'));
+});
+
+it('租戶管理者沒有 AI 模型編輯權時，不能產生私密金鑰（sk_）；公開金鑰仍可產生', async () => {
+  auth.isSuper = false;
+  auth.ai = 'read';
+  render(<SettingsTab tenant={tenant} onSaved={vi.fn()} onError={vi.fn()} />);
+  expect(screen.getByRole('button', { name: /產生私密金鑰/ })).toBeDisabled();
+  expect(screen.getByRole('button', { name: /產生公開金鑰/ })).toBeEnabled();
+  auth.ai = 'write';
+});
+
+it('有 AI 模型編輯權（或超級管理者）時可產生私密金鑰', async () => {
+  auth.isSuper = false;
+  auth.ai = 'write';
+  render(<SettingsTab tenant={tenant} onSaved={vi.fn()} onError={vi.fn()} />);
+  expect(screen.getByRole('button', { name: /產生私密金鑰/ })).toBeEnabled();
+});
+
+it('唯讀時設定欄位與產生金鑰都停用', async () => {
+  auth.isSuper = false;
+  render(<SettingsTab tenant={tenant} onSaved={vi.fn()} onError={vi.fn()} readonly />);
+  expect(screen.getByRole('button', { name: '儲存設定' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: /產生公開金鑰/ })).toBeDisabled();
+  expect(screen.getByRole('button', { name: /產生私密金鑰/ })).toBeDisabled();
 });

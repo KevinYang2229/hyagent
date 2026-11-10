@@ -102,6 +102,17 @@ describe('authorizeAdmin：依分頁權限把關租戶管理者', () => {
     }
   });
 
+  it('settings:write 但 ai 非 write：可建公開金鑰、不能建私密金鑰（sk_ 可改 AI 模型設定）', async () => {
+    const a = await makeAccount({ settings: 'write', ai: 'read' });
+    const pk = await request(app).post(`/api/admin/tenants/${own}/keys`).set(bearerOf(a)).send({ type: 'publishable' });
+    expect(pk.status).toBe(201);
+    const sk = await request(app).post(`/api/admin/tenants/${own}/keys`).set(bearerOf(a)).send({ type: 'secret' });
+    expect(sk.status).toBe(403);
+    expect(sk.body.error.message).toContain('AI 模型');
+    const b = await makeAccount({ settings: 'write', ai: 'write' });
+    expect((await request(app).post(`/api/admin/tenants/${own}/keys`).set(bearerOf(b)).send({ type: 'secret' })).status).toBe(201);
+  });
+
   it('自行記稽核的 PUT llm-config 被擋下時，仍由稽核層補記一筆', async () => {
     const a = await makeAccount({ ai: 'read' });
     const r = await request(app).put(`/api/admin/tenants/${own}/llm-config`).set(bearerOf(a)).send({});

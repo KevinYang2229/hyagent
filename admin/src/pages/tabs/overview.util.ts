@@ -43,8 +43,10 @@ export function setupChecks(d: OverviewData): SetupCheck[] {
   const checks: SetupCheck[] = [];
 
   // ---- 接入 ----
-  checks.push(d.tenant.allowedOrigins.length > 0
-    ? { id: 'origins', step: '接入', title: '允許嵌入來源', status: 'ok', detail: `已設定 ${d.tenant.allowedOrigins.length} 個網域。`, tab: 'settings', required: true }
+  // 租戶管理者看不到基本設定時，後端不帶 allowedOrigins（此卡片也會被濾掉），這裡不能假設它存在
+  const origins = d.tenant.allowedOrigins ?? [];
+  checks.push(origins.length > 0
+    ? { id: 'origins', step: '接入', title: '允許嵌入來源', status: 'ok', detail: `已設定 ${origins.length} 個網域。`, tab: 'settings', required: true }
     : { id: 'origins', step: '接入', title: '允許嵌入來源', status: 'todo', detail: '尚未設定，聊天視窗無法嵌入任何網站。', tab: 'settings', required: true });
 
   // ---- 人員與登入 ----
