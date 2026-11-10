@@ -29,6 +29,7 @@ import { knowledgeStore } from '@/modules/knowledge/knowledge.store';
 import type { IndexedChunk, KnowledgeIndexFile } from '@/modules/knowledge/knowledge-index.types';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 import { makeDocx, para, table } from './helpers/make-docx';
+import { makeXlsx } from './helpers/make-xlsx';
 import { refreshSuggestedPrompts } from '@/modules/knowledge/knowledge.suggest';
 
 const mockRefreshSuggestions = refreshSuggestedPrompts as jest.MockedFunction<
@@ -87,6 +88,23 @@ describe('ingestFile（docx 結構化路徑）', () => {
     const t = tenantStore.createTenant('kfile-fidelity');
     const meta = await ingestFile(t.id, '規章.txt', Buffer.from('請假規定：特休依年資計算。'.repeat(40)));
     expect(meta).toMatchObject({ format: 'txt', fidelity: 'text' });
+  });
+
+  it('xlsx 表頭疑似含個資 → meta 記下欄位名供後台警示，匯入照常完成', async () => {
+    const t = tenantStore.createTenant('kfile-pii');
+    const rows: (string | number)[][] = [['員工編號', '姓名', '手機', '部門']];
+    for (let i = 0; i < 40; i++) rows.push([`E${i}`, `員工${i}`, '0912000000', '研發部']);
+    const meta = await ingestFile(t.id, '通訊錄.xlsx', await makeXlsx({ name: '通訊錄', rows }), { deferSuggestions: true });
+    expect(meta.piiHeaders).toEqual(['姓名', '手機']);
+    expect(knowledgeStore.getMeta(t.id).files?.find((f) => f.fileId === meta.fileId)?.piiHeaders).toEqual(['姓名', '手機']);
+  });
+
+  it('沒有疑似個資欄位時 meta 不帶 piiHeaders（既有檔案資訊形狀不變）', async () => {
+    const t = tenantStore.createTenant('kfile-pii-none');
+    const rows: (string | number)[][] = [['年資', '特休天數']];
+    for (let i = 1; i <= 40; i++) rows.push([`${i}年`, 7 + i]);
+    const meta = await ingestFile(t.id, '特休.xlsx', await makeXlsx({ name: '特休', rows }), { deferSuggestions: true });
+    expect(meta).not.toHaveProperty('piiHeaders');
   });
 });
 

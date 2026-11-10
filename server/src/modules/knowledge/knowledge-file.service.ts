@@ -31,6 +31,7 @@ import {
 } from './ingest.service';
 import { parseDocument } from './doc-parse';
 import { deleteTablesByFile, saveTables, tableDescriptor } from './knowledge.tables.repo';
+import { detectPiiHeaders } from './pii-headers';
 import { SUMMARY_CHUNK_ID_SUFFIX, type IndexedChunk } from './knowledge-index.types';
 import { knowledgeStore, type KnowledgeFileMeta } from './knowledge.store';
 import { refreshSuggestedPrompts } from './knowledge.suggest';
@@ -228,6 +229,8 @@ export async function ingestFile(
   // 計數在 DB 端聚合，不搬任何列回來。原本是「既有快照 + 本次新增」就地拼出，除了要先
   // 付一次全量載入的代價，併發匯入時還會短暫偏低；寫入後直接 count 既便宜又是權威值。
   const counts = await countChunksBySource(tenantId);
+  // 只提醒、不阻擋：結果進 meta 供後台標示（見 pii-headers.ts）
+  const piiHeaders = detectPiiHeaders(parsed.tables ?? []);
   const generatedAt = new Date().toISOString();
 
   const fileMeta: KnowledgeFileMeta = {
@@ -239,6 +242,7 @@ export async function ingestFile(
     format: parsed.format,
     fidelity: parsed.fidelity,
     ...(scopes ? { visibilityScopes: scopes } : {}),
+    ...(piiHeaders.length ? { piiHeaders } : {}),
   };
   // files 走 delta 操作（而非整包覆蓋的 setMeta）：watcher CLI 與 server 是兩個 process，
   // 各自的記憶體快照只在啟動時同步一次，整包覆蓋會把另一個 process 期間新增的檔案蓋掉

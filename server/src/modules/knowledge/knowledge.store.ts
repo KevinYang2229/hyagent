@@ -58,6 +58,11 @@ export interface KnowledgeFileMeta {
   fidelity?: 'structured' | 'text';
   /** 可見性標籤（kb:<labelId>）真相來源；未設＝未標記，fail-closed 下不可見 */
   visibilityScopes?: string[];
+  /**
+   * 表格中疑似個資的表頭（見 pii-headers.ts），只用於後台提醒；沒有命中時不帶此欄。
+   * 知識庫沒有欄位層保護，這類檔案應標嚴格的標籤，或改走 db-intelligence。
+   */
+  piiHeaders?: string[];
 }
 
 /** 由 prompt-slots.ts 定義的型別，此處 re-export 供既有呼叫端沿用 */

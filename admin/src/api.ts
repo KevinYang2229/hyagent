@@ -308,6 +308,8 @@ export interface KnowledgeFileMeta {
   ingestedAt: string;
   /** 可見性標籤（kb:<labelId>）；未設＝未標記，fail-closed 下不可見 */
   visibilityScopes?: string[];
+  /** 表格中疑似個資的表頭（僅提醒）；沒有命中時不帶此欄 */
+  piiHeaders?: string[];
 }
 /** 知識庫可見性標籤（id + 顯示名稱） */
 export interface KnowledgeLabel {

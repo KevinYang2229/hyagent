@@ -125,6 +125,12 @@ export default function FilesCard({ tenantId, files, labels, focusFileId, onFocu
                 <div className="row-main">
                   <div className="row-title">{f.name}</div>
                   <div className="row-sub">{f.chunks} 個段落 · {new Date(f.ingestedAt).toLocaleString("zh-TW")}</div>
+                  {!!f.piiHeaders?.length && <div className="kb-label-chips">
+                    <span className="kb-label-chip kb-label-chip--warn"
+                      title="知識庫只有檔案層權限，整張表會對有權限的人全部可見。請標上僅限相關人員的標籤，或改用「資料庫查詢」（可逐欄分級與遮罩）。">
+                      疑似含個資欄位：{f.piiHeaders.join("、")}
+                    </span>
+                  </div>}
                 </div>
               </div>
               <div className="kb-file-labels">
