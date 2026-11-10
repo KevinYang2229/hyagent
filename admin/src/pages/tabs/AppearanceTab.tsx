@@ -45,10 +45,13 @@ export default function AppearanceTab({
   tenant,
   onSaved,
   onError,
+  readonly = false,
 }: {
   tenant: Tenant;
   onSaved: () => void;
   onError: (e: unknown) => void;
+  /** 唯讀：表單停用，預覽與示範網站連結仍可用 */
+  readonly?: boolean;
 }) {
   const [form, setForm] = useState<TenantAppearance>(tenant.appearance ?? {});
   const [busy, setBusy] = useState(false);
@@ -117,6 +120,7 @@ export default function AppearanceTab({
           </div>
         </div>
         <div className="card-body">
+          <fieldset disabled={readonly} className="tab-readonly">
           <div className="form-grid">
             <div className="field">
               <span className="field-label">主色</span>
@@ -285,6 +289,7 @@ export default function AppearanceTab({
               {busy ? "儲存中…" : "儲存外觀"}
             </button>
           </div>
+          </fieldset>
         </div>
       </div>
 

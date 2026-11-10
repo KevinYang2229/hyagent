@@ -7,8 +7,8 @@ import { verifyAccessToken } from '@/utils/jwt';
 
 // Use small quotas, retaining the actual IP limiter and production route wiring.
 jest.mock('@/middlewares/auth-rate-limit', () => {
-  const { makeAuthRateLimit } = jest.requireActual('@/middlewares/auth-rate-limit');
-  return { makeAuthRateLimit, loginRateLimit: makeAuthRateLimit(2), adminLoginRateLimit: makeAuthRateLimit(2), ssoRateLimit: makeAuthRateLimit(2), refreshRateLimit: makeAuthRateLimit(2), guestRateLimit: makeAuthRateLimit(2) };
+  const { makeAuthRateLimit, adminChangePasswordRateLimit } = jest.requireActual('@/middlewares/auth-rate-limit');
+  return { makeAuthRateLimit, adminChangePasswordRateLimit, loginRateLimit: makeAuthRateLimit(2), adminLoginRateLimit: makeAuthRateLimit(2), ssoRateLimit: makeAuthRateLimit(2), refreshRateLimit: makeAuthRateLimit(2), guestRateLimit: makeAuthRateLimit(2) };
 });
 
 it('login, admin, SSO, refresh and guest routes limit requests even with changing identities', async () => {

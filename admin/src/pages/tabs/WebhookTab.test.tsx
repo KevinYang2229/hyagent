@@ -27,3 +27,16 @@ it('刪除事件通知端點前先跳出確認彈窗：取消不刪、確認才�
   fireEvent.click(dialogDelete);
   await waitFor(() => expect(api.deleteWebhook).toHaveBeenCalledWith('t', 'w1'));
 });
+
+it('新增端點後顯示一次完整 secret 並可複製（列表只回遮罩值）', async () => {
+  const full = 'whsec_0123456789abcdef0123456789abcdef0123456789abcdef';
+  vi.mocked(api.createWebhook).mockResolvedValue({ id: 'w2', tenantId: 't', url: 'https://new.example.com', secret: full, createdAt: '' });
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  Object.assign(navigator, { clipboard: { writeText } });
+  render(<ConfirmProvider><WebhookTab tenantId="t" onError={vi.fn()} /></ConfirmProvider>);
+  fireEvent.change(screen.getByPlaceholderText('https://接收端/hook'), { target: { value: 'https://new.example.com' } });
+  fireEvent.click(screen.getByRole('button', { name: '新增' }));
+  expect(await screen.findByText(full)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '複製' }));
+  expect(writeText).toHaveBeenCalledWith(full);
+});

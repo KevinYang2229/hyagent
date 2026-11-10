@@ -35,9 +35,15 @@ const KB_SUBS: { key: KbSub; label: string }[] = [
 export default function KnowledgeTab({
   tenantId,
   onError,
+  readonly = false,
+  allowRenderJavaScript = true,
 }: {
   tenantId: string;
   onError: (e: unknown) => void;
+  /** 唯讀：子頁切換、檔案搜尋、存取紀錄照常；寫入動作一律停用 */
+  readonly?: boolean;
+  /** 是否可開啟網站來源的瀏覽器渲染（只有超級管理者） */
+  allowRenderJavaScript?: boolean;
 }) {
   const [src, setSrc] = useState<KnowledgeSource | null>(null);
   // 最後一次載入／儲存的網站設定，用來判斷「儲存網站設定」是否還有未儲存的修改
@@ -175,6 +181,8 @@ export default function KnowledgeTab({
               onReloadAcl={loadAcl}
               onIndexCleared={() => setIndexEpoch((n) => n + 1)}
               onError={onError}
+              readonly={readonly}
+              allowRenderJavaScript={allowRenderJavaScript}
             />
           </div>
           <div className="kb-col">
@@ -186,6 +194,7 @@ export default function KnowledgeTab({
               onFocusHandled={() => setFocusFileId(null)}
               onReload={reloadAll}
               onError={onError}
+              readonly={readonly}
             />
             <IndexStatusCard meta={meta} job={job} />
           </div>
@@ -203,6 +212,7 @@ export default function KnowledgeTab({
             onReload={reloadAll}
             onReloadAcl={loadAcl}
             onError={onError}
+            readonly={readonly}
           />
         )}
       </div>
@@ -213,11 +223,12 @@ export default function KnowledgeTab({
           meta={meta}
           onMetaChange={(update) => setMeta((m) => (m ? update(m) : m))}
           onError={onError}
+          readonly={readonly}
         />
       </div>
 
       <div hidden={sub !== "test"}>
-        <TestPanel tenantId={tenantId} labels={labels} indexEpoch={indexEpoch} onError={onError} />
+        <TestPanel tenantId={tenantId} labels={labels} indexEpoch={indexEpoch} onError={onError} readonly={readonly} />
       </div>
     </div>
   );

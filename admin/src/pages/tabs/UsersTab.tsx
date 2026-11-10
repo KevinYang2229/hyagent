@@ -71,7 +71,12 @@ interface Draft { name: string; dept: DeptState; email: string }
 /** 目錄每頁筆數：OA 同步後可能上千人，整份平鋪會無法使用 */
 const PAGE_SIZE = 20;
 
-export default function UsersTab({ tenantId, onError }: { tenantId: string; onError: (error: unknown) => void }) {
+export default function UsersTab({ tenantId, onError, readonly = false }: {
+  tenantId: string;
+  onError: (error: unknown) => void;
+  /** 唯讀：搜尋、篩選、分頁照常；不能新增、編輯、刪除 */
+  readonly?: boolean;
+}) {
   const [users, setUsers] = useState<DirectoryUser[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -241,8 +246,8 @@ export default function UsersTab({ tenantId, onError }: { tenantId: string; onEr
             ) : <>
               <div className="row-main"><strong>{user.name}</strong><span className="badge" style={{ marginLeft: 8 }}>{originLabel(user)}</span><div className="row-sub">帳號：{user.id} · 部門：{user.department === UNSPECIFIED ? '未指定' : user.department}{user.email ? ` · ${user.email}` : ''}</div></div>
               <div className="toolbar" style={{ display: 'flex', gap: 8 }}>
-                {!isLocked(user, switches) && <button type="button" className="btn btn-ghost btn-sm" aria-label={`編輯 ${user.name}`} onClick={() => startEdit(user)} disabled={busy}>編輯</button>}
-                <button type="button" className="btn btn-danger btn-sm" aria-label={`刪除 ${user.name}`} onClick={() => setPendingDelete(user)} disabled={busy}>刪除</button>
+                {!readonly && !isLocked(user, switches) && <button type="button" className="btn btn-ghost btn-sm" aria-label={`編輯 ${user.name}`} onClick={() => startEdit(user)} disabled={busy}>編輯</button>}
+                <button type="button" className="btn btn-danger btn-sm" aria-label={`刪除 ${user.name}`} onClick={() => setPendingDelete(user)} disabled={readonly || busy}>刪除</button>
               </div>
             </>}
           </li>)}</ul>}
@@ -255,8 +260,8 @@ export default function UsersTab({ tenantId, onError }: { tenantId: string; onEr
             </div>
           </nav>
         )}
-        <DepartmentsSection tenantId={tenantId} departments={deptSummaries} directorySyncEnabled={switches?.directorySyncEnabled ?? false} ssoAutoProvision={switches?.ssoAutoProvision ?? false} onChanged={refreshAfterDepartmentChange} onError={onError} />
-        <form onSubmit={(event) => void add(event)} className="directory-form settings-section">
+        <DepartmentsSection tenantId={tenantId} departments={deptSummaries} directorySyncEnabled={switches?.directorySyncEnabled ?? false} ssoAutoProvision={switches?.ssoAutoProvision ?? false} onChanged={refreshAfterDepartmentChange} onError={onError} readonly={readonly} />
+        {!readonly && <form onSubmit={(event) => void add(event)} className="directory-form settings-section">
           <h3>新增使用者</h3>
           <div className="form-grid">
           <label className="field"><span className="field-label">登入帳號</span><input className="input" value={id} onChange={(e) => setId(e.target.value)} required maxLength={200} disabled={busy} autoComplete="off" placeholder="例如 hyweb" /></label>
@@ -265,7 +270,7 @@ export default function UsersTab({ tenantId, onError }: { tenantId: string; onEr
           <label className="field"><span className="field-label">Email（選填）</span><input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} disabled={busy} /></label>
           </div>
           <div className="form-actions"><button className="btn btn-primary" disabled={busy || !id.trim() || !name.trim() || deptIncomplete(dept)}>{busy ? '新增中…' : '新增使用者'}</button></div>
-        </form>
+        </form>}
       </>}
     </div>
 

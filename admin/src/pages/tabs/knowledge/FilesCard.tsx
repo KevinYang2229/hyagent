@@ -11,7 +11,7 @@ const pageSize = 5;
  * 「來源與檔案」子頁的已匯入檔案清單：搜尋、依標記狀態篩選、分頁、編輯可見性標籤、刪除。
  * focusFileId：其他子頁（可見範圍與標籤）要求開啟某份檔案的標籤編輯時由外層帶入，處理完呼叫 onFocusHandled。
  */
-export default function FilesCard({ tenantId, files, labels, focusFileId, onFocusHandled, onReload, onError }: {
+export default function FilesCard({ tenantId, files, labels, focusFileId, onFocusHandled, onReload, onError, readonly = false }: {
   tenantId: string;
   files: KnowledgeFileMeta[];
   labels: KnowledgeLabel[];
@@ -20,6 +20,8 @@ export default function FilesCard({ tenantId, files, labels, focusFileId, onFocu
   /** 檔案或可見性異動後重新載入索引與 ACL 盤點 */
   onReload: () => Promise<void>;
   onError: (e: unknown) => void;
+  /** 唯讀：搜尋、篩選、分頁照常，不能編輯標籤或刪除檔案 */
+  readonly?: boolean;
 }) {
   const toast = useToast();
   const confirm = useConfirm();
@@ -149,15 +151,15 @@ export default function FilesCard({ tenantId, files, labels, focusFileId, onFocu
                   ))}</div>
                 </details>}
               </div>
-              <div className="kb-file-actions">
+              {!readonly && <div className="kb-file-actions">
                 <button type="button" className="btn btn-sm" disabled={savingVisibility}
                   onClick={() => editingFileId === f.fileId ? setEditingFileId(null) : startEditFile(f)}>
                   {editingFileId === f.fileId ? "收合編輯" : "編輯標籤"}
                 </button>
                 <button type="button" className="btn btn-danger btn-sm" disabled={savingVisibility}
                   aria-label={`刪除 ${f.name}`} onClick={() => removeFile(f)}>刪除檔案</button>
-              </div>
-              {editingFileId === f.fileId && <div className="kb-file-editor">
+              </div>}
+              {!readonly && editingFileId === f.fileId && <div className="kb-file-editor">
                 <div className="row-title">選擇可見性標籤 <span className="row-sub">已選 {editScopes.length} 個</span></div>
                 <div className="kb-label-options" role="group" aria-label="可見性標籤選項">
                   {labels.map((label) => <label key={label.id}>

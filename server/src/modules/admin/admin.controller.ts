@@ -8,6 +8,10 @@ import type { Request, Response } from 'express';
 import { DEFAULT_TENANT_ID, tenantStore } from '@/modules/tenant/tenant.store';
 import { serviceRegistry } from '@/modules/conversation/service.registry';
 import { conversationStore } from '@/modules/conversation/conversation.store';
+import type { AdminPrincipal } from '@/middlewares/require-admin';
+import { redactKeyList, redactKeyOperators } from './key-operator-view';
+import { filterTenantViewForTenantAdmin, type TenantView } from './tenant-view';
+import { adminAccountStore } from '@/modules/admin-account/admin-account.store';
 import { webhookStore } from '@/modules/webhook/webhook.store';
 import { feedbackStore } from '@/modules/feedback/feedback.store';
 import { mcpStore } from '@/modules/mcp/mcp.store';
@@ -21,6 +25,7 @@ import { contentDispositionHeader } from '@/modules/report/report.http';
 import { submissionStore } from '@/modules/workflow/submission.store';
 import { formStore } from '@/modules/form/form.store';
 import { AppError } from '@/utils/app-error';
+import { assertPublicUrl } from '@/lib/public-network';
 import { toErrorResponse } from '@/lib/assertion';
 import { authSessionStore } from '@/lib/auth-session.store';
 import { activeKeys, resolveAssertionSettings } from '@/modules/tenant/tenant-keys';
@@ -89,13 +94,27 @@ function auditPage(tenantId: string, query: unknown) {
   return { items: page.items, nextCursor: page.nextCursor === null ? null : String(page.nextCursor) };
 }
 
+/**
+ * Webhook secret 的遮罩：最多只露出末 4 碼。
+ * 不用 maskKey（前 7＋末 4）：自訂 secret 最短 8 碼，那樣等於整串外洩。
+ * 系統產生的 whsec_ 夠長，保留前綴方便辨識；其餘一律 ••••＋末 4 碼。
+ */
+export function maskWebhookSecret(secret: string): string {
+  const tail = secret.slice(-4);
+  if (secret.startsWith('whsec_') && secret.length >= 20) return `whsec_…${tail}`;
+  return `••••${tail}`;
+}
+
 function ensureTenant(id: string) {
   const tenant = tenantStore.getTenant(id);
   if (!tenant) throw AppError.notFound('租戶不存在');
   return tenant;
 }
 
-function publicTenant(tenant: NonNullable<ReturnType<typeof tenantStore.getTenant>>) {
+function publicTenant(
+  tenant: NonNullable<ReturnType<typeof tenantStore.getTenant>>,
+  locals?: Response['locals'],
+): TenantView | Partial<TenantView> {
   const {
     userDirectory: _userDirectory,
     llmConfig: _llmConfig,
@@ -103,13 +122,19 @@ function publicTenant(tenant: NonNullable<ReturnType<typeof tenantStore.getTenan
     directorySyncKeys: _directorySyncKeys,
     ...safe
   } = tenant;
-  // publicKeys 原樣帶出：它們是公鑰，不需遮罩。改造前這裡遮的 ssoSecret 已不存在。
-  return {
+  // publicKeys 是公鑰，內容不需遮罩；但租戶管理者看不到別人操作時的來源 IP（redactKeyList）
+  const view: TenantView = {
     ...safe,
+    publicKeys: redactKeyList(tenant.publicKeys ?? [], locals),
     assertionSettings: resolveAssertionSettings(tenant),
     // 後台總覽用（規格 §11.1）：未設 active 公鑰的租戶無法登入，要能一眼看出來
     activeKeyCount: activeKeys(tenant.publicKeys).length,
   };
+  // 租戶管理者只帶出看得到的分頁所需的欄位（見 tenant-view.ts）
+  const principal = (locals as { adminPrincipal?: AdminPrincipal } | undefined)?.adminPrincipal;
+  return principal?.kind === 'tenant-admin'
+    ? filterTenantViewForTenantAdmin(view, principal.account.permissions)
+    : view;
 }
 
 /**
@@ -220,7 +245,7 @@ export const adminController = {
   },
 
   async listTenants(_req: Request, res: Response): Promise<void> {
-    res.status(200).json({ data: tenantStore.listTenants().map(publicTenant) });
+    res.status(200).json({ data: tenantStore.listTenants().map((t) => publicTenant(t)) });
   },
 
   // ───────── Assertion 公鑰管理（規格 §7.3；僅後台，不對外開放 API）─────────
@@ -229,7 +254,7 @@ export const adminController = {
     const tenant = ensureTenant(String(req.params.id));
     res.status(200).json({
       data: {
-        keys: tenantStore.listPublicKeys(tenant.id),
+        keys: redactKeyList(tenantStore.listPublicKeys(tenant.id), res.locals),
         settings: resolveAssertionSettings(tenant),
         clockOffset: clockOffsetStats(tenant.id, resolveAssertionSettings(tenant).clockSkewSeconds) ?? null,
       },
@@ -243,7 +268,9 @@ export const adminController = {
       const result = tenantStore.addPublicKey(tenant.id, body, keyOperator(req, res))!;
       await tenantStore.persistCritical();
       // 冪等：同一把公鑰重複上傳回 200 + created:false，而不是再建一筆（§7.3）
-      res.status(result.created ? 201 : 200).json({ data: result });
+      res.status(result.created ? 201 : 200).json({
+        data: { ...result, key: redactKeyOperators(result.key, res.locals) },
+      });
     });
   },
 
@@ -265,7 +292,7 @@ export const adminController = {
         { tenantId: tenant.id, kid, reason, operator, revokedSessions },
         'tenant public key revoked',
       );
-      res.status(200).json({ data: { key, revokedSessions } });
+      res.status(200).json({ data: { key: redactKeyOperators(key, res.locals), revokedSessions } });
     });
   },
 
@@ -334,7 +361,7 @@ export const adminController = {
     const patch = req.body as PatchTenantInput;
     const updated = tenantStore.updateTenant(String(req.params.id), patch);
     await tenantStore.persistCritical();
-    res.status(200).json({ data: updated ? publicTenant(updated) : undefined });
+    res.status(200).json({ data: updated ? publicTenant(updated, res.locals) : undefined });
   },
 
   async deleteTenant(req: Request, res: Response): Promise<void> {
@@ -355,6 +382,7 @@ export const adminController = {
     mcpStore.purgeTenant(id);
     feedbackStore.purgeTenant(id);
     purgeTenantAccessLogs(id);
+    adminAccountStore.removeByTenant(id);
     res.status(200).json({ data: { id } });
   },
 
@@ -384,13 +412,20 @@ export const adminController = {
   async createWebhook(req: Request, res: Response): Promise<void> {
     const tenant = ensureTenant(String(req.params.id));
     const { url, secret, events } = req.body as CreateWebhookInput;
-    const endpoint = webhookStore.register({ tenantId: tenant.id, url, secret, events });
+    // SSRF 防護：租戶管理者只能登記公開網段的網址，並標記投遞時同樣限制（超級管理者不變）
+    const principal = res.locals.adminPrincipal as AdminPrincipal | undefined;
+    const restrictNetwork = principal?.kind === 'tenant-admin';
+    if (restrictNetwork) await assertPublicUrl(url);
+    const endpoint = webhookStore.register({ tenantId: tenant.id, url, secret, events, restrictNetwork });
     res.status(201).json({ data: endpoint });
   },
 
   async listWebhooks(req: Request, res: Response): Promise<void> {
     const tenant = ensureTenant(String(req.params.id));
-    res.status(200).json({ data: webhookStore.listByTenant(tenant.id) });
+    // 列表一律遮罩 secret（含超級管理者）；完整值只在建立當下回傳一次
+    res.status(200).json({
+      data: webhookStore.listByTenant(tenant.id).map((w) => ({ ...w, secret: maskWebhookSecret(w.secret) })),
+    });
   },
 
   async deleteWebhook(req: Request, res: Response): Promise<void> {
@@ -405,7 +440,7 @@ export const adminController = {
     const { disabled } = req.body as ToggleWebhookInput;
     const updated = webhookStore.setDisabled(tenant.id, String(req.params.webhookId), disabled);
     if (!updated) throw AppError.notFound('Webhook 不存在');
-    res.status(200).json({ data: updated });
+    res.status(200).json({ data: { ...updated, secret: maskWebhookSecret(updated.secret) } });
   },
 
   async getUsage(req: Request, res: Response): Promise<void> {
@@ -421,13 +456,29 @@ export const adminController = {
 
   async putLlmConfig(req: Request, res: Response): Promise<void> {
     const tenant = ensureTenant(String(req.params.id));
-    const view = await llmConfigService.update(tenant.id, req.body as PutLLMConfigInput, 'admin');
+    // 稽核由 service 自行記錄；帶上實際操作者（租戶管理者為 tenant-admin:<accountId>）
+    const actor = (res.locals.adminActor as AdminActor | undefined) ?? 'admin';
+    const view = await llmConfigService.update(tenant.id, req.body as PutLLMConfigInput, actor);
     res.status(200).json({ data: view });
+  },
+
+  async getTenant(req: Request, res: Response): Promise<void> {
+    const tenant = ensureTenant(String(req.params.id));
+    res.status(200).json({ data: publicTenant(tenant, res.locals) });
   },
 
   async getAudit(req: Request, res: Response): Promise<void> {
     const tenant = ensureTenant(String(req.params.id));
-    res.status(200).json({ data: auditPage(tenant.id, req.query) });
+    const page = auditPage(tenant.id, req.query);
+    const principal = (res.locals as { adminPrincipal?: AdminPrincipal } | undefined)?.adminPrincipal;
+    if (principal?.kind === 'tenant-admin') {
+      // 租戶管理者看不到別人（含超級管理者）的來源 IP；自己的保留
+      const self = `tenant-admin:${principal.account.id}`;
+      page.items = page.items.map((e) =>
+        e.userId === self ? e : { ...e, summary: e.summary.replace(/｜來源 [^｜]*/g, '') },
+      );
+    }
+    res.status(200).json({ data: page });
   },
 
   async getPlatformAudit(req: Request, res: Response): Promise<void> {
@@ -455,12 +506,15 @@ export const adminController = {
     // 跨租戶一律當作不存在：後台雖有較高權限，租戶隔離仍是硬邊界
     if (!stored || stored.tenantId !== tenant.id) throw AppError.notFound('報告不存在');
 
+    // 與 adminAuditTrail 同格式：實際操作者（租戶管理者為 tenant-admin:<accountId>），摘要前綴帳號名稱
+    const principal = res.locals.adminPrincipal as AdminPrincipal | undefined;
+    const who = principal?.kind === 'tenant-admin' ? `帳號 ${principal.account.username}｜` : '';
     auditStore.record(tenant.id, {
       toolId: 'report.download',
-      userId: req.user?.sub ?? 'admin',
+      userId: (res.locals.adminActor as AdminActor | undefined) ?? 'admin',
       at: new Date().toISOString(),
       ok: true,
-      summary: `下載 ${stored.userId} 的報告 ${stored.filename}`,
+      summary: `${who}下載 ${stored.userId} 的報告 ${stored.filename}`,
     });
 
     res.setHeader('Content-Type', renderers[format].contentType);

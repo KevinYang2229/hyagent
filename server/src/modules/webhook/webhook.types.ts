@@ -20,6 +20,11 @@ export interface WebhookEndpoint {
   createdAt: string;
   /** 停用時間；有值則不再投遞 */
   disabledAt?: string;
+  /**
+   * 由租戶管理者登記（SSRF 防護）：投遞時只連公開網段、釘住檢查過的位址、不跟隨跳轉。
+   * 舊資料與超級管理者登記的端點沒有此欄位，行為不變。見 lib/public-network.ts。
+   */
+  restrictNetwork?: boolean;
 }
 
 export interface WebhookEvent {

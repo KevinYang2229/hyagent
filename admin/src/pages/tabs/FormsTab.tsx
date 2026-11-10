@@ -12,9 +12,12 @@ const SOURCE_LABEL: Record<FormSummary['source'], string> = {
 export default function FormsTab({
   tenantId,
   onError,
+  readonly = false,
 }: {
   tenantId: string;
   onError: (e: unknown) => void;
+  /** 唯讀：可開啟設計器檢視（設計器本身也是唯讀），不能新增或刪除 */
+  readonly?: boolean;
 }) {
   const navigate = useNavigate();
   const confirm = useConfirm();
@@ -56,12 +59,14 @@ export default function FormsTab({
           <div className="card-title">表單</div>
           <div className="card-desc">拖曳設計表單，存檔後即時生效；內建表單可「以此建立」為租戶版。</div>
         </div>
-        <button
-          className="btn btn-primary btn-sm"
-          onClick={() => navigate(`/tenants/${tenantId}/forms/__new__/design`)}
-        >
-          ＋表單
-        </button>
+        {!readonly && (
+          <button
+            className="btn btn-primary btn-sm"
+            onClick={() => navigate(`/tenants/${tenantId}/forms/__new__/design`)}
+          >
+            ＋表單
+          </button>
+        )}
       </div>
 
       {created && (
@@ -92,9 +97,9 @@ export default function FormsTab({
                 className="btn btn-ghost btn-sm"
                 onClick={() => navigate(`/tenants/${tenantId}/forms/${f.formId}/design`)}
               >
-                {f.source === 'base' ? '以此建立' : '設計'}
+                {readonly ? '檢視' : f.source === 'base' ? '以此建立' : '設計'}
               </button>
-              {f.editable && (
+              {f.editable && !readonly && (
                 <button className="btn btn-danger btn-sm" onClick={() => remove(f.formId)}>
                   刪除
                 </button>

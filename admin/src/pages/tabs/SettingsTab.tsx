@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, type ApiKey, type LLMConfigPatch, type LLMConfigView, type Tenant } from '../../api';
+import { useAuth } from '../../auth';
 import { IconCopy, IconKey } from '../../components/icons';
 import { useUnsavedChanges } from '../../components/unsaved';
 import UnsavedBadge from '../../components/UnsavedBadge';
@@ -16,12 +17,18 @@ export default function SettingsTab({
   onSaved,
   onError,
   section = 'basic',
+  readonly = false,
 }: {
   tenant: Tenant;
   onSaved: () => void;
   onError: (e: unknown) => void;
   section?: 'basic' | 'ai';
+  /** 唯讀：設定欄位與產生金鑰停用，只能檢視 */
+  readonly?: boolean;
 }) {
+  const { isSuper, level } = useAuth();
+  // 私密金鑰（sk_）可呼叫 /api/tenant/llm-config，等同 AI 模型的編輯權；後端同樣把關（admin-route-policy）
+  const canCreateSecretKey = level('ai') === 'write';
   const [name, setName] = useState(tenant.name);
   const [origins, setOrigins] = useState((tenant.allowedOrigins ?? []).join('\n'));
   const [quota, setQuota] = useState(
@@ -40,6 +47,8 @@ export default function SettingsTab({
   const [llmBusy, setLlmBusy] = useState(false);
 
   useEffect(() => {
+    // llm-config 屬於「AI 模型」分頁權限；基本設定頁用不到，也不該為它多打一個會被 403 的請求
+    if (section !== 'ai') return;
     let cancelled = false;
     void api
       .getLlmConfig(tenant.id)
@@ -53,13 +62,13 @@ export default function SettingsTab({
     return () => {
       cancelled = true;
     };
-  }, [tenant.id, onError]);
+  }, [tenant.id, onError, section]);
 
   // 未儲存判斷：與目前生效的值比對（儲存後外層重新載入 tenant，比對結果自然歸零）
   const originList = (text: string) => text.split('\n').map((x) => x.trim()).filter(Boolean);
   const tenantDirty = name.trim() !== tenant.name
     || originList(origins).join('\n') !== (tenant.allowedOrigins ?? []).join('\n')
-    || (quota.trim() === '' ? 0 : Math.max(0, Number(quota) || 0)) !== (tenant.quotaMonthlyLlmTokens ?? 0)
+    || (isSuper && (quota.trim() === '' ? 0 : Math.max(0, Number(quota) || 0)) !== (tenant.quotaMonthlyLlmTokens ?? 0))
     || guestAccess !== (tenant.guestAccess === true);
   const llmDirty = !!llmCfg && (
     llmProvider !== (llmCfg.provider ?? '') || llmModel.trim() !== (llmCfg.model ?? '')
@@ -109,8 +118,11 @@ export default function SettingsTab({
     try {
       const allowedOrigins = origins.split('\n').map((s) => s.trim()).filter(Boolean);
       const patch: Parameters<typeof api.updateTenant>[1] = { name: name.trim(), allowedOrigins, guestAccess };
-      // 空字串或 0 = 不限（送 0 以清除既有配額）
-      patch.quotaMonthlyLlmTokens = quota.trim() === '' ? 0 : Math.max(0, Number(quota) || 0);
+      // 配額只有超級管理者能改：租戶管理者的請求帶這個欄位，整個會被 403
+      if (isSuper) {
+        // 空字串或 0 = 不限（送 0 以清除既有配額）
+        patch.quotaMonthlyLlmTokens = quota.trim() === '' ? 0 : Math.max(0, Number(quota) || 0);
+      }
       await api.updateTenant(tenant.id, patch);
       onSaved();
     } catch (e) {
@@ -140,6 +152,7 @@ export default function SettingsTab({
           </div>
         </div>
         <div className="card-body">
+          <fieldset disabled={readonly} className="tab-readonly">
           <div className="field">
             <label className="field-label">名稱</label>
             <input className="input" value={name} onChange={(e) => setName(e.target.value)} />
@@ -160,7 +173,7 @@ export default function SettingsTab({
           <div className="field">
             <label className="field-label">每月 AI 用量上限（Token）</label>
             <span className="field-hint">
-              Token 是 AI 的計費單位（一個中文字約 1–2 個）。對話與知識庫檢索合計；留空或 0＝不限。超過上限後，當月的 AI 對話會暫停到下個月。
+              Token 是 AI 的計費單位（一個中文字約 1–2 個）。對話與知識庫檢索合計；留空或 0＝不限。超過上限後，當月的 AI 對話會暫停到下個月。{!isSuper && ' 此欄位只有平台管理者能修改。'}
             </span>
             <input
               className="input"
@@ -168,6 +181,7 @@ export default function SettingsTab({
               min={0}
               value={quota}
               onChange={(e) => setQuota(e.target.value)}
+              readOnly={!isSuper}
               placeholder="例：1000000（100 萬 tokens／月）"
             />
           </div>
@@ -186,6 +200,7 @@ export default function SettingsTab({
               {busy ? '儲存中…' : '儲存設定'}
             </button>
           </div>
+          </fieldset>
         </div>
       </div>
 
@@ -196,11 +211,16 @@ export default function SettingsTab({
             <div className="card-desc">公開金鑰（pk_）放在網站嵌入碼中，只能用於前台聊天視窗；私密金鑰（sk_）供伺服器呼叫 API，不可外流。金鑰只在產生當下顯示完整字串，請立即保存。</div>
           </div>
           <div className="toolbar">
-            <button className="btn btn-ghost btn-sm" onClick={() => genKey('publishable')}>
+            <button className="btn btn-ghost btn-sm" onClick={() => genKey('publishable')} disabled={readonly}>
               <IconKey />
               產生公開金鑰（pk_）
             </button>
-            <button className="btn btn-ghost btn-sm" onClick={() => genKey('secret')}>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => genKey('secret')}
+              disabled={readonly || !canCreateSecretKey}
+              title={!canCreateSecretKey ? '私密金鑰可變更 AI 模型設定，需要「AI 模型」的編輯權限' : undefined}
+            >
               <IconKey />
               產生私密金鑰（sk_）
             </button>
@@ -244,6 +264,7 @@ export default function SettingsTab({
           </div>
         </div>
         <div className="card-body">
+          <fieldset disabled={readonly} className="tab-readonly">
           <div className="form-grid">
             <div className="field">
               <label className="field-label">供應商</label>
@@ -329,6 +350,7 @@ export default function SettingsTab({
               {llmBusy ? '儲存中…' : '儲存設定'}
             </button>
           </div>
+          </fieldset>
         </div>
       </div>
 

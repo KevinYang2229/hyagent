@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { api, type AuditEntry, type AuditPage } from '../../api';
+import { useAuth } from '../../auth';
 
 // 固定表頭：border-collapse 下的 border 會跟著內容捲走，底線改用 inset 陰影畫
 const th: CSSProperties = { textAlign: 'left', padding: '8px 10px', boxShadow: 'inset 0 -1px 0 var(--border-color)', fontWeight: 500, whiteSpace: 'nowrap', position: 'sticky', top: 0, zIndex: 1, background: 'var(--card-bg)' };
@@ -20,6 +21,7 @@ export default function AuditTab({
   /** 捲動區高度上限；獨立頁面可撐到視窗高度 */
   scrollMaxHeight?: number | string;
 }) {
+  const { isSuper } = useAuth();
   const [rows, setRows] = useState<AuditEntry[] | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -30,8 +32,8 @@ export default function AuditTab({
   const loadingRef = useRef(false);
 
   const fetchPage = useCallback(
-    (before?: string): Promise<AuditPage> => (tenantId ? api.getTenantAudit(tenantId, before) : api.getPlatformAudit(before)),
-    [tenantId],
+    (before?: string): Promise<AuditPage> => (tenantId ? api.getTenantAudit(tenantId, before) : isSuper ? api.getPlatformAudit(before) : Promise.resolve({ items: [], nextCursor: null })),
+    [tenantId, isSuper],
   );
 
   useEffect(() => {

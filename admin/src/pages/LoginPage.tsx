@@ -5,6 +5,7 @@ import { useAuth } from "../auth";
 export default function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -15,8 +16,8 @@ export default function LoginPage() {
     setErr(null);
     setBusy(true);
     try {
-      await login(password);
-      navigate("/", { replace: true });
+      const me = await login(username.trim() || "admin", password);
+      navigate(me.kind === "tenant-admin" ? `/tenants/${encodeURIComponent(me.tenantId)}` : "/", { replace: true });
     } catch (e2) {
       setErr(e2 instanceof Error ? e2.message : "登入失敗");
     } finally {
@@ -49,8 +50,23 @@ export default function LoginPage() {
 
         <form onSubmit={submit}>
           <div className="field">
+            <label className="field-label" htmlFor="un">
+              帳號
+            </label>
+            <input
+              id="un"
+              className="input"
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="平台管理者可留空"
+              autoComplete="username"
+              autoFocus
+            />
+          </div>
+          <div className="field">
             <label className="field-label" htmlFor="pw">
-              管理密碼
+              密碼
             </label>
             <input
               id="pw"
@@ -58,8 +74,8 @@ export default function LoginPage() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="請輸入管理密碼"
-              autoFocus
+              placeholder="請輸入密碼"
+              autoComplete="current-password"
             />
           </div>
           {err && <p className="login-err">{err}</p>}
@@ -68,7 +84,7 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <div className="login-foot">受 ADMIN_PASSWORD 保護 · 僅限管理員</div>
+        <div className="login-foot">僅限授權的管理人員</div>
       </div>
     </div>
   );

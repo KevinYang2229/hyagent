@@ -87,11 +87,13 @@ function DraggableCard({
   selected,
   onSelect,
   onDelete,
+  readonly = false,
 }: {
   field: DraftField;
   selected: boolean;
   onSelect: () => void;
   onDelete: () => void;
+  readonly?: boolean;
 }) {
   const drag = useDraggable({ id: field.key });
   return (
@@ -128,6 +130,7 @@ function DraggableCard({
           onDelete();
         }}
         title="刪除欄位"
+        disabled={readonly}
       >
         <IconClose width={19} height={19} />
       </button>
@@ -163,7 +166,9 @@ function RowGap({ id, empty }: { id: string; empty?: boolean }) {
 export default function FormDesignerPage() {
   const { id = '', formId = '' } = useParams();
   const isNew = formId === '__new__';
-  const { logout } = useAuth();
+  const { logout, level } = useAuth();
+  // 表單分頁只有唯讀權限：可看設計，不能改、不能存
+  const readonly = level('forms') === 'read';
   const navigate = useNavigate();
 
   const [draft, setDraft] = useState<DraftForm>(() => emptyDraft());
@@ -260,6 +265,7 @@ export default function FormDesignerPage() {
   }
 
   function onDragEnd(e: DragEndEvent) {
+    if (readonly) return; // 唯讀：不允許拖放／點擊新增欄位
     const activeId = String(e.active.id);
     const overId = e.over ? String(e.over.id) : null;
     const isNewField = activeId.startsWith('new-');
@@ -310,6 +316,7 @@ export default function FormDesignerPage() {
   }
 
   async function save() {
+    if (readonly) return;
     setErr(null);
     setIssues([]);
     if (!draft.formId.trim()) {
@@ -405,7 +412,7 @@ export default function FormDesignerPage() {
               e.target.value = ''; // 允許再次匯入同一檔
             }}
           />
-          <button className="btn btn-ghost btn-sm" onClick={() => fileInputRef.current?.click()}>
+          <button className="btn btn-ghost btn-sm" onClick={() => fileInputRef.current?.click()} disabled={readonly}>
             匯入 schema
           </button>
           {!isNew && (
@@ -413,12 +420,14 @@ export default function FormDesignerPage() {
               匯出 schema
             </button>
           )}
-          <button className="btn btn-primary btn-sm" onClick={save} disabled={busy}>
+          <button className="btn btn-primary btn-sm" onClick={save} disabled={busy || readonly}>
             {busy ? '儲存中…' : '儲存'}
           </button>
         </div>
       }
     >
+      {readonly && <div className="banner">此分頁為唯讀，如需修改請聯絡平台管理者</div>}
+      {/* 唯讀時只停用編輯用的控制項；步驟切換、欄位屬性檢視、預覽與匯出仍可使用 */}
       {err && <div className="banner banner-err">{err}</div>}
       {issues.length > 0 && (
         <div className="banner banner-err">
@@ -433,6 +442,7 @@ export default function FormDesignerPage() {
       )}
 
       {/* ① 基本資料（滿版） */}
+      <fieldset disabled={readonly} className="tab-readonly">
       <div className="card form-meta">
         <h4>① 基本資料</h4>
         <p className="block-desc">表單的識別與路由：ID、名稱，以及餵給 AI 判斷意圖用的描述與關鍵字。</p>
@@ -482,9 +492,11 @@ export default function FormDesignerPage() {
           </label>
         </div>
       </div>
+      </fieldset>
 
       <DndContext sensors={sensors} collisionDetection={pointerWithin} onDragEnd={onDragEnd}>
         {/* ② 元件面板：滿版橫向工具列 */}
+        <fieldset disabled={readonly} className="tab-readonly">
         <aside className="card palette">
           <div className="palette-bar-head">
             <h4>② 元件面板</h4>
@@ -502,6 +514,7 @@ export default function FormDesignerPage() {
             ))}
           </div>
         </aside>
+        </fieldset>
 
         <div className="designer-grid">
           {/* 畫布（依步驟分頁） */}
@@ -519,11 +532,12 @@ export default function FormDesignerPage() {
                   {s.title || (i === 0 ? draft.title || '表單內容' : `步驟 ${i + 1}`)}
                 </button>
               ))}
-              <button className="canvas-step-add" onClick={addStep} title="新增步驟">
+              <button className="canvas-step-add" onClick={addStep} title="新增步驟" disabled={readonly}>
                 ＋ 新增步驟
               </button>
             </div>
 
+            <fieldset disabled={readonly} className="tab-readonly">
             <div className="canvas-step-head">
               <input
                 className="input"
@@ -542,6 +556,7 @@ export default function FormDesignerPage() {
                 </button>
               )}
             </div>
+            </fieldset>
 
             <CanvasStep
               fields={stepFields}
@@ -549,6 +564,7 @@ export default function FormDesignerPage() {
               onSelect={setSelectedKey}
               onDelete={deleteField}
               onClearSelect={() => setSelectedKey(null)}
+              readonly={readonly}
             />
             <p className="canvas-tip">提示：欄位預設佔滿整行；把一個欄位拖到另一個欄位上＝並成兩欄；拖到列與列之間＝獨立成一行。</p>
           </div>
@@ -582,6 +598,7 @@ export default function FormDesignerPage() {
               </button>
             </div>
             {selected && (
+              <fieldset disabled={readonly} className="tab-readonly">
               <Inspector
                 field={selected}
                 guidance={draft.fieldGuidance[selected.key] ?? ''}
@@ -595,6 +612,7 @@ export default function FormDesignerPage() {
                   })
                 }
               />
+              </fieldset>
             )}
           </aside>
         </div>,
@@ -602,7 +620,9 @@ export default function FormDesignerPage() {
       )}
 
       {/* 進階層：簽核 / OA / 對話 / 工時 */}
+      <fieldset disabled={readonly} className="tab-readonly">
       <AdvancedPanel draft={draft} setDraft={setDraft} />
+      </fieldset>
     </AppLayout>
   );
 }
@@ -613,12 +633,14 @@ function CanvasStep({
   onSelect,
   onDelete,
   onClearSelect,
+  readonly = false,
 }: {
   fields: DraftField[];
   selectedKey: string | null;
   onSelect: (k: string) => void;
   onDelete: (k: string) => void;
   onClearSelect: () => void;
+  readonly?: boolean;
 }) {
   // 點到非欄位卡片的空白處 → 取消選取
   const handleBlank = (e: ReactMouseEvent<HTMLDivElement>) => {
@@ -645,6 +667,7 @@ function CanvasStep({
                 selected={f.key === selectedKey}
                 onSelect={() => onSelect(f.key)}
                 onDelete={() => onDelete(f.key)}
+                readonly={readonly}
               />
             ))}
           </div>

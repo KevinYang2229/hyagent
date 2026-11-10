@@ -82,9 +82,12 @@ function Stamp({ at, by }: { at?: string; by?: KeyOperator }) {
 export default function SsoTab({
   tenantId,
   onError,
+  readonly = false,
 }: {
   tenantId: string;
   onError: (e: unknown) => void;
+  /** 唯讀：可檢視公鑰、設定與工作階段（含篩選、分頁），不能上傳、撤銷、輪替、改設定或作廢 */
+  readonly?: boolean;
 }) {
   const [view, setView] = useState<AssertionKeysView | null>(null);
   const [pem, setPem] = useState('');
@@ -218,7 +221,7 @@ export default function SsoTab({
                       <Stamp at={k.createdAt} by={k.createdBy} />
                     </td>
                     <td style={{ whiteSpace: 'nowrap' }}>
-                      <button className="btn btn-danger" disabled={busy} onClick={() => setRevoking(k)}>
+                      <button className="btn btn-danger" disabled={readonly || busy} onClick={() => setRevoking(k)}>
                         撤銷
                       </button>
                     </td>
@@ -248,7 +251,7 @@ export default function SsoTab({
                 from={rotation.from}
                 to={rotation.to}
                 sessionExpiresIn={view.settings.sessionExpiresIn}
-                busy={busy}
+                busy={busy || readonly}
                 onRevoke={(key, reason, done) => void revoke(key, reason, done)}
                 onError={onError}
               />
@@ -257,7 +260,7 @@ export default function SsoTab({
                 直接撤銷外洩的那一把即可釋出名額。
               </p>
             </>
-          ) : (
+          ) : readonly ? null : (
             <div className="field">
               <label className="field-label">{active.length ? '輪替金鑰：上傳新公鑰' : '上傳公鑰'}</label>
               <span className="field-hint">
@@ -307,21 +310,24 @@ export default function SsoTab({
               label="時鐘容忍（秒）"
               value={view.settings.clockSkewSeconds}
               defaultValue={15}
-              disabled={busy}
+              disabled={busy || readonly}
+              readOnly={readonly}
               onSave={(v) => void saveSettings({ clockSkewSeconds: v })}
             />
             <NumberField
               label="登入憑證有效期（秒）"
               value={view.settings.assertionLifetimeSeconds}
               defaultValue={60}
-              disabled={busy}
+              disabled={busy || readonly}
+              readOnly={readonly}
               onSave={(v) => void saveSettings({ assertionLifetimeSeconds: v })}
             />
             <NumberField
               label="工作階段有效期（秒）"
               value={view.settings.sessionExpiresIn}
               defaultValue={3600}
-              disabled={busy}
+              disabled={busy || readonly}
+              readOnly={readonly}
               onSave={(v) => void saveSettings({ sessionExpiresIn: v })}
             />
           </div>
@@ -337,7 +343,7 @@ export default function SsoTab({
         </div>
       </div>
 
-      <SessionsPanel tenantId={tenantId} keys={view.keys} onError={onError} />
+      <SessionsPanel tenantId={tenantId} keys={view.keys} onError={onError} readonly={readonly} />
     </div>
   );
 }
@@ -598,12 +604,14 @@ function NumberField({
   value,
   defaultValue,
   disabled,
+  readOnly = false,
   onSave,
 }: {
   label: string;
   value: number;
   defaultValue: number;
   disabled: boolean;
+  readOnly?: boolean;
   onSave: (v: number) => void;
 }) {
   const [draft, setDraft] = useState(String(value));
@@ -623,6 +631,7 @@ function NumberField({
           type="number"
           style={{ width: 110 }}
           value={draft}
+          readOnly={readOnly}
           onChange={(e) => setDraft(e.target.value)}
         />
         <button className="btn" disabled={disabled || !changed} onClick={() => onSave(Number(draft))}>

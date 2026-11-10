@@ -9,6 +9,8 @@ import { createApp } from '@/app';
 import { auditStore } from '@/modules/audit/audit.store';
 import { reportStore } from '@/modules/report/report.store';
 import { tenantStore } from '@/modules/tenant/tenant.store';
+import { adminAccountStore } from '@/modules/admin-account/admin-account.store';
+import { signTenantAdminToken } from '@/utils/jwt';
 
 const app = createApp();
 const ADMIN_KEY = process.env.ADMIN_API_KEY as string;
@@ -120,6 +122,32 @@ describe('GET /api/admin/tenants/:id/reports/:reportId/download', () => {
     // 軌跡要看得出「下載了誰的報告」，否則稽核沒有意義
     expect(audit[0].summary).toContain('kevin');
     expect(audit[0].summary).toContain('產品分析報告');
+  });
+
+  it('租戶管理者下載：稽核記成 tenant-admin:<accountId>，摘要以「帳號 <username>｜」開頭', async () => {
+    const t = tenantStore.createTenant('rep-admin-dl-ta');
+    saveReport(t.id, 'r1', 'kevin', '產品分析報告');
+    const account = adminAccountStore.create({
+      tenantId: t.id,
+      username: 'report-reader',
+      displayName: '報告檢視',
+      passwordHash: 'x',
+      permissions: { reports: 'read' },
+    });
+    const token = signTenantAdminToken({
+      accountId: account.id,
+      tenantId: t.id,
+      credentialVersion: account.credentialVersion,
+    });
+    const res = await request(app)
+      .get(`/api/admin/tenants/${t.id}/reports/r1/download?format=md`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    const audit = auditStore.list(t.id, 10).filter((e) => e.toolId === 'report.download');
+    expect(audit).toHaveLength(1);
+    expect(audit[0].userId).toBe(`tenant-admin:${account.id}`);
+    expect(audit[0].summary.startsWith('帳號 report-reader｜')).toBe(true);
+    expect(audit[0].summary).toContain('kevin');
   });
 
   it('未帶 admin 金鑰回 401，且不留稽核', async () => {

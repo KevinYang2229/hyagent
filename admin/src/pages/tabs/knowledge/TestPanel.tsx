@@ -8,12 +8,14 @@ import { labelNameFor } from "../knowledgeAcl.util";
  * 「測試查詢」子頁：以指定身分（留空＝網站訪客）試查索引，回報實際使用的身分與可見範圍。
  * 從回饋分頁「用這題測試檢索」帶入 ?q=問題&as=提問者，預填後由管理員按下測試。
  */
-export default function TestPanel({ tenantId, labels, indexEpoch, onError }: {
+export default function TestPanel({ tenantId, labels, indexEpoch, onError, readonly = false }: {
   tenantId: string;
   labels: KnowledgeLabel[];
   /** 索引被清除時遞增：舊的查詢結果已不代表現況，要一併清掉 */
   indexEpoch: number;
   onError: (e: unknown) => void;
+  /** 唯讀：測試查詢是 POST（會呼叫 AI 檢索），唯讀帳號不能執行 */
+  readonly?: boolean;
 }) {
   const [searchParams] = useSearchParams();
   const [question, setQuestion] = useState(searchParams.get("q") ?? "");
@@ -65,7 +67,8 @@ export default function TestPanel({ tenantId, labels, indexEpoch, onError }: {
           <button
             className="btn btn-primary"
             onClick={test}
-            disabled={!question}
+            disabled={readonly || !question}
+            title={readonly ? "測試查詢需要知識庫的編輯權限" : undefined}
           >
             查詢
           </button>

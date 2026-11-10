@@ -15,6 +15,7 @@ import { reportStore } from '@/modules/report/report.store';
 import { initTenantStore } from '@/modules/tenant/tenant.store';
 import { startExpirySweeper } from '@/lib/expiry-sweeper';
 import { initUsageStore } from '@/modules/usage/usage.store';
+import { initAdminAccountStore } from '@/modules/admin-account/admin-account.store';
 import { initWebhookStore } from '@/modules/webhook/webhook.store';
 import { assertMcpSigningKeyValid } from '@/modules/mcp/mcp.identity';
 import { feedbackStore, initFeedbackStore } from '@/modules/feedback/feedback.store';
@@ -32,6 +33,7 @@ async function main(): Promise<void> {
     initFormStore(),
     initScopePolicy(),
     initWebhookStore(),
+    initAdminAccountStore(),
     initMcpStore(),
     initFeedbackStore(),
     initKnowledgeStore(),

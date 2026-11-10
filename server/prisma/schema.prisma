@@ -169,6 +169,19 @@ model WebhookRow {
   @@map("webhooks")
 }
 
+model AdminAccountRow {
+  id        String   @id
+  tenantId  String   @map("tenant_id")
+  /// username 一律小寫，全平台唯一
+  username  String   @unique
+  /// 整個 AdminAccount（含密碼雜湊，勿記錄或回傳）
+  data      Json
+  createdAt DateTime @map("created_at")
+
+  @@index([tenantId])
+  @@map("admin_accounts")
+}
+
 model McpServerRow {
   id            String   @id
   ownerTenantId String?  @map("owner_tenant_id")

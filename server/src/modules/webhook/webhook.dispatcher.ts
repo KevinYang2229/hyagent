@@ -7,6 +7,7 @@
  */
 import { createHmac, randomUUID } from 'node:crypto';
 import { logger } from '@/lib/logger';
+import { publicOnlyFetch } from '@/lib/public-network';
 import { webhookStore } from './webhook.store';
 import type { WebhookEndpoint, WebhookEvent } from './webhook.types';
 
@@ -22,7 +23,11 @@ async function deliver(endpoint: WebhookEndpoint, event: WebhookEvent, attempt: 
   const body = JSON.stringify(event);
   const timestamp = Date.now().toString();
   try {
-    const res = await fetch(endpoint.url, {
+    // 租戶管理者登記的端點：只連公開網段、每次投遞重新檢查並釘住位址、不跟隨跳轉
+    const send = endpoint.restrictNetwork
+      ? (url: string, init: RequestInit) => publicOnlyFetch(url, init, { maxRedirects: 0 })
+      : fetch;
+    const res = await send(endpoint.url, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',

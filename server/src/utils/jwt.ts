@@ -51,3 +51,32 @@ export function verifyAdminToken(token: string): JwtPayload {
     algorithms: ['HS256'], issuer: 'hyagent', audience: 'hyagent:admin',
   }) as JwtPayload;
 }
+
+/** 租戶管理者 token：獨立 audience，super 的 verifyAdminToken 不接受；credentialVersion 供停用／改密碼後使舊 token 失效。 */
+export function signTenantAdminToken(a: { accountId: string; tenantId: string; credentialVersion: number }): string {
+  return jwt.sign(
+    { sub: a.accountId, role: 'tenant-admin', tenantId: a.tenantId, credentialVersion: a.credentialVersion },
+    env.JWT_ACCESS_SECRET,
+    { expiresIn: '8h', algorithm: 'HS256', issuer: 'hyagent', audience: 'hyagent:tenant-admin' } as SignOptions,
+  );
+}
+
+export interface TenantAdminTokenPayload {
+  sub: string;
+  role: 'tenant-admin';
+  tenantId: string;
+  credentialVersion: number;
+}
+
+export function verifyTenantAdminToken(token: string): TenantAdminTokenPayload {
+  const p = jwt.verify(token, env.JWT_ACCESS_SECRET, {
+    algorithms: ['HS256'], issuer: 'hyagent', audience: 'hyagent:tenant-admin',
+  }) as Partial<TenantAdminTokenPayload>;
+  if (
+    p.role !== 'tenant-admin' || typeof p.sub !== 'string' ||
+    typeof p.tenantId !== 'string' || typeof p.credentialVersion !== 'number'
+  ) {
+    throw new Error('invalid tenant admin token');
+  }
+  return p as TenantAdminTokenPayload;
+}

@@ -33,11 +33,14 @@ export default function SessionsPanel({
   tenantId,
   keys,
   onError,
+  readonly = false,
 }: {
   tenantId: string;
   /** 供 kid 篩選；撤銷公鑰前想看影響範圍時，這個下拉是最快的路徑 */
   keys: TenantPublicKey[];
   onError: (e: unknown) => void;
+  /** 唯讀：搜尋、篩選、分頁照常，不能作廢 */
+  readonly?: boolean;
 }) {
   const [page, setPage] = useState<AuthSessionPage | null>(null);
   // draft 是輸入中的字，query 是已送出的條件——不邊打邊查，避免每個字都打一次 API
@@ -210,10 +213,10 @@ export default function SessionsPanel({
                       {s.kid.slice(0, 8)}…
                     </td>
                     <td style={{ whiteSpace: 'nowrap' }}>
-                      <button className="btn" disabled={busy} onClick={() => revokeOne(s)}>
+                      <button className="btn" disabled={readonly || busy} onClick={() => revokeOne(s)}>
                         作廢
                       </button>
-                      <button className="btn" disabled={busy} onClick={() => revokeAllOf(s)}>
+                      <button className="btn" disabled={readonly || busy} onClick={() => revokeAllOf(s)}>
                         作廢此人全部
                       </button>
                     </td>

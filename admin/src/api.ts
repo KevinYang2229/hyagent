@@ -1,4 +1,4 @@
-import type { Definition, TenantAppearance } from '@hyagent/shared';
+import type { AdminMe, AdminTabPermissions, Definition, TenantAppearance } from '@hyagent/shared';
 
 export type { Definition };
 
@@ -62,10 +62,14 @@ export interface DepartmentSummary {
   roles: number;
 }
 
+/**
+ * 租戶（GET /admin/tenants/:id）。租戶管理者只會拿到可見分頁所需的欄位（後端 tenant-view.ts），
+ * 所以除了 id、name、createdAt、activeKeyCount 以外都可能不存在。
+ */
 export interface Tenant {
   id: string;
   name: string;
-  allowedOrigins: string[];
+  allowedOrigins?: string[];
   /** 目前 active 的 Assertion 公鑰數。0 代表此租戶還無法登入（規格 §11.1 的收斂標示） */
   activeKeyCount?: number;
   /** 逐租戶設定的現行值（未設者為規格預設） */
@@ -86,6 +90,19 @@ export interface ApiKey {
   createdAt: string;
   revokedAt?: string;
 }
+/** 租戶管理者帳號（後端回傳的公開形狀，沒有密碼或雜湊） */
+export interface AdminAccount {
+  id: string;
+  tenantId: string;
+  username: string;
+  displayName: string;
+  status: 'active' | 'disabled';
+  permissions: AdminTabPermissions;
+  createdAt: string;
+  updatedAt: string;
+  lastLoginAt?: string;
+}
+
 export interface WebhookEndpoint {
   id: string;
   tenantId: string;
@@ -810,7 +827,12 @@ export const api = {
     req<{ name: string }>('PATCH', `/admin/tenants/${encodeURIComponent(id)}/departments/${encodeURIComponent(name)}`, { name: next }),
   deleteDepartment: (id: string, name: string) =>
     req<{ name: string }>('DELETE', `/admin/tenants/${encodeURIComponent(id)}/departments/${encodeURIComponent(name)}`),
-  login: (password: string) => req<{ token: string }>('POST', '/admin/auth/login', { password }),
+  login: (username: string, password: string) =>
+    req<{ token: string; me: AdminMe }>('POST', '/admin/auth/login', { username, password }),
+  getMe: () => req<AdminMe>('GET', '/admin/me'),
+  changeMyPassword: (currentPassword: string, newPassword: string) =>
+    req<{ token: string }>('PUT', '/admin/me/password', { currentPassword, newPassword }),
+  getTenant: (id: string) => req<Tenant>('GET', `/admin/tenants/${encodeURIComponent(id)}`),
 
   listTenants: () => req<Tenant[]>('GET', '/admin/tenants'),
   createTenant: (input: { name: string; allowedOrigins?: string[] }) =>
@@ -914,6 +936,19 @@ export const api = {
     req<WebhookEndpoint>('PATCH', `/admin/tenants/${id}/webhooks/${webhookId}`, { disabled }),
   deleteWebhook: (id: string, webhookId: string) =>
     req<{ id: string }>('DELETE', `/admin/tenants/${id}/webhooks/${webhookId}`),
+
+  listAdminAccounts: (id: string) => req<AdminAccount[]>('GET', `/admin/tenants/${id}/admin-accounts`),
+  createAdminAccount: (id: string, body: { username: string; displayName: string; password: string }) =>
+    req<AdminAccount>('POST', `/admin/tenants/${id}/admin-accounts`, body),
+  updateAdminAccount: (
+    id: string,
+    accountId: string,
+    patch: { displayName?: string; status?: 'active' | 'disabled'; permissions?: AdminTabPermissions },
+  ) => req<AdminAccount>('PATCH', `/admin/tenants/${id}/admin-accounts/${accountId}`, patch),
+  resetAdminAccountPassword: (id: string, accountId: string, password: string) =>
+    req<{ id: string }>('PUT', `/admin/tenants/${id}/admin-accounts/${accountId}/password`, { password }),
+  deleteAdminAccount: (id: string, accountId: string) =>
+    req<{ id: string }>('DELETE', `/admin/tenants/${id}/admin-accounts/${accountId}`),
 
   getUsage: (id: string) => req<Usage>('GET', `/admin/tenants/${id}/usage`),
   // 游標分頁（新→舊）：before 帶上一頁的 nextCursor

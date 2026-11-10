@@ -1,7 +1,8 @@
+import { adminAccountRouter } from '@/modules/admin-account/admin-account.routes';
 import { userAdminRouter } from '@/modules/user/user.admin';
 import { departmentAdminRouter } from '@/modules/user/department.admin';
 import { directorySyncAdminRouter } from '@/modules/user/directory-sync.admin';
-import { adminLoginRateLimit } from '@/middlewares/auth-rate-limit';
+import { adminChangePasswordRateLimit, adminLoginRateLimit } from '@/middlewares/auth-rate-limit';
 import { Router } from 'express';
 import { z } from 'zod';
 import type { NextFunction, Request, Response } from 'express';
@@ -9,6 +10,7 @@ import multer, { MulterError } from 'multer';
 import { env } from '@/config/env';
 import { validate } from '@/middlewares/validate';
 import { requireAdmin } from '@/middlewares/require-admin';
+import { authorizeAdmin } from '@/middlewares/authorize-admin';
 import { adminAuditTrail } from '@/modules/audit/admin-audit';
 import { asyncHandler } from '@/utils/async-handler';
 import { AppError } from '@/utils/app-error';
@@ -50,6 +52,7 @@ import { adminController } from './admin.controller';
 import { adminAuthController } from './admin.auth.controller';
 import {
   adminLoginSchema,
+  changeMyPasswordSchema,
   createKeySchema,
   addPublicKeySchema,
   createTenantSchema,
@@ -99,10 +102,18 @@ function uploadKnowledgeFile(req: Request, res: Response, next: NextFunction): v
 // 公開：後台登入（在 requireAdmin 之前註冊，故不受其保護）
 router.post('/auth/login', adminLoginRateLimit, validate({ body: adminLoginSchema }), asyncHandler(adminAuthController.login));
 
-// 以下全部管理端點都需 x-admin-key 或 admin JWT
+// 以下全部管理端點都需 x-admin-key、admin JWT 或租戶管理者 JWT
 router.use(requireAdmin);
 // 設定變更稽核：在所有管理端點之前掛上，新增端點不會漏記（見 audit/admin-audit.ts）
 router.use(adminAuditTrail);
+// 租戶管理者依分頁權限把關；排在稽核之後，被拒絕的嘗試也會留下紀錄。
+// 新增路由時須在 admin-account/admin-route-policy.ts 登記，否則租戶管理者一律 403（見 admin-route-coverage 測試）
+router.use(authorizeAdmin);
+
+// 目前登入者資訊與自助改密碼（租戶管理者；super／api-key 的 /me 回 super）
+router.get('/me', asyncHandler(adminAuthController.me));
+router.put('/me/password', adminChangePasswordRateLimit, validate({ body: changeMyPasswordSchema }), asyncHandler(adminAuthController.changeMyPassword));
+router.use('/tenants/:id/admin-accounts', adminAccountRouter);
 router.use('/tenants/:id/users', userAdminRouter);
 router.use('/tenants/:id/departments', departmentAdminRouter);
 router.use('/tenants/:id/directory-sync', directorySyncAdminRouter);
@@ -129,6 +140,12 @@ router.use('/db-intelligence/:serverId', dbiAdminRouter);
 
 router.post('/tenants', validate({ body: createTenantSchema }), asyncHandler(adminController.createTenant));
 router.get('/tenants', asyncHandler(adminController.listTenants));
+
+router.get(
+  '/tenants/:id',
+  validate({ params: tenantParamSchema }),
+  asyncHandler(adminController.getTenant),
+);
 
 router.patch(
   '/tenants/:id',
@@ -406,7 +423,7 @@ router.get(
   validate({ params: tenantParamSchema }),
   asyncHandler(knowledgeAdminController.aclReport),
 );
-// 敏感文件存取紀錄（平台管理者）
+// 敏感文件存取紀錄：權限跟著「知識庫」分頁（讀取需唯讀以上、調整保存天數需可編輯）
 router.get(
   '/tenants/:id/knowledge/access-logs',
   validate({ params: tenantParamSchema, query: accessLogQuerySchema }),

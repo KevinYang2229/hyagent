@@ -1,9 +1,65 @@
 import { useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { Dialog, useToast } from "@hyagent/ui";
+import { api, tokenStore } from "../api";
 import { useAuth } from "../auth";
 import { applyTheme, getTheme, type Theme } from "../theme";
 import { IconAudit, IconLogout, IconPlug, IconSkills, IconTenants } from "./icons";
 import pkg from "../../package.json";
+
+/** 租戶管理者自行修改密碼；成功後後端會讓舊 token 失效，改存新 token 以維持登入 */
+function ChangePasswordDialog({ onClose }: { onClose: () => void }) {
+  const toast = useToast();
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [again, setAgain] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function submit() {
+    if (busy) return;
+    if (!current) return setErr("請輸入目前密碼");
+    if (next.length < 10 || next.length > 128) return setErr("新密碼長度需為 10 到 128 個字元");
+    if (next !== again) return setErr("兩次輸入的新密碼不一致");
+    setErr(null);
+    setBusy(true);
+    try {
+      const { token } = await api.changeMyPassword(current, next);
+      tokenStore.set(token);
+      toast.success("密碼已更新");
+      onClose();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "修改失敗");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog
+      isOpen
+      title="修改密碼"
+      confirmText={busy ? "儲存中…" : "儲存"}
+      confirmDisabled={busy}
+      onClose={onClose}
+      onConfirm={() => void submit()}
+    >
+      <label className="field">
+        <span className="field-label">目前密碼</span>
+        <input className="input" type="password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} autoFocus />
+      </label>
+      <label className="field">
+        <span className="field-label">新密碼（10 到 128 個字元）</span>
+        <input className="input" type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} />
+      </label>
+      <label className="field">
+        <span className="field-label">再輸入一次新密碼</span>
+        <input className="input" type="password" autoComplete="new-password" value={again} onChange={(e) => setAgain(e.target.value)} />
+      </label>
+      {err && <p className="login-err">{err}</p>}
+    </Dialog>
+  );
+}
 
 /**
  * 控制台外殼：深色側邊欄 + 頂部列 + 內容區。
@@ -20,7 +76,8 @@ export default function AppLayout({
   actions?: ReactNode;
   children: ReactNode;
 }) {
-  const { logout } = useAuth();
+  const { logout, me, isSuper } = useAuth();
+  const [pwOpen, setPwOpen] = useState(false);
   const navigate = useNavigate();
   const loc = useLocation();
   const onTenants = loc.pathname === "/" || loc.pathname.startsWith("/tenants");
@@ -58,6 +115,8 @@ export default function AppLayout({
           </div>
         </div>
 
+        {isSuper && (
+          <>
         <div className="nav-label">營運</div>
         <nav className="nav">
           <div
@@ -101,6 +160,8 @@ export default function AppLayout({
             平台稽核紀錄
           </div>
         </nav>
+          </>
+        )}
 
         <button
           type="button"
@@ -137,9 +198,14 @@ export default function AppLayout({
           <div className="topbar-actions">
             {actions}
             <div className="user-chip">
-              <span className="avatar">A</span>
-              管理員
+              <span className="avatar">{me?.kind === "tenant-admin" ? (me.displayName || me.username).slice(0, 1) : "A"}</span>
+              {me?.kind === "tenant-admin" ? me.displayName || me.username : "管理員"}
             </div>
+            {me?.kind === "tenant-admin" && (
+              <button className="btn btn-ghost btn-sm" onClick={() => setPwOpen(true)}>
+                修改密碼
+              </button>
+            )}
             <button
               className="btn btn-ghost btn-sm"
               onClick={() => {
@@ -155,6 +221,7 @@ export default function AppLayout({
 
         <main className="content">{children}</main>
       </div>
+      {pwOpen && <ChangePasswordDialog onClose={() => setPwOpen(false)} />}
     </div>
   );
 }

@@ -63,9 +63,12 @@ type SwitchKey = 'ssoAutoProvision' | 'directorySyncEnabled';
 export default function DirectorySyncTab({
   tenantId,
   onError,
+  readonly = false,
 }: {
   tenantId: string;
   onError: (e: unknown) => void;
+  /** 唯讀：可檢視開關、公鑰與同步狀態，不能切換、新增或撤銷 */
+  readonly?: boolean;
 }) {
   const [view, setView] = useState<DirectorySyncView | null>(null);
   const [pem, setPem] = useState('');
@@ -172,7 +175,7 @@ export default function DirectorySyncTab({
             <Checkbox
               label="自動登入時建立目錄資料"
               checked={view.ssoAutoProvision}
-              disabled={savingSwitches.includes('ssoAutoProvision')}
+              disabled={readonly || savingSwitches.includes('ssoAutoProvision')}
               onChange={(e) => void toggle('ssoAutoProvision', e.target.checked)}
             />
             <span className="field-hint">
@@ -184,7 +187,7 @@ export default function DirectorySyncTab({
             <Checkbox
               label="接受人員同步"
               checked={view.directorySyncEnabled}
-              disabled={savingSwitches.includes('directorySyncEnabled')}
+              disabled={readonly || savingSwitches.includes('directorySyncEnabled')}
               onChange={(e) => void toggle('directorySyncEnabled', e.target.checked)}
             />
             <span className="field-hint">
@@ -240,7 +243,7 @@ export default function DirectorySyncTab({
                       <Stamp at={k.createdAt} by={k.createdBy} />
                     </td>
                     <td style={{ whiteSpace: 'nowrap' }}>
-                      <button className="btn btn-danger" disabled={busy} onClick={() => setRevoking(k)}>
+                      <button className="btn btn-danger" disabled={readonly || busy} onClick={() => setRevoking(k)}>
                         撤銷
                       </button>
                     </td>
@@ -262,7 +265,7 @@ export default function DirectorySyncTab({
             />
           )}
 
-          <div className="field">
+          {!readonly && <div className="field">
             <label className="field-label">{active.length ? '上傳新公鑰' : '上傳公鑰'}</label>
             <span className="field-hint">
               貼上 SPKI PEM（<code>-----BEGIN PUBLIC KEY-----</code>）或 JWK。這組金鑰只用於人員同步，
@@ -286,7 +289,7 @@ export default function DirectorySyncTab({
                 新增公鑰
               </button>
             </div>
-          </div>
+          </div>}
         </div>
       </div>
 

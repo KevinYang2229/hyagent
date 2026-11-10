@@ -69,6 +69,7 @@ export const webhookStore = {
     url: string;
     secret?: string;
     events?: WebhookEventType[];
+    restrictNetwork?: boolean;
   }): WebhookEndpoint {
     const endpoint: WebhookEndpoint = {
       id: randomBytes(8).toString('hex'),
@@ -77,6 +78,7 @@ export const webhookStore = {
       secret: input.secret ?? `whsec_${randomBytes(24).toString('hex')}`,
       events: input.events,
       createdAt: new Date().toISOString(),
+      ...(input.restrictNetwork ? { restrictNetwork: true } : {}),
     };
     endpoints.set(endpoint.id, endpoint);
     if (env.DATA_BACKEND === 'db') upsertEndpointToDb(endpoint);

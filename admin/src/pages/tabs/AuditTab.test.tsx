@@ -6,6 +6,8 @@ import AuditTab from './AuditTab';
 import { api, type AuditEntry } from '../../api';
 
 vi.mock('../../api', () => ({ api: { getTenantAudit: vi.fn(), getPlatformAudit: vi.fn() } }));
+const { auth } = vi.hoisted(() => ({ auth: { isSuper: true } }));
+vi.mock('../../auth', () => ({ useAuth: () => ({ isSuper: auth.isSuper }) }));
 
 const entry = (summary: string): AuditEntry => ({ toolId: 'admin.config', userId: 'admin', at: '2026-10-13T00:00:00.000Z', ok: true, summary });
 
@@ -24,6 +26,7 @@ class FakeObserver {
 beforeEach(() => {
   vi.resetAllMocks();
   fireIntersect = undefined;
+  auth.isSuper = true;
   vi.stubGlobal('IntersectionObserver', FakeObserver);
 });
 afterEach(() => {
@@ -57,4 +60,11 @@ it('不帶 tenantId 讀平台稽核', async () => {
   render(<AuditTab onError={vi.fn()} />);
   await screen.findByText('POST /tenants');
   expect(screen.getByText('平台稽核紀錄')).toBeInTheDocument();
+});
+
+it('不是超級管理者時，不帶 tenantId 也不呼叫 getPlatformAudit', async () => {
+  auth.isSuper = false;
+  render(<AuditTab onError={vi.fn()} />);
+  await act(async () => {});
+  expect(api.getPlatformAudit).not.toHaveBeenCalled();
 });
