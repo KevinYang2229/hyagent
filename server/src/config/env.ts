@@ -82,6 +82,9 @@ export const envSchema = z.object({
 
   // 知識庫問答單次回答的輸出上限（tokens）；比較表等長回答需要較大值
   KNOWLEDGE_ANSWER_MAX_TOKENS: z.coerce.number().int().min(256).max(8000).default(1500),
+  // 知識庫單檔上傳上限（MB）。檔案整包進記憶體解析，調大會增加記憶體壓力與 embedding 成本；
+  // 部署平台本身也可能限制單一請求大小（例如 Cloud Run HTTP/1 約 32MB）
+  KNOWLEDGE_FILE_MAX_MB: z.coerce.number().int().min(1).max(100).default(10),
 
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),

@@ -43,6 +43,8 @@ export default function KnowledgeTab({
   // 最後一次載入／儲存的網站設定，用來判斷「儲存網站設定」是否還有未儲存的修改
   const [savedSrc, setSavedSrc] = useState<KnowledgeSource | null>(null);
   const [meta, setMeta] = useState<KnowledgeMeta | null>(null);
+  // 單檔上傳上限（MB）由後端 env 決定；舊版後端沒回傳時沿用 10
+  const [fileMaxMb, setFileMaxMb] = useState(10);
   const [job, setJob] = useState<IngestJob | null>(null);
   const [labels, setLabels] = useState<KnowledgeLabel[]>([]);
   const [departments, setDepartments] = useState<string[]>([]);
@@ -74,6 +76,7 @@ export default function KnowledgeTab({
       setSavedSrc(effectiveSource);
       setMeta(d.meta);
       setJob(d.runningJob);
+      if (d.fileMaxMb) setFileMaxMb(d.fileMaxMb);
     } catch (e) {
       onError(e);
     }
@@ -164,6 +167,7 @@ export default function KnowledgeTab({
               job={job}
               labels={labels}
               departments={departments}
+              fileMaxMb={fileMaxMb}
               onChange={(patch) => setSrc((s) => (s ? { ...s, ...patch } : s))}
               onSaved={(saved) => { setSrc(saved); setSavedSrc(saved); }}
               onJobStarted={startJob}

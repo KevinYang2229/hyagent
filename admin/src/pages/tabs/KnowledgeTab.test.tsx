@@ -17,6 +17,7 @@ vi.mock('../../api', () => ({
             source: { startUrl: '', maxPages: 10, chunkChars: 800, embeddingModel: 'm', rerank: false },
             meta: { status: 'none', chunkCount: 0 },
             runningJob: null,
+            fileMaxMb: 25,
           })
         : () => new Promise(() => {}),
   }),
@@ -90,4 +91,11 @@ describe('知識庫子頁', () => {
     fireEvent.change(await screen.findByPlaceholderText('https://www.example.com/'), { target: { value: 'https://a.com/' } });
     expect(screen.getByText('未儲存')).toBeInTheDocument();
   });
+});
+
+it('檔案上傳提示顯示後端設定的單檔上限', async () => {
+  render(<ConfirmProvider><MemoryRouter><KnowledgeTab tenantId="t1" onError={vi.fn()} /></MemoryRouter></ConfirmProvider>);
+  await screen.findByText('建立知識來源');
+  fireEvent.click(screen.getByRole('button', { name: '檔案' }));
+  expect(await screen.findByText(/單檔上限 25MB/)).toBeInTheDocument();
 });

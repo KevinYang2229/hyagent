@@ -981,7 +981,7 @@ export const api = {
 
   // ---- 知識庫 RAG ----
   getKnowledge: (id: string) =>
-    req<{ source: KnowledgeSource; meta: KnowledgeMeta; runningJob: IngestJob | null }>(
+    req<{ source: KnowledgeSource; meta: KnowledgeMeta; runningJob: IngestJob | null; fileMaxMb?: number }>(
       'GET',
       `/admin/tenants/${id}/knowledge`,
     ),

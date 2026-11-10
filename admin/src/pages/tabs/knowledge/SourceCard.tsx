@@ -27,7 +27,7 @@ const KNOWLEDGE_EXT_LABELS = KNOWLEDGE_EXTS.filter((e) => e !== "html").map((e) 
  * 網站設定（src）由外層持有，才能在離開頁面前判斷是否有未儲存的修改。
  */
 export default function SourceCard({
-  tenantId, src, dirty, meta, job, labels, departments,
+  tenantId, src, dirty, meta, job, labels, departments, fileMaxMb = 10,
   onChange, onSaved, onJobStarted, onReload, onReloadAcl, onIndexCleared, onError,
 }: {
   tenantId: string;
@@ -38,6 +38,8 @@ export default function SourceCard({
   job: IngestJob | null;
   labels: KnowledgeLabel[];
   departments: string[];
+  /** 單檔上傳上限（MB），由後端 KNOWLEDGE_FILE_MAX_MB 決定 */
+  fileMaxMb?: number;
   onChange: (patch: Partial<KnowledgeSource>) => void;
   /** 設定已寫入後端：外層據此更新目前值與「已儲存」基準 */
   onSaved: (saved: KnowledgeSource) => void;
@@ -341,7 +343,7 @@ export default function SourceCard({
                         ? `${Math.max(1, Math.round(pendingFile.size / 1024))} KB，支援重新點擊更換檔案`
                         : // 括號內改點名弱的一端：xlsx 與 docx 同屬保留得到結構的格式，
                           // 再寫「DOCX 準確度最佳」就不對了
-                          `支援 ${KNOWLEDGE_EXT_LABELS.join("・")}，單檔上限 10MB（DOC、PDF 取不到文件結構，檢索準確度較低）`}
+                          `支援 ${KNOWLEDGE_EXT_LABELS.join("・")}，單檔上限 ${fileMaxMb}MB（DOC、PDF 取不到文件結構，檢索準確度較低）`}
                     </div>
                   </>
                 )}
