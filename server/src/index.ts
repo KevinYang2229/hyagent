@@ -7,6 +7,7 @@ import { initAuditStore } from '@/modules/audit/audit.store';
 import { initScopePolicy } from '@/modules/authz/scope-policy';
 import { migrateTenantScopes, migrateUnassignedDepartment } from '@/modules/authz/scope-migration';
 import { cleanupExpiredSessions, initConversationStore } from '@/modules/conversation/conversation.store';
+import { cleanupExpiredAccessLogs } from '@/modules/knowledge/access-log';
 import { initFormStore } from '@/modules/form/form.store';
 import { initKnowledgeStore } from '@/modules/knowledge/knowledge.store';
 import { purgeFinishedReportJobs } from '@/modules/report/report.job';
@@ -58,7 +59,10 @@ async function main(): Promise<void> {
     }
   };
   cleanupFeedback();
+  // 知識庫存取紀錄：開機清一次（停機期間到期的列不殘留），此後每日
+  cleanupExpiredAccessLogs();
   setInterval(() => {
+    cleanupExpiredAccessLogs();
     cleanupExpiredSessions().catch((err) => logger.warn({ err }, 'session cleanup failed'));
     cleanupFeedback();
     reportStore.purgeExpired();

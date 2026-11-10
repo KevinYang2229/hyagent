@@ -29,6 +29,7 @@ vi.mock('../../../api', () => ({
       guest: { department: '—', scopes: [], source: false, files: 0 },
     }),
     getTenantPolicy: () => Promise.resolve({ departments: ['—'], groups: {} }),
+    listKnowledgeAccessLogs: () => Promise.resolve({ items: [], retentionDays: 180, platformDefaultDays: 180, overridden: false }),
   },
 }));
 vi.mock('@hyagent/ui', async () => ({ ...(await vi.importActual<object>('@hyagent/ui')), useToast: () => ({ success: vi.fn(), error: vi.fn() }) }));

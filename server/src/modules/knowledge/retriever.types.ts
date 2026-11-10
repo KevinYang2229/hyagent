@@ -12,6 +12,8 @@ export interface KnowledgeChunk {
   url?: string;
   /** 檢索分數（越大越相關）；stub 為關鍵字命中數，靜態索引為向量餘弦相似度 */
   score?: number;
+  /** 來源檔案 id（存取紀錄用）；網站來源與 stub 無此欄 */
+  fileId?: string;
 }
 
 /**

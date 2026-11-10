@@ -146,6 +146,8 @@ export const envSchema = z.object({
   REPORT_TIMEZONE: z.string().default('Asia/Taipei'),
   // AI 回覆評價（含問答快照）的保存天數，依最後更新時間計算；每日清除一次
   FEEDBACK_RETENTION_DAYS: z.coerce.number().int().min(1).max(3650).default(180),
+  // 知識庫敏感文件存取紀錄的保存天數（平台預設）；租戶可在後台以 Tenant.knowledgeAccessLogRetentionDays 覆寫
+  KNOWLEDGE_ACCESS_LOG_RETENTION_DAYS: z.coerce.number().int().min(30).max(3650).default(180),
   // 報告：輸出 PDF 用的 Chromium 執行檔路徑。未設時依序探測常見位置（容器裡的
   // /usr/bin/chromium、本機的 Google Chrome）。找不到就只是少一種格式，md 與 html 照常產出。
   REPORT_PDF_BROWSER: z.string().optional(),

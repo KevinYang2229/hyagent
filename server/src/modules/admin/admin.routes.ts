@@ -25,6 +25,8 @@ import {
 } from '@/modules/feedback/feedback.schema';
 import { knowledgeAdminController } from '@/modules/knowledge/knowledge.admin.controller';
 import {
+  accessLogQuerySchema,
+  accessLogSettingsSchema,
   fileParamSchema,
   fileVisibilitySchema,
   ingestSchema,
@@ -402,6 +404,17 @@ router.get(
   '/tenants/:id/knowledge/acl-report',
   validate({ params: tenantParamSchema }),
   asyncHandler(knowledgeAdminController.aclReport),
+);
+// 敏感文件存取紀錄（平台管理者）
+router.get(
+  '/tenants/:id/knowledge/access-logs',
+  validate({ params: tenantParamSchema, query: accessLogQuerySchema }),
+  asyncHandler(knowledgeAdminController.accessLogs),
+);
+router.patch(
+  '/tenants/:id/knowledge/access-log-settings',
+  validate({ params: tenantParamSchema, body: accessLogSettingsSchema }),
+  asyncHandler(knowledgeAdminController.updateAccessLogSettings),
 );
 
 export const adminRouter = router;

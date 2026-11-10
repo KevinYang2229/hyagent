@@ -10,6 +10,7 @@ import type { LLMProvider } from '@/lib/llm/types';
 import { logger } from '@/lib/logger';
 import { normalizeLocale } from '@/lib/locale';
 import { rerankChunks } from '@/modules/knowledge/rerank';
+import { accessItemsOf, recordKnowledgeAccess } from '@/modules/knowledge/access-log';
 import { pickRetriever } from '@/modules/knowledge/retriever.pick';
 import type { KnowledgeChunk, RetrievalPrincipal } from '@/modules/knowledge/retriever.types';
 import { usageStore } from '@/modules/usage/usage.store';
@@ -718,7 +719,7 @@ async function autoChartFrom(
   kind?: string,
   userId?: string,
 ): Promise<SectionChart | undefined> {
-  const table = await loadTable(principalOf(tenantId, userId), entry.id);
+  const table = await loadTable(principalOf(tenantId, userId), entry.id, 'report');
   if (!table) return undefined;
   // 選不出「維度 + 量值」就不畫：畫一張把年份當長度的圖，比沒有圖更糟
   const picked = pickChartColumns(table);
@@ -811,7 +812,7 @@ async function buildComparisonChart(
   const loaded: { series: string; table: StoredTable; values: Map<string, number> }[] = [];
 
   for (const item of picked) {
-    const table = await loadTable(principalOf(tenantId, userId), item.id);
+    const table = await loadTable(principalOf(tenantId, userId), item.id, 'report');
     if (!table) return undefined;
     const li = table.headers.indexOf(ref.label);
     const vi = table.headers.indexOf(ref.value);
@@ -970,7 +971,7 @@ export async function buildExactChart(
   }
 
   if (ref.table === undefined) return undefined;
-  const table = await loadTable(principalOf(tenantId, userId), ref.table);
+  const table = await loadTable(principalOf(tenantId, userId), ref.table, 'report');
   if (!table) return undefined;
 
   // values 給了多個欄位就走分組長條；只有一個或沒給則沿用單數列路徑
@@ -1108,6 +1109,8 @@ export async function composeSection(
     const retriever = await pickRetriever(tenantId);
     const pool = await retriever.search({ tenantId, userId }, section.query);
     chunks = await rerankChunks(tenantId, section.query, pool, env.REPORT_SECTION_TOP_K);
+    // 只記本節實際採用的片段；同一份報告多節取用同一檔會在存取紀錄內合併。不 await、不拋錯
+    recordKnowledgeAccess({ tenantId, userId }, 'report', accessItemsOf(chunks));
   } catch (err) {
     logger.warn({ err, tenantId, query: section.query }, 'report section retrieval failed');
     return { ...base, body: '', sources: [], hits: 0 };
@@ -1166,7 +1169,7 @@ export async function composeSection(
   const previewTables = Math.min(shortlist.length, Math.max(PREVIEW_TABLES, requestedYearCount(intent) * 2));
   for (const entry of shortlist.slice(0, previewTables)) {
     try {
-      const table = await loadTable({ tenantId, userId }, entry.id);
+      const table = await loadTable({ tenantId, userId }, entry.id, 'report');
       if (table) previews.push(tablePreview(table));
     } catch (err) {
       logger.warn({ err, tenantId, table: entry.id }, 'table preview load failed');

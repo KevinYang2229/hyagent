@@ -311,6 +311,42 @@ export interface KnowledgeFileMeta {
   /** 表格中疑似個資的表頭（僅提醒）；沒有命中時不帶此欄 */
   piiHeaders?: string[];
 }
+/** 知識庫敏感文件存取紀錄的取用路徑 */
+export type KnowledgeAccessPath = 'chat' | 'table' | 'report' | 'admin_test';
+/** 一筆存取紀錄（只記非公開檔；不含問句與內容） */
+export interface KnowledgeAccessLog {
+  id: string;
+  userId: string;
+  /** admin_test 時為操作的管理者 */
+  actorId?: string;
+  path: KnowledgeAccessPath;
+  /** 未設＝網站來源 */
+  fileId?: string;
+  /** 取用當下的檔名（網站來源為網址） */
+  fileName: string;
+  /** 取用當下的可見性標籤 */
+  scopes: string[];
+  refId?: string;
+  at: string;
+}
+export interface KnowledgeAccessLogSettings {
+  retentionDays: number;
+  platformDefaultDays: number;
+  /** 是否為此租戶單獨設定（false＝沿用平台預設） */
+  overridden: boolean;
+}
+export interface KnowledgeAccessLogPage extends KnowledgeAccessLogSettings {
+  items: KnowledgeAccessLog[];
+  nextCursor?: string;
+}
+export interface KnowledgeAccessLogQuery {
+  fileId?: string;
+  userId?: string;
+  path?: KnowledgeAccessPath;
+  from?: string;
+  to?: string;
+  cursor?: string;
+}
 /** 知識庫可見性標籤（id + 顯示名稱） */
 export interface KnowledgeLabel {
   id: string;
@@ -1009,6 +1045,15 @@ export const api = {
     ),
   getKnowledgeAclReport: (id: string) =>
     req<KnowledgeAclReport>('GET', `/admin/tenants/${id}/knowledge/acl-report`),
+  listKnowledgeAccessLogs: (id: string, query: KnowledgeAccessLogQuery = {}) => {
+    const qs = new URLSearchParams(
+      Object.entries(query).filter((e): e is [string, string] => e[1] !== undefined),
+    ).toString();
+    return req<KnowledgeAccessLogPage>('GET', `/admin/tenants/${id}/knowledge/access-logs${qs ? `?${qs}` : ''}`);
+  },
+  /** null＝清除租戶設定、回到平台預設 */
+  updateKnowledgeAccessLogSettings: (id: string, retentionDays: number | null) =>
+    req<KnowledgeAccessLogSettings>('PATCH', `/admin/tenants/${id}/knowledge/access-log-settings`, { retentionDays }),
 
   // ── Database Intelligence ──
   dbiListDataSources: (serverId: string, tenantId: string) =>

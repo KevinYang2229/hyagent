@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useToast } from "@hyagent/ui";
 import { api, type KnowledgeAclReport, type KnowledgeFileMeta, type KnowledgeLabel } from "../../../api";
 import CollapsibleList from "../../../components/CollapsibleList";
+import AccessLogCard from "./AccessLogCard";
 import {
   countFilesWithLabel,
   guestCorpusState,
@@ -272,6 +273,7 @@ export default function AccessPanel({ tenantId, aclReport, labels, files, onEdit
           {labels.length === 0 && <li className="empty">尚未建立任何標籤。</li>}
         </ul>
       </div>
+      <AccessLogCard tenantId={tenantId} files={files} labels={labels} onError={onError} />
     </div>
   );
 }

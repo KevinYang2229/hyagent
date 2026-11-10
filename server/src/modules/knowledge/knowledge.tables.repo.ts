@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { toVectorLiteral } from './knowledge.index.repo';
 import { visibilityScopesOf } from './knowledge.visibility';
+import { recordKnowledgeAccess, type AccessContext, type AccessPath } from './access-log';
 import { env } from '@/config/env';
 import { connectDb } from '@/lib/db';
 import type { ParsedTable } from './doc-parse';
@@ -39,6 +40,7 @@ interface TableRow {
   headers: string[];
   rows?: string[][];
   row_count: number;
+  file_id?: string | null;
 }
 
 function toEntry(r: TableRow): TableCatalogEntry {
@@ -168,18 +170,26 @@ export async function listTableCatalog(
 export async function loadTable(
   principal: RetrievalPrincipal,
   id: string,
+  /**
+   * 取用路徑（存取紀錄用）。刻意必填：新呼叫端不決定路徑就編譯不過，不會漏記。
+   * 載入整張表＝內容進了 prompt 或產出物，所以在這裡記，不在目錄查詢記。
+   */
+  path: AccessPath,
+  ctx?: AccessContext,
 ): Promise<StoredTable | null> {
   if (env.DATA_BACKEND !== 'db') return null;
   const { tenantId } = principal;
   const visible = Prisma.sql`and visibility_scopes && ${visibilityScopesOf(principal)}::text[]`;
   const db = await connectDb();
   const rows = await db.$queryRaw<TableRow[]>`
-    select id, source, sheet, caption, headers, rows, row_count
+    select id, source, sheet, caption, headers, rows, row_count, file_id
     from knowledge_tables where tenant_id = ${tenantId} and id = ${id}
       ${visible}
   `;
   const r = rows[0];
-  return r ? { ...toEntry(r), rows: r.rows ?? [] } : null;
+  if (!r) return null;
+  recordKnowledgeAccess(principal, path, [r.file_id ? { fileId: r.file_id, label: r.source } : { label: r.source }], ctx);
+  return { ...toEntry(r), rows: r.rows ?? [] };
 }
 
 /** 刪除某檔的所有表（比照 removeFileChunks，刪檔時一併呼叫） */

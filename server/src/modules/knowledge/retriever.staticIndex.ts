@@ -84,11 +84,12 @@ export const staticIndexRetriever: KnowledgeRetriever = {
       .map((c) => {
         const cosine = cosineSimilarity(queryVec, c.vector);
         const hits = terms.length ? lexicalHits(terms, `${c.title}\n${c.text}`) : 0;
-        return { id: c.id, title: c.title, content: c.text, url: c.url, cosine, hits, score: scoreOf(cosine, hits) };
+        return { id: c.id, fileId: c.fileId, title: c.title, content: c.text, url: c.url, cosine, hits, score: scoreOf(cosine, hits) };
       })
       .filter((c) => keepChunk(c.cosine, c.hits))
       .sort((a, b) => b.score - a.score)
       .slice(0, POOL_SIZE)
-      .map(({ id, title, content, url, score }) => ({ id, title, content, url, score }));
+      // fileId 只供存取紀錄，不影響排序與篩選
+      .map(({ id, fileId, title, content, url, score }) => ({ id, title, content, url, score, ...(fileId ? { fileId } : {}) }));
   },
 };

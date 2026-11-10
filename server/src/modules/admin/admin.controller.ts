@@ -3,6 +3,7 @@
  * 全部受 requireAdmin 保護（x-admin-key）。
  */
 import { createHash } from 'node:crypto';
+import { purgeTenantAccessLogs } from '@/modules/knowledge/access-log';
 import type { Request, Response } from 'express';
 import { DEFAULT_TENANT_ID, tenantStore } from '@/modules/tenant/tenant.store';
 import { serviceRegistry } from '@/modules/conversation/service.registry';
@@ -353,6 +354,7 @@ export const adminController = {
     webhookStore.purgeTenant(id);
     mcpStore.purgeTenant(id);
     feedbackStore.purgeTenant(id);
+    purgeTenantAccessLogs(id);
     res.status(200).json({ data: { id } });
   },
 

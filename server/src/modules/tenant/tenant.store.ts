@@ -392,6 +392,7 @@ export const tenantStore = {
         | 'disabledForms'
         | 'grantedScopes'
         | 'knowledgeLabels'
+        | 'knowledgeAccessLogRetentionDays'
         | 'scopesMigrated'
         | 'unassignedDepartmentMigrated'
         | 'llmConfig'
@@ -419,6 +420,8 @@ export const tenantStore = {
       ...(patch.disabledForms !== undefined ? { disabledForms: patch.disabledForms } : {}),
       ...(patch.grantedScopes !== undefined ? { grantedScopes: patch.grantedScopes } : {}),
       ...(patch.knowledgeLabels !== undefined ? { knowledgeLabels: patch.knowledgeLabels } : {}),
+      // 'in'：undefined 代表清除覆寫、回到平台預設
+      ...('knowledgeAccessLogRetentionDays' in patch ? { knowledgeAccessLogRetentionDays: patch.knowledgeAccessLogRetentionDays } : {}),
       ...(patch.scopesMigrated !== undefined ? { scopesMigrated: patch.scopesMigrated } : {}),
       ...(patch.unassignedDepartmentMigrated !== undefined ? { unassignedDepartmentMigrated: patch.unassignedDepartmentMigrated } : {}),
       // 用 'in' 而非 '!== undefined'：llmConfig 需支援三態（不動/覆寫/清空），

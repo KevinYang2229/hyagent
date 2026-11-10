@@ -29,6 +29,7 @@ const LEXICAL_LIMIT = 50;
 
 interface CandidateRow {
   id: string;
+  file_id: string | null;
   url: string;
   title: string;
   text: string;
@@ -114,7 +115,7 @@ export const pgvectorRetriever: KnowledgeRetriever = {
     const lexicalBranch = terms.length
       ? Prisma.sql`
           union
-          (select id, url, title, text, 1 - (embedding <=> ${vec}::halfvec(3072)) as cosine
+          (select id, file_id, url, title, text, 1 - (embedding <=> ${vec}::halfvec(3072)) as cosine
            from knowledge_chunks
            where tenant_id = ${tenantId}
              ${visible}
@@ -125,7 +126,7 @@ export const pgvectorRetriever: KnowledgeRetriever = {
       : Prisma.empty;
 
     const rows = await db.$queryRaw<CandidateRow[]>`
-      (select id, url, title, text, 1 - (embedding <=> ${vec}::halfvec(3072)) as cosine
+      (select id, file_id, url, title, text, 1 - (embedding <=> ${vec}::halfvec(3072)) as cosine
        from knowledge_chunks
        where tenant_id = ${tenantId}
          ${visible}
@@ -140,11 +141,12 @@ export const pgvectorRetriever: KnowledgeRetriever = {
       .map((r) => {
         const cosine = Number(r.cosine);
         const hits = terms.length ? lexicalHits(terms, `${r.title}\n${r.text}`) : 0;
-        return { id: r.id, title: r.title, content: r.text, url: r.url, cosine, hits, score: scoreOf(cosine, hits) };
+        return { id: r.id, fileId: r.file_id ?? undefined, title: r.title, content: r.text, url: r.url, cosine, hits, score: scoreOf(cosine, hits) };
       })
       .filter((c) => keepChunk(c.cosine, c.hits))
       .sort((a, b) => b.score - a.score)
       .slice(0, POOL_SIZE)
-      .map(({ id, title, content, url, score }) => ({ id, title, content, url, score }));
+      // fileId 只供存取紀錄，不影響排序與篩選
+      .map(({ id, fileId, title, content, url, score }) => ({ id, title, content, url, score, ...(fileId ? { fileId } : {}) }));
   },
 };

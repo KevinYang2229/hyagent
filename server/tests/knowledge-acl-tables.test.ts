@@ -97,7 +97,7 @@ describe('表格檢索沒有側門', () => {
     const t = tenantStore.createTenant('acl-tables-loadtable-test');
     tenantStore.updateTenant(t.id, { knowledgeLabels: [{ id: 'hr', label: '人資' }] });
     queryRaw.mockClear();
-    await loadTable({ tenantId: t.id, userId: 'nobody' }, 'table-1');
+    await loadTable({ tenantId: t.id, userId: 'nobody' }, 'table-1', 'table');
 
     expect(lastQueryRawSql()).toContain('visibility_scopes &&');
   });
@@ -105,7 +105,7 @@ describe('表格檢索沒有側門', () => {
   it('未做過任何知識庫設定的租戶，loadTable 仍強制權限條件', async () => {
     const t = tenantStore.createTenant('acl-tables-loadtable-bare-test');
     queryRaw.mockClear();
-    await loadTable({ tenantId: t.id, userId: 'nobody' }, 'table-1');
+    await loadTable({ tenantId: t.id, userId: 'nobody' }, 'table-1', 'table');
 
     expect(lastQueryRawSql()).toContain('visibility_scopes &&');
   });

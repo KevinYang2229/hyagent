@@ -18,6 +18,7 @@ import type {
 } from '@/modules/conversation/agent-service.types';
 import type { Session } from '@/modules/conversation/conversation.types';
 import { traceChunks } from '@/modules/conversation/reply-record';
+import { accessItemsOf, recordKnowledgeAccess } from './access-log';
 import { usageStore } from '@/modules/usage/usage.store';
 import { rerankChunks } from './rerank';
 import { pickRetriever } from './retriever.pick';
@@ -51,6 +52,8 @@ const HISTORY_MESSAGES = 6;
 export async function loadTableContext(
   principal: RetrievalPrincipal,
   query: string,
+  /** 存取紀錄的追查 id（sessionId） */
+  refId?: string,
 ): Promise<string> {
   const { tenantId } = principal;
   try {
@@ -62,7 +65,7 @@ export async function loadTableContext(
     const count = Math.min(selected.length, Math.max(3, requestedYearCount(query) * 2));
     const previews: string[] = [];
     for (const entry of selected.slice(0, count)) {
-      const table = await loadTable(principal, entry.id);
+      const table = await loadTable(principal, entry.id, 'table', refId ? { refId } : undefined);
       if (table) previews.push(tablePreview(table));
     }
     return previews.join('\n\n');
@@ -196,7 +199,9 @@ export const knowledgeAgentService: AgentService = {
     const retriever = await pickRetriever(session.tenantId);
     const pool = await retriever.search(principal, query);
     const chunks = await rerankChunks(session.tenantId, query, pool, FINAL_K);
-    const tableContext = await loadTableContext(principal, query);
+    // 只記重排後實際交給模型的片段；候選池大多沒被用到，記了只會灌水。不 await、不拋錯
+    recordKnowledgeAccess(principal, 'chat', accessItemsOf(chunks), { refId: session.id });
+    const tableContext = await loadTableContext(principal, query, session.id);
 
     let reply: string;
     // 回饋診斷用：實際作答的模型（查無資料時沒有呼叫 LLM，維持 undefined）

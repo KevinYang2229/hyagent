@@ -216,6 +216,9 @@ model KnowledgeIndexRow {
 
 /// 註：knowledge_chunks 刻意不建 model——embedding 欄位為 pgvector 的 halfvec(3072)，
 /// Prisma schema 無對應型別。該表的讀寫一律經 lib/db 的 $queryRaw / $executeRaw。
+///
+/// knowledge_access_logs（0021）同樣不建 model：寫入是批次 insert、查詢需要 (at, id) 列值游標，
+/// 一律經 access-log.ts 的 raw SQL。
 
 model ReportDocRow {
   reportId  String   @map("report_id")

@@ -19,6 +19,9 @@ import { knowledgeStore, refreshKnowledgeStore, type KnowledgeFileMeta, type Kno
 import { regenerateSlot, type RegenerateFailure } from './knowledge.suggest';
 import { splitChunksBySource, type SourceKey } from './prompt-slots';
 import { pickRetriever } from './retriever.pick';
+import { accessItemsOf, accessLogRetentionDaysOf, listKnowledgeAccessLogs, recordKnowledgeAccess, type AccessLogFilter } from './access-log';
+import { env } from '@/config/env';
+import type { AdminActor } from '@/modules/audit/admin-audit';
 import { guestVisibilityScopesOf, setFileVisibility, setSourceVisibility, visibilityScopesOf } from './knowledge.visibility';
 
 /**
@@ -186,6 +189,10 @@ export const knowledgeAdminController = {
     // 部門落到「未指定」，實際上就是訪客權限，畫面卻寫「管理者（權限最大）」，誤導判斷。
     const userId = asUserId?.trim() ?? '';
     const hits = await retriever.search({ tenantId, userId }, question);
+    // 以他人身分試查本身就是可被濫用的能力：記下是哪個管理者以誰的權限查到哪些非公開檔
+    recordKnowledgeAccess({ tenantId, userId }, 'admin_test', accessItemsOf(hits), {
+      actorId: (res.locals?.adminActor as AdminActor | undefined) ?? 'admin',
+    });
     // 回報這次實際用的身分與可見標籤：輸錯帳號時看得出「不在目錄、以未指定部門處理」
     const guest = isGuestPrincipal(userId);
     const principal = {
@@ -205,6 +212,40 @@ export const knowledgeAdminController = {
           score: h.score,
           snippet: h.content.slice(0, 160),
         })),
+      },
+    });
+  },
+
+  /** 存取紀錄（平台管理者）：新→舊、游標分頁 */
+  async accessLogs(req: Request, res: Response): Promise<void> {
+    const tenantId = String(req.params.id);
+    if (!tenantStore.getTenant(tenantId)) throw AppError.notFound('租戶不存在');
+    const page = await listKnowledgeAccessLogs(tenantId, req.query as unknown as AccessLogFilter);
+    res.json({
+      data: {
+        ...page,
+        retentionDays: accessLogRetentionDaysOf(tenantId),
+        platformDefaultDays: env.KNOWLEDGE_ACCESS_LOG_RETENTION_DAYS,
+        overridden: tenantStore.getTenant(tenantId)?.knowledgeAccessLogRetentionDays !== undefined,
+      },
+    });
+  },
+
+  /**
+   * 調整保存天數：立即生效，不必重啟。縮短會讓下一次每日清除刪掉更多資料，
+   * 這個變更由 adminAuditTrail 自動記進後台操作稽核。
+   */
+  async updateAccessLogSettings(req: Request, res: Response): Promise<void> {
+    const tenantId = String(req.params.id);
+    const { retentionDays } = req.body as { retentionDays: number | null };
+    const updated = tenantStore.updateTenant(tenantId, { knowledgeAccessLogRetentionDays: retentionDays ?? undefined });
+    if (!updated) throw AppError.notFound('租戶不存在');
+    await tenantStore.persistCritical();
+    res.json({
+      data: {
+        retentionDays: accessLogRetentionDaysOf(tenantId),
+        platformDefaultDays: env.KNOWLEDGE_ACCESS_LOG_RETENTION_DAYS,
+        overridden: updated.knowledgeAccessLogRetentionDays !== undefined,
       },
     });
   },

@@ -136,6 +136,7 @@ Zeabur 連上 GitHub repo 後，會 watch 指定分支；**每次 `git push` 到
 | `LLM_MODEL`          | 選填     | 預設 `claude-sonnet-5-5`                                                                                                                                                                                   |
 | `DIRECTORY_SYNC_RATE_LIMIT_MAX` | 選填 | 人員同步 webhook（`POST /api/directory-sync/events`）每個來源 IP、每個計數視窗（`AUTH_RATE_LIMIT_WINDOW_MS`，預設 15 分鐘）的請求上限，預設 `120`。超過回 429 `RATE_LIMITED`。此功能需**單一副本**（目錄快照由各副本記憶體寫出，舊副本會把舊資料寫回），見下方多副本注意 |
 | `FEEDBACK_RETENTION_DAYS` | 選填 | AI 回覆評價（含問答快照，可能含個資）的保存天數，預設 `180`。db 模式需先套用 `0020_reply_feedback.sql` |
+| `KNOWLEDGE_ACCESS_LOG_RETENTION_DAYS` | 選填 | 知識庫敏感文件存取紀錄的保存天數（平台預設），預設 `180`、範圍 30–3650；個別租戶可在後台覆寫。db 模式需先套用 `0021_knowledge_access_logs.sql` |
 | `REPORT_PDF_BROWSER` | 不用填   | Dockerfile 已設為 `/usr/bin/chromium`（報告的 PDF 輸出）。**探測不到瀏覽器時 pdf 不會出現在下載格式裡**，md 與 html 照常產出；指到不存在的路徑會留一筆警告並停用 pdf                                       |
 | `PORT`               | 不用填   | Zeabur 自動注入，server 會自動聽                                                                                                                                                                           |
 

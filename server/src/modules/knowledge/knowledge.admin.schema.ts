@@ -110,3 +110,20 @@ export const customSuggestionParamSchema = z.object({
   id: z.string().min(1),
   promptId: z.string().uuid(),
 });
+
+/** 存取紀錄查詢（GET /knowledge/access-logs） */
+export const accessLogQuerySchema = z.object({
+  fileId: z.string().min(1).max(200).optional(),
+  // 空字串是合法值：網站訪客的 userId 可能為空
+  userId: z.string().max(200).optional(),
+  path: z.enum(['chat', 'table', 'report', 'admin_test']).optional(),
+  from: z.string().datetime({ offset: true }).optional(),
+  to: z.string().datetime({ offset: true }).optional(),
+  cursor: z.string().max(200).optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional(),
+});
+
+/** 存取紀錄保存天數（PATCH /knowledge/access-log-settings）；null＝清除覆寫、回到平台預設 */
+export const accessLogSettingsSchema = z.object({
+  retentionDays: z.number().int().min(30).max(3650).nullable(),
+});

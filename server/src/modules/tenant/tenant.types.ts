@@ -168,6 +168,8 @@ export interface Tenant {
   grantedScopes?: string[];
   /** 知識庫可見性標籤目錄（租戶自訂分類）。id 進 scope 體系時前綴 kb:。 */
   knowledgeLabels?: KnowledgeLabel[];
+  /** 知識庫存取紀錄保存天數（30–3650）；未設＝平台預設 KNOWLEDGE_ACCESS_LOG_RETENTION_DAYS */
+  knowledgeAccessLogRetentionDays?: number;
   /** 是否已完成服務/表單 → scope 的一次性遷移；true 後遷移不再覆寫其授予。 */
   scopesMigrated?: boolean;
   /** 已把訪客桶（'—'）的授權複製給「未指定部門」桶（一次性遷移，見 scope-migration） */

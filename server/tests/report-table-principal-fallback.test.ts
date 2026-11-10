@@ -45,11 +45,11 @@ describe('missing userId uses a non-account guest principal', () => {
   it('does not fabricate a user with the same ID as the tenant', async () => {
     const t = tenantStore.createTenant('report-guest');
     await buildExactChart(t.id, { table: 'tbl-1', label: '國家', value: '人數' });
-    expect(mockLoadTable).toHaveBeenCalledWith({ tenantId: t.id, userId: '' }, 'tbl-1');
+    expect(mockLoadTable).toHaveBeenCalledWith({ tenantId: t.id, userId: '' }, 'tbl-1', 'report');
   });
   it('preserves an explicit real identity', async () => {
     const t = tenantStore.createTenant('report-user');
     await buildExactChart(t.id, { table: 'tbl-1', label: '國家', value: '人數' }, 'real-user');
-    expect(mockLoadTable).toHaveBeenCalledWith({ tenantId: t.id, userId: 'real-user' }, 'tbl-1');
+    expect(mockLoadTable).toHaveBeenCalledWith({ tenantId: t.id, userId: 'real-user' }, 'tbl-1', 'report');
   });
 });
