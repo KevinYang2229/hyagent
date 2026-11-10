@@ -1,14 +1,12 @@
-import { useCallback, useEffect, useMemo, useState, type SVGProps } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useToast } from '@hyagent/ui';
 import type { AdminTabKey } from '@hyagent/shared';
 import { api, UnauthorizedError, type Tenant } from '../api';
 import { useAuth } from '../auth';
 import AppLayout from '../components/AppLayout';
-import {
-  IconAudit, IconBack, IconBook, IconChart, IconCog, IconDatabase, IconForm, IconLogin, IconMessage,
-  IconOverview, IconPalette, IconReport, IconShield, IconSparkle, IconSync, IconUsers, IconWebhook,
-} from '../components/icons';
+import { IconBack } from '../components/icons';
+import { TAB_GROUPS, type TabKey } from './tabGroups';
 import AppearanceTab from './tabs/AppearanceTab';
 import SettingsTab from './tabs/SettingsTab';
 import WebhookTab from './tabs/WebhookTab';
@@ -24,59 +22,8 @@ import SsoTab from './tabs/SsoTab';
 import DirectorySyncTab from './tabs/DirectorySyncTab';
 import DatabaseTab from './tabs/database/DatabaseTab';
 import OverviewTab from './tabs/OverviewTab';
+import AdminAccountsTab from './tabs/AdminAccountsTab';
 
-type TabKey =
-  | 'overview'
-  | 'sso'
-  | 'users'
-  | 'directorySync'
-  | 'appearance'
-  | 'forms'
-  | 'knowledge'
-  | 'database'
-  | 'permissions'
-  | 'settings'
-  | 'ai'
-  | 'webhook'
-  | 'usage'
-  | 'reports'
-  | 'feedback'
-  | 'audit';
-
-/**
- * 依導入流程分組：接入 → 人員與登入 → 內容與能力 → 權限（把內容開給人）→ 前台呈現 → 營運。
- * 權限排在內容之後：要先有表單、知識庫標籤、外部服務，才有東西可以授權。
- * 網址的 tab key 不變，既有連結與書籤仍有效。
- */
-type NavIcon = (props: SVGProps<SVGSVGElement>) => JSX.Element;
-const TAB_GROUPS: { label: string | null; tabs: { key: TabKey; label: string; icon: NavIcon }[] }[] = [
-  { label: null, tabs: [{ key: 'overview', label: '總覽', icon: IconOverview }] },
-  { label: '接入', tabs: [
-    { key: 'settings', label: '基本設定', icon: IconCog },
-    { key: 'ai', label: 'AI 模型', icon: IconSparkle },
-  ] },
-  { label: '人員與登入', tabs: [
-    { key: 'sso', label: '自動登入（SSO）', icon: IconLogin },
-    { key: 'users', label: '使用者目錄', icon: IconUsers },
-    { key: 'directorySync', label: '人員同步', icon: IconSync },
-  ] },
-  { label: '內容與能力', tabs: [
-    { key: 'knowledge', label: '知識庫', icon: IconBook },
-    { key: 'forms', label: '表單', icon: IconForm },
-    { key: 'database', label: '資料庫查詢', icon: IconDatabase },
-  ] },
-  { label: '權限', tabs: [{ key: 'permissions', label: '角色與授權', icon: IconShield }] },
-  { label: '前台呈現', tabs: [
-    { key: 'appearance', label: '外觀', icon: IconPalette },
-    { key: 'webhook', label: '事件通知（Webhook）', icon: IconWebhook },
-  ] },
-  { label: '營運', tabs: [
-    { key: 'usage', label: '用量', icon: IconChart },
-    { key: 'feedback', label: '回饋', icon: IconMessage },
-    { key: 'reports', label: '報告', icon: IconReport },
-    { key: 'audit', label: '稽核', icon: IconAudit },
-  ] },
-];
 const TABS = TAB_GROUPS.flatMap((g) => g.tabs);
 
 export default function TenantDetailPage() {
@@ -90,7 +37,7 @@ export default function TenantDetailPage() {
   const rawTab = searchParams.get('tab');
   // 分頁可見規則：總覽一律；資料庫查詢只有超級管理者；其餘依分頁權限。網址指到看不到的分頁時退回總覽
   const isVisible = useCallback(
-    (key: TabKey) => key === 'overview' || (key === 'database' ? isSuper : level(key as AdminTabKey) !== 'hidden'),
+    (key: TabKey) => key === 'overview' || ((key === 'database' || key === 'adminAccounts') ? isSuper : level(key as AdminTabKey) !== 'hidden'),
     [isSuper, level],
   );
   const visibleGroups = useMemo(
@@ -98,7 +45,7 @@ export default function TenantDetailPage() {
     [isVisible],
   );
   const tab: TabKey = TABS.some((t) => t.key === rawTab && isVisible(t.key)) ? (rawTab as TabKey) : 'overview';
-  const tabIsReadonly = tab !== 'overview' && tab !== 'database' && level(tab as AdminTabKey) === 'read';
+  const tabIsReadonly = tab !== 'overview' && tab !== 'database' && tab !== 'adminAccounts' && level(tab as AdminTabKey) === 'read';
 
   const setTab = (next: TabKey, query: Record<string, string> = {}) => {
     if (next === tab && Object.keys(query).length === 0) return;
@@ -149,6 +96,7 @@ export default function TenantDetailPage() {
           {tab === 'permissions' && (
             <PermissionsTab tenantId={tenant.id} onError={handleErr} />
           )}
+          {tab === 'adminAccounts' && <AdminAccountsTab key={tenant.id} tenantId={tenant.id} onError={handleErr} />}
           {tab === 'settings' && <SettingsTab tenant={tenant} onSaved={handleSaved} onError={handleErr} />}
           {tab === 'ai' && <SettingsTab tenant={tenant} onSaved={handleSaved} onError={handleErr} section="ai" />}
           {tab === 'webhook' && <WebhookTab tenantId={tenant.id} onError={handleErr} />}

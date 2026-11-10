@@ -1,4 +1,4 @@
-import type { AdminMe, Definition, TenantAppearance } from '@hyagent/shared';
+import type { AdminMe, AdminTabPermissions, Definition, TenantAppearance } from '@hyagent/shared';
 
 export type { Definition };
 
@@ -86,6 +86,19 @@ export interface ApiKey {
   createdAt: string;
   revokedAt?: string;
 }
+/** 租戶管理者帳號（後端回傳的公開形狀，沒有密碼或雜湊） */
+export interface AdminAccount {
+  id: string;
+  tenantId: string;
+  username: string;
+  displayName: string;
+  status: 'active' | 'disabled';
+  permissions: AdminTabPermissions;
+  createdAt: string;
+  updatedAt: string;
+  lastLoginAt?: string;
+}
+
 export interface WebhookEndpoint {
   id: string;
   tenantId: string;
@@ -919,6 +932,19 @@ export const api = {
     req<WebhookEndpoint>('PATCH', `/admin/tenants/${id}/webhooks/${webhookId}`, { disabled }),
   deleteWebhook: (id: string, webhookId: string) =>
     req<{ id: string }>('DELETE', `/admin/tenants/${id}/webhooks/${webhookId}`),
+
+  listAdminAccounts: (id: string) => req<AdminAccount[]>('GET', `/admin/tenants/${id}/admin-accounts`),
+  createAdminAccount: (id: string, body: { username: string; displayName: string; password: string }) =>
+    req<AdminAccount>('POST', `/admin/tenants/${id}/admin-accounts`, body),
+  updateAdminAccount: (
+    id: string,
+    accountId: string,
+    patch: { displayName?: string; status?: 'active' | 'disabled'; permissions?: AdminTabPermissions },
+  ) => req<AdminAccount>('PATCH', `/admin/tenants/${id}/admin-accounts/${accountId}`, patch),
+  resetAdminAccountPassword: (id: string, accountId: string, password: string) =>
+    req<{ id: string }>('PUT', `/admin/tenants/${id}/admin-accounts/${accountId}/password`, { password }),
+  deleteAdminAccount: (id: string, accountId: string) =>
+    req<{ id: string }>('DELETE', `/admin/tenants/${id}/admin-accounts/${accountId}`),
 
   getUsage: (id: string) => req<Usage>('GET', `/admin/tenants/${id}/usage`),
   // 游標分頁（新→舊）：before 帶上一頁的 nextCursor

@@ -44,6 +44,7 @@ vi.mock('./tabs/FeedbackTab', () => stub('feedback'));
 vi.mock('./tabs/ReportsTab', () => stub('reports'));
 vi.mock('./tabs/UsersTab', () => stub('users'));
 vi.mock('./tabs/SsoTab', () => stub('sso'));
+vi.mock('./tabs/AdminAccountsTab', () => stub('adminAccounts'));
 vi.mock('./tabs/DirectorySyncTab', () => stub('directorySync'));
 vi.mock('./tabs/database/DatabaseTab', () => stub('database'));
 
@@ -129,12 +130,13 @@ it('有區塊未儲存時，按「租戶清單」離開也會先確認', async (
   expect(await screen.findByText('頁面:tenant-list')).toBeInTheDocument();
 });
 
-it('超級管理者看得到全部 16 個分頁', async () => {
+it('超級管理者看得到全部 17 個分頁', async () => {
   renderAt();
   await screen.findByText('頁面:overview');
   const nav = screen.getByRole('navigation', { name: '租戶設定導覽' });
-  expect(within(nav).getAllByRole('button')).toHaveLength(16);
+  expect(within(nav).getAllByRole('button')).toHaveLength(17);
   expect(within(nav).getByRole('button', { name: '資料庫查詢' })).toBeInTheDocument();
+  expect(within(nav).getByRole('button', { name: '後台管理者' })).toBeInTheDocument();
 });
 
 it('租戶管理者只看到有權限的分頁；唯讀分頁包在 disabled fieldset，可寫的不會；沒有租戶清單按鈕', async () => {
@@ -143,6 +145,7 @@ it('租戶管理者只看到有權限的分頁；唯讀分頁包在 disabled fie
   const content = await screen.findByText('頁面:knowledge');
   const nav = screen.getByRole('navigation', { name: '租戶設定導覽' });
   expect(within(nav).getAllByRole('button').map((b) => b.textContent)).toEqual(['總覽', '知識庫', '表單']);
+  expect(within(nav).queryByRole('button', { name: '後台管理者' })).not.toBeInTheDocument();
   const fs = content.closest('fieldset');
   expect(fs).toHaveAttribute('disabled');
   expect(fs).toHaveClass('tab-readonly');
