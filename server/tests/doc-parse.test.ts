@@ -68,6 +68,13 @@ describe('htmlToMarkdown', () => {
     expect(md).toContain('| 1年 | 7 |');
   });
 
+  it('一般文字不加跳脫反斜線，只跳脫會被切塊誤認成結構的行首 # 與 |', () => {
+    const md = htmlToMarkdown('<p>1. 第一點 *重要* [備註] a_b_c 2024-01-01 + 加號</p><p># 井號開頭</p><p>| 直線開頭 |</p>');
+    expect(md).toContain('1. 第一點 *重要* [備註] a_b_c 2024-01-01 + 加號');
+    expect(md).not.toMatch(/^# 井號開頭/m); // 不可被 chunkMarkdown 當成標題
+    expect(md).not.toMatch(/^\| 直線開頭 \|$/m); // 不可被當成表格列
+  });
+
   it('去掉純裝飾標記與連結網址，只留文字（對 embedding 是雜訊）', () => {
     const md = htmlToMarkdown('<p>特休<strong>依年資</strong>計算，見<a href="https://x.test/rule">辦法</a></p>');
     expect(md).toContain('特休依年資計算');

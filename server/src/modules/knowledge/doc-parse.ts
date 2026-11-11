@@ -257,6 +257,12 @@ function createTurndown(): TurndownService {
     replacement: (content) => content, // 保留錨點文字、丟掉 URL
   });
   td.addRule('dropImage', { filter: 'img', replacement: () => '' });
+  /*
+   * 預設的跳脫會把 `1.`、`*`、`_`、`[` 等全部加上反斜線，這些反斜線會原樣寫進索引，
+   * 對 embedding 與作答模型都是雜訊。下游的 chunkMarkdown 只認兩種結構：行首 `#` 標題與
+   * `| … |` 表格列，所以只跳脫這兩種，避免正文被誤切成標題或表格。
+   */
+  td.escape = (text: string) => text.replace(/^(\s*)(#{1,6}\s)/gm, '$1\\$2').replace(/^(\s*)\|/gm, '$1\\|');
   return td;
 }
 
