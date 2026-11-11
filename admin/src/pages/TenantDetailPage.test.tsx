@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { createMemoryRouter, Outlet, RouterProvider, useLocation } from 'react-router-dom';
 import UnsavedGuard from '../components/UnsavedGuard';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -110,9 +110,19 @@ it('窄螢幕的下拉選單與導覽同步', async () => {
   expect(await screen.findByText('頁面:permissions')).toBeInTheDocument();
 });
 
+/**
+ * 等基本設定頁出現，並讓「有未儲存變更」確實登記到 useBlocker 後才操作。
+ * 文字一進 DOM，findByText 就會 resolve，但回報 dirty 的 useEffect 和 blocker 的更新
+ * 可能還沒跑完；CI 較慢時，點擊會搶在前面讓導覽直接通過（偶發失敗）。用 act 先把剩下的 effect 跑完。
+ */
+async function settingsDirty() {
+  await screen.findByText('頁面:settings');
+  await act(async () => {});
+}
+
 it('有區塊未儲存時，切換頁籤先確認並列出是哪個區塊；留在此頁不會切走', async () => {
   renderAt('?tab=settings');
-  await screen.findByText('頁面:settings');
+  await settingsDirty();
   const nav = screen.getByRole('navigation', { name: '租戶設定導覽' });
   fireEvent.click(within(nav).getByRole('button', { name: '外觀' }));
   expect(await screen.findByText(/基本設定：租戶設定/)).toBeInTheDocument();
@@ -125,7 +135,7 @@ it('有區塊未儲存時，切換頁籤先確認並列出是哪個區塊；留�
 
 it('有區塊未儲存時，按「租戶清單」離開也會先確認', async () => {
   renderAt('?tab=settings');
-  await screen.findByText('頁面:settings');
+  await settingsDirty();
   fireEvent.click(screen.getByRole('button', { name: /租戶清單/ }));
   expect(await screen.findByText(/基本設定：租戶設定/)).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: '放棄並離開' }));
