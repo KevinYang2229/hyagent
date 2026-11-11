@@ -16,7 +16,10 @@ export const directorySyncAdminRouter = Router({ mergeParams: true });
 
 const idParam = z.object({ id: z.string().trim().min(1) });
 const patchBody = z
-  .object({ ssoAutoProvision: z.boolean().optional(), directorySyncEnabled: z.boolean().optional() })
+  .object({
+    ssoAutoProvision: z.boolean().optional().describe('SSO 登入時，是否自動把不在目錄的人建檔'),
+    directorySyncEnabled: z.boolean().optional().describe('是否接受外部系統以 POST /api/directory-sync/events 推送人員異動'),
+  })
   .strict();
 
 directorySyncAdminRouter.use((req, _res, next) => {

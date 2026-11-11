@@ -2,13 +2,13 @@ import { z } from 'zod';
 
 export const adminLoginSchema = z.object({
   /** 省略或 admin（不分大小寫）＝超級管理者；其他為租戶管理者帳號 */
-  username: z.string().trim().min(1).max(64).optional(),
-  password: z.string().min(1),
+  username: z.string().trim().min(1).max(64).optional().describe('省略或填 admin＝超級管理者（以 ADMIN_PASSWORD 登入）；其他為租戶管理者帳號'),
+  password: z.string().min(1).describe('密碼'),
 });
 
 export const createTenantSchema = z.object({
-  name: z.string().trim().min(1),
-  allowedOrigins: z.array(z.string().trim().min(1)).optional(),
+  name: z.string().trim().min(1).describe('租戶顯示名稱'),
+  allowedOrigins: z.array(z.string().trim().min(1)).optional().describe('允許嵌入的網站來源，例如 https://www.example.com；省略時為 ["*"]（全部放行）'),
 });
 
 /**
@@ -19,13 +19,13 @@ export const createTenantSchema = z.object({
  * 多個 kid，撤銷時就漏得掉。
  */
 export const addPublicKeySchema = z.object({
-  publicKey: z.string().trim().min(1),
-  label: z.string().trim().max(60).optional(),
+  publicKey: z.string().trim().min(1).describe('PEM 或 JWK 格式的公鑰（勿貼私鑰，會被拒絕）；kid 與演算法由伺服器自公鑰算出'),
+  label: z.string().trim().max(60).optional().describe('方便辨識的備註名稱，最多 60 字'),
 });
 
 /** 撤銷公鑰（規格 §7.3）。原因必填——稽核要分得出例行輪替與外洩；不變條件由 store 強制，這裡只驗形狀。 */
 export const revokePublicKeySchema = z.object({
-  reason: z.enum(['rotated', 'aborted', 'compromised', 'other']),
+  reason: z.enum(['rotated', 'aborted', 'compromised', 'other']).describe('撤銷原因（稽核用）：rotated 例行輪替、aborted 放棄輪替（撤掉新登記的）、compromised 私鑰外洩、other 其他'),
 });
 
 /**
@@ -48,15 +48,15 @@ export const tenantKeyParamSchema = z.object({
  */
 export const patchAssertionSettingsSchema = z
   .object({
-    clockSkewSeconds: z.number().int().optional(),
-    assertionLifetimeSeconds: z.number().int().optional(),
-    sessionExpiresIn: z.number().int().optional(),
+    clockSkewSeconds: z.number().int().optional().describe('允許雙方主機的時鐘誤差（秒），不可超過 Assertion 有效時間的 1/4'),
+    assertionLifetimeSeconds: z.number().int().optional().describe('Assertion 簽發後可用來換發 Session 的時間（秒）'),
+    sessionExpiresIn: z.number().int().optional().describe('換發出的 Session 有效時間（秒）'),
   })
   .refine((v) => Object.keys(v).length > 0, { message: '至少需提供一個欄位' });
 
 /** 依 sub 批次作廢 Session（規格 §7.4）。 */
 export const revokeSessionsSchema = z.object({
-  sub: z.string().trim().min(1),
+  sub: z.string().trim().min(1).describe('要強制登出的使用者 sub（帳號），會撤銷此人全部 Session'),
 });
 
 /**
@@ -107,17 +107,17 @@ export const appearanceSchema = z.object({
 
 export const patchTenantSchema = z
   .object({
-    name: z.string().trim().min(1).optional(),
-    allowedOrigins: z.array(z.string().trim().min(1)).optional(),
-    appearance: appearanceSchema.optional(),
+    name: z.string().trim().min(1).optional().describe('租戶顯示名稱'),
+    allowedOrigins: z.array(z.string().trim().min(1)).optional().describe('允許嵌入的網站來源；["*"] 代表全部放行。整份取代'),
+    appearance: appearanceSchema.optional().describe('Widget 外觀設定'),
     // 月度 LLM token 配額；0 = 不限
-    quotaMonthlyLlmTokens: z.number().int().min(0).optional(),
+    quotaMonthlyLlmTokens: z.number().int().min(0).optional().describe('每月 LLM token 用量上限；0＝不限，用盡後呼叫 LLM 的 API 回 429'),
     egressPolicy: z.object({
       allowedEmailDomains: z.array(z.string().trim().toLowerCase().regex(/^[a-z0-9-]+(?:\.[a-z0-9-]+)+$/)).max(100).optional(),
       sensitiveTerms: z.array(z.string().min(4).max(500)).max(100).optional(),
-    }).strict().optional(),
+    }).strict().optional().describe('對外輸出內容的防護：限制 AI 可寄信的網域、攔截機密字詞'),
     // 允許免登入訪客 Session（POST /api/auth/guest）
-    guestAccess: z.boolean().optional(),
+    guestAccess: z.boolean().optional().describe('是否允許免登入訪客使用（POST /api/auth/guest）；關閉後既有訪客 Session 立即失效'),
   })
   /*
    * 也是舊旗標的擋板：ACL 已無每租戶開關（見 knowledge.visibility.ts），
@@ -127,17 +127,17 @@ export const patchTenantSchema = z
   .refine((v) => Object.keys(v).length > 0, { message: '至少需提供一個欄位' });
 
 export const createKeySchema = z.object({
-  type: z.enum(['publishable', 'secret']),
+  type: z.enum(['publishable', 'secret']).describe('publishable＝pk_ 公開金鑰，可放在瀏覽器；secret＝sk_ 秘密金鑰，只能放在伺服器端'),
 });
 
 export const createWebhookSchema = z.object({
-  url: z.string().url(),
-  secret: z.string().min(8).optional(),
-  events: z.array(z.literal('form.submitted')).optional(),
+  url: z.string().url().describe('接收事件的網址；租戶管理者只能填公開網段'),
+  secret: z.string().min(8).optional().describe('簽章用的共享密鑰，至少 8 字；省略時由伺服器產生'),
+  events: z.array(z.literal('form.submitted')).optional().describe('要訂閱的事件；目前只有 form.submitted（表單送出）'),
 });
 
 export const toggleWebhookSchema = z.object({
-  disabled: z.boolean(),
+  disabled: z.boolean().describe('true＝暫停推送、false＝恢復推送'),
 });
 
 export const tenantParamSchema = z.object({
@@ -150,9 +150,9 @@ export const webhookParamSchema = z.object({
 });
 
 export const putPolicySchema = z.object({
-  grantedScopes: z.array(z.string()),
-  groups: z.record(z.string(), z.array(z.string())),
-  accounts: z.record(z.string(), z.array(z.string())),
+  grantedScopes: z.array(z.string()).describe('租戶層開放給所有人（含網站訪客）的 scope，可選值見 GET /api/admin/scopes'),
+  groups: z.record(z.string(), z.array(z.string())).describe('部門名稱 → 該部門額外授予的 scope'),
+  accounts: z.record(z.string(), z.array(z.string())).describe('帳號 → 該帳號個人額外授予的 scope'),
   // 能力套餐：定義 + 部門/帳號指派；default 讓舊版 admin 的 PUT body 向後相容
   bundles: z
     .array(
@@ -163,21 +163,22 @@ export const putPolicySchema = z.object({
         scopes: z.array(z.string()),
       }),
     )
-    .default([]),
-  groupBundles: z.record(z.string(), z.array(z.string())).default({}),
-  accountBundles: z.record(z.string(), z.array(z.string())).default({}),
+    .default([])
+    .describe('角色（能力套餐）定義：具名的 scope 組合，可指派給部門、帳號或全員'),
+  groupBundles: z.record(z.string(), z.array(z.string())).default({}).describe('部門名稱 → 指派的角色 id'),
+  accountBundles: z.record(z.string(), z.array(z.string())).default({}).describe('帳號 → 指派的角色 id'),
   // 不設 default：沒帶時由 setPolicy 沿用現有值（舊版後台不認識這兩個欄位，不能被當成清空）
-  tenantBundles: z.array(z.string()).optional(),
-  memberBundles: z.array(z.string()).optional(),
+  tenantBundles: z.array(z.string()).optional().describe('套用給所有人（含網站訪客）的角色 id；省略＝沿用現值'),
+  memberBundles: z.array(z.string()).optional().describe('套用給所有登入員工（不含網站訪客）的角色 id；省略＝沿用現值'),
   // 讀取時拿到的版本：與目前資料不符代表期間有人改過（其他管理者、新表單、人員同步），回 409。
   // 選填以相容舊呼叫端；後台權限頁一律帶上。
-  baseVersion: z.string().optional(),
+  baseVersion: z.string().optional().describe('讀取政策時拿到的版本；與目前不符代表期間有人改過，回 409，避免覆蓋別人的修改'),
 });
 export type PutPolicyInput = z.infer<typeof putPolicySchema>;
 
 export const changeMyPasswordSchema = z.object({
-  currentPassword: z.string().min(1),
-  newPassword: z.string().min(10, '新密碼長度需為 10 到 128 字元').max(128, '新密碼長度需為 10 到 128 字元'),
+  currentPassword: z.string().min(1).describe('目前的密碼'),
+  newPassword: z.string().min(10, '新密碼長度需為 10 到 128 字元').max(128, '新密碼長度需為 10 到 128 字元').describe('新密碼，10–128 字元'),
 });
 export type ChangeMyPasswordInput = z.infer<typeof changeMyPasswordSchema>;
 

@@ -33,6 +33,29 @@ it('every operation has a human-written summary, not just "METHOD /path"', () =>
   expect(missing).toEqual([]);
 });
 
+it('every top-level request body field has a description', () => {
+  type Schema = { $ref?: string; description?: string; properties?: Record<string, Schema>; allOf?: Schema[]; anyOf?: Schema[]; oneOf?: Schema[] };
+  const components = spec.components.schemas as Record<string, Schema>;
+  const resolve = (s: Schema): Schema => (s.$ref ? components[s.$ref.split('/').pop()!] : s);
+  const topLevel = (s: Schema): Record<string, Schema> => {
+    const r = resolve(s);
+    return Object.assign({}, r.properties, ...[...(r.allOf ?? []), ...(r.anyOf ?? []), ...(r.oneOf ?? [])].map(topLevel));
+  };
+  const missing: string[] = [];
+  for (const [path, item] of Object.entries(spec.paths)) {
+    for (const [method, operation] of Object.entries(item!)) {
+      const content = (operation as { requestBody?: { content?: Record<string, { schema: Schema }> } } | undefined)?.requestBody?.content;
+      for (const { schema } of Object.values(content ?? {})) {
+        for (const [name, field] of Object.entries(topLevel(schema))) {
+          if (!field.description && !resolve(field).description) missing.push(`${method.toUpperCase()} ${path} → ${name}`);
+        }
+      }
+    }
+  }
+  // 新增 body 欄位時，請在 zod schema 加上 .describe('…')
+  expect(missing).toEqual([]);
+});
+
 it('similar operations explain how they differ', () => {
   expect(spec.paths['/api/healthz']!.get!.description).toContain('readyz');
   expect(spec.paths['/api/readyz']!.get!.description).toContain('healthz');

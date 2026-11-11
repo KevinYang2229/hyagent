@@ -77,7 +77,7 @@ export function applyOperationDetails(operation: RouteConfig): void {
   if (path === '/api/directory-sync/events') {
     operation.summary = '以簽章事件批次同步人員目錄';
     operation.description = 'Bearer 為同步專用 assertion（非使用者 Session），sub=directory-sync、aud=hyagent:directory-sync，body_sha256 必須符合實際傳送的原始 bytes。單批最多 500 筆、1 MB；詳細事件契約見 docs/HANDOFF-DIRECTORY-SYNC.md。錯誤為 { error, message, requestId }。';
-    operation.request = { body: { required: true, content: { 'application/json': { schema: z.object({ events: z.array(z.record(z.unknown())).max(500) }) } } } };
+    operation.request = { body: { required: true, content: { 'application/json': { schema: z.object({ events: z.array(z.record(z.unknown())).max(500).describe('人員異動事件（新增、修改、離職等），單批最多 500 筆；事件格式見 docs/HANDOFF-DIRECTORY-SYNC.md') }) } } } };
     operation.responses.default = { description: '同步錯誤（扁平格式）', content: { 'application/json': { schema: { type: 'object', required: ['error', 'message', 'requestId'], properties: { error: { type: 'string' }, message: { type: 'string' }, requestId: { type: 'string' } } } } } };
   }
   let status: string | undefined;

@@ -35,7 +35,7 @@ export const adminFeedbackParamSchema = z.object({ id: z.string().min(1), feedba
 
 export const patchFeedbackSchema = z
   .object({
-    status: z.enum(['open', 'resolved']),
-    resolutionNote: z.string().trim().max(200).optional(),
+    status: z.enum(['open', 'resolved']).describe('處理狀態：open 待處理、resolved 已處理'),
+    resolutionNote: z.string().trim().max(200).optional().describe('處理說明，最多 200 字'),
   })
   .strict();

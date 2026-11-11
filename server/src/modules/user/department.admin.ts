@@ -69,7 +69,9 @@ departmentAdminRouter.get('/', (req: Request, res) => {
   res.json({ data: { departments } });
 });
 
-const renameBody = z.object({ name: z.string().trim().min(1).max(200) }).strict();
+const renameBody = z.object({
+  name: z.string().trim().min(1).max(200).describe('新的部門名稱；若已存在同名部門，兩邊的人員與權限會合併'),
+}).strict();
 
 departmentAdminRouter.patch('/:name', validate({ body: renameBody }), asyncHandler(async (req, res) => {
   const tenantId = String(req.params.id);
