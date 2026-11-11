@@ -83,3 +83,19 @@ it('唯讀時設定欄位與產生金鑰都停用', async () => {
   expect(screen.getByRole('button', { name: /產生公開金鑰/ })).toBeDisabled();
   expect(screen.getByRole('button', { name: /產生私密金鑰/ })).toBeDisabled();
 });
+
+it('儲存期間顯示全畫面遮罩並將 #root 設為 inert，完成後移除', async () => {
+  let resolve!: (v: unknown) => void;
+  vi.mocked(api.updateTenant).mockReturnValue(new Promise((r) => { resolve = r; }) as never);
+  const root = document.createElement('div');
+  root.id = 'root';
+  document.body.appendChild(root);
+  render(<SettingsTab tenant={tenant} onSaved={vi.fn()} onError={vi.fn()} />, { container: root });
+  fireEvent.click(screen.getByRole('button', { name: '儲存設定' }));
+  expect(await screen.findByRole('alert')).toHaveClass('saving-overlay');
+  expect(root).toHaveAttribute('inert');
+  resolve(tenant);
+  await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+  expect(root).not.toHaveAttribute('inert');
+  root.remove();
+});

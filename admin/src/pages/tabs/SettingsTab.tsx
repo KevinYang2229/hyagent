@@ -4,6 +4,7 @@ import { useAuth } from '../../auth';
 import { IconCopy, IconKey } from '../../components/icons';
 import { useUnsavedChanges } from '../../components/unsaved';
 import UnsavedBadge from '../../components/UnsavedBadge';
+import SavingOverlay from '../../components/SavingOverlay';
 import { useConfirm } from '../../components/confirm';
 
 /**
@@ -105,11 +106,14 @@ export default function SettingsTab({
       confirmText: '清除',
     });
     if (!ok) return;
+    setLlmBusy(true);
     try {
       const view = await api.putLlmConfig(tenant.id, { [field]: null });
       setLlmCfg(view);
     } catch (e) {
       onError(e);
+    } finally {
+      setLlmBusy(false);
     }
   }
 
@@ -143,6 +147,7 @@ export default function SettingsTab({
 
   return (
     <div className="settings-stack">
+      <SavingOverlay show={busy || llmBusy} />
       {section === 'basic' && <>
       <div className="card">
         <div className="card-head">
