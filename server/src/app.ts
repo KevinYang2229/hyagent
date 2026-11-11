@@ -4,7 +4,7 @@ import express, { type Express } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import swaggerUi from 'swagger-ui-express';
-import { openapiSpec } from '@/modules/docs/openapi';
+import { buildOpenApiSpec } from '@/modules/docs/route-spec';
 import { env } from '@/config/env';
 import { pingDb } from '@/lib/db';
 import { requestLogger } from '@/middlewares/request-logger';
@@ -108,10 +108,6 @@ export function createApp(): Express {
     next();
   });
 
-  // API 文件（互動式）：OpenAPI 規格 + Swagger UI
-  app.get('/api/openapi.json', (_req, res) => res.status(200).json(openapiSpec));
-  app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(openapiSpec as object));
-
   // 公開：登入 / 換發 token
   // MCP 呼叫 JWT 的公鑰（MCP server 驗章用；公開、不需登入）
   app.use(mcpPublicRouter);
@@ -151,6 +147,11 @@ export function createApp(): Express {
 
   // 管理 API：建立租戶 / 金鑰 / webhook、查用量（自帶 requireAdmin，x-admin-key 保護）
   app.use('/api/admin', adminRouter);
+
+  // 在所有業務路由註冊後產生規格，與實際使用中的路由、驗證欄位同步。
+  const openapiSpec = buildOpenApiSpec(app);
+  app.get('/api/openapi.json', (_req, res) => res.status(200).json(openapiSpec));
+  app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(openapiSpec as object));
 
   app.use(notFoundHandler);
   app.use(errorHandler);

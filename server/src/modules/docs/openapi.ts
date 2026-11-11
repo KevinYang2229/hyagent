@@ -1,5 +1,5 @@
 /**
- * OpenAPI 規格（curated）：涵蓋對外整合面的主要端點與三種認證機制。
+ * OpenAPI 人工說明與共用元件；route-spec.ts 依實際路由與驗證規則產生完整規格。
  * 由 swagger-ui-express 在 /api/docs 提供互動式文件。
  *
  * 三種認證維度：
@@ -13,7 +13,7 @@ export const openapiSpec = {
     title: "HyAgent API",
     version: "1.2.0",
     description:
-      "對話式表單填寫 Agent 的整合 API（多租戶）。嵌入 widget、SDK、webhook 共用此 API。",
+      "多租戶 API：前台、widget、SDK、後台管理與系統整合。路徑與請求欄位依目前註冊的路由及驗證規則產生。舊 /api/v1/* 相容路徑請改用 /api/*。",
   },
   servers: [{ url: "/", description: "同源" }],
   components: {
@@ -24,7 +24,7 @@ export const openapiSpec = {
         name: "x-api-key",
         description: "租戶金鑰 pk_/sk_",
       },
-      bearerAuth: { type: "http", scheme: "bearer", bearerFormat: "JWT" },
+      bearerAuth: { type: "http", scheme: "bearer", bearerFormat: "JWT / hyas_ Session" },
       adminKey: { type: "apiKey", in: "header", name: "x-admin-key" },
     },
     schemas: {
@@ -97,7 +97,7 @@ export const openapiSpec = {
     "/api/auth/sso/exchange": {
       post: {
         tags: ["auth"],
-        summary: "SSO handoff：宿主 user token → 本系統 token",
+        summary: "SSO Identity Assertion → 本系統 Session",
         security: [{ apiKeyAuth: [] }],
         requestBody: {
           required: true,
@@ -105,8 +105,8 @@ export const openapiSpec = {
             "application/json": {
               schema: {
                 type: "object",
-                required: ["userToken"],
-                properties: { userToken: { type: "string" } },
+                required: ["assertion"],
+                properties: { assertion: { type: "string" }, embedOrigin: { type: "string", nullable: true } },
               },
             },
           },
@@ -135,7 +135,7 @@ export const openapiSpec = {
     "/api/skills": {
       get: {
         tags: ["Skills"],
-        summary: "查詢登入者的角色角色與有效 Agent Skill",
+        summary: "查詢登入者的角色與有效 Agent Skill",
         description: "依 JWT 與租戶解析身分，忽略使用者篩選參數；沿用既有 Scope Policy。回應禁止快取，不授予新權限。",
         responses: {
           "200": { description: "data.roles 為本人獲指派的角色摘要；data.skills 為可用能力的 id、label、description。" },
