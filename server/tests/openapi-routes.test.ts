@@ -56,6 +56,16 @@ it('every top-level request body field has a description', () => {
   expect(missing).toEqual([]);
 });
 
+it('request body is marked required only when an empty body would be rejected', () => {
+  const bodyRequired = (path: string, method: 'post' | 'patch') => (spec.paths[path]![method]!.requestBody as { required?: boolean }).required;
+  // 欄位全選填：不送 body 也合法
+  expect(bodyRequired('/api/conversations', 'post')).toBe(false);
+  expect(bodyRequired('/api/admin/tenants/{id}/knowledge/ingest', 'post')).toBe(false);
+  // 有必填欄位，或「至少要帶一個欄位」的 PATCH：仍為必填
+  expect(bodyRequired('/api/conversations/{id}/messages', 'post')).toBe(true);
+  expect(bodyRequired('/api/admin/tenants/{id}/assertion-settings', 'patch')).toBe(true);
+});
+
 it('similar operations explain how they differ', () => {
   expect(spec.paths['/api/healthz']!.get!.description).toContain('readyz');
   expect(spec.paths['/api/readyz']!.get!.description).toContain('healthz');

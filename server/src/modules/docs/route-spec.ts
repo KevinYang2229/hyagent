@@ -62,6 +62,15 @@ function securityFor(path: string): RouteConfig['security'] {
   return [{ apiKeyAuth: [], bearerAuth: [] }];
 }
 
+/**
+ * 不送 body 時 Express 4 的 req.body 是 {}，所以「{} 能通過驗證」就代表 body 可省略。
+ * 只看 isOptional() 會把欄位全選填的 body（如 POST /api/conversations）誤標為必填；
+ * 反過來「至少要帶一個欄位」的 PATCH 送 {} 會失敗，仍正確標為必填。
+ */
+function bodyRequired(schema: z.ZodTypeAny): boolean {
+  return !schema.safeParse({}).success;
+}
+
 export function buildOpenApiSpec(app: Express) {
   const registry = new OpenAPIRegistry();
   for (const { path, method, stack } of registeredRoutes(app)) {
@@ -85,7 +94,7 @@ export function buildOpenApiSpec(app: Express) {
       request: {
         params: Object.keys(params).length ? z.object({ ...params, ...schemas.params?.shape }) : undefined,
         query: schemas.query,
-        body: schemas.body ? { required: !schemas.body.isOptional(), content: { 'application/json': { schema: schemas.body } } } : undefined,
+        body: schemas.body ? { required: bodyRequired(schemas.body), content: { 'application/json': { schema: schemas.body } } } : undefined,
       },
       responses: { ...('responses' in curated ? curated.responses as RouteConfig['responses'] : { '200': { description: '成功；回應內容依端點而定' } }), default: { description: '錯誤回應', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } } },
     };

@@ -151,7 +151,11 @@ export function createApp(): Express {
   // 在所有業務路由註冊後產生規格，與實際使用中的路由、驗證欄位同步。
   const openapiSpec = buildOpenApiSpec(app);
   app.get('/api/openapi.json', (_req, res) => res.status(200).json(openapiSpec));
-  app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(openapiSpec as object));
+  app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(openapiSpec as object, {
+    // 預設顯示 Schema（看得到欄位說明與必填 *），而非只有範例 JSON 的 Example Value；
+    // 欄位展開兩層，不必逐一點開 [...] 才看到型別與說明
+    swaggerOptions: { defaultModelRendering: 'model', defaultModelExpandDepth: 2 },
+  }));
 
   app.use(notFoundHandler);
   app.use(errorHandler);
