@@ -4,7 +4,8 @@ import { z } from 'zod';
 import { extendZodWithOpenApi, OpenAPIRegistry, OpenApiGeneratorV3, type RouteConfig } from '@asteasolutions/zod-to-openapi';
 import { validationSchemas } from '@/middlewares/validate';
 import { openapiSpec } from './openapi';
-import { applyOperationDetails } from './operation-details';
+import { applyOperationDetails, pathParamDescription } from './operation-details';
+import { operationSummaries } from './operation-summaries';
 
 extendZodWithOpenApi(z);
 
@@ -67,11 +68,17 @@ export function buildOpenApiSpec(app: Express) {
     const schemas = Object.assign({}, ...stack.map(({ handle }) => validationSchemas.get(handle))) as {
       body?: z.ZodTypeAny; params?: z.AnyZodObject; query?: z.AnyZodObject;
     };
-    const params = Object.fromEntries([...path.matchAll(/\{(\w+)\}/g)].map((match) => [match[1], z.string()]));
+    const params = Object.fromEntries([...path.matchAll(/\{(\w+)\}/g)].map(([, name]) => {
+      const description = pathParamDescription(path, name);
+      return [name, description ? z.string().describe(description) : z.string()];
+    }));
     const curated = (openapiSpec.paths as Record<string, Partial<Record<RouteConfig['method'], object>>>)[path]?.[method] ?? {};
     const operation: RouteConfig = {
-      tags: [path.startsWith('/api/admin') ? 'admin' : path.split('/')[2] || 'health'],
-      summary: `${method.toUpperCase()} ${path}`,
+      // /healthz、/api/healthz、/readyz、/api/readyz 是同一組健康檢查（雙路徑見 app.ts），統一歸 health
+      tags: [path.startsWith('/api/admin') ? 'admin'
+        : /\/(healthz|readyz)$/.test(path) ? 'health'
+        : path.split('/')[2] || 'health'],
+      ...(operationSummaries[`${method.toUpperCase()} ${path}`] ?? { summary: `${method.toUpperCase()} ${path}` }),
       ...curated,
       method, path,
       security: securityFor(path),

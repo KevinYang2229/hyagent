@@ -2,13 +2,13 @@ import { z } from 'zod';
 import { idParamSchema } from '@/modules/conversation/conversation.schema';
 import { FEEDBACK_REASONS } from './feedback.types';
 
-export const replyParamSchema = idParamSchema.extend({ replyId: z.string().uuid() });
+export const replyParamSchema = idParamSchema.extend({ replyId: z.string().uuid().describe('AI 回覆 id（UUID），見對話訊息的 replyId') });
 
 export const putFeedbackSchema = z
   .object({
-    rating: z.enum(['up', 'down']),
-    reason: z.enum(FEEDBACK_REASONS).optional(),
-    comment: z.string().trim().max(500).optional(),
+    rating: z.enum(['up', 'down']).describe('up＝讚、down＝倒讚'),
+    reason: z.enum(FEEDBACK_REASONS).optional().describe('倒讚原因：wrong 答錯、not_answered 沒回答到、outdated 資訊過時、inappropriate 不恰當、other 其他；僅 rating=down 可帶'),
+    comment: z.string().trim().max(500).optional().describe('補充說明，最多 500 字；僅 rating=down 可帶'),
   })
   .strict()
   .refine((b) => b.rating === 'down' || (b.reason === undefined && b.comment === undefined), {

@@ -14,7 +14,7 @@ notificationsRouter.use((req, res, next) => {
 notificationsRouter.get('/', asyncHandler(async (req, res) => {
   res.json({ data: await listNotifications(req.tenant!.id, req.user!.sub) });
 }));
-notificationsRouter.post('/read', validate({ body: z.object({ ids: z.array(z.string().regex(/^[a-f0-9]{64}$/)).min(1).max(100) }).strict() }), asyncHandler(async (req, res) => {
+notificationsRouter.post('/read', validate({ body: z.object({ ids: z.array(z.string().regex(/^[a-f0-9]{64}$/)).min(1).max(100).describe('要標為已讀的通知 id（GET /api/notifications 回傳），一次 1–100 筆') }).strict() }), asyncHandler(async (req, res) => {
   await markNotificationsRead(req.tenant!.id, req.user!.sub, req.body.ids as string[]);
   res.json({ data: { ok: true } });
 }));

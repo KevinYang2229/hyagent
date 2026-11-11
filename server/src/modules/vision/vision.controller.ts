@@ -5,7 +5,7 @@ import { AppError } from '@/utils/app-error';
 import { analyzeCoupon, analyzeShelf } from './vision.service';
 import type { VisionMediaType } from './vision.types';
 
-export const analyzeBodySchema = z.object({ mode: z.enum(['shelf', 'coupon']) });
+export const analyzeBodySchema = z.object({ mode: z.enum(['shelf', 'coupon']).describe('辨識模式：shelf＝貨架陳列、coupon＝優惠券') });
 
 export const visionController = {
   async analyze(req: Request, res: Response): Promise<void> {

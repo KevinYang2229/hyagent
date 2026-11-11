@@ -1,12 +1,12 @@
 import { z } from 'zod';
 import { REPORT_FORMATS } from './report.render';
 
-export const reportIdParamSchema = z.object({ id: z.string().min(1) });
+export const reportIdParamSchema = z.object({ id: z.string().min(1).describe('報告 id，見對話回覆或 GET /api/tasks 的報告清單') });
 
 /**
  * format 白名單直接由 renderer 登錄表推導——不另外手寫一份格式清單，
  * 多一份就多一個新增格式時會漏改的地方。
  */
 export const downloadQuerySchema = z.object({
-  format: z.enum(REPORT_FORMATS as [string, ...string[]]).optional(),
+  format: z.enum(REPORT_FORMATS as [string, ...string[]]).optional().describe('下載格式；可用值依部署而定（pdf 需伺服器有瀏覽器），省略時用預設格式'),
 });

@@ -3,9 +3,31 @@ import type { RouteConfig } from '@asteasolutions/zod-to-openapi';
 import { env } from '@/config/env';
 import { renderers } from '@/modules/report/report.render';
 
+/** 沒有 validate() 的路由仍要讓 Swagger 讀者知道 path 參數該填什麼。 */
+export function pathParamDescription(path: string, name: string): string | undefined {
+  if (name === 'formId' && path.startsWith('/api/forms/')) return '表單代碼，見 GET /api/forms';
+  if (name === 'id' && path.startsWith('/api/tasks/')) return '任務 id（即對話 id，UUID），見 GET /api/tasks';
+  if (name === 'queryId' && path.endsWith('/stop')) return '要停止的查詢識別碼，即送訊息時帶的 x-query-id header';
+  return undefined;
+}
+
+const UPLOAD_FIELD_DESCRIPTIONS = {
+  file: '要上傳的檔案：PDF、JPEG/PNG/GIF/WebP 圖片、Word、Excel',
+  audio: '錄音檔：m4a、aac、mp4、webm、wav',
+  image: '要辨識的圖片：JPEG、PNG、WebP',
+} as const;
+
+/** 由前端產生的查詢識別碼，可用 POST /api/conversations/queries/{queryId}/stop 中途停止。 */
+const queryIdHeaders = z.object({
+  'x-query-id': z.string().uuid().optional().describe('本次查詢的識別碼（UUID），由呼叫端產生；之後可用 POST /api/conversations/queries/{queryId}/stop 停止這次 AI 回覆。省略時由伺服器產生，就無法中途停止'),
+});
+
 /** Contracts not expressible by validate(): multipart files, downloads and authentication notes. */
 export function applyOperationDetails(operation: RouteConfig): void {
   const { path, method } = operation;
+  if (method === 'post' && (path === '/api/conversations' || path === '/api/conversations/{id}/messages')) {
+    operation.request = { ...operation.request, headers: queryIdHeaders };
+  }
   const upload = method === 'post' && (
     path.endsWith('/attachments') || path.endsWith('/knowledge/files') ||
     path === '/api/speech/transcribe' || path === '/api/vision/analyze'
@@ -13,6 +35,7 @@ export function applyOperationDetails(operation: RouteConfig): void {
   if (upload) {
     const field = path.includes('/speech/') ? 'audio' : path.includes('/vision/') ? 'image' : 'file';
     const maxMb = path.endsWith('/knowledge/files') ? env.KNOWLEDGE_FILE_MAX_MB : field === 'image' ? 5 : 10;
+    const fieldDescription = path.endsWith('/knowledge/files') ? '要加入知識庫的文件' : UPLOAD_FIELD_DESCRIPTIONS[field];
     const body = operation.request?.body?.content['application/json']?.schema;
     const properties = body instanceof z.ZodObject ? body.shape : {};
     operation.summary = field === 'audio' ? '語音轉文字' : field === 'image' ? '影像辨識' : path.endsWith('/knowledge/files') ? '上傳知識庫檔案' : '上傳對話附件';
@@ -21,7 +44,7 @@ export function applyOperationDetails(operation: RouteConfig): void {
       body: {
         required: true,
         description: `單檔上限 ${maxMb} MB${path.endsWith('/knowledge/files') ? '，由 KNOWLEDGE_FILE_MAX_MB 設定；超限回 413' : '；不支援的格式或超限回 422'}`,
-        content: { 'multipart/form-data': { schema: z.object({ ...properties, [field]: z.string().openapi({ type: 'string', format: 'binary' }) }) } },
+        content: { 'multipart/form-data': { schema: z.object({ ...properties, [field]: z.string().openapi({ type: 'string', format: 'binary', description: `${fieldDescription}，單檔上限 ${maxMb} MB` }) }) } },
       },
     };
     operation.responses[path.endsWith('/knowledge/files') ? '413' : '422'] = { description: '檔案大小超限或格式不符' };

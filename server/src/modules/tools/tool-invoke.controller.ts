@@ -11,8 +11,8 @@ import { McpToolCallError } from '@/modules/mcp/mcp.connection';
 import { isWriteTool, makeToolContext, toolRegistry, unwrapToolOutput, type ToolDef } from '@/modules/tools';
 import { AppError } from '@/utils/app-error';
 
-export const invokeParamSchema = z.object({ toolId: z.string().trim().min(1).max(200) });
-export const invokeBodySchema = z.object({ input: z.record(z.unknown()).default({}) }).strict();
+export const invokeParamSchema = z.object({ toolId: z.string().trim().min(1).max(200).describe('要呼叫的工具 id') });
+export const invokeBodySchema = z.object({ input: z.record(z.unknown()).default({}).describe('工具參數，格式依該工具的 input schema；省略時為 {}') }).strict();
 
 export const TOOL_UNAVAILABLE_MESSAGE = '相關服務暫時無法使用，請稍後再試';
 
