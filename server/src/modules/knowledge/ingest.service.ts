@@ -8,6 +8,7 @@ import { AppError } from '@/utils/app-error';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 import { usageStore } from '@/modules/usage/usage.store';
 import { replaceWebsiteChunks } from './knowledge.index.repo';
+import { htmlToMarkdown } from './doc-parse';
 import type { IndexedChunk, KnowledgeIndexFile } from './knowledge-index.types';
 import { knowledgeStore } from './knowledge.store';
 import { WebsiteBrowser } from './website-browser';
@@ -156,27 +157,36 @@ export function normalizeUrl(href: string, base: string, origin: string): string
   } catch { return null; }
 }
 
-export function extractPage(html: string): { title: string; sections: { heading: string; text: string }[] } {
+/** 網站單頁的抽取結果：正文已轉成 Markdown，交給 chunkWebsitePage 依標題切塊。 */
+export interface WebsitePage {
+  title: string;
+  markdown: string;
+}
+
+/**
+ * 抽出頁面正文並轉成 Markdown。
+ *
+ * 舊做法是「找每個 h1–h3，再抓它後面的同層元素」，實測會：漏掉第一個標題前的內容
+ * （首頁簡介、文章導言）、把包在容器裡的標題底下的內容併進前一節、子標題的內容收錄兩次。
+ * 改成依文件順序轉 Markdown 後走與上傳檔案相同的 chunkMarkdown，這些問題一次消失，
+ * 也順帶得到完整標題路徑、片段重疊與表格逐列切塊。
+ */
+export function extractPage(html: string): WebsitePage {
   const $ = cheerio.load(html);
   const footerText = squash($('footer').text());
+  // 頁首、頁尾、導覽列與側欄是每頁重複的版型，不是正文；頁尾的聯絡資訊另外收成一節
   $('script, style, noscript, nav, header, footer, aside, form, svg, iframe').remove();
   const title = squash($('title').first().text() || $('h1').first().text() || '').slice(0, 500);
-  const root = $('main').length ? $('main') : $('body');
-  const sections: { heading: string; text: string }[] = [];
-  let sectionChars = 0;
-  root.find('h1, h2, h3').each((_, el) => {
-    const $el = $(el);
-    const text = squash($el.nextUntil('h1, h2, h3').text());
-    sectionChars += text.length;
-    if (sectionChars > MAX_WEBSITE_TEXT_CHARS) throw new WebsiteIngestLimitError('單頁抽取文字超過 200 萬字元');
-    if (text.length >= 20) sections.push({ heading: squash($el.text()).slice(0, 500), text });
-  });
-  if (sections.length === 0) {
-    const text = squash(root.text());
-    if (text.length >= 40) sections.push({ heading: '', text });
-  }
-  if (footerText.length >= 20) sections.push({ heading: '聯絡資訊', text: footerText });
-  return { title, sections };
+  const root = $('main').length ? $('main').first() : $('body');
+  const body = normalizeDocText(htmlToMarkdown($.html(root) ?? ''));
+  if (body.length > MAX_WEBSITE_TEXT_CHARS) throw new WebsiteIngestLimitError('單頁抽取文字超過 200 萬字元');
+  const footer = footerText.length >= 20 ? `\n\n# 聯絡資訊\n${footerText}` : '';
+  return { title, markdown: `${body}${footer}` };
+}
+
+/** 網站頁面切塊：title 為「站名 > 章節路徑」，供引用出處顯示；text 開頭同樣帶這段路徑。 */
+export function chunkWebsitePage(page: WebsitePage, maxLen: number): { title: string; text: string }[] {
+  return chunkMarkdownSections(page.markdown, maxLen, page.title).map(({ prefix, text }) => ({ title: prefix, text }));
 }
 
 export function extractLinks(html: string, base: string, origin: string): string[] {
@@ -192,7 +202,7 @@ export function extractLinks(html: string, base: string, origin: string): string
 /**
  * 依句尾/換行切句後湊滿 maxLen 成塊。
  * overlap > 0 時，每塊結尾的 overlap 字元會複製到下一塊開頭，避免答案剛好被切在邊界上
- * （網站爬取沿用預設 0，維持既有行為；檔案來源由 chunkMarkdown 指定）。
+ * （網站與檔案來源都經 chunkMarkdown 指定重疊比例）。
  */
 export function chunkText(text: string, maxLen = 800, overlap = 0): string[] {
   const sentences = text.split(/(?<=[。！？；!?;\n])/).map((s) => s.trim()).filter(Boolean);
@@ -293,11 +303,19 @@ function chunkTableRow(
  * 純文字來源（doc/pdf）沒有標題行，會自然退化成單一無前綴的節，行為與過去一致。
  */
 export function chunkMarkdown(md: string, maxLen = 800): string[] {
+  return chunkMarkdownSections(md, maxLen).map((c) => c.text);
+}
+
+/**
+ * chunkMarkdown 的本體，另外回傳每塊的標題路徑（prefix）。
+ * root 會放在標題路徑最前面（網站用頁面標題），讓沒有標題的段落也知道出自哪一頁。
+ */
+function chunkMarkdownSections(md: string, maxLen: number, root?: string): { prefix: string; text: string }[] {
   const overlap = Math.round(maxLen * OVERLAP_RATIO);
-  const out: string[] = [];
+  const out: { prefix: string; text: string }[] = [];
   const path: string[] = []; // index = 標題層級 - 1
   let body: string[] = [];
-  const prefixOf = (): string => path.filter(Boolean).join(' > ');
+  const prefixOf = (): string => [root, ...path].filter(Boolean).join(' > ');
 
   const flush = (): void => {
     const text = body.join('\n').trim();
@@ -306,7 +324,7 @@ export function chunkMarkdown(md: string, maxLen = 800): string[] {
     const prefix = prefixOf();
     const budget = Math.max(MIN_BODY_CHARS, maxLen - prefix.length - 1);
     for (const piece of chunkText(text, budget, overlap)) {
-      out.push(prefix ? `${prefix}\n${piece}` : piece);
+      out.push({ prefix, text: prefix ? `${prefix}\n${piece}` : piece });
     }
   };
 
@@ -325,7 +343,8 @@ export function chunkMarkdown(md: string, maxLen = 800): string[] {
     if (table) {
       flush(); // 表格前的散文先各自成塊，不與表格混在一起
       for (const cells of table.rows) {
-        out.push(...chunkTableRow(table.headers, cells, prefixOf(), maxLen, overlap));
+        const prefix = prefixOf();
+        out.push(...chunkTableRow(table.headers, cells, prefix, maxLen, overlap).map((text) => ({ prefix, text })));
       }
       i = table.end;
       continue;
@@ -390,25 +409,23 @@ export async function runIngest(
           }
           html = await readWebsiteHtml(resp);
         }
-        const { title, sections } = extractPage(html);
-        if (sections.length) pagesCrawled += 1;
+        const page = extractPage(html);
+        totalTextChars += page.markdown.length;
+        if (totalTextChars > MAX_WEBSITE_TEXT_CHARS) {
+          throw new WebsiteIngestLimitError('網站文字總量超過 200 萬字元');
+        }
         // 逐頁切段後不保留整站原文，避免與全部向量同時占用 heap。
-        for (const section of sections) {
-          totalTextChars += section.text.length;
-          if (totalTextChars > MAX_WEBSITE_TEXT_CHARS) {
-            throw new WebsiteIngestLimitError('網站文字總量超過 200 萬字元');
+        const pageChunks = chunkWebsitePage(page, params.chunkChars);
+        if (pageChunks.length) pagesCrawled += 1;
+        for (const [i, chunk] of pageChunks.entries()) {
+          // 頁尾等每頁重複的片段以內容雜湊去重，只收一次
+          const hash = createHash('sha1').update(chunk.text).digest('hex');
+          if (seenHash.has(hash)) continue;
+          if (pending.length >= MAX_WEBSITE_CHUNKS) {
+            throw new WebsiteIngestLimitError(`網站片段超過 ${MAX_WEBSITE_CHUNKS} 筆`);
           }
-          const crumb = [title, section.heading].filter(Boolean).join(' › ');
-          for (const [i, body] of chunkText(section.text, params.chunkChars).entries()) {
-            const text = crumb ? `${crumb}\n${body}` : body;
-            const hash = createHash('sha1').update(text).digest('hex');
-            if (seenHash.has(hash)) continue;
-            if (pending.length >= MAX_WEBSITE_CHUNKS) {
-              throw new WebsiteIngestLimitError(`網站片段超過 ${MAX_WEBSITE_CHUNKS} 筆`);
-            }
-            seenHash.add(hash);
-            pending.push({ id: `${hash.slice(0, 12)}-${i}`, url: pageUrl, title: crumb || pageUrl, text });
-          }
+          seenHash.add(hash);
+          pending.push({ id: `${hash.slice(0, 12)}-${i}`, url: pageUrl, title: chunk.title || pageUrl, text: chunk.text });
         }
         for (const link of extractLinks(html, pageUrl, origin)) {
           if (scheduled.has(link) || !allowed(link, params)) continue;
