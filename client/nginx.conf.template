@@ -61,6 +61,10 @@ server {
 
     # 後端 API
     location /api/ {
+        # nginx 預設只收 1MB，超過就在這層回 413、到不了 server。放寬到 Cloud Run HTTP/1 的請求上限 32MiB；
+        # 實際單檔上限仍由 server 把關（知識庫 KNOWLEDGE_FILE_MAX_MB、附件 10MB）
+        client_max_body_size 32m;
+
         # 目標帶變數時 nginx 不會自動接上原始路徑，必須自己補 $request_uri
         proxy_pass $api_upstream$request_uri;
 
