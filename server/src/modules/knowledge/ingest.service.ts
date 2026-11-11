@@ -355,6 +355,17 @@ function chunkMarkdownSections(md: string, maxLen: number, root?: string): { pre
   return out;
 }
 
+/** 起始頁抓取錯誤的可讀說明：fetch 的 TypeError 只說 'fetch failed'，真正原因在 cause.code */
+function describeFetchError(err: unknown): string {
+  // AbortSignal.timeout 丟的是 DOMException，不一定是 Error 的實例，改看 name
+  const name = (err as { name?: string } | undefined)?.name;
+  if (name === 'TimeoutError' || name === 'AbortError') return '連線逾時';
+  const message = err instanceof Error ? err.message : String(err);
+  const cause = (err as { cause?: { code?: string; message?: string } } | undefined)?.cause;
+  const detail = cause?.code ?? cause?.message;
+  return detail ? `${message}（${detail}）` : message;
+}
+
 function allowed(url: string, p: IngestParams): boolean {
   const path = new URL(url).pathname;
   if (p.pathPrefix && !path.startsWith(p.pathPrefix)) return false;
@@ -376,6 +387,8 @@ export async function runIngest(
   const pending: Omit<IndexedChunk, 'vector'>[] = [];
   let pagesCrawled = 0;
   let totalTextChars = 0;
+  // 起始頁沒產出內容的原因；最後沒有任何片段時帶進錯誤訊息，讓後台看得到為何失敗
+  let startIssue: string | undefined;
   logger.info({ tenantId: params.tenantId, maxPages: params.maxPages,
     renderJavaScript: !!params.renderJavaScript,
     heapUsedMiB: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) }, 'website crawl started');
@@ -388,7 +401,10 @@ export async function runIngest(
     if (browser) await browser.open();
     while (queue.length && seen.size < params.maxPages) {
       const url = queue.shift() as string;
-      if (seen.has(url) || !allowed(url, params)) continue;
+      if (seen.has(url) || !allowed(url, params)) {
+        if (url === start) startIssue = '起始網址不符合路徑前綴或包含／排除規則';
+        continue;
+      }
       seen.add(url);
       try {
         assertWebsiteHeapBudget();
@@ -404,6 +420,9 @@ export async function runIngest(
           const resp = restricted ? await publicOnlyFetch(url, init) : await fetch(url, init);
           const ct = resp.headers.get('content-type') ?? '';
           if (!resp.ok || !ct.includes('text/html')) {
+            if (url === start) {
+              startIssue = !resp.ok ? `起始頁回應 HTTP ${resp.status}` : `起始頁不是 HTML（content-type: ${ct || '未提供'}）`;
+            }
             await resp.body?.cancel();
             continue;
           }
@@ -417,6 +436,9 @@ export async function runIngest(
         // 逐頁切段後不保留整站原文，避免與全部向量同時占用 heap。
         const pageChunks = chunkWebsitePage(page, params.chunkChars);
         if (pageChunks.length) pagesCrawled += 1;
+        else if (url === start) {
+          startIssue = browser ? '起始頁沒有可抽取的正文' : '起始頁沒有可抽取的正文，若內容由 JavaScript 動態產生，需開啟 JavaScript 渲染';
+        }
         for (const [i, chunk] of pageChunks.entries()) {
           // 頁尾等每頁重複的片段以內容雜湊去重，只收一次
           const hash = createHash('sha1').update(chunk.text).digest('hex');
@@ -440,13 +462,16 @@ export async function runIngest(
         // 旗標來源的起始頁被公開網段限制擋下時也直接回報，讓管理者看得到原因
         if (err instanceof WebsiteIngestLimitError || (browser && url === start)
           || (restricted && url === start && err instanceof AppError)) throw err;
+        if (url === start) startIssue = `起始頁抓取失敗：${describeFetchError(err)}`;
         logger.warn({ err, url }, 'ingest page failed');
       }
     }
   } finally {
     await browser?.close();
   }
-  if (pending.length === 0) throw new Error('沒有可解析的文字內容，原有索引未變更');
+  if (pending.length === 0) {
+    throw new Error(`沒有可解析的文字內容，原有索引未變更${startIssue ? `（${startIssue}）` : ''}`);
+  }
   assertWebsiteHeapBudget();
   logger.info({ tenantId: params.tenantId, pagesCrawled, chunks: pending.length,
     heapUsedMiB: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) }, 'website crawl ready for embedding');

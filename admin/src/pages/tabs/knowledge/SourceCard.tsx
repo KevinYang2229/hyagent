@@ -139,6 +139,12 @@ export default function SourceCard({
 
   /** 選檔只帶入來源；chunk/model 等參數在同一區塊確認後，再按「開始解析」。 */
   const pickFile = (file: File) => {
+    // 先在前端擋超限檔案，避免整個檔案傳完才收到後端（或部署平台）的 413
+    if (file.size > fileMaxMb * 1024 * 1024) {
+      const mb = (file.size / 1024 / 1024).toFixed(1);
+      toast.error(`「${file.name}」為 ${mb}MB，超過單檔上限 ${fileMaxMb}MB`);
+      return;
+    }
     setSourceKind("file");
     setPendingFile(file);
   };

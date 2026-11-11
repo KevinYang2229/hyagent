@@ -92,3 +92,39 @@ it('非起始頁超量也必須終止，不被逐頁錯誤處理略過', async (
   await expect(runIngest({ ...params, renderJavaScript: true })).rejects.toThrow('單頁 HTML 超過');
   expect(replaceWebsiteChunks).not.toHaveBeenCalled();
 });
+
+describe('起始頁沒抓到內容時，錯誤訊息帶出實際原因', () => {
+  it('起始頁回應非 2xx 時帶出 HTTP 狀態碼', async () => {
+    jest.spyOn(global, 'fetch').mockResolvedValue(new Response('Forbidden', { status: 403, headers: { 'content-type': 'text/html' } }));
+    await expect(runIngest(params)).rejects.toThrow('沒有可解析的文字內容，原有索引未變更（起始頁回應 HTTP 403）');
+    expect(replaceWebsiteChunks).not.toHaveBeenCalled();
+  });
+
+  it('起始頁不是 HTML 時帶出 content-type', async () => {
+    jest.spyOn(global, 'fetch').mockResolvedValue(new Response('{}', { headers: { 'content-type': 'application/json' } }));
+    await expect(runIngest(params)).rejects.toThrow('起始頁不是 HTML（content-type: application/json）');
+  });
+
+  it('起始頁連線失敗時帶出底層錯誤代碼', async () => {
+    jest.spyOn(global, 'fetch').mockRejectedValue(
+      Object.assign(new TypeError('fetch failed'), { cause: Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' }) }),
+    );
+    await expect(runIngest(params)).rejects.toThrow('起始頁抓取失敗：fetch failed（ECONNRESET）');
+  });
+
+  it('起始頁連線逾時時說明逾時', async () => {
+    jest.spyOn(global, 'fetch').mockRejectedValue(new DOMException('The operation was aborted due to timeout', 'TimeoutError'));
+    await expect(runIngest(params)).rejects.toThrow('起始頁抓取失敗：連線逾時');
+  });
+
+  it('起始頁是 HTML 但沒有正文時提示可能需要 JavaScript 渲染', async () => {
+    jest.spyOn(global, 'fetch').mockResolvedValue(new Response('<main></main>', { headers: { 'content-type': 'text/html' } }));
+    await expect(runIngest(params)).rejects.toThrow('起始頁沒有可抽取的正文');
+  });
+
+  it('起始網址被路徑前綴排除時直接說明', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch');
+    await expect(runIngest({ ...params, pathPrefix: '/docs' })).rejects.toThrow('起始網址不符合路徑前綴或包含／排除規則');
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
