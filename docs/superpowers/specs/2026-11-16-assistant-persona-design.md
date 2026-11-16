@@ -149,6 +149,17 @@ AI 角色
 
   訪客區塊一律顯示，不受 `guestAccess` 開關影響，因為公開 widget 的使用者沒有登入也算訪客。
 
+### 預覽 system prompt（2026-11-16 追加，使用者確認）
+
+管理者在「AI 角色」頁不用存檔就能看到 AI 實際收到的角色指示，員工、訪客分開顯示。
+
+- **只顯示角色區塊**，平台規則收成一行說明（不可修改；訪客那一側註明不附知識庫出處）。理由：平台規則依服務、開通範圍、語言而異，全部攤開看不出角色效果，也不必把規則全文交給租戶。
+- **由 server 產生**，避免前端另存一份預設角色文字而對不起來：
+  - 把 `personaLines` 拆出不讀資料庫的純函式 `buildPersonaLines({ persona, assistantName, isGuest, locale })`，真實對話與預覽共用。
+  - 新增 `POST /admin/tenants/:id/persona-preview`，body：`{ assistantPersona（同 PATCH 的格式，可含 null）, locale?: 'zh-Hant' | 'en' }`；回傳 `{ member: string[], guest: string[] }`。AI 名稱取租戶已存的 `appearance.assistantName`。不寫入任何資料。
+  - 權限：只需「AI 角色」**讀取**權限。路由規則的 tab 存取新增「此 POST 視為讀取」標記，並以測試鎖住（read 可、hidden 不可）。
+- **畫面**：設定欄位下方加「預覽」區塊，員工、訪客各一框；欄位變更後約 400ms 自動重新取得；右上角切換中文／English；某側為空時顯示「維持預設行為，不加角色指示」。預覽失敗只在預覽區顯示錯誤，不影響編輯與存檔。
+
 ### 測試
 
 - `personaLines`：員工與訪客各自選對設定；預設且沒有 notes 時回空陣列；中英文；notes 與 contact 有出現；assistantName 有出現。
