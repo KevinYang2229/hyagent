@@ -10,7 +10,10 @@ vi.mock('../../api', () => ({ api: { previewPersona: vi.fn() } }));
 
 const EMPTY = '維持預設行為，不加角色指示';
 const SUMMARY = '展開平台規則（知識庫問答，不可修改）';
-const RULES = { member: ['規則：', '- 員工規則'], guest: ['規則：', '- 訪客規則'] };
+const RULES = {
+  member: [{ text: '- 員工規則', locked: false }, { text: '- 員工防護', locked: true }],
+  guest: [{ text: '- 訪客規則', locked: false }],
+};
 const NAME = '你的名字是「小華」，使用者稱呼你時即指你。';
 
 beforeEach(() => {
@@ -117,4 +120,19 @@ it('API 失敗時只在預覽區顯示錯誤', async () => {
   render(<PersonaPreview tenantId="t1" persona={{}} />);
   await flush();
   expect(screen.getByText('預覽暫時無法產生')).toBeInTheDocument();
+});
+
+it('鎖定的規則以 🔒 標示', async () => {
+  vi.mocked(api.previewPersona).mockResolvedValue({ member: [], guest: [], rules: RULES });
+  render(<PersonaPreview tenantId="t1" persona={{}} />);
+  await flush();
+  expect(screen.getByText('🔒 - 員工防護')).toBeInTheDocument();
+  expect(screen.getByText('- 員工規則')).toBeInTheDocument();
+});
+
+it('有規則草稿時一併送出', async () => {
+  vi.mocked(api.previewPersona).mockResolvedValue({ member: [], guest: [], rules: RULES });
+  render(<PersonaPreview tenantId="t1" persona={{}} rules={{ member: ['草稿'], guest: null }} />);
+  await flush();
+  expect(vi.mocked(api.previewPersona).mock.calls[0][1].knowledgeAnswerRules).toEqual({ member: ['草稿'], guest: null });
 });

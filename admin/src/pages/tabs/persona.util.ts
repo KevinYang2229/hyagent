@@ -27,3 +27,20 @@ export function toPersonaPatch(value: AssistantPersona): PersonaPatch {
       : null;
   return { member, guest };
 }
+
+/** 知識庫規則草稿：每側 null＝用內建，陣列＝自訂（只含可改規則） */
+export type RulesDraft = { member: string[] | null; guest: string[] | null };
+
+/** GET knowledge-rules 的回應：每側的內建可改規則、鎖定規則與已存的自訂 */
+export type RulesInfo = Record<"member" | "guest", { defaults: string[]; locked: string[]; custom: string[] | null }>;
+
+/** 存檔用：去掉空白項目；與內建完全相同的一側送 null（未自訂，之後內建更新會跟著更新） */
+export function toRulesPatch(draft: RulesDraft, info: RulesInfo): RulesDraft {
+  const side = (key: "member" | "guest"): string[] | null => {
+    const list = draft[key];
+    if (list === null) return null;
+    const clean = list.map((t) => t.trim()).filter(Boolean);
+    return JSON.stringify(clean) === JSON.stringify(info[key].defaults) ? null : clean;
+  };
+  return { member: side("member"), guest: side("guest") };
+}

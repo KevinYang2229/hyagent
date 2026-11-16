@@ -7,7 +7,7 @@ import { TAB_GROUPS, TAB_LABELS } from '../tabGroups';
 import { api, type Tenant } from '../../api';
 import { useUnsavedChanges } from '../../components/unsaved';
 
-vi.mock('../../api', () => ({ api: { updateTenant: vi.fn(), previewPersona: vi.fn() } }));
+vi.mock('../../api', () => ({ api: { updateTenant: vi.fn(), previewPersona: vi.fn(), getKnowledgeRules: vi.fn() } }));
 vi.mock('../../components/unsaved', () => ({ useUnsavedChanges: vi.fn() }));
 
 const base: Tenant = { id: 't1', name: '宏碁', appearance: { assistantName: '小華' }, createdAt: '' };
@@ -15,7 +15,13 @@ const base: Tenant = { id: 't1', name: '宏碁', appearance: { assistantName: '�
 beforeEach(() => {
   vi.resetAllMocks();
   vi.mocked(api.updateTenant).mockResolvedValue(base as never);
+  vi.mocked(api.getKnowledgeRules).mockResolvedValue(RULES_INFO);
 });
+
+const RULES_INFO = {
+  member: { defaults: ['數字規則', '精簡規則'], locked: ['🔒防捏造'], custom: null },
+  guest: { defaults: ['精簡規則'], locked: ['🔒不提文件名稱'], custom: ['已存的訪客規則'] },
+};
 afterEach(cleanup);
 
 function lastDirty(): [string, boolean] {
@@ -87,4 +93,45 @@ it('預覽 API 失敗時仍可回到設定儲存，送出的 patch 正確', asyn
   fireEvent.click(screen.getByRole('button', { name: '儲存 AI 角色' }));
   await waitFor(() => expect(onSaved).toHaveBeenCalled());
   expect(api.updateTenant).toHaveBeenCalledWith('t1', { assistantPersona: { member: { preset: 'it' }, guest: null } });
+});
+
+it('有「設定／知識庫規則／預覽」三個子頁籤', () => {
+  render(<PersonaTab tenant={base} onSaved={vi.fn()} onError={vi.fn()} />);
+  expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['設定', '知識庫規則', '預覽']);
+});
+
+it('儲存規則：只送 knowledgeAnswerRules；與內建相同的一側送 null，已存的自訂保留', async () => {
+  const onSaved = vi.fn();
+  render(<PersonaTab tenant={base} onSaved={onSaved} onError={vi.fn()} />);
+  fireEvent.click(screen.getByRole('tab', { name: '知識庫規則' }));
+  const first = (await screen.findAllByRole('textbox', { name: /^規則 \d+$/ }))[0];
+  fireEvent.change(first, { target: { value: '員工新規則' } });
+  fireEvent.click(screen.getByRole('button', { name: '儲存規則' }));
+  await waitFor(() => expect(onSaved).toHaveBeenCalled());
+  expect(api.updateTenant).toHaveBeenCalledWith('t1', {
+    knowledgeAnswerRules: { member: ['員工新規則', '精簡規則'], guest: ['已存的訪客規則'] },
+  });
+});
+
+it('只改規則時以「知識庫規則」回報未儲存', async () => {
+  render(<PersonaTab tenant={base} onSaved={vi.fn()} onError={vi.fn()} />);
+  fireEvent.click(screen.getByRole('tab', { name: '知識庫規則' }));
+  const first = (await screen.findAllByRole('textbox', { name: /^規則 \d+$/ }))[0];
+  fireEvent.change(first, { target: { value: '改了' } });
+  const calls = vi.mocked(useUnsavedChanges).mock.calls.filter(([label]) => label === '知識庫規則');
+  expect(calls.at(-1)?.[1]).toBe(true);
+});
+
+it('預覽帶上規則草稿', async () => {
+  vi.mocked(api.previewPersona).mockResolvedValue({ member: [], guest: [], rules: { member: [], guest: [] } });
+  render(<PersonaTab tenant={base} onSaved={vi.fn()} onError={vi.fn()} />);
+  fireEvent.click(screen.getByRole('tab', { name: '知識庫規則' }));
+  const first = (await screen.findAllByRole('textbox', { name: /^規則 \d+$/ }))[0];
+  fireEvent.change(first, { target: { value: '草稿規則' } });
+  fireEvent.click(screen.getByRole('tab', { name: '預覽' }));
+  await waitFor(() => expect(api.previewPersona).toHaveBeenCalled());
+  expect(vi.mocked(api.previewPersona).mock.calls.at(-1)?.[1].knowledgeAnswerRules).toEqual({
+    member: ['草稿規則', '精簡規則'],
+    guest: ['已存的訪客規則'],
+  });
 });

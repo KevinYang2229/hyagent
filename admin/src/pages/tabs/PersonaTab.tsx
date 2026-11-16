@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { AssistantPersona } from "@hyagent/shared";
 import { useUnsavedChanges } from "../../components/unsaved";
 import UnsavedBadge from "../../components/UnsavedBadge";
 import { api, type Tenant } from "../../api";
 import PersonaPreview from "./PersonaPreview";
+import KnowledgeRulesSection from "./KnowledgeRulesSection";
 import PersonaSection from "./PersonaSection";
-import { toPersonaPatch } from "./persona.util";
+import { toPersonaPatch, toRulesPatch, type RulesDraft, type RulesInfo } from "./persona.util";
 
 /**
  * AI 角色頁籤：員工／訪客分開設定 AI 的角色與口吻。
@@ -24,8 +25,53 @@ export default function PersonaTab({
 }) {
   const [persona, setPersona] = useState<AssistantPersona>(tenant.assistantPersona ?? {});
   const [busy, setBusy] = useState(false);
-  // 子頁：設定／預覽。草稿留在這一層，切換子頁不會遺失；預覽只在切過去時才掛載（才開始打 API）
-  const [sub, setSub] = useState<"edit" | "preview">("edit");
+  // 子頁：設定／知識庫規則／預覽。草稿留在這一層，切換子頁不會遺失；預覽只在切過去時才掛載（才開始打 API）
+  const [sub, setSub] = useState<"edit" | "rules" | "preview">("edit");
+
+  // 知識庫規則：內建／鎖定規則由 server 提供（語言依租戶預設語言），草稿與已存版本分開記，用來判斷未儲存
+  const rulesLocale = tenant.appearance?.defaultLocale === "en" ? "en" : "zh-Hant";
+  const [rulesInfo, setRulesInfo] = useState<RulesInfo | null>(null);
+  const [rulesDraft, setRulesDraft] = useState<RulesDraft>({ member: null, guest: null });
+  const [rulesSaved, setRulesSaved] = useState<RulesDraft>({ member: null, guest: null });
+  const [rulesBusy, setRulesBusy] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    Promise.resolve()
+      .then(() => api.getKnowledgeRules(tenant.id, rulesLocale))
+      .then((info) => {
+        if (!alive || !info) return;
+        const saved = { member: info.member.custom, guest: info.guest.custom };
+        setRulesInfo(info);
+        setRulesDraft(saved);
+        setRulesSaved(saved);
+      })
+      .catch(onError);
+    return () => {
+      alive = false;
+    };
+    // 只在換租戶或語言時重新載入；onError 每次 render 都是新函式，不列入
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenant.id, rulesLocale]);
+  const rulesDirty =
+    rulesInfo !== null &&
+    JSON.stringify(toRulesPatch(rulesDraft, rulesInfo)) !== JSON.stringify(toRulesPatch(rulesSaved, rulesInfo));
+  useUnsavedChanges("知識庫規則", rulesDirty);
+
+  async function saveRules() {
+    if (!rulesInfo) return;
+    setRulesBusy(true);
+    try {
+      const patch = toRulesPatch(rulesDraft, rulesInfo);
+      await api.updateTenant(tenant.id, { knowledgeAnswerRules: patch });
+      setRulesDraft(patch);
+      setRulesSaved(patch);
+      onSaved();
+    } catch (e) {
+      onError(e);
+    } finally {
+      setRulesBusy(false);
+    }
+  }
 
   // 以「實際會送出的 patch」比較：預設角色＋空白文字與從未設定視為相同
   const dirty =
@@ -56,7 +102,7 @@ export default function PersonaTab({
       </div>
       <div className="card-body">
         <div className="tabs kb-subtabs" role="tablist" aria-label="AI 角色子頁">
-          {([["edit", "設定"], ["preview", "預覽"]] as const).map(([key, label]) => (
+          {([["edit", "設定"], ["rules", "知識庫規則"], ["preview", "預覽"]] as const).map(([key, label]) => (
             <button key={key} type="button" role="tab" aria-selected={sub === key}
               className={`tab${sub === key ? " active" : ""}`} onClick={() => setSub(key)}>
               {label}
@@ -73,10 +119,26 @@ export default function PersonaTab({
             </div>
           </fieldset>
         </div>
+        <div hidden={sub !== "rules"}>
+          {rulesInfo ? (
+            <>
+              <KnowledgeRulesSection info={rulesInfo} value={rulesDraft} onChange={setRulesDraft} readonly={readonly} />
+              <div className="form-actions">
+                <button className="btn btn-primary" onClick={saveRules} disabled={rulesBusy || readonly}>
+                  {rulesBusy ? "儲存中…" : "儲存規則"}
+                </button>
+              </div>
+            </>
+          ) : (
+            <p className="field-hint">載入中…</p>
+          )}
+        </div>
         {sub === "preview" && (
           <>
-            {dirty && <p className="field-hint">預覽的是尚未儲存的設定，回到「設定」按儲存後才會生效。</p>}
-            <PersonaPreview tenantId={tenant.id} persona={persona} />
+            {(dirty || rulesDirty) && (
+              <p className="field-hint">預覽的是尚未儲存的內容，回到對應的子頁按儲存後才會生效。</p>
+            )}
+            <PersonaPreview tenantId={tenant.id} persona={persona} rules={rulesInfo ? toRulesPatch(rulesDraft, rulesInfo) : undefined} />
           </>
         )}
       </div>

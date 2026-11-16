@@ -1,4 +1,4 @@
-import type { AdminMe, AdminTabPermissions, AssistantPersona, Definition, TenantAppearance } from '@hyagent/shared';
+import type { AdminMe, AdminTabPermissions, AssistantPersona, Definition, KbRuleItem, KnowledgeAnswerRules, TenantAppearance } from '@hyagent/shared';
 
 export type { Definition };
 
@@ -83,6 +83,8 @@ export interface Tenant {
   guestAccess?: boolean;
   /** AI 角色設定（員工／訪客分開） */
   assistantPersona?: AssistantPersona;
+  /** 自訂知識庫問答規則（只含可改規則） */
+  knowledgeAnswerRules?: KnowledgeAnswerRules;
   createdAt: string;
 }
 export interface ApiKey {
@@ -849,16 +851,30 @@ export const api = {
     > & {
       /** 各側整包取代；null 清除該側 */
       assistantPersona?: { member?: AssistantPersona['member'] | null; guest?: AssistantPersona['guest'] | null };
+      /** 各側整包取代；null 還原內建 */
+      knowledgeAnswerRules?: { member?: string[] | null; guest?: string[] | null };
     },
   ) => req<Tenant>('PATCH', `/admin/tenants/${id}`, patch),
-  /** AI 角色預覽：用還沒存檔的設定產生員工／訪客各自收到的角色文字（不寫入） */
+  /** AI 角色預覽：用還沒存檔的設定產生員工／訪客各自收到的角色文字與知識庫規則（不寫入） */
   previewPersona: (
     id: string,
     body: {
       assistantPersona: { member?: AssistantPersona['member'] | null; guest?: AssistantPersona['guest'] | null };
       locale?: 'zh-Hant' | 'en';
+      knowledgeAnswerRules?: { member?: string[] | null; guest?: string[] | null };
     },
-  ) => req<{ member: string[]; guest: string[]; rules: { member: string[]; guest: string[] } }>('POST', `/admin/tenants/${id}/persona-preview`, body),
+  ) =>
+    req<{ member: string[]; guest: string[]; rules: { member: KbRuleItem[]; guest: KbRuleItem[] } }>(
+      'POST',
+      `/admin/tenants/${id}/persona-preview`,
+      body,
+    ),
+  /** 知識庫規則編輯器：每側內建可改規則、鎖定規則與目前自訂 */
+  getKnowledgeRules: (id: string, locale?: 'zh-Hant' | 'en') =>
+    req<Record<'member' | 'guest', { defaults: string[]; locked: string[]; custom: string[] | null }>>(
+      'GET',
+      `/admin/tenants/${id}/knowledge-rules${locale ? `?locale=${locale}` : ''}`,
+    ),
 
   // ── Assertion 公鑰與逐租戶設定（規格 §7.3、§7.4）──
   listAssertionKeys: (id: string) =>

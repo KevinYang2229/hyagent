@@ -1,17 +1,26 @@
 import { useEffect, useRef, useState } from "react";
-import type { AssistantPersona } from "@hyagent/shared";
+import type { AssistantPersona, KbRuleItem } from "@hyagent/shared";
 import { api } from "../../api";
-import { toPersonaPatch } from "./persona.util";
+import { toPersonaPatch, type RulesDraft } from "./persona.util";
 
 const DEBOUNCE_MS = 400;
 type Locale = "zh-Hant" | "en";
-type Result = { member: string[]; guest: string[]; rules: { member: string[]; guest: string[] } };
+type Result = { member: string[]; guest: string[]; rules: { member: KbRuleItem[]; guest: KbRuleItem[] } };
 
 /**
  * AI 角色預覽：把還沒存檔的設定送到 server，由與真實對話相同的函式產生角色文字。
  * 角色區塊在上，平台規則（知識庫問答那套）可展開。預覽失敗只影響這一區，不影響編輯與存檔。
  */
-export default function PersonaPreview({ tenantId, persona }: { tenantId: string; persona: AssistantPersona }) {
+export default function PersonaPreview({
+  tenantId,
+  persona,
+  rules,
+}: {
+  tenantId: string;
+  persona: AssistantPersona;
+  /** 知識庫規則草稿（尚未存檔）；不帶時 server 用已存的自訂 */
+  rules?: RulesDraft;
+}) {
   const [locale, setLocale] = useState<Locale>("zh-Hant");
   const [result, setResult] = useState<Result | null>(null);
   const [failed, setFailed] = useState(false);
@@ -19,12 +28,19 @@ export default function PersonaPreview({ tenantId, persona }: { tenantId: string
   const latest = useRef(0);
   const patch = toPersonaPatch(persona);
   const patchKey = JSON.stringify(patch);
+  const rulesKey = rules ? JSON.stringify(rules) : "";
 
   useEffect(() => {
     const timer = setTimeout(() => {
       const id = ++latest.current;
       Promise.resolve()
-        .then(() => api.previewPersona(tenantId, { assistantPersona: JSON.parse(patchKey), locale }))
+        .then(() =>
+          api.previewPersona(tenantId, {
+            assistantPersona: JSON.parse(patchKey),
+            locale,
+            ...(rulesKey ? { knowledgeAnswerRules: JSON.parse(rulesKey) } : {}),
+          }),
+        )
         .then((r) => {
           if (id !== latest.current) return;
           setResult(r ?? null);
@@ -36,7 +52,7 @@ export default function PersonaPreview({ tenantId, persona }: { tenantId: string
         });
     }, DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [tenantId, patchKey, locale]);
+  }, [tenantId, patchKey, rulesKey, locale]);
 
   return (
     <div className="persona-preview-block" style={{ marginTop: 20 }}>
@@ -70,7 +86,7 @@ export default function PersonaPreview({ tenantId, persona }: { tenantId: string
   );
 }
 
-function PreviewBox({ title, lines, rules, hasRole }: { title: string; lines?: string[]; rules?: string[]; hasRole: boolean }) {
+function PreviewBox({ title, lines, rules, hasRole }: { title: string; lines?: string[]; rules?: KbRuleItem[]; hasRole: boolean }) {
   return (
     <div className="field" style={{ marginTop: 8 }}>
       <div className="field-hint">{title}</div>
@@ -82,7 +98,11 @@ function PreviewBox({ title, lines, rules, hasRole }: { title: string; lines?: s
           {!hasRole && <pre className="persona-preview">維持預設行為，不加角色指示</pre>}
           <details className="persona-rules">
             <summary>展開平台規則（知識庫問答，不可修改）</summary>
-            <pre className="persona-preview">{(rules ?? []).join("\n")}</pre>
+            <ul className="persona-preview persona-rules-list">
+              {(rules ?? []).map((r, i) => (
+                <li key={i}>{r.locked ? `🔒 ${r.text}` : r.text}</li>
+              ))}
+            </ul>
           </details>
         </>
       )}
