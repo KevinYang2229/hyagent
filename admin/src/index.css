@@ -1359,3 +1359,18 @@ li:not(.is-empty) > .feedback-bar { background: var(--bg-secondary); }
   font-size: 14px;
   color: var(--text-primary);
 }
+
+/* AI 角色預覽：保留換行、長句自動折行 */
+.persona-preview {
+  margin: 4px 0 0;
+  padding: 10px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

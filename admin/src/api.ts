@@ -851,6 +851,14 @@ export const api = {
       assistantPersona?: { member?: AssistantPersona['member'] | null; guest?: AssistantPersona['guest'] | null };
     },
   ) => req<Tenant>('PATCH', `/admin/tenants/${id}`, patch),
+  /** AI 角色預覽：用還沒存檔的設定產生員工／訪客各自收到的角色文字（不寫入） */
+  previewPersona: (
+    id: string,
+    body: {
+      assistantPersona: { member?: AssistantPersona['member'] | null; guest?: AssistantPersona['guest'] | null };
+      locale?: 'zh-Hant' | 'en';
+    },
+  ) => req<{ member: string[]; guest: string[] }>('POST', `/admin/tenants/${id}/persona-preview`, body),
 
   // ── Assertion 公鑰與逐租戶設定（規格 §7.3、§7.4）──
   listAssertionKeys: (id: string) =>

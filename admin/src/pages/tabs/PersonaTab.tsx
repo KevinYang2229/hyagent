@@ -3,6 +3,7 @@ import type { AssistantPersona } from "@hyagent/shared";
 import { useUnsavedChanges } from "../../components/unsaved";
 import UnsavedBadge from "../../components/UnsavedBadge";
 import { api, type Tenant } from "../../api";
+import PersonaPreview from "./PersonaPreview";
 import PersonaSection from "./PersonaSection";
 import { toPersonaPatch } from "./persona.util";
 
@@ -60,6 +61,8 @@ export default function PersonaTab({
             </button>
           </div>
         </fieldset>
+        {/* 預覽放在 fieldset 外：唯讀時也能切換語言、看預覽 */}
+        <PersonaPreview tenantId={tenant.id} persona={persona} />
       </div>
     </div>
   );

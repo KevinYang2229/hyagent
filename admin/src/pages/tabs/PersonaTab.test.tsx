@@ -7,7 +7,7 @@ import { TAB_GROUPS, TAB_LABELS } from '../tabGroups';
 import { api, type Tenant } from '../../api';
 import { useUnsavedChanges } from '../../components/unsaved';
 
-vi.mock('../../api', () => ({ api: { updateTenant: vi.fn() } }));
+vi.mock('../../api', () => ({ api: { updateTenant: vi.fn(), previewPersona: vi.fn() } }));
 vi.mock('../../components/unsaved', () => ({ useUnsavedChanges: vi.fn() }));
 
 const base: Tenant = { id: 't1', name: '宏碁', appearance: { assistantName: '小華' }, createdAt: '' };
@@ -58,4 +58,15 @@ it('唯讀時欄位與儲存按鈕都停用', () => {
   render(<PersonaTab tenant={base} onSaved={vi.fn()} onError={vi.fn()} readonly />);
   expect(screen.getByLabelText('登入員工的角色')).toBeDisabled();
   expect(screen.getByRole('button', { name: '儲存 AI 角色' })).toBeDisabled();
+});
+
+it('預覽 API 失敗時仍可儲存，送出的 patch 正確', async () => {
+  vi.mocked(api.previewPersona).mockRejectedValue(new Error('boom'));
+  const onSaved = vi.fn();
+  render(<PersonaTab tenant={base} onSaved={onSaved} onError={vi.fn()} />);
+  fireEvent.change(screen.getByLabelText('登入員工的角色'), { target: { value: 'it' } });
+  fireEvent.click(screen.getByRole('button', { name: '儲存 AI 角色' }));
+  await waitFor(() => expect(onSaved).toHaveBeenCalled());
+  expect(api.updateTenant).toHaveBeenCalledWith('t1', { assistantPersona: { member: { preset: 'it' }, guest: null } });
+  expect(await screen.findByText('預覽暫時無法產生')).toBeInTheDocument();
 });
