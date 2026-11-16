@@ -51,7 +51,8 @@ export type RouteAccess =
   | { kind: 'super' }
   | { kind: 'self' }
   | { kind: 'tenant' }
-  | { kind: 'tab'; tab: AdminTabKey; alsoReadableBy?: AdminTabKey[] }
+  /** treatAsRead：不寫入資料的 POST（例如預覽），只需檢視權限 */
+  | { kind: 'tab'; tab: AdminTabKey; alsoReadableBy?: AdminTabKey[]; treatAsRead?: true }
   | { kind: 'tenantPatch' }
   | { kind: 'createKey' };
 
@@ -86,6 +87,8 @@ export const ADMIN_ROUTE_RULES: RouteRule[] = [
   { method: '*', pattern: '/tenants/:id/webhooks/**', access: tab('webhook') },
   { method: 'GET', pattern: '/tenants/:id/usage', access: tab('usage') },
   { method: '*', pattern: '/tenants/:id/feedback/**', access: tab('feedback') },
+  // AI 角色預覽只產生文字、不寫入：唯讀管理者也能用
+  { method: 'POST', pattern: '/tenants/:id/persona-preview', access: { kind: 'tab', tab: 'persona', treatAsRead: true } },
   { method: '*', pattern: '/tenants/:id/reports/**', access: tab('reports') },
   { method: 'GET', pattern: '/tenants/:id/audit', access: tab('audit') },
   // 兜底：/tenants 列表與建立、刪除租戶、/skills、/scopes、/mcp-servers/**、/db-intelligence/**、/audit，
@@ -204,7 +207,7 @@ export function decideTenantAdmin(input: {
 
   const { permissions } = input;
   if (access.kind === 'tab') {
-    const isRead = ['GET', 'HEAD'].includes(input.method.toUpperCase());
+    const isRead = access.treatAsRead === true || ['GET', 'HEAD'].includes(input.method.toUpperCase());
     if (isRead) {
       const readable = [access.tab, ...(access.alsoReadableBy ?? [])].some(
         (t) => tabLevel(permissions, t) !== 'hidden',

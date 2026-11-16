@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto';
 import { purgeTenantAccessLogs } from '@/modules/knowledge/access-log';
 import type { Request, Response } from 'express';
 import { DEFAULT_TENANT_ID, tenantStore } from '@/modules/tenant/tenant.store';
+import { buildPersonaLines } from '@/modules/conversation/persona';
 import { serviceRegistry } from '@/modules/conversation/service.registry';
 import { conversationStore } from '@/modules/conversation/conversation.store';
 import type { AdminPrincipal } from '@/middlewares/require-admin';
@@ -54,6 +55,7 @@ import type {
   ListSessionsQuery,
   PatchAssertionSettingsInput,
   PatchTenantInput,
+  PersonaPreviewInput,
   RevokePublicKeyInput,
   RevokeSessionsInput,
   ToggleWebhookInput,
@@ -354,6 +356,19 @@ export const adminController = {
     if (!revoked) throw AppError.notFound('Session 不存在或已失效');
     logger.info({ tenantId: tenant.id }, 'session revoked by id');
     res.status(200).json({ data: { revoked: 1 } });
+  },
+
+  /** AI 角色預覽：用還沒存檔的設定產生 AI 實際收到的角色文字（與真實對話共用 buildPersonaLines），不寫入 */
+  async previewPersona(req: Request, res: Response): Promise<void> {
+    const tenant = ensureTenant(String(req.params.id));
+    const { assistantPersona, locale } = req.body as PersonaPreviewInput;
+    const common = { persona: assistantPersona, assistantName: tenant.appearance?.assistantName, locale };
+    res.status(200).json({
+      data: {
+        member: buildPersonaLines({ ...common, isGuest: false }),
+        guest: buildPersonaLines({ ...common, isGuest: true }),
+      },
+    });
   },
 
   async updateTenant(req: Request, res: Response): Promise<void> {

@@ -273,6 +273,10 @@ export const operationSummaries: Record<string, OperationSummary> = {
     summary: '修改租戶設定（名稱、允許來源、外觀、月配額等）',
     description: '只更新有帶的欄位。',
   },
+  'POST /api/admin/tenants/{id}/persona-preview': {
+    summary: '預覽 AI 角色指示（不存檔）',
+    description: '用還沒存檔的角色設定，產生登入員工與訪客各自會收到的角色文字；只需「AI 角色」檢視權限，不寫入任何資料。',
+  },
   'DELETE /api/admin/tenants/{id}': {
     summary: '刪除租戶',
   },

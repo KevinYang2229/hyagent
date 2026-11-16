@@ -96,3 +96,21 @@ describe('AI 角色（persona）頁籤權限', () => {
     expect(decide({}, { assistantPersona: { guest: null } }).allow).toBe(false);
   });
 });
+
+describe('AI 角色預覽（POST 視為讀取）', () => {
+  const preview = (permissions: AdminTabPermissions) =>
+    decideTenantAdmin({ method: 'POST', path: '/tenants/aaa111/persona-preview', body: {}, tenantId: 'aaa111', permissions }).allow;
+
+  it('persona 唯讀或可編輯都能預覽，隱藏則不行', () => {
+    expect(preview({ persona: 'read' })).toBe(true);
+    expect(preview({ persona: 'write' })).toBe(true);
+    expect(preview({})).toBe(false);
+    expect(preview({ appearance: 'write' })).toBe(false);
+  });
+
+  it('不能預覽其他租戶', () => {
+    expect(
+      decideTenantAdmin({ method: 'POST', path: '/tenants/bbb222/persona-preview', body: {}, tenantId: 'aaa111', permissions: { persona: 'write' } }).allow,
+    ).toBe(false);
+  });
+});

@@ -129,6 +129,13 @@ export const assistantPersonaSchema = z
   })
   .strict();
 
+export const personaPreviewSchema = z
+  .object({
+    assistantPersona: assistantPersonaSchema.describe('還沒存檔的角色設定（格式同 PATCH）'),
+    locale: z.enum(['zh-Hant', 'en']).optional().describe('預覽語言；預設中文'),
+  })
+  .strict();
+
 export const patchTenantSchema = z
   .object({
     name: z.string().trim().min(1).optional().describe('租戶顯示名稱'),
@@ -219,6 +226,7 @@ export type RevokeSessionsInput = z.infer<typeof revokeSessionsSchema>;
 export type ListSessionsQuery = z.infer<typeof listSessionsQuerySchema>;
 export type SessionParam = z.infer<typeof sessionParamSchema>;
 export type PatchTenantInput = z.infer<typeof patchTenantSchema>;
+export type PersonaPreviewInput = z.infer<typeof personaPreviewSchema>;
 export type CreateKeyInput = z.infer<typeof createKeySchema>;
 export type CreateWebhookInput = z.infer<typeof createWebhookSchema>;
 export type ToggleWebhookInput = z.infer<typeof toggleWebhookSchema>;

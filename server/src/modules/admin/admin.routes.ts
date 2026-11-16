@@ -66,6 +66,7 @@ import {
   auditPageQuerySchema,
   createWebhookSchema,
   patchTenantSchema,
+  personaPreviewSchema,
   putPolicySchema,
   tenantParamSchema,
   toggleWebhookSchema,
@@ -151,6 +152,12 @@ router.patch(
   '/tenants/:id',
   validate({ params: tenantParamSchema, body: patchTenantSchema }),
   asyncHandler(adminController.updateTenant),
+);
+
+router.post(
+  '/tenants/:id/persona-preview',
+  validate({ params: tenantParamSchema, body: personaPreviewSchema }),
+  asyncHandler(adminController.previewPersona),
 );
 
 router.delete(
