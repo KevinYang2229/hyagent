@@ -18,6 +18,7 @@ import type {
 } from '@/modules/conversation/agent-service.types';
 import type { Session } from '@/modules/conversation/conversation.types';
 import { personaLines } from '@/modules/conversation/persona';
+import { isGuestPrincipal } from '@/modules/user/user.directory';
 import { traceChunks } from '@/modules/conversation/reply-record';
 import { accessItemsOf, recordKnowledgeAccess } from './access-log';
 import { usageStore } from '@/modules/usage/usage.store';
@@ -138,6 +139,8 @@ const KB_KEYWORDS = [
 // 依 session locale 產生知識庫作答的 system prompt（英文 UI → 英文作答）。
 export function kbAnswerSystem(tenantId: string, userId: string, locale?: string): string {
   const persona = personaLines(tenantId, userId, locale);
+  // 出處只給登入員工；訪客連文件名稱都不該看到（內部文件標題不對外）
+  const guest = isGuestPrincipal(userId);
   if (normalizeLocale(locale) === 'en') {
     return [
       'You are the company knowledge-base assistant. Respond entirely in English.',
@@ -146,7 +149,9 @@ export function kbAnswerSystem(tenantId: string, userId: string, locale?: string
       '- Answer ONLY from the "Reference" and "Actual table contents" below; for anything not covered, say "Not mentioned in the materials." Never fabricate.',
       '- "Previous conversation", if present, is only for resolving what the question refers to — never use it as a source of answers.',
       '- Be concise and directly on point; use bullet points when helpful.',
-      '- When helpful, cite the source at the end as (Source: title).',
+      guest
+        ? '- Do not cite sources, and never mention document names, file names, or titles in your answer.'
+        : '- When helpful, cite the source at the end as (Source: title).',
       untrustedDataRule('en'),
     ].join('\n');
   }
@@ -158,16 +163,18 @@ export function kbAnswerSystem(tenantId: string, userId: string, locale?: string
     '- 數字一律以「資料表實際內容」為準，文字片段只是檢索節錄。',
     '- 「先前對話」若有，僅用於理解本次問題在指涉什麼，不得作為答案來源。',
     '- 回答精簡、直接切中問題；必要時條列。',
-    '- 若有幫助，於句末以（來源：標題）標註引用。',
+    guest
+      ? '- 不要標註來源，也不要在回答中提到文件名稱、檔名或標題。'
+      : '- 若有幫助，於句末以（來源：標題）標註引用。',
     untrustedDataRule(),
   ].join('\n');
 }
 
-/** 片段找到但 LLM 失敗時的降級：直接列出片段（best-effort，不中斷對話） */
-function fallbackReply(chunks: KnowledgeChunk[], locale?: string): string {
+/** 片段找到但 LLM 失敗時的降級：直接列出片段（best-effort，不中斷對話）；訪客不列文件標題 */
+export function fallbackReply(chunks: KnowledgeChunk[], locale: string | undefined, isGuest: boolean): string {
   const prefix =
     normalizeLocale(locale) === 'en' ? 'Based on available information:' : '依現有資料：';
-  return [prefix, ...chunks.map((c) => `・${c.title}：${c.content}`)].join('\n');
+  return [prefix, ...chunks.map((c) => (isGuest ? `・${c.content}` : `・${c.title}：${c.content}`))].join('\n');
 }
 
 export const knowledgeAgentService: AgentService = {
@@ -248,7 +255,7 @@ export const knowledgeAgentService: AgentService = {
         });
         usageStore.recordLLMUsage(session.tenantId, result);
         model = result.model;
-        reply = result.text || fallbackReply(chunks, session.locale);
+        reply = result.text || fallbackReply(chunks, session.locale, isGuestPrincipal(session.userId));
         // 仍然超過上限：明白告知被截斷，而不是讓回答停在半句
         if (result.text && result.stopReason === 'max_tokens') {
           reply += normalizeLocale(session.locale) === 'en'
@@ -257,7 +264,7 @@ export const knowledgeAgentService: AgentService = {
         }
       } catch (err) {
         logger.warn({ err, sessionId: session.id }, 'knowledge synthesis failed');
-        reply = fallbackReply(chunks, session.locale);
+        reply = fallbackReply(chunks, session.locale, isGuestPrincipal(session.userId));
       }
     }
 
