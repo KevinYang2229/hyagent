@@ -60,13 +60,31 @@ it('唯讀時欄位與儲存按鈕都停用', () => {
   expect(screen.getByRole('button', { name: '儲存 AI 角色' })).toBeDisabled();
 });
 
-it('預覽 API 失敗時仍可儲存，送出的 patch 正確', async () => {
+it('分「設定」與「預覽」子頁籤；切到預覽才取得資料，且用的是還沒存檔的設定', async () => {
+  vi.mocked(api.previewPersona).mockResolvedValue({ member: ['員工預覽'], guest: [], rules: { member: [], guest: [] } });
+  render(<PersonaTab tenant={base} onSaved={vi.fn()} onError={vi.fn()} />);
+  expect(screen.getByRole('tab', { name: '設定' })).toHaveAttribute('aria-selected', 'true');
+  fireEvent.change(screen.getByLabelText('登入員工的角色'), { target: { value: 'it' } });
+  await new Promise((r) => setTimeout(r, 450));
+  expect(api.previewPersona).not.toHaveBeenCalled();
+
+  fireEvent.click(screen.getByRole('tab', { name: '預覽' }));
+  expect(await screen.findByText('員工預覽')).toBeInTheDocument();
+  expect(vi.mocked(api.previewPersona).mock.calls[0][1].assistantPersona.member).toEqual({ preset: 'it' });
+
+  fireEvent.click(screen.getByRole('tab', { name: '設定' }));
+  expect(screen.getByLabelText('登入員工的角色')).toHaveValue('it');
+});
+
+it('預覽 API 失敗時仍可回到設定儲存，送出的 patch 正確', async () => {
   vi.mocked(api.previewPersona).mockRejectedValue(new Error('boom'));
   const onSaved = vi.fn();
   render(<PersonaTab tenant={base} onSaved={onSaved} onError={vi.fn()} />);
   fireEvent.change(screen.getByLabelText('登入員工的角色'), { target: { value: 'it' } });
+  fireEvent.click(screen.getByRole('tab', { name: '預覽' }));
+  expect(await screen.findByText('預覽暫時無法產生')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('tab', { name: '設定' }));
   fireEvent.click(screen.getByRole('button', { name: '儲存 AI 角色' }));
   await waitFor(() => expect(onSaved).toHaveBeenCalled());
   expect(api.updateTenant).toHaveBeenCalledWith('t1', { assistantPersona: { member: { preset: 'it' }, guest: null } });
-  expect(await screen.findByText('預覽暫時無法產生')).toBeInTheDocument();
 });

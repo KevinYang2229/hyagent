@@ -24,6 +24,8 @@ export default function PersonaTab({
 }) {
   const [persona, setPersona] = useState<AssistantPersona>(tenant.assistantPersona ?? {});
   const [busy, setBusy] = useState(false);
+  // 子頁：設定／預覽。草稿留在這一層，切換子頁不會遺失；預覽只在切過去時才掛載（才開始打 API）
+  const [sub, setSub] = useState<"edit" | "preview">("edit");
 
   // 以「實際會送出的 patch」比較：預設角色＋空白文字與從未設定視為相同
   const dirty =
@@ -53,16 +55,30 @@ export default function PersonaTab({
         </div>
       </div>
       <div className="card-body">
-        <fieldset disabled={readonly} className="tab-readonly">
-          <PersonaSection value={persona} onChange={setPersona} />
-          <div className="form-actions">
-            <button className="btn btn-primary" onClick={save} disabled={busy || readonly}>
-              {busy ? "儲存中…" : "儲存 AI 角色"}
+        <div className="tabs kb-subtabs" role="tablist" aria-label="AI 角色子頁">
+          {([["edit", "設定"], ["preview", "預覽"]] as const).map(([key, label]) => (
+            <button key={key} type="button" role="tab" aria-selected={sub === key}
+              className={`tab${sub === key ? " active" : ""}`} onClick={() => setSub(key)}>
+              {label}
             </button>
-          </div>
-        </fieldset>
-        {/* 預覽放在 fieldset 外：唯讀時也能切換語言、看預覽 */}
-        <PersonaPreview tenantId={tenant.id} persona={persona} />
+          ))}
+        </div>
+        <div hidden={sub !== "edit"}>
+          <fieldset disabled={readonly} className="tab-readonly">
+            <PersonaSection value={persona} onChange={setPersona} />
+            <div className="form-actions">
+              <button className="btn btn-primary" onClick={save} disabled={busy || readonly}>
+                {busy ? "儲存中…" : "儲存 AI 角色"}
+              </button>
+            </div>
+          </fieldset>
+        </div>
+        {sub === "preview" && (
+          <>
+            {dirty && <p className="field-hint">預覽的是尚未儲存的設定，回到「設定」按儲存後才會生效。</p>}
+            <PersonaPreview tenantId={tenant.id} persona={persona} />
+          </>
+        )}
       </div>
     </div>
   );

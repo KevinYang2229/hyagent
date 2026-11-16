@@ -858,7 +858,7 @@ export const api = {
       assistantPersona: { member?: AssistantPersona['member'] | null; guest?: AssistantPersona['guest'] | null };
       locale?: 'zh-Hant' | 'en';
     },
-  ) => req<{ member: string[]; guest: string[] }>('POST', `/admin/tenants/${id}/persona-preview`, body),
+  ) => req<{ member: string[]; guest: string[]; rules: { member: string[]; guest: string[] } }>('POST', `/admin/tenants/${id}/persona-preview`, body),
 
   // ── Assertion 公鑰與逐租戶設定（規格 §7.3、§7.4）──
   listAssertionKeys: (id: string) =>
