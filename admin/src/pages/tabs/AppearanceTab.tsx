@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useUnsavedChanges } from "../../components/unsaved";
 import UnsavedBadge from "../../components/UnsavedBadge";
-import type { TenantAppearance } from "@hyagent/shared";
+import type { AssistantPersona, TenantAppearance } from "@hyagent/shared";
 import { api, type Tenant } from "../../api";
 import { resolveDemoSiteUrl, resolvePreviewOrigin, resolvePrimaryColor } from "./appearance.util";
+import PersonaSection, { toPersonaPatch } from "./PersonaSection";
 
 const POSITIONS = [
   { v: "br", label: "右下" },
@@ -60,7 +61,11 @@ export default function AppearanceTab({
   const normalized = (a: TenantAppearance) => JSON.stringify(
     Object.entries(a).filter(([, v]) => v !== undefined && v !== '').sort(([x], [y]) => x.localeCompare(y)),
   );
-  const dirty = normalized(form) !== normalized(tenant.appearance ?? {});
+  const [persona, setPersona] = useState<AssistantPersona>(tenant.assistantPersona ?? {});
+  // 角色設定以「實際會送出的 patch」比較：預設角色＋空白文字與從未設定視為相同
+  const personaDirty =
+    JSON.stringify(toPersonaPatch(persona)) !== JSON.stringify(toPersonaPatch(tenant.assistantPersona ?? {}));
+  const dirty = normalized(form) !== normalized(tenant.appearance ?? {}) || personaDirty;
   useUnsavedChanges('外觀', dirty);
 
   function set<K extends keyof TenantAppearance>(k: K, v: TenantAppearance[K]) {
@@ -70,7 +75,7 @@ export default function AppearanceTab({
   async function save() {
     setBusy(true);
     try {
-      await api.updateTenant(tenant.id, { appearance: form });
+      await api.updateTenant(tenant.id, { appearance: form, assistantPersona: toPersonaPatch(persona) });
       onSaved();
     } catch (e) {
       onError(e);
@@ -283,6 +288,8 @@ export default function AppearanceTab({
               placeholder="嗨！我可以協助你填寫表單。"
             />
           </div>
+
+          <PersonaSection value={persona} onChange={setPersona} />
 
           <div className="form-actions">
             <button className="btn btn-primary" onClick={save} disabled={busy}>

@@ -1,4 +1,4 @@
-import type { AdminMe, AdminTabPermissions, Definition, TenantAppearance } from '@hyagent/shared';
+import type { AdminMe, AdminTabPermissions, AssistantPersona, Definition, TenantAppearance } from '@hyagent/shared';
 
 export type { Definition };
 
@@ -81,6 +81,8 @@ export interface Tenant {
   quotaMonthlyLlmTokens?: number;
   /** 允許免登入訪客 Session（公開 App 用）；未設＝關閉 */
   guestAccess?: boolean;
+  /** AI 角色設定（員工／訪客分開） */
+  assistantPersona?: AssistantPersona;
   createdAt: string;
 }
 export interface ApiKey {
@@ -844,7 +846,10 @@ export const api = {
         Tenant,
         'name' | 'allowedOrigins' | 'appearance' | 'quotaMonthlyLlmTokens' | 'guestAccess'
       >
-    >,
+    > & {
+      /** 各側整包取代；null 清除該側 */
+      assistantPersona?: { member?: AssistantPersona['member'] | null; guest?: AssistantPersona['guest'] | null };
+    },
   ) => req<Tenant>('PATCH', `/admin/tenants/${id}`, patch),
 
   // ── Assertion 公鑰與逐租戶設定（規格 §7.3、§7.4）──
