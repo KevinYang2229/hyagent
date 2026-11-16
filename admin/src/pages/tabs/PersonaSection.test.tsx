@@ -78,3 +78,38 @@ it('toPersonaPatch：預設且沒有文字的一側送 null，其餘去掉空白
   expect(toPersonaPatch({ member: { preset: 'default', notes: '稱呼同事為夥伴' } }))
     .toEqual({ member: { preset: 'default', notes: '稱呼同事為夥伴' }, guest: null });
 });
+
+it('每側四個依功能覆寫的下拉，第一項是「沿用（目前角色）」', () => {
+  render(<Harness initial={{ member: { preset: 'cs-assist' } }} />);
+  const form = screen.getByLabelText('登入員工・填表的角色') as HTMLSelectElement;
+  expect(form.options[0].textContent).toBe('沿用（客服助理）');
+  expect(form).toHaveValue('');
+  for (const name of ['知識庫問答', '智慧代理', '閒聊／守門']) {
+    expect(screen.getByLabelText(`登入員工・${name}的角色`)).toBeInTheDocument();
+    expect(screen.getByLabelText(`網站訪客・${name}的角色`)).toBeInTheDocument();
+  }
+});
+
+it('選擇覆寫後帶出 services；選回沿用時移除該功能', () => {
+  const onChange = vi.fn();
+  render(<Harness initial={{ member: { preset: 'it' } }} onChange={onChange} />);
+  fireEvent.change(screen.getByLabelText('登入員工・填表的角色'), { target: { value: 'hr' } });
+  expect(onChange).toHaveBeenLastCalledWith({ member: { preset: 'it', services: { form: 'hr' } } });
+  fireEvent.change(screen.getByLabelText('登入員工・填表的角色'), { target: { value: '' } });
+  expect(onChange).toHaveBeenLastCalledWith({ member: { preset: 'it', services: {} } });
+});
+
+it('訪客的覆寫選單只列對外角色', () => {
+  render(<Harness />);
+  const labels = Array.from((screen.getByLabelText('網站訪客・知識庫問答的角色') as HTMLSelectElement).options).map((o) => o.textContent);
+  expect(labels).toContain('售前顧問');
+  expect(labels).not.toContain('HR 顧問');
+});
+
+it('toPersonaPatch：只有覆寫的一側也保留；空的覆寫表不送', () => {
+  expect(toPersonaPatch({ member: { preset: 'default', services: { form: 'hr' } } })).toEqual({
+    member: { preset: 'default', services: { form: 'hr' } },
+    guest: null,
+  });
+  expect(toPersonaPatch({ member: { preset: 'hr', services: {} } })).toEqual({ member: { preset: 'hr' }, guest: null });
+});

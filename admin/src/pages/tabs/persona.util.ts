@@ -1,5 +1,5 @@
 /**
- * AI 角色設定的純函式（外觀頁與其測試共用）。
+ * AI 角色頁籤的純函式（角色設定、知識庫規則；元件與測試共用）。
  */
 import type { AssistantPersona } from "@hyagent/shared";
 
@@ -9,20 +9,34 @@ export type PersonaPatch = {
   guest: AssistantPersona["guest"] | null;
 };
 
+/** 依功能覆寫表：去掉空值；一個都沒有時回 undefined（不送） */
+function cleanServices<T extends string>(services?: Partial<Record<string, T>>): Partial<Record<string, T>> | undefined {
+  if (!services) return undefined;
+  const entries = Object.entries(services).filter(([, v]) => !!v);
+  return entries.length ? (Object.fromEntries(entries) as Partial<Record<string, T>>) : undefined;
+}
+
 export function toPersonaPatch(value: AssistantPersona): PersonaPatch {
   const memberNotes = value.member?.notes?.trim();
+  const memberServices = cleanServices(value.member?.services);
   const member =
-    value.member && (value.member.preset !== "default" || memberNotes)
-      ? { preset: value.member.preset, ...(memberNotes ? { notes: memberNotes } : {}) }
+    value.member && (value.member.preset !== "default" || memberNotes || memberServices)
+      ? {
+          preset: value.member.preset,
+          ...(memberNotes ? { notes: memberNotes } : {}),
+          ...(memberServices ? { services: memberServices } : {}),
+        }
       : null;
   const guestNotes = value.guest?.notes?.trim();
   const guestContact = value.guest?.contact?.trim();
+  const guestServices = cleanServices(value.guest?.services);
   const guest =
-    value.guest && (value.guest.preset !== "default" || guestNotes || guestContact)
+    value.guest && (value.guest.preset !== "default" || guestNotes || guestContact || guestServices)
       ? {
           preset: value.guest.preset,
           ...(guestNotes ? { notes: guestNotes } : {}),
           ...(guestContact ? { contact: guestContact } : {}),
+          ...(guestServices ? { services: guestServices } : {}),
         }
       : null;
   return { member, guest };

@@ -1,7 +1,10 @@
 import {
   GUEST_PERSONA_PRESETS,
   MEMBER_PERSONA_PRESETS,
+  PERSONA_SERVICES,
   type AssistantPersona,
+  type PersonaPresetMeta,
+  type PersonaServiceKey,
   type GuestPersonaPresetId,
   type MemberPersonaPresetId,
 } from "@hyagent/shared";
@@ -56,6 +59,14 @@ export default function PersonaSection({
         <span className="field-hint">{(member.notes ?? "").length}/{NOTES_MAX}</span>
       </div>
 
+      <ServiceOverrides
+        sideLabel="登入員工"
+        presets={MEMBER_PERSONA_PRESETS}
+        basePreset={member.preset}
+        services={member.services}
+        onChange={(services) => setMember({ services })}
+      />
+
       <div className="field" style={{ marginTop: 12 }}>
         <label className="field-label" htmlFor="persona-guest-preset">網站訪客的角色</label>
         <select
@@ -95,6 +106,59 @@ export default function PersonaSection({
           placeholder="例如：客服專線 02-1234-5678（週一至週五 9:00–18:00）"
         />
         <span className="field-hint">AI 答不出來時，會引導訪客透過這個管道聯絡。</span>
+      </div>
+      <ServiceOverrides
+        sideLabel="網站訪客"
+        presets={GUEST_PERSONA_PRESETS}
+        basePreset={guest.preset}
+        services={guest.services}
+        onChange={(services) => setGuest({ services })}
+      />
+    </div>
+  );
+}
+
+/** 依功能覆寫角色：每個功能一個下拉，第一項「沿用」＝跟著該側的角色走 */
+function ServiceOverrides<T extends string>({
+  sideLabel,
+  presets,
+  basePreset,
+  services,
+  onChange,
+}: {
+  sideLabel: string;
+  presets: readonly PersonaPresetMeta<T>[];
+  basePreset: T;
+  services?: Partial<Record<PersonaServiceKey, T>>;
+  onChange: (next: Partial<Record<PersonaServiceKey, T>>) => void;
+}) {
+  const baseLabel = presets.find((p) => p.id === basePreset)?.label ?? basePreset;
+  const set = (key: PersonaServiceKey, v: string) => {
+    const next = { ...services };
+    if (v) next[key] = v as T;
+    else delete next[key];
+    onChange(next);
+  };
+  return (
+    <div className="field persona-overrides">
+      <div className="field-label">{sideLabel}・依功能覆寫（預設沿用上面的角色）</div>
+      <div className="persona-overrides-grid">
+        {PERSONA_SERVICES.map(({ key, label }) => (
+          <label key={key} className="persona-override">
+            <span>{label}</span>
+            <select
+              className="input"
+              aria-label={`${sideLabel}・${label}的角色`}
+              value={services?.[key] ?? ""}
+              onChange={(e) => set(key, e.target.value)}
+            >
+              <option value="">{`沿用（${baseLabel}）`}</option>
+              {presets.map((p) => (
+                <option key={p.id} value={p.id}>{p.label}</option>
+              ))}
+            </select>
+          </label>
+        ))}
       </div>
     </div>
   );

@@ -861,6 +861,7 @@ export const api = {
     body: {
       assistantPersona: { member?: AssistantPersona['member'] | null; guest?: AssistantPersona['guest'] | null };
       locale?: 'zh-Hant' | 'en';
+      service?: 'knowledge' | 'form' | 'agent' | 'assistant';
       knowledgeAnswerRules?: { member?: string[] | null; guest?: string[] | null };
     },
   ) =>

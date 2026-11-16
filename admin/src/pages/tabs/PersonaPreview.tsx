@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { AssistantPersona, KbRuleItem } from "@hyagent/shared";
+import { PERSONA_SERVICES, type AssistantPersona, type KbRuleItem, type PersonaServiceKey } from "@hyagent/shared";
 import { api } from "../../api";
 import { toPersonaPatch, type RulesDraft } from "./persona.util";
 
@@ -22,6 +22,7 @@ export default function PersonaPreview({
   rules?: RulesDraft;
 }) {
   const [locale, setLocale] = useState<Locale>("zh-Hant");
+  const [service, setService] = useState<PersonaServiceKey>("knowledge");
   const [result, setResult] = useState<Result | null>(null);
   const [failed, setFailed] = useState(false);
   // 遞增的請求序號：較早發出但較晚回來的回應直接丟棄，避免舊結果蓋掉新結果
@@ -38,6 +39,7 @@ export default function PersonaPreview({
           api.previewPersona(tenantId, {
             assistantPersona: JSON.parse(patchKey),
             locale,
+            service,
             ...(rulesKey ? { knowledgeAnswerRules: JSON.parse(rulesKey) } : {}),
           }),
         )
@@ -52,12 +54,19 @@ export default function PersonaPreview({
         });
     }, DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [tenantId, patchKey, rulesKey, locale]);
+  }, [tenantId, patchKey, rulesKey, locale, service]);
 
   return (
     <div className="persona-preview-block" style={{ marginTop: 20 }}>
       <div className="persona-preview-head">
-        <div className="field-label">預覽（AI 實際收到的角色指示）</div>
+        <div className="persona-preview-title">
+          <span className="field-label">預覽（AI 實際收到的角色指示）</span>
+          <select className="input" aria-label="預覽功能" value={service} onChange={(e) => setService(e.target.value as PersonaServiceKey)}>
+            {PERSONA_SERVICES.map((s) => (
+              <option key={s.key} value={s.key}>{s.label}</option>
+            ))}
+          </select>
+        </div>
         <div className="seg-group" role="group" aria-label="預覽語言">
           {(["zh-Hant", "en"] as const).map((l) => (
             <button
@@ -77,16 +86,16 @@ export default function PersonaPreview({
       ) : (
         <>
           {/* 是否有角色看草稿本身：有 AI 名稱時 server 每側都會回名稱句，不能用「有沒有行」判斷 */}
-          <PreviewBox title="登入員工" lines={result?.member} rules={result?.rules.member} hasRole={patch.member !== null} />
-          <PreviewBox title="網站訪客" lines={result?.guest} rules={result?.rules.guest} hasRole={patch.guest !== null} />
-          <p className="field-hint">填表、代理等服務另有各自的規則。</p>
+          <PreviewBox title="登入員工" lines={result?.member} rules={service === "knowledge" ? result?.rules.member : null} hasRole={patch.member !== null} />
+          <PreviewBox title="網站訪客" lines={result?.guest} rules={service === "knowledge" ? result?.rules.guest : null} hasRole={patch.guest !== null} />
+          {service === "knowledge" && <p className="field-hint">填表、代理等服務另有各自的規則。</p>}
         </>
       )}
     </div>
   );
 }
 
-function PreviewBox({ title, lines, rules, hasRole }: { title: string; lines?: string[]; rules?: KbRuleItem[]; hasRole: boolean }) {
+function PreviewBox({ title, lines, rules, hasRole }: { title: string; lines?: string[]; rules?: KbRuleItem[] | null; hasRole: boolean }) {
   return (
     <div className="field" style={{ marginTop: 8 }}>
       <div className="field-hint">{title}</div>
@@ -96,6 +105,9 @@ function PreviewBox({ title, lines, rules, hasRole }: { title: string; lines?: s
         <>
           {lines.length > 0 && <pre className="persona-preview">{lines.join("\n")}</pre>}
           {!hasRole && <pre className="persona-preview">維持預設行為，不加角色指示</pre>}
+          {rules === null ? (
+            <div className="field-hint">此功能的平台規則不在預覽範圍</div>
+          ) : (
           <details className="persona-rules">
             <summary>展開平台規則（知識庫問答，不可修改）</summary>
             <ul className="persona-preview persona-rules-list">
@@ -104,6 +116,7 @@ function PreviewBox({ title, lines, rules, hasRole }: { title: string; lines?: s
               ))}
             </ul>
           </details>
+          )}
         </>
       )}
     </div>

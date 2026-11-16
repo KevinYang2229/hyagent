@@ -43,6 +43,7 @@ it('掛載 400ms 後呼叫一次，顯示每一行，兩側各有可展開的平
   expect(api.previewPersona).toHaveBeenCalledWith('t1', {
     assistantPersona: { member: { preset: 'hr', notes: '夥伴' }, guest: null },
     locale: 'zh-Hant',
+    service: 'knowledge',
   });
   expect(screen.getByText(/員工第一行/)).toHaveTextContent('員工第二行');
   expect(screen.getByText(/訪客第一行/)).toBeInTheDocument();
@@ -135,4 +136,16 @@ it('有規則草稿時一併送出', async () => {
   render(<PersonaPreview tenantId="t1" persona={{}} rules={{ member: ['草稿'], guest: null }} />);
   await flush();
   expect(vi.mocked(api.previewPersona).mock.calls[0][1].knowledgeAnswerRules).toEqual({ member: ['草稿'], guest: null });
+});
+
+it('功能選單：預設知識庫；切到填表以 service=form 呼叫，且不顯示規則展開', async () => {
+  vi.mocked(api.previewPersona).mockResolvedValue({ member: ['角色'], guest: [], rules: RULES });
+  render(<PersonaPreview tenantId="t1" persona={{}} />);
+  await flush();
+  expect(vi.mocked(api.previewPersona).mock.calls.at(-1)?.[1].service).toBe('knowledge');
+  fireEvent.change(screen.getByLabelText('預覽功能'), { target: { value: 'form' } });
+  await flush();
+  expect(vi.mocked(api.previewPersona).mock.calls.at(-1)?.[1].service).toBe('form');
+  expect(screen.queryByText(SUMMARY)).not.toBeInTheDocument();
+  expect(screen.getAllByText('此功能的平台規則不在預覽範圍')).toHaveLength(2);
 });
