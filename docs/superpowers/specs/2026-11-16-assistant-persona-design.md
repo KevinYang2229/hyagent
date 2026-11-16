@@ -153,10 +153,14 @@ AI 角色
 
 管理者在「AI 角色」頁不用存檔就能看到 AI 實際收到的角色指示，員工、訪客分開顯示。
 
-- **只顯示角色區塊**，平台規則收成一行說明（不可修改；訪客那一側註明不附知識庫出處）。理由：平台規則依服務、開通範圍、語言而異，全部攤開看不出角色效果，也不必把規則全文交給租戶。
+- **角色區塊在上，平台規則可展開**（2026-11-16 使用者改定，原本只用一行說明帶過）：
+  - 每個框下方有「展開平台規則」，預設收合，展開後顯示唯讀的規則全文。
+  - 規則用**知識庫問答**那一套：最常用，且員工／訪客的差異（是否附出處）正好在這套裡。另註明「填表、代理等服務另有各自的規則」。
+  - 沒有角色設定的那一側，除了「維持預設行為，不加角色指示」，也照樣可展開規則。
+  - 規則文字由 server 產生：從 `kbAnswerSystem` 拆出 `kbAnswerRules(isGuest, locale)`，真實對話與預覽共用；預覽 API 回應多帶 `rules: { member: string[], guest: string[] }`。
 - **由 server 產生**，避免前端另存一份預設角色文字而對不起來：
   - 把 `personaLines` 拆出不讀資料庫的純函式 `buildPersonaLines({ persona, assistantName, isGuest, locale })`，真實對話與預覽共用。
-  - 新增 `POST /admin/tenants/:id/persona-preview`，body：`{ assistantPersona（同 PATCH 的格式，可含 null）, locale?: 'zh-Hant' | 'en' }`；回傳 `{ member: string[], guest: string[] }`。AI 名稱取租戶已存的 `appearance.assistantName`。不寫入任何資料。
+  - 新增 `POST /admin/tenants/:id/persona-preview`，body：`{ assistantPersona（同 PATCH 的格式，可含 null）, locale?: 'zh-Hant' | 'en' }`；回傳 `{ member: string[], guest: string[], rules: { member: string[], guest: string[] } }`。AI 名稱取租戶已存的 `appearance.assistantName`。不寫入任何資料。
   - 權限：只需「AI 角色」**讀取**權限。路由規則的 tab 存取新增「此 POST 視為讀取」標記，並以測試鎖住（read 可、hidden 不可）。
 - **畫面**：設定欄位下方加「預覽」區塊，員工、訪客各一框；欄位變更後約 400ms 自動重新取得；右上角切換中文／English；某側為空時顯示「維持預設行為，不加角色指示」。預覽失敗只在預覽區顯示錯誤，不影響編輯與存檔。
 

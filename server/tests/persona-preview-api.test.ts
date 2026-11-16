@@ -59,10 +59,8 @@ describe('persona-preview API', () => {
 
   it('各側為 null 時回空陣列（只剩 AI 名稱）', async () => {
     const res = await request(app).post(url()).set(await adminHeader({ persona: 'write' })).send({ assistantPersona: { member: null, guest: null } });
-    expect(res.body.data).toEqual({
-      member: ['你的名字是「小華」，使用者稱呼你時即指你。'],
-      guest: ['你的名字是「小華」，使用者稱呼你時即指你。'],
-    });
+    expect(res.body.data.member).toEqual(['你的名字是「小華」，使用者稱呼你時即指你。']);
+    expect(res.body.data.guest).toEqual(['你的名字是「小華」，使用者稱呼你時即指你。']);
   });
 
   it('不寫入任何資料', async () => {
@@ -79,5 +77,20 @@ describe('persona-preview API', () => {
     const h = await adminHeader({ persona: 'read' });
     expect((await request(app).post(url()).set(h).send({ assistantPersona: { guest: { preset: 'hr' } } })).status).toBe(422);
     expect((await request(app).post(url()).set(h).send({ assistantPersona: { member: { preset: 'hr', notes: 'x'.repeat(501) } } })).status).toBe(422);
+  });
+});
+
+describe('persona-preview API 的平台規則', () => {
+  it('回傳知識庫問答規則：員工有出處規則，訪客沒有', async () => {
+    const res = await request(app).post(url()).set(await adminHeader({ persona: 'read' })).send({ assistantPersona: { member: null, guest: null } });
+    const { rules } = res.body.data as { rules: { member: string[]; guest: string[] } };
+    expect(rules.member[0]).toBe('規則：');
+    expect(rules.member).toContain('- 若有幫助，於句末以（來源：標題）標註引用。');
+    expect(rules.guest).toContain('- 不要標註來源，也不要在回答中提到文件名稱、檔名或標題。');
+  });
+
+  it('locale en 回英文規則', async () => {
+    const res = await request(app).post(url()).set(await adminHeader({ persona: 'read' })).send({ assistantPersona: {}, locale: 'en' });
+    expect(res.body.data.rules.guest[0]).toBe('Rules:');
   });
 });

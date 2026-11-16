@@ -2,7 +2,7 @@
  * 知識庫出處只給登入員工：訪客（公開 widget 沒有 userId、免登入訪客 Session）的回答
  * 不標註來源、不提文件名稱；LLM 失敗時的備援回覆也不能列出文件標題。
  */
-import { fallbackReply, kbAnswerSystem } from '@/modules/knowledge/knowledge.agent-service';
+import { fallbackReply, kbAnswerRules, kbAnswerSystem } from '@/modules/knowledge/knowledge.agent-service';
 import type { KnowledgeChunk } from '@/modules/knowledge/retriever.types';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 
@@ -48,5 +48,29 @@ describe('fallbackReply', () => {
 
   it('訪客 en：只列內容', () => {
     expect(fallbackReply(chunks, 'en', true)).toBe('Based on available information:\n・退貨期限 7 天');
+  });
+});
+
+describe('kbAnswerRules（預覽與真實對話共用的規則段）', () => {
+  it('從「規則：」開始；員工含出處規則、訪客含不提文件名稱規則', () => {
+    const member = kbAnswerRules(false);
+    const guest = kbAnswerRules(true);
+    expect(member[0]).toBe('規則：');
+    expect(member).toContain('- 若有幫助，於句末以（來源：標題）標註引用。');
+    expect(guest).toContain(GUEST_RULE_ZH);
+    expect(guest.join('\n')).not.toContain('（來源：');
+  });
+
+  it('en locale 用英文規則', () => {
+    expect(kbAnswerRules(true, 'en')[0]).toBe('Rules:');
+    expect(kbAnswerRules(true, 'en')).toContain(GUEST_RULE_EN);
+  });
+
+  it('作答 prompt 的結尾就是這段規則（兩邊不會對不起來）', () => {
+    for (const [uid, guest] of [['HYW103', false], ['', true]] as const) {
+      for (const loc of ['zh-Hant', 'en']) {
+        expect(kbAnswerSystem(tenantId, uid, loc).endsWith(kbAnswerRules(guest, loc).join('\n'))).toBe(true);
+      }
+    }
   });
 });

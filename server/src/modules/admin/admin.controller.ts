@@ -7,6 +7,7 @@ import { purgeTenantAccessLogs } from '@/modules/knowledge/access-log';
 import type { Request, Response } from 'express';
 import { DEFAULT_TENANT_ID, tenantStore } from '@/modules/tenant/tenant.store';
 import { buildPersonaLines } from '@/modules/conversation/persona';
+import { kbAnswerRules } from '@/modules/knowledge/knowledge.agent-service';
 import { serviceRegistry } from '@/modules/conversation/service.registry';
 import { conversationStore } from '@/modules/conversation/conversation.store';
 import type { AdminPrincipal } from '@/middlewares/require-admin';
@@ -367,6 +368,8 @@ export const adminController = {
       data: {
         member: buildPersonaLines({ ...common, isGuest: false }),
         guest: buildPersonaLines({ ...common, isGuest: true }),
+        // 平台規則以知識庫問答那套為代表（員工／訪客差在是否附出處），與真實對話共用 kbAnswerRules
+        rules: { member: kbAnswerRules(false, locale), guest: kbAnswerRules(true, locale) },
       },
     });
   },

@@ -136,37 +136,46 @@ const KB_KEYWORDS = [
   '介紹',
 ];
 
-// 依 session locale 產生知識庫作答的 system prompt（英文 UI → 英文作答）。
-export function kbAnswerSystem(tenantId: string, userId: string, locale?: string): string {
-  const persona = personaLines(tenantId, userId, locale);
-  // 出處只給登入員工；訪客連文件名稱都不該看到（內部文件標題不對外）
-  const guest = isGuestPrincipal(userId);
+/**
+ * 知識庫作答的規則段（從「規則：」到結尾）。出處只給登入員工；訪客連文件名稱都不該看到。
+ * 與後台「AI 角色」預覽共用，預覽顯示的規則就是 AI 實際收到的。
+ */
+export function kbAnswerRules(isGuest: boolean, locale?: string): string[] {
   if (normalizeLocale(locale) === 'en') {
     return [
-      'You are the company knowledge-base assistant. Respond entirely in English.',
-      ...persona,
       'Rules:',
       '- Answer ONLY from the "Reference" and "Actual table contents" below; for anything not covered, say "Not mentioned in the materials." Never fabricate.',
       '- "Previous conversation", if present, is only for resolving what the question refers to — never use it as a source of answers.',
       '- Be concise and directly on point; use bullet points when helpful.',
-      guest
+      isGuest
         ? '- Do not cite sources, and never mention document names, file names, or titles in your answer.'
         : '- When helpful, cite the source at the end as (Source: title).',
       untrustedDataRule('en'),
-    ].join('\n');
+    ];
   }
   return [
-    '你是公司知識庫問答助理，全程使用繁體中文。',
-    ...persona,
     '規則：',
     '- 只根據下方「參考資料」與「資料表實際內容」回答；資料未提到的部分，明說「資料中未提及」，切勿杜撰。',
     '- 數字一律以「資料表實際內容」為準，文字片段只是檢索節錄。',
     '- 「先前對話」若有，僅用於理解本次問題在指涉什麼，不得作為答案來源。',
     '- 回答精簡、直接切中問題；必要時條列。',
-    guest
+    isGuest
       ? '- 不要標註來源，也不要在回答中提到文件名稱、檔名或標題。'
       : '- 若有幫助，於句末以（來源：標題）標註引用。',
     untrustedDataRule(),
+  ];
+}
+
+// 依 session locale 產生知識庫作答的 system prompt（英文 UI → 英文作答）：身分 → 角色設定 → 規則。
+export function kbAnswerSystem(tenantId: string, userId: string, locale?: string): string {
+  const first =
+    normalizeLocale(locale) === 'en'
+      ? 'You are the company knowledge-base assistant. Respond entirely in English.'
+      : '你是公司知識庫問答助理，全程使用繁體中文。';
+  return [
+    first,
+    ...personaLines(tenantId, userId, locale),
+    ...kbAnswerRules(isGuestPrincipal(userId), locale),
   ].join('\n');
 }
 
