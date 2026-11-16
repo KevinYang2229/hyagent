@@ -180,6 +180,17 @@ AI 角色
   - 預覽 body 可帶 `knowledgeAnswerRules` 草稿；回應的 `rules` 每側改為 `{ text, locked }[]`（不含「規則：」標題），預覽據此標示鎖定。
 - **畫面**：AI 角色頁子頁籤「設定／知識庫規則／預覽」。規則頁可切換員工／訪客，逐條編輯、上下移、刪除、新增，鎖定規則以鎖頭列在下方；「還原預設」「儲存規則」。預覽用的是尚未存檔的規則草稿。
 
+### 依功能覆寫角色（2026-11-16 追加，使用者確認選 A）
+
+不同功能可以用不同角色；預設沿用員工／訪客的角色，只覆寫角色描述，AI 名稱、補充說明、聯絡管道、優先順序聲明照常套用。
+
+- **功能**：`knowledge`（知識庫問答）、`form`（填表）、`agent`（智慧代理）、`assistant`（閒聊／守門）。
+- **資料**：`assistantPersona.member.services?: Partial<Record<功能, MemberPresetId>>`、`guest.services?: Partial<Record<功能, GuestPresetId>>`。沒有該功能的 key＝沿用；值為 `default`＝此功能刻意不加角色描述。
+- **組 prompt**：`personaLines(tenantId, userId, locale, service)`／`buildPersonaLines({ …, service })`，各服務傳自己的 key；角色描述取 `services[service] ?? preset`。
+- **存檔**：一側只要角色不是預設、有補充說明、有聯絡管道或有任何覆寫就保留（`toPersonaPatch`）。
+- **預覽**：body 加 `service?`（預設 `knowledge`）；畫面加功能選單；平台規則只在知識庫時顯示，其他功能顯示「此功能的平台規則不在預覽範圍」。
+- **沒有覆寫時行為與現在完全相同**（基準檔測試照舊通過）。
+
 ### 測試
 
 - `personaLines`：員工與訪客各自選對設定；預設且沒有 notes 時回空陣列；中英文；notes 與 contact 有出現；assistantName 有出現。
