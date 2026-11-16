@@ -43,6 +43,7 @@ export const TENANT_VIEW_FIELDS: Record<keyof TenantView, FieldGroup> = {
   directorySyncStatus: ['directorySync', 'users'],
   // 外觀
   appearance: ['appearance'],
+  assistantPersona: ['appearance'],
   // 知識庫
   knowledgeLabels: ['knowledge'],
   knowledgeAccessLogRetentionDays: ['knowledge'],

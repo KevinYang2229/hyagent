@@ -105,11 +105,38 @@ export const appearanceSchema = z.object({
   defaultLocale: z.string().max(20).optional(),
 });
 
+const personaNotes = z.string().max(500).optional();
+
+export const assistantPersonaSchema = z
+  .object({
+    member: z
+      .object({
+        preset: z.enum(['default', 'cs-assist', 'hr', 'it', 'onboarding']),
+        notes: personaNotes,
+      })
+      .strict()
+      .nullable()
+      .optional(),
+    guest: z
+      .object({
+        preset: z.enum(['default', 'cs', 'presales', 'public-service']),
+        notes: personaNotes,
+        contact: z.string().max(200).optional(),
+      })
+      .strict()
+      .nullable()
+      .optional(),
+  })
+  .strict();
+
 export const patchTenantSchema = z
   .object({
     name: z.string().trim().min(1).optional().describe('租戶顯示名稱'),
     allowedOrigins: z.array(z.string().trim().min(1)).optional().describe('允許嵌入的網站來源；["*"] 代表全部放行。整份取代'),
     appearance: appearanceSchema.optional().describe('Widget 外觀設定'),
+    assistantPersona: assistantPersonaSchema
+      .optional()
+      .describe('AI 角色設定（員工／訪客分開）；各側整包取代，送 null 清除該側'),
     // 月度 LLM token 配額；0 = 不限
     quotaMonthlyLlmTokens: z.number().int().min(0).optional().describe('每月 LLM token 用量上限；0＝不限，用盡後呼叫 LLM 的 API 回 429'),
     egressPolicy: z.object({

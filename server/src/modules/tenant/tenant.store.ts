@@ -12,6 +12,7 @@
 import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import type { Prisma, PrismaClient } from '@prisma/client';
+import type { AssistantPersona } from '@hyagent/shared';
 import { ERROR_CODES, HyAgentTokenError } from '@/lib/assertion';
 import { decryptSecret, encryptSecret, hashApiKey, isEncrypted } from '@/lib/crypto';
 import { dataFile } from '@/lib/data-dir';
@@ -327,6 +328,24 @@ function generateKey(type: ApiKeyType): string {
   return prefix + randomBytes(24).toString('hex');
 }
 
+/** 角色設定的 patch：各側 undefined＝不動、null＝清除、物件＝整包取代 */
+export type AssistantPersonaPatch = {
+  [K in keyof AssistantPersona]?: AssistantPersona[K] | null;
+};
+
+function mergeAssistantPersona(
+  current: AssistantPersona | undefined,
+  patch: AssistantPersonaPatch,
+): AssistantPersona | undefined {
+  const next: AssistantPersona = { ...current };
+  for (const side of ['member', 'guest'] as const) {
+    const value = patch[side];
+    if (value === null) delete next[side];
+    else if (value !== undefined) (next as Record<string, unknown>)[side] = structuredClone(value);
+  }
+  return next.member || next.guest ? next : undefined;
+}
+
 export const tenantStore = {
   /** Admin credential changes must be durable before reporting success. */
   async persistCritical(): Promise<void> {
@@ -404,7 +423,7 @@ export const tenantStore = {
         | 'directoryTombstones'
         | 'directorySyncStatus'
       >
-    >,
+    > & { assistantPersona?: AssistantPersonaPatch },
   ): Tenant | undefined {
     const tenant = tenants.get(id);
     if (!tenant) return undefined;
@@ -415,6 +434,9 @@ export const tenantStore = {
       ...(patch.allowedOrigins !== undefined ? { allowedOrigins: patch.allowedOrigins } : {}),
       ...(patch.appearance !== undefined
         ? { appearance: { ...tenant.appearance, ...patch.appearance } }
+        : {}),
+      ...(patch.assistantPersona !== undefined
+        ? { assistantPersona: mergeAssistantPersona(tenant.assistantPersona, patch.assistantPersona) }
         : {}),
       ...(patch.disabledServices !== undefined ? { disabledServices: patch.disabledServices } : {}),
       ...(patch.disabledForms !== undefined ? { disabledForms: patch.disabledForms } : {}),

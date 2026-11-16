@@ -301,6 +301,40 @@ export interface ReportRef {
   status: 'queued';
 }
 
+// ---- AI 角色設定（admin 後台設定、僅後端組 prompt 用；不可放進 appearance，否則會經 widget config 外流）----
+
+/** 登入員工使用的預設角色 */
+export type MemberPersonaPresetId = 'default' | 'cs-assist' | 'hr' | 'it' | 'onboarding';
+/** 訪客（未登入的網站使用者、免登入訪客 Session）使用的預設角色 */
+export type GuestPersonaPresetId = 'default' | 'cs' | 'presales' | 'public-service';
+
+export interface AssistantPersona {
+  member?: { preset: MemberPersonaPresetId; notes?: string };
+  guest?: { preset: GuestPersonaPresetId; notes?: string; contact?: string };
+}
+
+/** 後台下拉選單用的預設角色說明；prompt 實際文字在 server 端 */
+export interface PersonaPresetMeta<T extends string> {
+  id: T;
+  label: string;
+  hint: string;
+}
+
+export const MEMBER_PERSONA_PRESETS: readonly PersonaPresetMeta<MemberPersonaPresetId>[] = [
+  { id: 'default', label: 'OA 助理（預設）', hint: '維持目前的行為：精簡、直接回答' },
+  { id: 'cs-assist', label: '客服助理', hint: '協助客服人員回答顧客：先給答案與出處，再附可轉述給顧客的話術' },
+  { id: 'hr', label: 'HR 顧問', hint: '回答人事、假勤問題，語氣溫和，個人狀況提醒以 HR 公告或承辦人為準' },
+  { id: 'it', label: 'IT 支援', hint: '條列排除步驟，排除不了就建議報修並說明要附哪些資訊' },
+  { id: 'onboarding', label: '新人導覽', hint: '多解釋背景與專有名詞，循序漸進，回答後提示可以接著問什麼' },
+];
+
+export const GUEST_PERSONA_PRESETS: readonly PersonaPresetMeta<GuestPersonaPresetId>[] = [
+  { id: 'default', label: '預設', hint: '維持目前的行為' },
+  { id: 'cs', label: '線上客服', hint: '以「您」稱呼顧客，不透露內部資訊，答不出來時引導到聯絡管道' },
+  { id: 'presales', label: '售前顧問', hint: '先了解需求再介紹產品，不承諾價格、折扣或交期' },
+  { id: 'public-service', label: '民眾服務窗口', hint: '用白話說明規定的具體內容，避免行政術語' },
+];
+
 // ---- 租戶 widget 外觀（admin 後台設定、widget 端套用）----
 export interface TenantAppearance {
   /** AI 助理顯示名稱；未設用 widget 內建預設（i18n app.aiName）。同時用於前端顯示與 AI 自稱 */
