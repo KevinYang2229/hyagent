@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { PERSONA_SERVICES, type AssistantPersona, type KbRuleItem, type PersonaServiceKey } from "@hyagent/shared";
 import { api } from "../../api";
-import { toPersonaPatch, type RulesDraft } from "./persona.util";
+import { sideHasRole, toPersonaPatch, type RulesDraft } from "./persona.util";
 
 const DEBOUNCE_MS = 400;
 type Locale = "zh-Hant" | "en";
@@ -85,9 +85,9 @@ export default function PersonaPreview({
         <p className="field-hint">預覽暫時無法產生</p>
       ) : (
         <>
-          {/* 是否有角色看草稿本身：有 AI 名稱時 server 每側都會回名稱句，不能用「有沒有行」判斷 */}
-          <PreviewBox title="登入員工" lines={result?.member} rules={service === "knowledge" ? result?.rules.member : null} hasRole={patch.member !== null} />
-          <PreviewBox title="網站訪客" lines={result?.guest} rules={service === "knowledge" ? result?.rules.guest : null} hasRole={patch.guest !== null} />
+          {/* 是否有角色看草稿本身、且依目前功能：有 AI 名稱時 server 每側都會回名稱句，不能用「有沒有行」判斷 */}
+          <PreviewBox title="登入員工" lines={result?.member} rules={service === "knowledge" ? result?.rules.member : null} hasRole={sideHasRole(patch.member, service)} />
+          <PreviewBox title="網站訪客" lines={result?.guest} rules={service === "knowledge" ? result?.rules.guest : null} hasRole={sideHasRole(patch.guest, service)} />
           {service === "knowledge" && <p className="field-hint">填表、代理等服務另有各自的規則。</p>}
         </>
       )}

@@ -113,3 +113,10 @@ it('toPersonaPatch：只有覆寫的一側也保留；空的覆寫表不送', ()
   });
   expect(toPersonaPatch({ member: { preset: 'hr', services: {} } })).toEqual({ member: { preset: 'hr' }, guest: null });
 });
+
+it('toPersonaPatch：覆寫照固定功能順序輸出，點選先後不影響（否則存檔後「未儲存」消不掉）', () => {
+  const a = toPersonaPatch({ member: { preset: 'hr', services: { form: 'it', knowledge: 'onboarding' } } });
+  const b = toPersonaPatch({ member: { preset: 'hr', services: { knowledge: 'onboarding', form: 'it' } } });
+  expect(JSON.stringify(a)).toBe(JSON.stringify(b));
+  expect(Object.keys(a.member!.services!)).toEqual(['knowledge', 'form']);
+});

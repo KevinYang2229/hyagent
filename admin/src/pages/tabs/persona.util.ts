@@ -1,7 +1,7 @@
 /**
  * AI 角色頁籤的純函式（角色設定、知識庫規則；元件與測試共用）。
  */
-import type { AssistantPersona } from "@hyagent/shared";
+import { PERSONA_SERVICES, type AssistantPersona, type PersonaServiceKey } from "@hyagent/shared";
 
 /** 送給 PATCH 的角色設定：每一側整包取代；預設角色且沒有任何文字的一側送 null（清除，回到原本行為） */
 export type PersonaPatch = {
@@ -9,11 +9,27 @@ export type PersonaPatch = {
   guest: AssistantPersona["guest"] | null;
 };
 
-/** 依功能覆寫表：去掉空值；一個都沒有時回 undefined（不送） */
-function cleanServices<T extends string>(services?: Partial<Record<string, T>>): Partial<Record<string, T>> | undefined {
+/**
+ * 依功能覆寫表：去掉空值，照 PERSONA_SERVICES 的固定順序輸出；一個都沒有時回 undefined（不送）。
+ * 固定順序很重要：server 存檔後會照 schema 的順序回傳，未儲存判斷用 JSON 比對，順序不同會被當成有改動。
+ */
+function cleanServices<T extends string>(services?: Partial<Record<PersonaServiceKey, T>>): Partial<Record<PersonaServiceKey, T>> | undefined {
   if (!services) return undefined;
-  const entries = Object.entries(services).filter(([, v]) => !!v);
-  return entries.length ? (Object.fromEntries(entries) as Partial<Record<string, T>>) : undefined;
+  const entries = PERSONA_SERVICES.filter((s) => !!services[s.key]).map((s) => [s.key, services[s.key]] as const);
+  return entries.length ? (Object.fromEntries(entries) as Partial<Record<PersonaServiceKey, T>>) : undefined;
+}
+
+/**
+ * 某側在指定功能是否有角色指示（角色描述、補充說明或聯絡管道）。
+ * 預覽用它決定是否顯示「維持預設行為」：要看目前功能實際用的角色，不能只看整側有沒有設定。
+ */
+export function sideHasRole(
+  side: { preset: string; notes?: string; contact?: string; services?: Partial<Record<PersonaServiceKey, string>> } | null | undefined,
+  service: PersonaServiceKey,
+): boolean {
+  if (!side) return false;
+  const preset = side.services?.[service] || side.preset;
+  return preset !== "default" || !!side.notes?.trim() || !!side.contact?.trim();
 }
 
 export function toPersonaPatch(value: AssistantPersona): PersonaPatch {

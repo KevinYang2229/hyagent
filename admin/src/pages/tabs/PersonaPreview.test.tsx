@@ -149,3 +149,21 @@ it('功能選單：預設知識庫；切到填表以 service=form 呼叫，且�
   expect(screen.queryByText(SUMMARY)).not.toBeInTheDocument();
   expect(screen.getAllByText('此功能的平台規則不在預覽範圍')).toHaveLength(2);
 });
+
+it('依目前功能判斷有沒有角色：只覆寫填表時，知識庫預覽顯示「維持預設行為」', async () => {
+  vi.mocked(api.previewPersona).mockResolvedValue({ member: [], guest: [], rules: RULES });
+  render(<PersonaPreview tenantId="t1" persona={{ member: { preset: 'default', services: { form: 'hr' } } }} />);
+  await flush();
+  expect(screen.getAllByText(EMPTY)).toHaveLength(2); // 員工（知識庫沒覆寫）＋訪客
+  vi.mocked(api.previewPersona).mockResolvedValue({ member: ['HR 描述'], guest: [], rules: RULES });
+  fireEvent.change(screen.getByLabelText('預覽功能'), { target: { value: 'form' } });
+  await flush();
+  expect(screen.getAllByText(EMPTY)).toHaveLength(1); // 只剩訪客
+});
+
+it('功能覆寫成預設且沒有補充說明時，該功能顯示「維持預設行為」', async () => {
+  vi.mocked(api.previewPersona).mockResolvedValue({ member: [], guest: [], rules: RULES });
+  render(<PersonaPreview tenantId="t1" persona={{ member: { preset: 'hr', services: { knowledge: 'default' } } }} />);
+  await flush();
+  expect(screen.getAllByText(EMPTY)).toHaveLength(2);
+});
