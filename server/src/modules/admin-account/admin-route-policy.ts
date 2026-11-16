@@ -24,6 +24,7 @@ export const ADMIN_TAB_KEYS = [
   'forms',
   'permissions',
   'appearance',
+  'persona',
   'webhook',
   'usage',
   'feedback',
@@ -99,6 +100,7 @@ export const TENANT_PATCH_FIELDS: Record<string, AdminTabKey | 'super'> = {
   guestAccess: 'settings',
   egressPolicy: 'settings',
   appearance: 'appearance',
+  assistantPersona: 'persona',
   quotaMonthlyLlmTokens: 'super',
 };
 
@@ -113,6 +115,7 @@ const TAB_LABELS: Record<AdminTabKey, string> = {
   forms: '表單',
   permissions: '角色與授權',
   appearance: '外觀',
+  persona: 'AI 角色',
   webhook: '事件通知（Webhook）',
   usage: '用量',
   feedback: '回饋',

@@ -522,6 +522,7 @@ export const ADMIN_TAB_KEYS = [
   'forms',
   'permissions',
   'appearance',
+  'persona',
   'webhook',
   'usage',
   'feedback',

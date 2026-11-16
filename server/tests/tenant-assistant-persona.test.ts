@@ -84,7 +84,7 @@ describe('assistantPersona 不外流', () => {
     expect(body).not.toContain('機密語氣指示XYZ');
   });
 
-  it('TENANT_VIEW_FIELDS.assistantPersona 為 ["appearance"]', () => {
-    expect(TENANT_VIEW_FIELDS.assistantPersona).toEqual(['appearance']);
+  it('TENANT_VIEW_FIELDS.assistantPersona 為 ["persona"]', () => {
+    expect(TENANT_VIEW_FIELDS.assistantPersona).toEqual(['persona']);
   });
 });

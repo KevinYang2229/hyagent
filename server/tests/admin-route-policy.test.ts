@@ -77,3 +77,22 @@ describe('admin-route-policy', () => {
     expect(findRouteRule('GET', '/tenants/%E0%A4%A/knowledge')?.rule.access.kind).toBe('super');
   });
 });
+
+describe('AI 角色（persona）頁籤權限', () => {
+  const decide = (permissions: AdminTabPermissions, body: unknown) =>
+    decideTenantAdmin({ method: 'PATCH', path: '/tenants/aaa111', body, tenantId: 'aaa111', permissions });
+
+  it('persona 有編輯權限才能改 assistantPersona', () => {
+    expect(decide({ persona: 'write' }, { assistantPersona: { member: { preset: 'hr' } } }).allow).toBe(true);
+    expect(decide({ persona: 'read' }, { assistantPersona: { member: { preset: 'hr' } } }).allow).toBe(false);
+  });
+
+  it('只有外觀編輯權限時不能改 assistantPersona，但仍能單獨存外觀', () => {
+    expect(decide({ appearance: 'write' }, { assistantPersona: { member: null } }).allow).toBe(false);
+    expect(decide({ appearance: 'write' }, { appearance: { assistantName: '小華' } }).allow).toBe(true);
+  });
+
+  it('沒設定 persona 權限時視為隱藏（既有租戶管理者預設看不到）', () => {
+    expect(decide({}, { assistantPersona: { guest: null } }).allow).toBe(false);
+  });
+});
