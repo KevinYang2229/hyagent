@@ -135,3 +135,15 @@ it('預覽帶上規則草稿', async () => {
     guest: ['已存的訪客規則'],
   });
 });
+
+it('子頁籤是頁面最上方的獨立區塊，不在設定卡片裡', () => {
+  render(<PersonaTab tenant={base} onSaved={vi.fn()} onError={vi.fn()} />);
+  expect(screen.getByRole('tablist', { name: 'AI 角色子頁' }).closest('.card')).toBeNull();
+});
+
+it('「還原預設」與「儲存規則」在同一列', async () => {
+  render(<PersonaTab tenant={base} onSaved={vi.fn()} onError={vi.fn()} />);
+  fireEvent.click(screen.getByRole('tab', { name: '知識庫規則' }));
+  const save = await screen.findByRole('button', { name: '儲存規則' });
+  expect(screen.getByRole('button', { name: '還原預設' }).parentElement).toBe(save.parentElement);
+});

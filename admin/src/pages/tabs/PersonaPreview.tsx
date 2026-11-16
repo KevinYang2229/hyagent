@@ -56,9 +56,9 @@ export default function PersonaPreview({
 
   return (
     <div className="persona-preview-block" style={{ marginTop: 20 }}>
-      <div className="row" style={{ alignItems: "center", justifyContent: "space-between" }}>
+      <div className="persona-preview-head">
         <div className="field-label">預覽（AI 實際收到的角色指示）</div>
-        <div className="row" role="group" aria-label="預覽語言" style={{ gap: 4 }}>
+        <div className="seg-group" role="group" aria-label="預覽語言">
           {(["zh-Hant", "en"] as const).map((l) => (
             <button
               key={l}

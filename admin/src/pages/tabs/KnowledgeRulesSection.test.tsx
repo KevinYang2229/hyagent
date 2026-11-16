@@ -90,3 +90,9 @@ it('toRulesPatch：null 維持 null；去掉空白項目；與內建相同視為
   expect(toRulesPatch({ member: [' A ', '  '], guest: null }, INFO)).toEqual({ member: ['A'], guest: null });
   expect(toRulesPatch({ member: ['數字規則', '精簡規則', '出處規則'], guest: [] }, INFO)).toEqual({ member: null, guest: [] });
 });
+
+it('登入員工／網站訪客切換鈕緊鄰排列（不用會左右撐開的清單列樣式）', () => {
+  render(<Harness />);
+  expect(screen.getByRole('group', { name: '規則對象' })).not.toHaveClass('row');
+  expect(screen.getAllByRole('listitem').every((li) => !li.classList.contains('row'))).toBe(true);
+});

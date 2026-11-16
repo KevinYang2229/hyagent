@@ -90,57 +90,68 @@ export default function PersonaTab({
     }
   }
 
+  const head = {
+    edit: { title: "AI 角色", dirty, desc: "依使用者是否登入套用不同角色，影響 AI 的口吻與回答方式。平台規則（不得捏造、寫入動作需確認等）不受角色影響。" },
+    rules: { title: "知識庫規則", dirty: rulesDirty, desc: "調整知識庫問答的回答規則；防護規則鎖定不可修改，並優先於自訂規則。" },
+    preview: { title: "預覽", dirty: false, desc: "AI 實際收到的角色指示與知識庫規則。" },
+  }[sub];
+
   return (
-    <div className="card">
-      <div className="card-head">
-        <div>
-          <div className="card-title">AI 角色<UnsavedBadge dirty={dirty} /></div>
-          <div className="card-desc">
-            依使用者是否登入套用不同角色，影響 AI 的口吻與回答方式。平台規則（不得捏造、寫入動作需確認等）不受角色影響。
+    <div className="persona-tab">
+      {/* 子頁籤是頁面最上方的獨立區塊，下面的卡片隨子頁切換內容 */}
+      <div className="tabs kb-subtabs" role="tablist" aria-label="AI 角色子頁">
+        {([["edit", "設定"], ["rules", "知識庫規則"], ["preview", "預覽"]] as const).map(([key, label]) => (
+          <button key={key} type="button" role="tab" aria-selected={sub === key}
+            className={`tab${sub === key ? " active" : ""}`} onClick={() => setSub(key)}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div className="card">
+        <div className="card-head">
+          <div>
+            <div className="card-title">{head.title}<UnsavedBadge dirty={head.dirty} /></div>
+            <div className="card-desc">{head.desc}</div>
           </div>
         </div>
-      </div>
-      <div className="card-body">
-        <div className="tabs kb-subtabs" role="tablist" aria-label="AI 角色子頁">
-          {([["edit", "設定"], ["rules", "知識庫規則"], ["preview", "預覽"]] as const).map(([key, label]) => (
-            <button key={key} type="button" role="tab" aria-selected={sub === key}
-              className={`tab${sub === key ? " active" : ""}`} onClick={() => setSub(key)}>
-              {label}
-            </button>
-          ))}
-        </div>
-        <div hidden={sub !== "edit"}>
-          <fieldset disabled={readonly} className="tab-readonly">
-            <PersonaSection value={persona} onChange={setPersona} />
-            <div className="form-actions">
-              <button className="btn btn-primary" onClick={save} disabled={busy || readonly}>
-                {busy ? "儲存中…" : "儲存 AI 角色"}
-              </button>
-            </div>
-          </fieldset>
-        </div>
-        <div hidden={sub !== "rules"}>
-          {rulesInfo ? (
-            <>
-              <KnowledgeRulesSection info={rulesInfo} value={rulesDraft} onChange={setRulesDraft} readonly={readonly} />
+        <div className="card-body">
+          <div hidden={sub !== "edit"}>
+            <fieldset disabled={readonly} className="tab-readonly">
+              <PersonaSection value={persona} onChange={setPersona} />
               <div className="form-actions">
-                <button className="btn btn-primary" onClick={saveRules} disabled={rulesBusy || readonly}>
-                  {rulesBusy ? "儲存中…" : "儲存規則"}
+                <button className="btn btn-primary" onClick={save} disabled={busy || readonly}>
+                  {busy ? "儲存中…" : "儲存 AI 角色"}
                 </button>
               </div>
+            </fieldset>
+          </div>
+          <div hidden={sub !== "rules"}>
+            {rulesInfo ? (
+              <KnowledgeRulesSection
+                info={rulesInfo}
+                value={rulesDraft}
+                onChange={setRulesDraft}
+                readonly={readonly}
+                saveButton={
+                  <button className="btn btn-primary" onClick={saveRules} disabled={rulesBusy || readonly}>
+                    {rulesBusy ? "儲存中…" : "儲存規則"}
+                  </button>
+                }
+              />
+            ) : (
+              <p className="field-hint">載入中…</p>
+            )}
+          </div>
+          {sub === "preview" && (
+            <>
+              {(dirty || rulesDirty) && (
+                <p className="field-hint">預覽的是尚未儲存的內容，回到對應的子頁按儲存後才會生效。</p>
+              )}
+              <PersonaPreview tenantId={tenant.id} persona={persona} rules={rulesInfo ? toRulesPatch(rulesDraft, rulesInfo) : undefined} />
             </>
-          ) : (
-            <p className="field-hint">載入中…</p>
           )}
         </div>
-        {sub === "preview" && (
-          <>
-            {(dirty || rulesDirty) && (
-              <p className="field-hint">預覽的是尚未儲存的內容，回到對應的子頁按儲存後才會生效。</p>
-            )}
-            <PersonaPreview tenantId={tenant.id} persona={persona} rules={rulesInfo ? toRulesPatch(rulesDraft, rulesInfo) : undefined} />
-          </>
-        )}
       </div>
     </div>
   );

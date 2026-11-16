@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { RulesDraft, RulesInfo } from "./persona.util";
 
 export type { RulesDraft, RulesInfo };
@@ -16,11 +16,14 @@ export default function KnowledgeRulesSection({
   value,
   onChange,
   readonly = false,
+  saveButton,
 }: {
   info: RulesInfo;
   value: RulesDraft;
   onChange: (next: RulesDraft) => void;
   readonly?: boolean;
+  /** 儲存按鈕由外層提供（存檔邏輯在外層），與「還原預設」排在同一列 */
+  saveButton?: ReactNode;
 }) {
   const [side, setSide] = useState<Side>("member");
   const list = value[side] ?? info[side].defaults;
@@ -33,7 +36,7 @@ export default function KnowledgeRulesSection({
 
   return (
     <div className="kb-rules">
-      <div className="row" role="group" aria-label="規則對象" style={{ gap: 4 }}>
+      <div className="seg-group" role="group" aria-label="規則對象">
         {([["member", "登入員工"], ["guest", "網站訪客"]] as const).map(([key, label]) => (
           <button key={key} type="button" aria-pressed={side === key}
             className={`btn btn-sm ${side === key ? "btn-primary" : "btn-ghost"}`} onClick={() => setSide(key)}>
@@ -47,7 +50,7 @@ export default function KnowledgeRulesSection({
 
       <ol className="kb-rules-list">
         {list.map((text, i) => (
-          <li key={i} className="row" style={{ gap: 6, alignItems: "center" }}>
+          <li key={i} className="kb-rule-item">
             <input
               className="input"
               aria-label={`規則 ${i + 1}`}
@@ -65,7 +68,7 @@ export default function KnowledgeRulesSection({
           </li>
         ))}
       </ol>
-      <div className="row" style={{ gap: 8 }}>
+      <div className="kb-rule-add">
         <button type="button" className="btn btn-ghost btn-sm" aria-label="新增規則"
           disabled={readonly || list.length >= MAX_RULES} onClick={() => setList([...list, ""])}>
           ＋ 新增規則
@@ -85,6 +88,7 @@ export default function KnowledgeRulesSection({
           onClick={() => onChange({ ...value, [side]: null })}>
           還原預設
         </button>
+        {saveButton}
       </div>
     </div>
   );
