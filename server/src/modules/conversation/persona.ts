@@ -87,14 +87,17 @@ export function personaLines(tenantId: string, userId: string, locale?: string):
   const role: string[] = [];
   if (isGuestPrincipal(userId)) {
     const guest = persona?.guest;
-    if (guest && guest.preset !== 'default') role.push(GUEST_PRESETS[guest.preset][lang]);
+    // 查表要防呆：存檔裡可能留著日後移除的角色代碼，丟錯會讓整個租戶的對話壞掉
+    const guestText = guest ? GUEST_PRESETS[guest.preset as keyof typeof GUEST_PRESETS]?.[lang] : undefined;
+    if (guestText) role.push(guestText);
     const contact = guest?.contact?.trim();
     if (contact) role.push(frame.contact(contact));
     const notes = guest?.notes?.trim();
     if (notes) role.push(frame.notes(notes));
   } else {
     const member = persona?.member;
-    if (member && member.preset !== 'default') role.push(MEMBER_PRESETS[member.preset][lang]);
+    const memberText = member ? MEMBER_PRESETS[member.preset as keyof typeof MEMBER_PRESETS]?.[lang] : undefined;
+    if (memberText) role.push(memberText);
     const notes = member?.notes?.trim();
     if (notes) role.push(frame.notes(notes));
   }

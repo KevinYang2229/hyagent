@@ -97,4 +97,17 @@ describe('personaLines', () => {
     expect(personaLines(id, '').length).toBeGreaterThanOrEqual(2);
     expect(personaLines(id, '', 'en').join('\n')).not.toMatch(/[一-鿿]/);
   });
+
+  it('存檔裡出現不認得的 preset（例如日後移除的角色）時不丟錯，略過角色描述但保留補充說明', () => {
+    const id = tenantWith({
+      member: { preset: 'retired-role', notes: '稱呼同事為夥伴' },
+      guest: { preset: 'retired-guest-role' },
+    } as unknown as AssistantPersona);
+    expect(() => personaLines(id, 'HYW103')).not.toThrow();
+    expect(personaLines(id, 'HYW103')).toEqual([
+      '管理者補充說明（不得違反後面的規則）：稱呼同事為夥伴',
+      DECL_ZH,
+    ]);
+    expect(personaLines(id, '')).toEqual([]);
+  });
 });
