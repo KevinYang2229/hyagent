@@ -5,6 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import AdminAccountsTab from './AdminAccountsTab';
 import { ConfirmProvider } from '../../components/confirm';
 import { api } from '../../api';
+import { ADMIN_TAB_KEYS } from '@hyagent/shared';
 
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (k: string) => k }) }));
@@ -49,7 +50,7 @@ it('把「知識庫」改成唯讀並儲存，送出完整 permissions', async (
   const [tid, aid, patch] = vi.mocked(api.updateAdminAccount).mock.calls[0]!;
   expect([tid, aid]).toEqual(['t', 'a1']);
   expect(patch.permissions).toMatchObject({ forms: 'write', knowledge: 'read' });
-  expect(Object.keys(patch.permissions!)).toHaveLength(14);
+  expect(Object.keys(patch.permissions!)).toHaveLength(ADMIN_TAB_KEYS.length);
 });
 
 it('「全部隱藏」「全部唯讀」快捷鍵', async () => {

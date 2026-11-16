@@ -208,6 +208,14 @@ export const IconChart = (p: P) => (
   </svg>
 );
 
+export const IconPersona = (p: P) => (
+  <svg {...base(p)}>
+    <circle cx="9" cy="8" r="4" />
+    <path d="M2 21v-1a6 6 0 0 1 9.5-4.9" />
+    <path d="M15 13h6a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1h-3l-2.5 2v-2H15a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1z" />
+  </svg>
+);
+
 export const IconMessage = (p: P) => (
   <svg {...base(p)}>
     <path d="M20 15a2 2 0 0 1-2 2H8l-4 4V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z" />

@@ -27,13 +27,8 @@ export default function PersonaSection({
     onChange({ ...value, guest: { ...guest, ...patch } });
 
   return (
-    <div className="persona-section" style={{ marginTop: 20 }}>
-      <div className="card-title">AI 角色</div>
-      <p className="field-hint">
-        依使用者是否登入套用不同角色，影響 AI 的口吻與回答方式。平台規則（不得捏造、寫入動作需確認等）不受角色影響。
-      </p>
-
-      <div className="field" style={{ marginTop: 12 }}>
+    <div className="persona-section">
+      <div className="field">
         <label className="field-label" htmlFor="persona-member-preset">登入員工的角色</label>
         <select
           id="persona-member-preset"

@@ -130,9 +130,12 @@ personaLines(tenantId: string, userId: string, locale?: string): string[]
 
 - `patchTenantSchema` 新增 `assistantPersona`（zod：preset 用 enum，notes／contact 限長度，`.strict()`）。`member` 與 `guest` 各自整包取代；送 `null` 代表清除該側設定。
 - `tenant.store.updateTenant` 的允許欄位加上 `assistantPersona`。
-- [tenant-view.ts](../../../server/src/modules/admin/tenant-view.ts) 把 `assistantPersona` 對應到 `['appearance']`，沿用外觀頁籤的權限，不新增權限。
+- 新增後台頁籤 `persona`（名稱「AI 角色」，放在「前台呈現」群組、外觀之後），有獨立的讀／寫權限：
+  - `ADMIN_TAB_KEYS`（shared 與 server 兩份）加入 `persona`；`TENANT_PATCH_FIELDS.assistantPersona = 'persona'`；[tenant-view.ts](../../../server/src/modules/admin/tenant-view.ts) 的 `assistantPersona` 對應 `['persona']`。
+  - 既有租戶管理者沒有設定此權限時視為隱藏（沿用「未設定＝hidden」），由超級管理者在「後台管理者」授權；不做資料遷移。
+  - 理由：改 AI 的說話方式比改外觀敏感，要能分開授權；放在外觀頁也不好找。（2026-11-16 使用者改定，原本是放在外觀頁並沿用外觀權限。）
 - 確認 `/api/widget/config` 與任何前台 API 都不會回傳 `assistantPersona`。
-- 畫面：在 [AppearanceTab.tsx](../../../admin/src/pages/tabs/AppearanceTab.tsx) 新增「AI 角色」區塊，和既有欄位走同一次儲存。
+- 畫面：新的 `PersonaTab`，自己的儲存按鈕「儲存 AI 角色」，只送 `assistantPersona`；外觀頁不再包含角色設定，儲存外觀只送 `appearance`。
 
 ```text
 AI 角色

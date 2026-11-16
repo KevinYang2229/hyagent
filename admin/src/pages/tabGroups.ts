@@ -1,7 +1,7 @@
 import type { SVGProps } from 'react';
 import {
   IconAudit, IconBook, IconChart, IconCog, IconDatabase, IconForm, IconLogin, IconMessage,
-  IconOverview, IconPalette, IconReport, IconShield, IconSparkle, IconSync, IconUsers, IconWebhook,
+  IconOverview, IconPalette, IconPersona, IconReport, IconShield, IconSparkle, IconSync, IconUsers, IconWebhook,
 } from '../components/icons';
 
 export type TabKey =
@@ -10,6 +10,7 @@ export type TabKey =
   | 'users'
   | 'directorySync'
   | 'appearance'
+  | 'persona'
   | 'forms'
   | 'knowledge'
   | 'database'
@@ -51,6 +52,7 @@ export const TAB_GROUPS: { label: string | null; tabs: { key: TabKey; label: str
   ] },
   { label: '前台呈現', tabs: [
     { key: 'appearance', label: '外觀', icon: IconPalette },
+    { key: 'persona', label: 'AI 角色', icon: IconPersona },
     { key: 'webhook', label: '事件通知（Webhook）', icon: IconWebhook },
   ] },
   { label: '營運', tabs: [

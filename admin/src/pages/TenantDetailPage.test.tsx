@@ -142,11 +142,12 @@ it('有區塊未儲存時，按「租戶清單」離開也會先確認', async (
   expect(await screen.findByText('頁面:tenant-list')).toBeInTheDocument();
 });
 
-it('超級管理者看得到全部 17 個分頁', async () => {
+it('超級管理者看得到全部 18 個分頁', async () => {
   renderAt();
   await screen.findByText('頁面:overview');
   const nav = screen.getByRole('navigation', { name: '租戶設定導覽' });
-  expect(within(nav).getAllByRole('button')).toHaveLength(17);
+  expect(within(nav).getAllByRole('button')).toHaveLength(18);
+  expect(within(nav).getByRole('button', { name: 'AI 角色' })).toBeInTheDocument();
   expect(within(nav).getByRole('button', { name: '資料庫查詢' })).toBeInTheDocument();
   expect(within(nav).getByRole('button', { name: '後台管理者' })).toBeInTheDocument();
 });

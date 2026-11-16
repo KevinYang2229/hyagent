@@ -8,6 +8,7 @@ import AppLayout from '../components/AppLayout';
 import { IconBack } from '../components/icons';
 import { TAB_GROUPS, type TabKey } from './tabGroups';
 import AppearanceTab from './tabs/AppearanceTab';
+import PersonaTab from './tabs/PersonaTab';
 import SettingsTab from './tabs/SettingsTab';
 import WebhookTab from './tabs/WebhookTab';
 import UsageTab from './tabs/UsageTab';
@@ -93,6 +94,7 @@ export default function TenantDetailPage() {
           {tab === 'users' && <UsersTab key={tenant.id} tenantId={tenant.id} onError={handleErr} readonly={ro} />}
           {tab === 'directorySync' && <DirectorySyncTab key={tenant.id} tenantId={tenant.id} onError={handleErr} readonly={ro} />}
           {tab === 'appearance' && <AppearanceTab tenant={tenant} onSaved={handleSaved} onError={handleErr} readonly={ro} />}
+          {tab === 'persona' && <PersonaTab tenant={tenant} onSaved={handleSaved} onError={handleErr} readonly={ro} />}
           {tab === 'forms' && <FormsTab tenantId={tenant.id} onError={handleErr} readonly={ro} />}
           {tab === 'knowledge' && <KnowledgeTab tenantId={tenant.id} onError={handleErr} readonly={ro} allowRenderJavaScript={isSuper} />}
           {tab === 'database' && <DatabaseTab key={tenant.id} tenantId={tenant.id} onError={handleErr} />}
