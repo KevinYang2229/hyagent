@@ -45,6 +45,7 @@ it('只改角色就算未儲存，回報名稱為「AI 角色」', () => {
 it('儲存時只送角色設定，不帶外觀', async () => {
   const onSaved = vi.fn();
   render(<PersonaTab tenant={base} onSaved={onSaved} onError={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: '網站訪客' }));
   fireEvent.change(screen.getByLabelText('網站訪客的角色'), { target: { value: 'cs' } });
   fireEvent.click(screen.getByRole('button', { name: '儲存 AI 角色' }));
   await waitFor(() => expect(onSaved).toHaveBeenCalled());
@@ -56,6 +57,7 @@ it('儲存時只送角色設定，不帶外觀', async () => {
 it('讀入既有設定時回填且不算未儲存', () => {
   const tenant: Tenant = { ...base, assistantPersona: { guest: { preset: 'cs', contact: '02-1234' } } };
   render(<PersonaTab tenant={tenant} onSaved={vi.fn()} onError={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: '網站訪客' }));
   expect(screen.getByLabelText('網站訪客的角色')).toHaveValue('cs');
   expect(lastDirty()[1]).toBe(false);
 });

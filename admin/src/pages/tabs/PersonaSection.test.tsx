@@ -9,6 +9,11 @@ import { toPersonaPatch } from './persona.util';
 
 afterEach(cleanup);
 
+/** 切到「網站訪客」：兩側改成切換顯示，一次只有一側的欄位在畫面上 */
+function showGuest() {
+  fireEvent.click(screen.getByRole('button', { name: '網站訪客' }));
+}
+
 function optionLabels(select: HTMLElement): string[] {
   return Array.from((select as HTMLSelectElement).options).map((o) => o.textContent ?? '');
 }
@@ -29,6 +34,7 @@ function Harness({ initial = {}, onChange }: { initial?: AssistantPersona; onCha
 it('員工下拉只列對內角色、訪客下拉只列對外角色', () => {
   render(<Harness />);
   const member = optionLabels(screen.getByLabelText('登入員工的角色'));
+  showGuest();
   const guest = optionLabels(screen.getByLabelText('網站訪客的角色'));
   expect(member).toContain('客服助理');
   expect(member).not.toContain('線上客服');
@@ -44,6 +50,8 @@ it('選角色後顯示該角色的一行說明', () => {
 
 it('聯絡管道只出現在訪客區塊', () => {
   render(<Harness />);
+  expect(screen.queryAllByLabelText(/聯絡管道/)).toHaveLength(0);
+  showGuest();
   expect(screen.getAllByLabelText(/聯絡管道/)).toHaveLength(1);
   expect(screen.getByLabelText('網站訪客的聯絡管道')).toBeInTheDocument();
 });
@@ -51,9 +59,10 @@ it('聯絡管道只出現在訪客區塊', () => {
 it('補充說明 maxLength 為 500 並顯示字數；聯絡管道為 200', () => {
   render(<Harness initial={{ member: { preset: 'hr', notes: '你好' } }} />);
   expect(screen.getByLabelText('登入員工的補充說明')).toHaveAttribute('maxLength', '500');
+  expect(screen.getByText('2/500')).toBeInTheDocument();
+  showGuest();
   expect(screen.getByLabelText('網站訪客的補充說明')).toHaveAttribute('maxLength', '500');
   expect(screen.getByLabelText('網站訪客的聯絡管道')).toHaveAttribute('maxLength', '200');
-  expect(screen.getByText('2/500')).toBeInTheDocument();
 });
 
 it('修改後 onChange 帶出完整物件，另一側保留', () => {
@@ -67,6 +76,7 @@ it('讀入既有設定時回填選項與文字', () => {
   render(<Harness initial={{ member: { preset: 'it', notes: '附上分機' }, guest: { preset: 'presales', contact: 'LINE @shop' } }} />);
   expect(screen.getByLabelText('登入員工的角色')).toHaveValue('it');
   expect(screen.getByLabelText('登入員工的補充說明')).toHaveValue('附上分機');
+  showGuest();
   expect(screen.getByLabelText('網站訪客的角色')).toHaveValue('presales');
   expect(screen.getByLabelText('網站訪客的聯絡管道')).toHaveValue('LINE @shop');
 });
@@ -86,6 +96,9 @@ it('每側四個依功能覆寫的下拉，第一項是「沿用（目前角色�
   expect(form).toHaveValue('');
   for (const name of ['知識庫問答', '智慧代理', '閒聊／守門']) {
     expect(screen.getByLabelText(`登入員工・${name}的角色`)).toBeInTheDocument();
+  }
+  showGuest();
+  for (const name of ['知識庫問答', '填表', '智慧代理', '閒聊／守門']) {
     expect(screen.getByLabelText(`網站訪客・${name}的角色`)).toBeInTheDocument();
   }
 });
@@ -101,6 +114,7 @@ it('選擇覆寫後帶出 services；選回沿用時移除該功能', () => {
 
 it('訪客的覆寫選單只列對外角色', () => {
   render(<Harness />);
+  showGuest();
   const labels = Array.from((screen.getByLabelText('網站訪客・知識庫問答的角色') as HTMLSelectElement).options).map((o) => o.textContent);
   expect(labels).toContain('售前顧問');
   expect(labels).not.toContain('HR 顧問');
@@ -119,4 +133,25 @@ it('toPersonaPatch：覆寫照固定功能順序輸出，點選先後不影響�
   const b = toPersonaPatch({ member: { preset: 'hr', services: { knowledge: 'onboarding', form: 'it' } } });
   expect(JSON.stringify(a)).toBe(JSON.stringify(b));
   expect(Object.keys(a.member!.services!)).toEqual(['knowledge', 'form']);
+});
+
+it('登入員工／網站訪客用切換按鈕分開設定，一次只顯示一側', () => {
+  render(<Harness />);
+  expect(screen.getByRole('button', { name: '登入員工' })).toHaveAttribute('aria-pressed', 'true');
+  expect(screen.getByLabelText('登入員工的角色')).toBeInTheDocument();
+  expect(screen.queryByLabelText('網站訪客的角色')).not.toBeInTheDocument();
+  showGuest();
+  expect(screen.getByRole('button', { name: '網站訪客' })).toHaveAttribute('aria-pressed', 'true');
+  expect(screen.queryByLabelText('登入員工的角色')).not.toBeInTheDocument();
+  expect(screen.getByLabelText('網站訪客的角色')).toBeInTheDocument();
+});
+
+it('切換按鈕緊鄰排列，切回來時另一側的修改仍在', () => {
+  render(<Harness />);
+  expect(screen.getByRole('group', { name: '角色對象' })).not.toHaveClass('row');
+  showGuest();
+  fireEvent.change(screen.getByLabelText('網站訪客的角色'), { target: { value: 'presales' } });
+  fireEvent.click(screen.getByRole('button', { name: '登入員工' }));
+  showGuest();
+  expect(screen.getByLabelText('網站訪客的角色')).toHaveValue('presales');
 });

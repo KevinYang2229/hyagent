@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   GUEST_PERSONA_PRESETS,
   MEMBER_PERSONA_PRESETS,
@@ -28,9 +29,24 @@ export default function PersonaSection({
     onChange({ ...value, member: { ...member, ...patch } });
   const setGuest = (patch: Partial<NonNullable<AssistantPersona["guest"]>>) =>
     onChange({ ...value, guest: { ...guest, ...patch } });
+  // 員工／訪客切換顯示：一次只設定一側，兩側的草稿都在 value 裡，切換不會遺失
+  const [side, setSide] = useState<"member" | "guest">("member");
 
   return (
     <div className="persona-section">
+      <div className="seg-group" role="group" aria-label="角色對象">
+        {([["member", "登入員工"], ["guest", "網站訪客"]] as const).map(([key, label]) => (
+          <button key={key} type="button" aria-pressed={side === key}
+            className={`btn btn-sm ${side === key ? "btn-primary" : "btn-ghost"}`} onClick={() => setSide(key)}>
+            {label}
+          </button>
+        ))}
+      </div>
+      <p className="field-hint">
+        {side === "member" ? "已登入的公司員工。" : "未登入的使用者都算訪客；訪客的回答不會附知識庫出處。"}
+      </p>
+
+      {side === "member" && (<>
       <div className="field">
         <label className="field-label" htmlFor="persona-member-preset">登入員工的角色</label>
         <select
@@ -66,8 +82,10 @@ export default function PersonaSection({
         services={member.services}
         onChange={(services) => setMember({ services })}
       />
+      </>)}
 
-      <div className="field" style={{ marginTop: 12 }}>
+      {side === "guest" && (<>
+      <div className="field">
         <label className="field-label" htmlFor="persona-guest-preset">網站訪客的角色</label>
         <select
           id="persona-guest-preset"
@@ -79,9 +97,7 @@ export default function PersonaSection({
             <option key={p.id} value={p.id}>{p.label}</option>
           ))}
         </select>
-        <span className="field-hint">
-          {guestHint ? `${guestHint}。` : ""}未登入的使用者都算訪客，訪客的回答不會附知識庫出處。
-        </span>
+        {guestHint && <span className="field-hint">{guestHint}</span>}
       </div>
       <div className="field">
         <label className="field-label" htmlFor="persona-guest-notes">網站訪客的補充說明</label>
@@ -114,6 +130,7 @@ export default function PersonaSection({
         services={guest.services}
         onChange={(services) => setGuest({ services })}
       />
+      </>)}
     </div>
   );
 }
