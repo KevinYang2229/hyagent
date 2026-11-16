@@ -29,6 +29,7 @@ import {
   toPendingActionView,
 } from './pending-action';
 import { runConfirmedAction } from './pending-action.service';
+import { personaLines } from './persona';
 import { runToolLoop } from './tool-loop';
 
 /** 開放式多步驟任務（跨工具查詢、彙整、MCP、出錯重試）比填表需要更多往返。 */
@@ -44,10 +45,16 @@ export function isExportRequest(text: string): boolean {
 /** Anthropic 上限 128、OpenAI 上限 64，取交集。 */
 const LLM_TOOL_NAME_RE = /^[a-zA-Z0-9_-]{1,64}$/;
 
-function buildSystemPrompt(userId: string, locale?: string, extraLines: string[] = []): string {
+export function buildSystemPrompt(
+  tenantId: string,
+  userId: string,
+  locale?: string,
+  extraLines: string[] = [],
+): string {
   const today = new Date().toISOString().slice(0, 10);
   return [
     `你是本系統的智慧代理，協助使用者完成需要操作各項系統服務的任務。${languageDirective(locale)}`,
+    ...personaLines(tenantId, userId, locale),
     `今天日期是 ${today}；請把相對日期（明天、下週一等）換算成 YYYY-MM-DD。`,
     `目前登入使用者的識別碼是 ${userId}；查詢「自己」資料的工具會自動綁定此身分，不需要你提供或詢問使用者 id。`,
     ...extraLines,
@@ -159,7 +166,7 @@ export const agentAgentService: AgentService = {
     const { llmTools, idByLlmName } = exposeTools(toolRegistry.availableFor(ctx));
 
     const reply = await runToolLoop(llm, session, {
-      system: buildSystemPrompt(session.userId, session.locale, mcpPromptLines(session.tenantId, session.userId)),
+      system: buildSystemPrompt(session.tenantId, session.userId, session.locale, mcpPromptLines(session.tenantId, session.userId)),
       tools: llmTools,
       maxIterations: AGENT_MAX_ITERATIONS,
       onLLMResult: (r) => { model = r.model; },

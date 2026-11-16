@@ -16,13 +16,14 @@ import { usageStore } from '@/modules/usage/usage.store';
 import type { AgentService, AgentTurnResult, IntentDescriptor } from './agent-service.types';
 import type { Session } from './conversation.types';
 import { listEnabledForms } from './form.agent-service';
+import { personaLines } from './persona';
 
 /**
  * 依「這位使用者實際開通的服務」組能力清單——只列他真的能用的，避免護欄不停推銷用不到的服務。
  * 表單走 listEnabledForms（form:<id> scope 過濾）；知識庫/代理各查其 service scope。
  * 不 import service.registry（會與 registry → assistant 形成循環），改直接查 resolveScopes。
  */
-function guardSystem(tenantId: string, userId: string, locale?: string): string {
+export function guardSystem(tenantId: string, userId: string, locale?: string): string {
   const scopes = new Set(resolveScopes({ tenantId, userId }));
   const forms = listEnabledForms(tenantId, userId)
     .map((d) => d.data.title ?? d.agent.description)
@@ -32,6 +33,8 @@ function guardSystem(tenantId: string, userId: string, locale?: string): string 
   const agentOn = scopes.has('service:agent');
   const services = agentOn ? mcpServicesFor(tenantId, userId) : [];
   const emailOn = agentOn && scopes.has('email:write');
+  // 角色設定插在第一行（身分＋語言）之後、規則之前；沒有設定時為空，prompt 與原本相同
+  const persona = personaLines(tenantId, userId, locale);
 
   if (normalizeLocale(locale) === 'en') {
     const parts: string[] = [];
@@ -46,6 +49,7 @@ function guardSystem(tenantId: string, userId: string, locale?: string): string 
     if (parts.length === 0) {
       return [
         "You are this system's assistant. Respond entirely in English.",
+        ...persona,
         'The current user has no services enabled on their account.',
         'Rules:',
         '- If the user greets, thanks, or asks who you are: reply briefly and warmly.',
@@ -55,6 +59,7 @@ function guardSystem(tenantId: string, userId: string, locale?: string): string 
     }
     const rules = [
       `You are this system's assistant. You help with ${parts.join(', ')}. Respond entirely in English.`,
+      ...persona,
       'Rules:',
       '- If the user is greeting, thanking, or asking who you are: reply briefly and warmly, and state what you can help with (only the capabilities listed above).',
     ];
@@ -83,6 +88,7 @@ function guardSystem(tenantId: string, userId: string, locale?: string): string 
   if (parts.length === 0) {
     return [
       '你是本系統的助理，全程使用繁體中文。',
+      ...persona,
       '目前這位使用者的帳號沒有開通任何可用服務。',
       '規則：',
       '- 若使用者是打招呼、道謝、問候或問「你是誰」：簡短友善回應即可。',
@@ -92,6 +98,7 @@ function guardSystem(tenantId: string, userId: string, locale?: string): string 
   }
   const rules = [
     `你是本系統的助理，協助範圍：${parts.join('、')}。全程使用繁體中文。`,
+    ...persona,
     '規則：',
     '- 若使用者是打招呼、道謝、問候或問「你是誰」：簡短友善回應，並說明你能協助什麼（僅限上述已開通範圍）。',
   ];

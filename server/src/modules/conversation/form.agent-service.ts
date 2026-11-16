@@ -16,12 +16,12 @@ import { buildTools } from '@/modules/form/form.tools';
 import { requiresExplicitConsent, resolveFieldLinks } from '@/modules/form/field-links';
 import type { Definition, FieldIssue } from '@/modules/form/form.types';
 import { leaveService } from '@/modules/leave/leave.service';
-import { tenantStore } from '@/modules/tenant/tenant.store';
 import { listDeputyCandidates } from '@/modules/user/user.directory';
 import { assertFormAccess } from './form-access';
 import { assertMutable, submitSession } from './submit-session';
 import type { AgentService, AgentTurnResult, IntentDescriptor } from './agent-service.types';
 import type { Session } from './conversation.types';
+import { personaLines } from './persona';
 import { runToolLoop } from './tool-loop';
 
 const SUBMIT_CONFIRMATION_RE = /(確認|確定|送出|提交|送件|可以送|幫我送|同意送出)/;
@@ -64,7 +64,7 @@ function describeFields(def: Definition): string {
     .join('\n');
 }
 
-function buildSystemPrompt(
+export function buildSystemPrompt(
   tenantId: string,
   userId: string,
   def: Definition,
@@ -118,12 +118,10 @@ function buildSystemPrompt(
     .map((d) => `- ${d.data.title ?? d.agent.intent}：${d.agent.description}`)
     .join('\n');
 
-  // 租戶自訂的 AI 名稱（admin 後台外觀設定）；未設則不自稱名字，維持既有行為
-  const assistantName = tenantStore.getTenant(tenantId)?.appearance?.assistantName?.trim();
-
   const lines = [
     `你是公司 OA 系統的「${def.agent.description}」助理。${languageDirective(locale)}`,
-    ...(assistantName ? [`你的名字是「${assistantName}」，使用者稱呼你時即指你。`] : []),
+    // AI 名稱與角色設定（admin 後台）；都沒設時為空，維持既有行為
+    ...personaLines(tenantId, userId, locale),
     `今天日期是 ${today}；請把相對日期（明天、下週一等）換算成 YYYY-MM-DD。`,
     '你專責表單填寫。若使用者問的是其他主題的問題（公司規定、知識庫文件內容等），請告知他可直接提問、系統會交由知識庫助理回答；與任何服務都無關的閒聊、算術等請禮貌婉拒，切勿回答離題內容。',
     '',

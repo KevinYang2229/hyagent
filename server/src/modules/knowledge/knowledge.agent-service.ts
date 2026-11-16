@@ -17,6 +17,7 @@ import type {
   IntentDescriptor,
 } from '@/modules/conversation/agent-service.types';
 import type { Session } from '@/modules/conversation/conversation.types';
+import { personaLines } from '@/modules/conversation/persona';
 import { traceChunks } from '@/modules/conversation/reply-record';
 import { accessItemsOf, recordKnowledgeAccess } from './access-log';
 import { usageStore } from '@/modules/usage/usage.store';
@@ -135,10 +136,12 @@ const KB_KEYWORDS = [
 ];
 
 // 依 session locale 產生知識庫作答的 system prompt（英文 UI → 英文作答）。
-function kbAnswerSystem(locale?: string): string {
+export function kbAnswerSystem(tenantId: string, userId: string, locale?: string): string {
+  const persona = personaLines(tenantId, userId, locale);
   if (normalizeLocale(locale) === 'en') {
     return [
       'You are the company knowledge-base assistant. Respond entirely in English.',
+      ...persona,
       'Rules:',
       '- Answer ONLY from the "Reference" and "Actual table contents" below; for anything not covered, say "Not mentioned in the materials." Never fabricate.',
       '- "Previous conversation", if present, is only for resolving what the question refers to — never use it as a source of answers.',
@@ -149,6 +152,7 @@ function kbAnswerSystem(locale?: string): string {
   }
   return [
     '你是公司知識庫問答助理，全程使用繁體中文。',
+    ...persona,
     '規則：',
     '- 只根據下方「參考資料」與「資料表實際內容」回答；資料未提到的部分，明說「資料中未提及」，切勿杜撰。',
     '- 數字一律以「資料表實際內容」為準，文字片段只是檢索節錄。',
@@ -218,7 +222,7 @@ export const knowledgeAgentService: AgentService = {
         .join('\n\n');
       try {
         const result = await llm.createMessage({
-          system: kbAnswerSystem(session.locale),
+          system: kbAnswerSystem(session.tenantId, session.userId, session.locale),
           messages: [
             {
               role: 'user',
