@@ -146,6 +146,10 @@ export const personaPreviewSchema = z
   .object({
     assistantPersona: assistantPersonaSchema.describe('還沒存檔的角色設定（格式同 PATCH）'),
     locale: z.enum(['zh-Hant', 'en']).optional().describe('預覽語言；預設中文'),
+    service: z
+      .enum(['knowledge', 'form', 'agent', 'assistant'])
+      .optional()
+      .describe('預覽哪個功能收到的角色；預設知識庫問答'),
     knowledgeAnswerRules: knowledgeAnswerRulesSchema
       .optional()
       .describe('還沒存檔的知識庫規則草稿；沒帶的一側用已存的自訂，null 代表內建'),

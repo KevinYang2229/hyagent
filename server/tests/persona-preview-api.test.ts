@@ -176,3 +176,20 @@ describe('persona-preview 遇到壞的已存規則', () => {
     expect(res.body.data.rules.member[0].text).toContain('只根據下方');
   });
 });
+
+describe('persona-preview 依功能', () => {
+  const PERSONA = { member: { preset: 'it', services: { form: 'hr' } } };
+
+  it('service=form 回填表覆寫的角色；不帶 service 等同 knowledge', async () => {
+    const h = await adminHeader({ persona: 'read' });
+    const form = await request(app).post(url()).set(h).send({ assistantPersona: PERSONA, service: 'form' });
+    expect(form.body.data.member.join('\n')).toContain('HR 顧問');
+    const kb = await request(app).post(url()).set(h).send({ assistantPersona: PERSONA });
+    expect(kb.body.data.member.join('\n')).toContain('IT 支援');
+  });
+
+  it('未知 service 回 422', async () => {
+    const res = await request(app).post(url()).set(await adminHeader({ persona: 'read' })).send({ assistantPersona: {}, service: 'report' });
+    expect(res.status).toBe(422);
+  });
+});

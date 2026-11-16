@@ -363,8 +363,8 @@ export const adminController = {
   /** AI 角色預覽：用還沒存檔的設定產生 AI 實際收到的角色文字與規則（與真實對話共用同一套函式），不寫入 */
   async previewPersona(req: Request, res: Response): Promise<void> {
     const tenant = ensureTenant(String(req.params.id));
-    const { assistantPersona, locale, knowledgeAnswerRules: draft } = req.body as PersonaPreviewInput;
-    const common = { persona: assistantPersona, assistantName: tenant.appearance?.assistantName, locale };
+    const { assistantPersona, locale, service = 'knowledge', knowledgeAnswerRules: draft } = req.body as PersonaPreviewInput;
+    const common = { persona: assistantPersona, assistantName: tenant.appearance?.assistantName, locale, service };
     // 規則：草稿有帶的一側用草稿（null＝內建），沒帶的用已存的自訂
     const rulesFor = (side: 'member' | 'guest') => {
       const custom = draft && side in draft ? (draft[side] ?? undefined) : tenant.knowledgeAnswerRules?.[side];
