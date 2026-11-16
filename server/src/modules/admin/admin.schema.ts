@@ -137,8 +137,15 @@ export const personaPreviewSchema = z
   .object({
     assistantPersona: assistantPersonaSchema.describe('還沒存檔的角色設定（格式同 PATCH）'),
     locale: z.enum(['zh-Hant', 'en']).optional().describe('預覽語言；預設中文'),
+    knowledgeAnswerRules: knowledgeAnswerRulesSchema
+      .optional()
+      .describe('還沒存檔的知識庫規則草稿；沒帶的一側用已存的自訂，null 代表內建'),
   })
   .strict();
+
+export const knowledgeRulesQuerySchema = z.object({
+  locale: z.enum(['zh-Hant', 'en']).optional().describe('規則語言；預設中文'),
+});
 
 export const patchTenantSchema = z
   .object({
@@ -234,6 +241,7 @@ export type ListSessionsQuery = z.infer<typeof listSessionsQuerySchema>;
 export type SessionParam = z.infer<typeof sessionParamSchema>;
 export type PatchTenantInput = z.infer<typeof patchTenantSchema>;
 export type PersonaPreviewInput = z.infer<typeof personaPreviewSchema>;
+export type KnowledgeRulesQuery = z.infer<typeof knowledgeRulesQuerySchema>;
 export type CreateKeyInput = z.infer<typeof createKeySchema>;
 export type CreateWebhookInput = z.infer<typeof createWebhookSchema>;
 export type ToggleWebhookInput = z.infer<typeof toggleWebhookSchema>;

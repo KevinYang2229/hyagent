@@ -273,6 +273,10 @@ export const operationSummaries: Record<string, OperationSummary> = {
     summary: '修改租戶設定（名稱、允許來源、外觀、月配額等）',
     description: '只更新有帶的欄位。',
   },
+  'GET /api/admin/tenants/{id}/knowledge-rules': {
+    summary: '取得知識庫問答規則（編輯器用）',
+    description: '回傳員工與訪客各自的內建可改規則（還原預設的目標）、鎖定的防護規則，以及目前的自訂規則；需「AI 角色」檢視權限。',
+  },
   'POST /api/admin/tenants/{id}/persona-preview': {
     summary: '預覽 AI 角色指示（不存檔）',
     description: '用還沒存檔的角色設定，產生登入員工與訪客各自會收到的角色文字；只需「AI 角色」檢視權限，不寫入任何資料。',

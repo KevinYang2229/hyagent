@@ -7,7 +7,7 @@ import { purgeTenantAccessLogs } from '@/modules/knowledge/access-log';
 import type { Request, Response } from 'express';
 import { DEFAULT_TENANT_ID, tenantStore } from '@/modules/tenant/tenant.store';
 import { buildPersonaLines } from '@/modules/conversation/persona';
-import { kbAnswerRules } from '@/modules/knowledge/knowledge.agent-service';
+import { kbDefaultEditableRules, kbRuleItems } from '@/modules/knowledge/knowledge.agent-service';
 import { serviceRegistry } from '@/modules/conversation/service.registry';
 import { conversationStore } from '@/modules/conversation/conversation.store';
 import type { AdminPrincipal } from '@/middlewares/require-admin';
@@ -57,6 +57,7 @@ import type {
   PatchAssertionSettingsInput,
   PatchTenantInput,
   PersonaPreviewInput,
+  KnowledgeRulesQuery,
   RevokePublicKeyInput,
   RevokeSessionsInput,
   ToggleWebhookInput,
@@ -359,19 +360,39 @@ export const adminController = {
     res.status(200).json({ data: { revoked: 1 } });
   },
 
-  /** AI 角色預覽：用還沒存檔的設定產生 AI 實際收到的角色文字（與真實對話共用 buildPersonaLines），不寫入 */
+  /** AI 角色預覽：用還沒存檔的設定產生 AI 實際收到的角色文字與規則（與真實對話共用同一套函式），不寫入 */
   async previewPersona(req: Request, res: Response): Promise<void> {
     const tenant = ensureTenant(String(req.params.id));
-    const { assistantPersona, locale } = req.body as PersonaPreviewInput;
+    const { assistantPersona, locale, knowledgeAnswerRules: draft } = req.body as PersonaPreviewInput;
     const common = { persona: assistantPersona, assistantName: tenant.appearance?.assistantName, locale };
+    // 規則：草稿有帶的一側用草稿（null＝內建），沒帶的用已存的自訂
+    const rulesFor = (side: 'member' | 'guest') => {
+      const custom = draft && side in draft ? (draft[side] ?? undefined) : tenant.knowledgeAnswerRules?.[side];
+      return kbRuleItems(side === 'guest', locale, custom);
+    };
     res.status(200).json({
       data: {
         member: buildPersonaLines({ ...common, isGuest: false }),
         guest: buildPersonaLines({ ...common, isGuest: true }),
-        // 平台規則以知識庫問答那套為代表（員工／訪客差在是否附出處），與真實對話共用 kbAnswerRules
-        rules: { member: kbAnswerRules(false, locale), guest: kbAnswerRules(true, locale) },
+        // 平台規則以知識庫問答那套為代表（員工／訪客差在是否附出處）
+        rules: { member: rulesFor('member'), guest: rulesFor('guest') },
       },
     });
+  },
+
+  /** 知識庫規則編輯器：每側的內建可改規則（還原目標）、鎖定規則與目前自訂 */
+  async getKnowledgeRules(req: Request, res: Response): Promise<void> {
+    const tenant = ensureTenant(String(req.params.id));
+    const { locale } = req.query as KnowledgeRulesQuery;
+    const sideOf = (side: 'member' | 'guest') => {
+      const isGuest = side === 'guest';
+      return {
+        defaults: kbDefaultEditableRules(isGuest, locale),
+        locked: kbRuleItems(isGuest, locale).filter((r) => r.locked).map((r) => r.text),
+        custom: tenant.knowledgeAnswerRules?.[side] ?? null,
+      };
+    };
+    res.status(200).json({ data: { member: sideOf('member'), guest: sideOf('guest') } });
   },
 
   async updateTenant(req: Request, res: Response): Promise<void> {

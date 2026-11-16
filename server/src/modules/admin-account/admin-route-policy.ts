@@ -87,6 +87,7 @@ export const ADMIN_ROUTE_RULES: RouteRule[] = [
   { method: '*', pattern: '/tenants/:id/webhooks/**', access: tab('webhook') },
   { method: 'GET', pattern: '/tenants/:id/usage', access: tab('usage') },
   { method: '*', pattern: '/tenants/:id/feedback/**', access: tab('feedback') },
+  { method: 'GET', pattern: '/tenants/:id/knowledge-rules', access: tab('persona') },
   // AI 角色預覽只產生文字、不寫入：唯讀管理者也能用
   { method: 'POST', pattern: '/tenants/:id/persona-preview', access: { kind: 'tab', tab: 'persona', treatAsRead: true } },
   { method: '*', pattern: '/tenants/:id/reports/**', access: tab('reports') },

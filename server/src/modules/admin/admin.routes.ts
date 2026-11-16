@@ -67,6 +67,7 @@ import {
   createWebhookSchema,
   patchTenantSchema,
   personaPreviewSchema,
+  knowledgeRulesQuerySchema,
   putPolicySchema,
   tenantParamSchema,
   toggleWebhookSchema,
@@ -152,6 +153,12 @@ router.patch(
   '/tenants/:id',
   validate({ params: tenantParamSchema, body: patchTenantSchema }),
   asyncHandler(adminController.updateTenant),
+);
+
+router.get(
+  '/tenants/:id/knowledge-rules',
+  validate({ params: tenantParamSchema, query: knowledgeRulesQuerySchema }),
+  asyncHandler(adminController.getKnowledgeRules),
 );
 
 router.post(

@@ -82,17 +82,71 @@ describe('persona-preview API', () => {
 });
 
 describe('persona-preview API 的平台規則', () => {
-  it('回傳知識庫問答規則：員工有出處規則，訪客沒有', async () => {
+  it('回傳實際生效的知識庫規則（不含標題），每條帶 locked；員工有出處規則，訪客沒有', async () => {
     const res = await request(app).post(url()).set(await adminHeader({ persona: 'read' })).send({ assistantPersona: { member: null, guest: null } });
-    const { rules } = res.body.data as { rules: { member: string[]; guest: string[] } };
-    expect(rules.member[0]).toBe('規則：');
-    expect(rules.member).toContain('- 若有幫助，於句末以（來源：標題）標註引用。');
-    expect(rules.guest).toContain('- 不要標註來源，也不要在回答中提到文件名稱、檔名或標題。');
+    const { rules } = res.body.data as { rules: { member: { text: string; locked: boolean }[]; guest: { text: string; locked: boolean }[] } };
+    expect(rules.member[0]).toEqual({ text: expect.stringContaining('只根據下方'), locked: true });
+    expect(rules.member).toContainEqual({ text: '- 若有幫助，於句末以（來源：標題）標註引用。', locked: false });
+    expect(rules.guest).toContainEqual({ text: '- 不要標註來源，也不要在回答中提到文件名稱、檔名或標題。', locked: true });
   });
 
   it('locale en 回英文規則', async () => {
     const res = await request(app).post(url()).set(await adminHeader({ persona: 'read' })).send({ assistantPersona: {}, locale: 'en' });
-    expect(res.body.data.rules.guest[0]).toBe('Rules:');
+    expect(res.body.data.rules.guest[0].text).toContain('Answer ONLY');
+  });
+
+  it('帶規則草稿時用草稿；沒帶的一側用已存的自訂', async () => {
+    tenantStore.updateTenant(tid, { knowledgeAnswerRules: { guest: ['已存的訪客規則'] } });
+    const res = await request(app)
+      .post(url())
+      .set(await adminHeader({ persona: 'read' }))
+      .send({ assistantPersona: {}, knowledgeAnswerRules: { member: ['草稿員工規則'] } });
+    expect(res.body.data.rules.member[0]).toEqual({ text: '草稿員工規則', locked: false });
+    expect(res.body.data.rules.member.at(-1).locked).toBe(true);
+    expect(res.body.data.rules.guest[0]).toEqual({ text: '已存的訪客規則', locked: false });
+  });
+
+  it('草稿某側送 null 代表預覽內建規則', async () => {
+    tenantStore.updateTenant(tid, { knowledgeAnswerRules: { member: ['已存'] } });
+    const res = await request(app)
+      .post(url())
+      .set(await adminHeader({ persona: 'read' }))
+      .send({ assistantPersona: {}, knowledgeAnswerRules: { member: null } });
+    expect(res.body.data.rules.member[0].text).toContain('只根據下方');
+  });
+
+  it('規則草稿 21 條回 422', async () => {
+    const res = await request(app)
+      .post(url())
+      .set(await adminHeader({ persona: 'read' }))
+      .send({ assistantPersona: {}, knowledgeAnswerRules: { member: Array(21).fill('a') } });
+    expect(res.status).toBe(422);
+  });
+});
+
+describe('GET knowledge-rules（編輯器用）', () => {
+  const rulesUrl = () => `/api/admin/tenants/${tid}/knowledge-rules`;
+
+  it('回傳每側的內建可改規則、鎖定規則與目前自訂', async () => {
+    tenantStore.updateTenant(tid, { knowledgeAnswerRules: { member: ['自訂一'] } });
+    const res = await request(app).get(rulesUrl()).set(await adminHeader({ persona: 'read' }));
+    expect(res.status).toBe(200);
+    const { member, guest } = res.body.data;
+    expect(member.defaults).toContain('- 若有幫助，於句末以（來源：標題）標註引用。');
+    expect(member.locked[0]).toContain('只根據下方');
+    expect(member.custom).toEqual(['自訂一']);
+    expect(guest.custom).toBeNull();
+    expect(guest.locked).toContain('- 不要標註來源，也不要在回答中提到文件名稱、檔名或標題。');
+  });
+
+  it('locale=en 回英文', async () => {
+    const res = await request(app).get(`${rulesUrl()}?locale=en`).set(await adminHeader({ persona: 'read' }));
+    expect(res.body.data.member.locked[0]).toContain('Answer ONLY');
+  });
+
+  it('persona 隱藏的管理者 403', async () => {
+    const res = await request(app).get(rulesUrl()).set(await adminHeader({ knowledge: 'write' }));
+    expect(res.status).toBe(403);
   });
 });
 
