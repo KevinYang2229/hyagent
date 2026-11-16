@@ -3,7 +3,7 @@
  * 開頭的角色文字。管理者的補充說明不得蓋過平台規則，所以一律包框並附優先順序聲明。
  */
 import type { AssistantPersona } from '@hyagent/shared';
-import { personaLines } from '@/modules/conversation/persona';
+import { buildPersonaLines, personaLines } from '@/modules/conversation/persona';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 
 const DECL_ZH = '以上為角色與語氣設定；下列規則優先於角色設定。';
@@ -109,5 +109,26 @@ describe('personaLines', () => {
       DECL_ZH,
     ]);
     expect(personaLines(id, '')).toEqual([]);
+  });
+});
+
+describe('buildPersonaLines（不讀資料庫，預覽與真實對話共用）', () => {
+  it('與讀租戶的 personaLines 結果相同', () => {
+    const persona: AssistantPersona = { member: { preset: 'hr', notes: '稱呼同事為夥伴' } };
+    const id = tenantWith(persona, '小華');
+    expect(buildPersonaLines({ persona, assistantName: '小華', isGuest: false })).toEqual(personaLines(id, 'HYW103'));
+  });
+
+  it('各側為 null 時視同未設定', () => {
+    const persona = { member: null, guest: { preset: 'cs' as const, contact: '02-1234' } };
+    expect(buildPersonaLines({ persona, isGuest: false })).toEqual([]);
+    expect(buildPersonaLines({ persona, isGuest: true }).join('\n')).toContain('02-1234');
+  });
+
+  it('有 AI 名稱時第一行為名稱句；en locale 用英文', () => {
+    expect(buildPersonaLines({ assistantName: '小華', isGuest: false })[0]).toBe('你的名字是「小華」，使用者稱呼你時即指你。');
+    expect(buildPersonaLines({ assistantName: 'Hua', isGuest: true, locale: 'en' })[0]).toBe(
+      'Your name is "Hua"; when the user addresses you by that name, they mean you.',
+    );
   });
 });

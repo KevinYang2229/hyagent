@@ -6,9 +6,9 @@
  *   並以最後一行的優先順序聲明壓過角色設定與管理者補充說明。
  * - 意圖分派、查詢改寫、建議回覆不套用：它們不直接對使用者說話。
  */
-import type { GuestPersonaPresetId, MemberPersonaPresetId } from '@hyagent/shared';
+import type { AssistantPersona, GuestPersonaPresetId, MemberPersonaPresetId } from '@hyagent/shared';
 import { normalizeLocale } from '@/lib/locale';
-import { tenantStore } from '@/modules/tenant/tenant.store';
+import { type AssistantPersonaPatch, tenantStore } from '@/modules/tenant/tenant.store';
 import { isGuestPrincipal } from '@/modules/user/user.directory';
 
 type Lang = 'zh' | 'en';
@@ -76,17 +76,24 @@ const FRAME: Record<Lang, {
   },
 };
 
-/** 角色文字：AI 名稱 → 預設角色 → 聯絡管道（僅訪客）→ 補充說明 → 優先順序聲明。沒有任何設定時回 []。 */
-export function personaLines(tenantId: string, userId: string, locale?: string): string[] {
-  const tenant = tenantStore.getTenant(tenantId);
-  const lang: Lang = normalizeLocale(locale) === 'en' ? 'en' : 'zh';
+/**
+ * 角色文字（純函式，不讀資料庫）：AI 名稱 → 預設角色 → 聯絡管道（僅訪客）→ 補充說明 → 優先順序聲明。
+ * 真實對話（personaLines）與後台預覽共用，確保預覽看到的就是 AI 實際收到的。沒有任何設定時回 []。
+ */
+export function buildPersonaLines(input: {
+  persona?: AssistantPersona | AssistantPersonaPatch;
+  assistantName?: string;
+  isGuest: boolean;
+  locale?: string;
+}): string[] {
+  const lang: Lang = normalizeLocale(input.locale) === 'en' ? 'en' : 'zh';
   const frame = FRAME[lang];
-  const name = tenant?.appearance?.assistantName?.trim();
-  const persona = tenant?.assistantPersona;
+  const name = input.assistantName?.trim();
+  const persona = input.persona;
 
   const role: string[] = [];
-  if (isGuestPrincipal(userId)) {
-    const guest = persona?.guest;
+  if (input.isGuest) {
+    const guest = persona?.guest ?? undefined;
     // 查表要防呆：存檔裡可能留著日後移除的角色代碼，丟錯會讓整個租戶的對話壞掉
     const guestText = guest ? GUEST_PRESETS[guest.preset as keyof typeof GUEST_PRESETS]?.[lang] : undefined;
     if (guestText) role.push(guestText);
@@ -95,7 +102,7 @@ export function personaLines(tenantId: string, userId: string, locale?: string):
     const notes = guest?.notes?.trim();
     if (notes) role.push(frame.notes(notes));
   } else {
-    const member = persona?.member;
+    const member = persona?.member ?? undefined;
     const memberText = member ? MEMBER_PRESETS[member.preset as keyof typeof MEMBER_PRESETS]?.[lang] : undefined;
     if (memberText) role.push(memberText);
     const notes = member?.notes?.trim();
@@ -106,4 +113,15 @@ export function personaLines(tenantId: string, userId: string, locale?: string):
     ...(name ? [frame.name(name)] : []),
     ...(role.length ? [...role, frame.precedence] : []),
   ];
+}
+
+/** 真實對話用：讀租戶設定，依登入狀態選側後交給 buildPersonaLines */
+export function personaLines(tenantId: string, userId: string, locale?: string): string[] {
+  const tenant = tenantStore.getTenant(tenantId);
+  return buildPersonaLines({
+    persona: tenant?.assistantPersona,
+    assistantName: tenant?.appearance?.assistantName,
+    isGuest: isGuestPrincipal(userId),
+    locale,
+  });
 }
