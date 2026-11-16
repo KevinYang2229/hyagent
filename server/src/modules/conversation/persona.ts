@@ -6,7 +6,7 @@
  *   並以最後一行的優先順序聲明壓過角色設定與管理者補充說明。
  * - 意圖分派、查詢改寫、建議回覆不套用：它們不直接對使用者說話。
  */
-import type { AssistantPersona, GuestPersonaPresetId, MemberPersonaPresetId } from '@hyagent/shared';
+import type { AssistantPersona, GuestPersonaPresetId, MemberPersonaPresetId, PersonaServiceKey } from '@hyagent/shared';
 import { normalizeLocale } from '@/lib/locale';
 import { type AssistantPersonaPatch, tenantStore } from '@/modules/tenant/tenant.store';
 import { isGuestPrincipal } from '@/modules/user/user.directory';
@@ -76,6 +76,13 @@ const FRAME: Record<Lang, {
   },
 };
 
+/** 該功能實際使用的角色：有覆寫用覆寫，否則沿用該側角色（存檔資料可能不是物件，要防呆） */
+function effectivePreset(preset: string, services: unknown, service?: PersonaServiceKey): string {
+  if (!service || !services || typeof services !== 'object') return preset;
+  const override = (services as Record<string, unknown>)[service];
+  return typeof override === 'string' ? override : preset;
+}
+
 /**
  * 角色文字（純函式，不讀資料庫）：AI 名稱 → 預設角色 → 聯絡管道（僅訪客）→ 補充說明 → 優先順序聲明。
  * 真實對話（personaLines）與後台預覽共用，確保預覽看到的就是 AI 實際收到的。沒有任何設定時回 []。
@@ -85,6 +92,8 @@ export function buildPersonaLines(input: {
   assistantName?: string;
   isGuest: boolean;
   locale?: string;
+  /** 目前的功能；該側有覆寫時改用覆寫的角色描述 */
+  service?: PersonaServiceKey;
 }): string[] {
   const lang: Lang = normalizeLocale(input.locale) === 'en' ? 'en' : 'zh';
   const frame = FRAME[lang];
@@ -95,7 +104,8 @@ export function buildPersonaLines(input: {
   if (input.isGuest) {
     const guest = persona?.guest ?? undefined;
     // 查表要防呆：存檔裡可能留著日後移除的角色代碼，丟錯會讓整個租戶的對話壞掉
-    const guestText = guest ? GUEST_PRESETS[guest.preset as keyof typeof GUEST_PRESETS]?.[lang] : undefined;
+    const guestPreset = guest ? effectivePreset(guest.preset, guest.services, input.service) : undefined;
+    const guestText = guestPreset ? GUEST_PRESETS[guestPreset as keyof typeof GUEST_PRESETS]?.[lang] : undefined;
     if (guestText) role.push(guestText);
     const contact = guest?.contact?.trim();
     if (contact) role.push(frame.contact(contact));
@@ -103,7 +113,8 @@ export function buildPersonaLines(input: {
     if (notes) role.push(frame.notes(notes));
   } else {
     const member = persona?.member ?? undefined;
-    const memberText = member ? MEMBER_PRESETS[member.preset as keyof typeof MEMBER_PRESETS]?.[lang] : undefined;
+    const memberPreset = member ? effectivePreset(member.preset, member.services, input.service) : undefined;
+    const memberText = memberPreset ? MEMBER_PRESETS[memberPreset as keyof typeof MEMBER_PRESETS]?.[lang] : undefined;
     if (memberText) role.push(memberText);
     const notes = member?.notes?.trim();
     if (notes) role.push(frame.notes(notes));
@@ -116,12 +127,13 @@ export function buildPersonaLines(input: {
 }
 
 /** 真實對話用：讀租戶設定，依登入狀態選側後交給 buildPersonaLines */
-export function personaLines(tenantId: string, userId: string, locale?: string): string[] {
+export function personaLines(tenantId: string, userId: string, locale?: string, service?: PersonaServiceKey): string[] {
   const tenant = tenantStore.getTenant(tenantId);
   return buildPersonaLines({
     persona: tenant?.assistantPersona,
     assistantName: tenant?.appearance?.assistantName,
     isGuest: isGuestPrincipal(userId),
     locale,
+    service,
   });
 }

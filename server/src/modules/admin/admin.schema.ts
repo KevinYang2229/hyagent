@@ -106,22 +106,31 @@ export const appearanceSchema = z.object({
 });
 
 const personaNotes = z.string().max(500).optional();
+const MEMBER_PRESET_IDS = ['default', 'cs-assist', 'hr', 'it', 'onboarding'] as const;
+const GUEST_PRESET_IDS = ['default', 'cs', 'presales', 'public-service'] as const;
+/** 依功能覆寫角色：沒列的功能沿用該側角色；只能用同一側的預設角色 */
+const personaServices = <T extends readonly [string, ...string[]]>(ids: T) => {
+  const preset = z.enum(ids).optional();
+  return z.object({ knowledge: preset, form: preset, agent: preset, assistant: preset }).strict().optional();
+};
 
 export const assistantPersonaSchema = z
   .object({
     member: z
       .object({
-        preset: z.enum(['default', 'cs-assist', 'hr', 'it', 'onboarding']),
+        preset: z.enum(MEMBER_PRESET_IDS),
         notes: personaNotes,
+        services: personaServices(MEMBER_PRESET_IDS),
       })
       .strict()
       .nullable()
       .optional(),
     guest: z
       .object({
-        preset: z.enum(['default', 'cs', 'presales', 'public-service']),
+        preset: z.enum(GUEST_PRESET_IDS),
         notes: personaNotes,
         contact: z.string().max(200).optional(),
+        services: personaServices(GUEST_PRESET_IDS),
       })
       .strict()
       .nullable()

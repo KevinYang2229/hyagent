@@ -34,7 +34,7 @@ export function guardSystem(tenantId: string, userId: string, locale?: string): 
   const services = agentOn ? mcpServicesFor(tenantId, userId) : [];
   const emailOn = agentOn && scopes.has('email:write');
   // 角色設定插在第一行（身分＋語言）之後、規則之前；沒有設定時為空，prompt 與原本相同
-  const persona = personaLines(tenantId, userId, locale);
+  const persona = personaLines(tenantId, userId, locale, 'assistant');
 
   if (normalizeLocale(locale) === 'en') {
     const parts: string[] = [];

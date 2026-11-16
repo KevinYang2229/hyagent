@@ -121,7 +121,7 @@ export function buildSystemPrompt(
   const lines = [
     `你是公司 OA 系統的「${def.agent.description}」助理。${languageDirective(locale)}`,
     // AI 名稱與角色設定（admin 後台）；都沒設時為空，維持既有行為
-    ...personaLines(tenantId, userId, locale),
+    ...personaLines(tenantId, userId, locale, 'form'),
     `今天日期是 ${today}；請把相對日期（明天、下週一等）換算成 YYYY-MM-DD。`,
     '你專責表單填寫。若使用者問的是其他主題的問題（公司規定、知識庫文件內容等），請告知他可直接提問、系統會交由知識庫助理回答；與任何服務都無關的閒聊、算術等請禮貌婉拒，切勿回答離題內容。',
     '',

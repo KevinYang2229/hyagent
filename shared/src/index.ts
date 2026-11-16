@@ -308,9 +308,25 @@ export type MemberPersonaPresetId = 'default' | 'cs-assist' | 'hr' | 'it' | 'onb
 /** 訪客（未登入的網站使用者、免登入訪客 Session）使用的預設角色 */
 export type GuestPersonaPresetId = 'default' | 'cs' | 'presales' | 'public-service';
 
+/** 可依功能覆寫角色的功能：知識庫問答、填表、智慧代理、閒聊／守門 */
+export type PersonaServiceKey = 'knowledge' | 'form' | 'agent' | 'assistant';
+
+export const PERSONA_SERVICES: readonly { key: PersonaServiceKey; label: string }[] = [
+  { key: 'knowledge', label: '知識庫問答' },
+  { key: 'form', label: '填表' },
+  { key: 'agent', label: '智慧代理' },
+  { key: 'assistant', label: '閒聊／守門' },
+];
+
 export interface AssistantPersona {
-  member?: { preset: MemberPersonaPresetId; notes?: string };
-  guest?: { preset: GuestPersonaPresetId; notes?: string; contact?: string };
+  /** services：依功能覆寫角色；沒有該功能＝沿用 preset，值為 'default'＝此功能不加角色描述 */
+  member?: { preset: MemberPersonaPresetId; notes?: string; services?: Partial<Record<PersonaServiceKey, MemberPersonaPresetId>> };
+  guest?: {
+    preset: GuestPersonaPresetId;
+    notes?: string;
+    contact?: string;
+    services?: Partial<Record<PersonaServiceKey, GuestPersonaPresetId>>;
+  };
 }
 
 /** 自訂知識庫問答規則（只含可改規則；防護規則鎖定在 server）。未設定的一側用內建規則 */

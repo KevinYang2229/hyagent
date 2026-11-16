@@ -247,7 +247,7 @@ export function kbAnswerSystem(tenantId: string, userId: string, locale?: string
   const guest = isGuestPrincipal(userId);
   // 租戶自訂的可改規則（後台「AI 角色 → 知識庫規則」）；未自訂時用內建
   const custom = tenantStore.getTenant(tenantId)?.knowledgeAnswerRules?.[guest ? 'guest' : 'member'];
-  return [first, ...personaLines(tenantId, userId, locale), ...kbAnswerRules(guest, locale, custom)].join('\n');
+  return [first, ...personaLines(tenantId, userId, locale, 'knowledge'), ...kbAnswerRules(guest, locale, custom)].join('\n');
 }
 
 /** 片段找到但 LLM 失敗時的降級：直接列出片段（best-effort，不中斷對話）；訪客不列文件標題 */
