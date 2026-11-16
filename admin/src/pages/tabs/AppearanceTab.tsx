@@ -4,7 +4,8 @@ import UnsavedBadge from "../../components/UnsavedBadge";
 import type { AssistantPersona, TenantAppearance } from "@hyagent/shared";
 import { api, type Tenant } from "../../api";
 import { resolveDemoSiteUrl, resolvePreviewOrigin, resolvePrimaryColor } from "./appearance.util";
-import PersonaSection, { toPersonaPatch } from "./PersonaSection";
+import PersonaSection from "./PersonaSection";
+import { toPersonaPatch } from "./persona.util";
 
 const POSITIONS = [
   { v: "br", label: "右下" },

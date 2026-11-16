@@ -4,7 +4,8 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
 import type { AssistantPersona } from '@hyagent/shared';
-import PersonaSection, { toPersonaPatch } from './PersonaSection';
+import PersonaSection from './PersonaSection';
+import { toPersonaPatch } from './persona.util';
 
 afterEach(cleanup);
 
