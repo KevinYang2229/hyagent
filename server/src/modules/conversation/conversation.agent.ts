@@ -50,8 +50,39 @@ function suggestSystem(locale?: string): string {
   ].join('\n');
 }
 
+// 客套、表示收到的短語。長的放前面，避免「了解」先吃掉「了解了」的一部分。
+// 「謝謝」這類不會和內容黏在一起，結尾沒有標點也切（「請幫我查詢謝謝」）；
+// 「好」「了解」可能是內容的一部分（「怎麼請假比較好」「我想了解」），前面要有標點或空白才當客套話
+const THANKS_TOKENS = ['謝謝你', '謝謝您', '謝謝啦', '謝謝', '感謝你', '感謝您', '感謝', '多謝', 'thank\\s*you', 'thanks', 'thx'];
+const ACK_TOKENS = [
+  '我了解了', '了解了', '了解', '明白了', '明白', '我知道了', '知道了', '好的', '好喔', '好',
+  '收到', '沒問題', '嗯', 'got\\s*it', 'understood', 'noted', 'okay', 'ok',
+];
+const SEP = '[\\s\\p{P}\\p{S}\\p{M}\\p{Cf}]';
+const THANKS = `(?:${THANKS_TOKENS.join('|')})`;
+const COURTESY = `(?:${[...THANKS_TOKENS, ...ACK_TOKENS].join('|')})`;
+const COURTESY_SEQ = `(?:${SEP}*${COURTESY})*${SEP}*`;
+const COURTESY_TAIL_RE = new RegExp(`(?:(?<=^|${SEP})${COURTESY}|${THANKS})${COURTESY_SEQ}$`, 'iu');
+const COURTESY_HEAD_RE = new RegExp(`^${SEP}*${COURTESY}(?:${SEP}*${COURTESY})*${SEP}+(?=[^\\s\\p{P}\\p{S}])`, 'iu');
+const COURTESY_WHOLE_RE = new RegExp(COURTESY, 'giu');
+
+/** 切掉開頭與結尾的客套話（「特休怎麼算？謝謝」→「特休怎麼算？」、「了解，我要改成下週一」→「我要改成下週一」） */
+function stripCourtesy(s: string): string {
+  return s
+    .replace(COURTESY_TAIL_RE, '')
+    .replace(COURTESY_HEAD_RE, '')
+    .replace(/[\s,，、~～:：;；]+$/u, '')
+    .trim();
+}
+
+/** 是否只剩客套或表示收到（「了解」「好的，謝謝！」「Got it」「👍」）：點了不會讓對話往前，不該當建議回覆 */
+function isAcknowledgement(s: string): boolean {
+  const bare = s.replace(/[\p{P}\p{S}\p{M}\p{Cf}\s]/gu, '');
+  return bare.replace(COURTESY_WHOLE_RE, '') === '';
+}
+
 /** 從模型輸出中寬鬆解析出建議字串陣列；任何異常都回空陣列（best-effort） */
-function parseSuggestions(text: string): string[] {
+export function parseSuggestions(text: string): string[] {
   const match = text.match(/\[[\s\S]*\]/);
   if (!match) return [];
   try {
@@ -59,8 +90,8 @@ function parseSuggestions(text: string): string[] {
     if (!Array.isArray(arr)) return [];
     return arr
       .filter((s): s is string => typeof s === 'string')
-      .map((s) => s.trim())
-      .filter(Boolean)
+      .map((s) => stripCourtesy(s.trim()))
+      .filter((s, i, all) => s && !isAcknowledgement(s) && all.indexOf(s) === i)
       .slice(0, 3);
   } catch {
     return [];
