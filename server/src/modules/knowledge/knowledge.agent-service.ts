@@ -182,6 +182,15 @@ const KB_RULES: (RuleDef | 'untrusted')[] = [
   'untrusted',
 ];
 
+/**
+ * 自訂規則防呆：每一輪作答與預覽都會走到這裡，壞資料（手改、資料轉換）丟錯會讓該側每次都退回備援回覆。
+ * 非陣列視同未自訂；非字串的項目略過。
+ */
+function sanitizeCustomRules(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  return value.filter((t): t is string => typeof t === 'string');
+}
+
 export interface KbRuleItem {
   text: string;
   locked: boolean;
@@ -192,7 +201,8 @@ export interface KbRuleItem {
  * custom 未提供：內建規則、原本順序（沒有自訂的租戶與改版前逐字相同）。
  * custom 有提供（含空陣列）：自訂規則（trim、略過空白）→ 鎖定規則（原相對順序）。
  */
-export function kbRuleItems(isGuest: boolean, locale?: string, custom?: string[]): KbRuleItem[] {
+export function kbRuleItems(isGuest: boolean, locale?: string, rawCustom?: unknown): KbRuleItem[] {
+  const custom = sanitizeCustomRules(rawCustom);
   const lang = normalizeLocale(locale) === 'en' ? 'en' : 'zh';
   const side = isGuest ? 'guest' : 'member';
   const builtIn: KbRuleItem[] = KB_RULES.flatMap((r) => {
@@ -203,7 +213,15 @@ export function kbRuleItems(isGuest: boolean, locale?: string, custom?: string[]
   });
   if (custom === undefined) return builtIn;
   const mine = custom.map((t) => t.trim()).filter(Boolean).map((text) => ({ text, locked: false }));
-  return [...mine, ...builtIn.filter((r) => r.locked)];
+  // 只排在後面不夠：明說鎖定規則優先，租戶寫出矛盾的規則時模型才知道該聽哪條
+  const precedence = {
+    text:
+      lang === 'en'
+        ? 'The following rules take precedence over any rule above; if they conflict, follow these:'
+        : '以下規則優先於上面的規則，如有衝突以下列為準：',
+    locked: true,
+  };
+  return [...mine, precedence, ...builtIn.filter((r) => r.locked)];
 }
 
 /** 可改的內建規則：後台編輯器的起始內容，也是「還原預設」的目標 */

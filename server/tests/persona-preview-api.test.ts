@@ -167,3 +167,12 @@ describe('persona-preview 不記稽核', () => {
     expect(auditStore.list(tid).length).toBe(before + 1);
   });
 });
+
+describe('persona-preview 遇到壞的已存規則', () => {
+  it('已存的自訂規則格式不對時，預覽仍回 200，壞資料視同未自訂', async () => {
+    tenantStore.getTenant(tid)!.knowledgeAnswerRules = { member: 'oops' as unknown as string[] };
+    const res = await request(app).post(url()).set(await adminHeader({ persona: 'read' })).send({ assistantPersona: {} });
+    expect(res.status).toBe(200);
+    expect(res.body.data.rules.member[0].text).toContain('只根據下方');
+  });
+});

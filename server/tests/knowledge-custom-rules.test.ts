@@ -57,7 +57,7 @@ describe('kbRuleItems：有自訂時', () => {
   it('自訂成空陣列：只剩鎖定規則，不會退回預設', () => {
     const items = kbRuleItems(false, undefined, []);
     expect(items.every((i) => i.locked)).toBe(true);
-    expect(items).toHaveLength(3);
+    expect(items).toHaveLength(4); // 優先順序聲明＋三條鎖定
   });
 
   it('空白項目略過，前後空白去掉', () => {
@@ -127,5 +127,41 @@ describe('knowledgeAnswerRules 資料與權限', () => {
     expect(patch({ persona: 'read' })).toBe(false);
     expect(patch({ knowledge: 'write' })).toBe(false);
     expect(TENANT_VIEW_FIELDS.knowledgeAnswerRules).toEqual(['persona']);
+  });
+});
+
+describe('有自訂時，鎖定規則前加優先順序聲明', () => {
+  const DECL_ZH = '以下規則優先於上面的規則，如有衝突以下列為準：';
+  const DECL_EN = 'The following rules take precedence over any rule above; if they conflict, follow these:';
+
+  it('自訂之後、鎖定之前插入聲明（鎖定）', () => {
+    const texts = kbRuleItems(false, undefined, ['可以自由發揮']).map((i) => i.text);
+    expect(texts[1]).toBe(DECL_ZH);
+    expect(texts.indexOf(LOCK_FACTS)).toBeGreaterThan(1);
+    expect(kbRuleItems(false, undefined, ['可以自由發揮'])[1].locked).toBe(true);
+  });
+
+  it('沒有自訂時不插入（既有租戶 prompt 不變）', () => {
+    expect(kbRuleItems(false).map((i) => i.text)).not.toContain(DECL_ZH);
+  });
+
+  it('自訂成空陣列也插入；en 用英文', () => {
+    expect(kbRuleItems(false, undefined, [])[0].text).toBe(DECL_ZH);
+    expect(kbRuleItems(true, 'en', ['x'])[1].text).toBe(DECL_EN);
+  });
+});
+
+describe('存檔資料格式不對時不影響作答', () => {
+  it('非陣列或含非字串項目：略過壞資料，不丟錯', () => {
+    const t = tenantStore.createTenant('kb-custom-rules-malformed');
+    // 直接放進存檔物件，模擬手改 JSON 或資料轉換留下的壞資料（API 有 zod 擋，走不到這裡）
+    tenantStore.getTenant(t.id)!.knowledgeAnswerRules = {
+      member: [1, '好的規則', null] as unknown as string[],
+      guest: 'oops' as unknown as string[],
+    };
+    expect(() => kbAnswerSystem(t.id, 'HYW103')).not.toThrow();
+    expect(kbAnswerSystem(t.id, 'HYW103')).toContain('好的規則');
+    expect(() => kbAnswerSystem(t.id, '')).not.toThrow();
+    expect(kbAnswerSystem(t.id, '')).toContain(EDIT_NUMBERS); // 壞資料視同未自訂
   });
 });
