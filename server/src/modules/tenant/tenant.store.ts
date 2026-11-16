@@ -12,7 +12,7 @@
 import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import type { Prisma, PrismaClient } from '@prisma/client';
-import type { AssistantPersona } from '@hyagent/shared';
+import type { AssistantPersona, KnowledgeAnswerRules } from '@hyagent/shared';
 import { ERROR_CODES, HyAgentTokenError } from '@/lib/assertion';
 import { decryptSecret, encryptSecret, hashApiKey, isEncrypted } from '@/lib/crypto';
 import { dataFile } from '@/lib/data-dir';
@@ -346,6 +346,24 @@ function mergeAssistantPersona(
   return next.member || next.guest ? next : undefined;
 }
 
+/** 自訂知識庫規則的 patch：各側 undefined＝不動、null＝還原內建、陣列＝整包取代 */
+export type KnowledgeAnswerRulesPatch = {
+  [K in keyof KnowledgeAnswerRules]?: KnowledgeAnswerRules[K] | null;
+};
+
+function mergeKnowledgeAnswerRules(
+  current: KnowledgeAnswerRules | undefined,
+  patch: KnowledgeAnswerRulesPatch,
+): KnowledgeAnswerRules | undefined {
+  const next: KnowledgeAnswerRules = { ...current };
+  for (const side of ['member', 'guest'] as const) {
+    const value = patch[side];
+    if (value === null) delete next[side];
+    else if (value !== undefined) next[side] = [...value];
+  }
+  return next.member || next.guest ? next : undefined;
+}
+
 export const tenantStore = {
   /** Admin credential changes must be durable before reporting success. */
   async persistCritical(): Promise<void> {
@@ -423,7 +441,7 @@ export const tenantStore = {
         | 'directoryTombstones'
         | 'directorySyncStatus'
       >
-    > & { assistantPersona?: AssistantPersonaPatch },
+    > & { assistantPersona?: AssistantPersonaPatch; knowledgeAnswerRules?: KnowledgeAnswerRulesPatch },
   ): Tenant | undefined {
     const tenant = tenants.get(id);
     if (!tenant) return undefined;
@@ -437,6 +455,9 @@ export const tenantStore = {
         : {}),
       ...(patch.assistantPersona !== undefined
         ? { assistantPersona: mergeAssistantPersona(tenant.assistantPersona, patch.assistantPersona) }
+        : {}),
+      ...(patch.knowledgeAnswerRules !== undefined
+        ? { knowledgeAnswerRules: mergeKnowledgeAnswerRules(tenant.knowledgeAnswerRules, patch.knowledgeAnswerRules) }
         : {}),
       ...(patch.disabledServices !== undefined ? { disabledServices: patch.disabledServices } : {}),
       ...(patch.disabledForms !== undefined ? { disabledForms: patch.disabledForms } : {}),

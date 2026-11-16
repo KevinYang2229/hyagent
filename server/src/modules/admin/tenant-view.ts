@@ -44,6 +44,7 @@ export const TENANT_VIEW_FIELDS: Record<keyof TenantView, FieldGroup> = {
   // 外觀
   appearance: ['appearance'],
   assistantPersona: ['persona'],
+  knowledgeAnswerRules: ['persona'],
   // 知識庫
   knowledgeLabels: ['knowledge'],
   knowledgeAccessLogRetentionDays: ['knowledge'],

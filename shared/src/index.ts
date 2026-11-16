@@ -313,6 +313,18 @@ export interface AssistantPersona {
   guest?: { preset: GuestPersonaPresetId; notes?: string; contact?: string };
 }
 
+/** 自訂知識庫問答規則（只含可改規則；防護規則鎖定在 server）。未設定的一側用內建規則 */
+export interface KnowledgeAnswerRules {
+  member?: string[];
+  guest?: string[];
+}
+
+/** 實際生效的一條規則；locked＝防護規則，租戶不可改 */
+export interface KbRuleItem {
+  text: string;
+  locked: boolean;
+}
+
 /** 後台下拉選單用的預設角色說明；prompt 實際文字在 server 端 */
 export interface PersonaPresetMeta<T extends string> {
   id: T;

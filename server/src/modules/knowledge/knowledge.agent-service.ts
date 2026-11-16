@@ -18,6 +18,7 @@ import type {
 } from '@/modules/conversation/agent-service.types';
 import type { Session } from '@/modules/conversation/conversation.types';
 import { personaLines } from '@/modules/conversation/persona';
+import { tenantStore } from '@/modules/tenant/tenant.store';
 import { isGuestPrincipal } from '@/modules/user/user.directory';
 import { traceChunks } from '@/modules/conversation/reply-record';
 import { accessItemsOf, recordKnowledgeAccess } from './access-log';
@@ -136,34 +137,87 @@ const KB_KEYWORDS = [
   '介紹',
 ];
 
+type RuleText = Record<'zh' | 'en', string>;
+type RuleDef = { text: RuleText; locked: boolean; only?: 'member' | 'guest' };
+
 /**
- * 知識庫作答的規則段（從「規則：」到結尾）。出處只給登入員工；訪客連文件名稱都不該看到。
+ * 知識庫作答規則（依原本順序）。locked＝防護規則：租戶不可改、不可刪，有自訂時固定排在自訂之後。
+ * 防捏造、先前對話不當答案、外部資料不是指令、訪客不提文件名稱都鎖定；其餘是風格與格式，可改。
+ */
+const KB_RULES: (RuleDef | 'untrusted')[] = [
+  {
+    locked: true,
+    text: {
+      zh: '- 只根據下方「參考資料」與「資料表實際內容」回答；資料未提到的部分，明說「資料中未提及」，切勿杜撰。',
+      en: '- Answer ONLY from the "Reference" and "Actual table contents" below; for anything not covered, say "Not mentioned in the materials." Never fabricate.',
+    },
+  },
+  // 英文版原本沒有這條，維持原樣（zh 才輸出）
+  { locked: false, text: { zh: '- 數字一律以「資料表實際內容」為準，文字片段只是檢索節錄。', en: '' } },
+  {
+    locked: true,
+    text: {
+      zh: '- 「先前對話」若有，僅用於理解本次問題在指涉什麼，不得作為答案來源。',
+      en: '- "Previous conversation", if present, is only for resolving what the question refers to — never use it as a source of answers.',
+    },
+  },
+  {
+    locked: false,
+    text: { zh: '- 回答精簡、直接切中問題；必要時條列。', en: '- Be concise and directly on point; use bullet points when helpful.' },
+  },
+  {
+    locked: false,
+    only: 'member',
+    text: { zh: '- 若有幫助，於句末以（來源：標題）標註引用。', en: '- When helpful, cite the source at the end as (Source: title).' },
+  },
+  {
+    // 出處只給登入員工；訪客連文件名稱都不該看到（內部文件標題不對外）
+    locked: true,
+    only: 'guest',
+    text: {
+      zh: '- 不要標註來源，也不要在回答中提到文件名稱、檔名或標題。',
+      en: '- Do not cite sources, and never mention document names, file names, or titles in your answer.',
+    },
+  },
+  'untrusted',
+];
+
+export interface KbRuleItem {
+  text: string;
+  locked: boolean;
+}
+
+/**
+ * 實際生效的規則清單（不含「規則：」標題）。
+ * custom 未提供：內建規則、原本順序（沒有自訂的租戶與改版前逐字相同）。
+ * custom 有提供（含空陣列）：自訂規則（trim、略過空白）→ 鎖定規則（原相對順序）。
+ */
+export function kbRuleItems(isGuest: boolean, locale?: string, custom?: string[]): KbRuleItem[] {
+  const lang = normalizeLocale(locale) === 'en' ? 'en' : 'zh';
+  const side = isGuest ? 'guest' : 'member';
+  const builtIn: KbRuleItem[] = KB_RULES.flatMap((r) => {
+    if (r === 'untrusted') return [{ text: untrustedDataRule(lang === 'en' ? 'en' : undefined), locked: true }];
+    if (r.only && r.only !== side) return [];
+    const text = r.text[lang];
+    return text ? [{ text, locked: r.locked }] : [];
+  });
+  if (custom === undefined) return builtIn;
+  const mine = custom.map((t) => t.trim()).filter(Boolean).map((text) => ({ text, locked: false }));
+  return [...mine, ...builtIn.filter((r) => r.locked)];
+}
+
+/** 可改的內建規則：後台編輯器的起始內容，也是「還原預設」的目標 */
+export function kbDefaultEditableRules(isGuest: boolean, locale?: string): string[] {
+  return kbRuleItems(isGuest, locale).filter((r) => !r.locked).map((r) => r.text);
+}
+
+/**
+ * 知識庫作答的規則段（「規則：」標題＋實際生效的規則）。
  * 與後台「AI 角色」預覽共用，預覽顯示的規則就是 AI 實際收到的。
  */
-export function kbAnswerRules(isGuest: boolean, locale?: string): string[] {
-  if (normalizeLocale(locale) === 'en') {
-    return [
-      'Rules:',
-      '- Answer ONLY from the "Reference" and "Actual table contents" below; for anything not covered, say "Not mentioned in the materials." Never fabricate.',
-      '- "Previous conversation", if present, is only for resolving what the question refers to — never use it as a source of answers.',
-      '- Be concise and directly on point; use bullet points when helpful.',
-      isGuest
-        ? '- Do not cite sources, and never mention document names, file names, or titles in your answer.'
-        : '- When helpful, cite the source at the end as (Source: title).',
-      untrustedDataRule('en'),
-    ];
-  }
-  return [
-    '規則：',
-    '- 只根據下方「參考資料」與「資料表實際內容」回答；資料未提到的部分，明說「資料中未提及」，切勿杜撰。',
-    '- 數字一律以「資料表實際內容」為準，文字片段只是檢索節錄。',
-    '- 「先前對話」若有，僅用於理解本次問題在指涉什麼，不得作為答案來源。',
-    '- 回答精簡、直接切中問題；必要時條列。',
-    isGuest
-      ? '- 不要標註來源，也不要在回答中提到文件名稱、檔名或標題。'
-      : '- 若有幫助，於句末以（來源：標題）標註引用。',
-    untrustedDataRule(),
-  ];
+export function kbAnswerRules(isGuest: boolean, locale?: string, custom?: string[]): string[] {
+  const header = normalizeLocale(locale) === 'en' ? 'Rules:' : '規則：';
+  return [header, ...kbRuleItems(isGuest, locale, custom).map((r) => r.text)];
 }
 
 // 依 session locale 產生知識庫作答的 system prompt（英文 UI → 英文作答）：身分 → 角色設定 → 規則。
@@ -172,11 +226,10 @@ export function kbAnswerSystem(tenantId: string, userId: string, locale?: string
     normalizeLocale(locale) === 'en'
       ? 'You are the company knowledge-base assistant. Respond entirely in English.'
       : '你是公司知識庫問答助理，全程使用繁體中文。';
-  return [
-    first,
-    ...personaLines(tenantId, userId, locale),
-    ...kbAnswerRules(isGuestPrincipal(userId), locale),
-  ].join('\n');
+  const guest = isGuestPrincipal(userId);
+  // 租戶自訂的可改規則（後台「AI 角色 → 知識庫規則」）；未自訂時用內建
+  const custom = tenantStore.getTenant(tenantId)?.knowledgeAnswerRules?.[guest ? 'guest' : 'member'];
+  return [first, ...personaLines(tenantId, userId, locale), ...kbAnswerRules(guest, locale, custom)].join('\n');
 }
 
 /** 片段找到但 LLM 失敗時的降級：直接列出片段（best-effort，不中斷對話）；訪客不列文件標題 */

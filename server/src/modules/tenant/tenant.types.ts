@@ -5,7 +5,7 @@
  * 為向後相容，系統內建一個 id='default' 的預設租戶：未帶 API Key 的舊 widget 一律落到此租戶，
  * 行為與改造前相同（見 resolve-tenant middleware 與 tenant.store 的種子資料）。
  */
-import type { Applicant, AssistantPersona, TenantAppearance } from '@hyagent/shared';
+import type { Applicant, AssistantPersona, KnowledgeAnswerRules, TenantAppearance } from '@hyagent/shared';
 import type { TenantLLMConfig } from '@/lib/llm/types';
 import type { AssertionAlgorithm } from '@/lib/assertion';
 import type { AdminActor } from '@/modules/audit/admin-audit';
@@ -162,6 +162,11 @@ export interface Tenant {
    * 不可併入 appearance——appearance 會經 /api/widget/config 原封不動送給公開 widget。
    */
   assistantPersona?: AssistantPersona;
+  /**
+   * 自訂知識庫問答的可改規則（員工／訪客分開）；防護規則鎖定不在此。
+   * 獨立於 assistantPersona：角色設定在「預設且無補充說明」時會被清除，不能連帶清掉規則。
+   */
+  knowledgeAnswerRules?: KnowledgeAnswerRules;
   /** 停用的 agent 服務 id（如 ['knowledge']）；空/未設 = 全部啟用（opt-out） */
   disabledServices?: string[];
   /** 停用的表單 id（如 ['business-trip-domestic']）；空/未設 = 全部啟用（opt-out） */

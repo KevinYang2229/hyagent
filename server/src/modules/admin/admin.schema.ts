@@ -129,6 +129,10 @@ export const assistantPersonaSchema = z
   })
   .strict();
 
+const kbRuleList = z.array(z.string().max(300)).max(20).nullable().optional();
+
+export const knowledgeAnswerRulesSchema = z.object({ member: kbRuleList, guest: kbRuleList }).strict();
+
 export const personaPreviewSchema = z
   .object({
     assistantPersona: assistantPersonaSchema.describe('還沒存檔的角色設定（格式同 PATCH）'),
@@ -141,6 +145,9 @@ export const patchTenantSchema = z
     name: z.string().trim().min(1).optional().describe('租戶顯示名稱'),
     allowedOrigins: z.array(z.string().trim().min(1)).optional().describe('允許嵌入的網站來源；["*"] 代表全部放行。整份取代'),
     appearance: appearanceSchema.optional().describe('Widget 外觀設定'),
+    knowledgeAnswerRules: knowledgeAnswerRulesSchema
+      .optional()
+      .describe('自訂知識庫問答的可改規則（員工／訪客分開，各最多 20 條、每條 300 字）；送 null 還原內建'),
     assistantPersona: assistantPersonaSchema
       .optional()
       .describe('AI 角色設定（員工／訪客分開）；各側整包取代，送 null 清除該側'),

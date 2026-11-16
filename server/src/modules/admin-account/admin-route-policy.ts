@@ -104,6 +104,7 @@ export const TENANT_PATCH_FIELDS: Record<string, AdminTabKey | 'super'> = {
   egressPolicy: 'settings',
   appearance: 'appearance',
   assistantPersona: 'persona',
+  knowledgeAnswerRules: 'persona',
   quotaMonthlyLlmTokens: 'super',
 };
 
