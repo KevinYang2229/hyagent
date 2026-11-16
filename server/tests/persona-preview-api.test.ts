@@ -6,6 +6,7 @@ import request from 'supertest';
 import { createApp } from '@/app';
 import { adminAccountStore } from '@/modules/admin-account/admin-account.store';
 import { hashPassword } from '@/modules/admin-account/password';
+import { auditStore } from '@/modules/audit/audit.store';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 import type { AdminTabPermissions } from '@hyagent/shared';
 import { signTenantAdminToken } from '@/utils/jwt';
@@ -92,5 +93,23 @@ describe('persona-preview API 的平台規則', () => {
   it('locale en 回英文規則', async () => {
     const res = await request(app).post(url()).set(await adminHeader({ persona: 'read' })).send({ assistantPersona: {}, locale: 'en' });
     expect(res.body.data.rules.guest[0]).toBe('Rules:');
+  });
+});
+
+describe('persona-preview 不記稽核', () => {
+  it('預覽只是讀取，不寫「後台設定變更」稽核，避免擠掉真正的紀錄', async () => {
+    const h = await adminHeader({ persona: 'write' });
+    const before = auditStore.list(tid).length;
+    for (let i = 0; i < 3; i++) {
+      expect((await request(app).post(url()).set(h).send({ assistantPersona: DRAFT })).status).toBe(200);
+    }
+    expect(auditStore.list(tid)).toHaveLength(before);
+  });
+
+  it('真正的存檔（PATCH）仍會記稽核', async () => {
+    const h = await adminHeader({ persona: 'write' });
+    const before = auditStore.list(tid).length;
+    await request(app).patch(`/api/admin/tenants/${tid}`).set(h).send({ assistantPersona: DRAFT });
+    expect(auditStore.list(tid).length).toBe(before + 1);
   });
 });

@@ -24,6 +24,12 @@ const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 /** service 已自行記稽核（含欄位語意）的路徑，避免同一動作記兩筆 */
 const SELF_AUDITED = [/^\/tenants\/[^/]+\/llm-config$/];
 
+/**
+ * 用 POST 但不改任何資料的路徑（例如預覽）：視同讀取，不記稽核。
+ * 前端每次輸入停頓都會打一次，若照樣記錄會把真正的設定變更擠出每租戶 500 筆的清單。
+ */
+const NON_MUTATING_POST = [/^\/tenants\/[^/]+\/persona-preview$/];
+
 const TENANT_PATH = /^\/tenants\/([^/]+)(\/.*)?$/;
 
 /**
@@ -91,7 +97,7 @@ function fieldNames(body: unknown): string[] {
 }
 
 export function adminAuditTrail(req: Request, res: Response, next: NextFunction): void {
-  if (!MUTATING.has(req.method)) {
+  if (!MUTATING.has(req.method) || (req.method === 'POST' && NON_MUTATING_POST.some((re) => re.test(req.path)))) {
     next();
     return;
   }
