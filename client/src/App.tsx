@@ -112,6 +112,11 @@ const EMBED = embedConfig.embed;
 // 純外觀預覽：後台 AppearanceTab 以 ?preview=1 載入 iframe，跳過登入、只渲染面板外殼且不打後端。
 const PREVIEW = embedConfig.preview;
 
+/** 訪客 Session 的身分由後端產生、一律 guest_ 開頭（與後端 isGuestPrincipal 同一個判準） */
+function isGuestUser(user: Applicant | null): boolean {
+  return !!user && user.id.startsWith('guest_');
+}
+
 // 逐字浮現：Agent 回覆抵達後一字一字顯示，營造「正在回覆」的動態感。
 // 元件以 message id 為 key，狀態隨實例保留 → 既有訊息不會在重繪（如切主題）時重播。
 function TypewriterText({ text, onTick }: { text: string; onTick?: () => void }) {
@@ -164,6 +169,16 @@ export default function App() {
    * 「按了登出」會被一則還在路上的換發覆蓋，使用者看到的是登出沒有生效。
    */
   const identityEpochRef = useRef(0);
+  /** 嵌入 SSO 換發失敗：顯示錯誤畫面，不改走訪客（宿主網站要的是那個人，不是訪客） */
+  const ssoFailedRef = useRef(false);
+  /**
+   * 訪客模式（租戶開放「允許訪客免登入」）：沒有登入身分時直接以訪客身分進聊天。
+   * 訪客要改用員工帳號時才顯示登入頁（showLogin），可隨時返回繼續以訪客身分提問。
+   */
+  const [showLogin, setShowLogin] = useState(false);
+  const isGuest = isGuestUser(authUser);
+  const isGuestRef = useRef(false);
+  isGuestRef.current = isGuest;
   const userId = authUser?.id ?? '';
   const [view, setView] = useState<'chat' | 'tasks' | 'notifications'>('chat');
   const notifications = useNotifications(PREVIEW ? '' : userId);
@@ -324,6 +339,7 @@ export default function App() {
         } catch (err) {
           // 換發失敗（pk 不正確 / 驗章不過 / 後端拒絕）：直接顯示錯誤，不落到帳密登入頁。
           debugLog('④ 換發失敗，顯示錯誤畫面', err);
+          ssoFailedRef.current = true;
           setAuthError(t('auth.ssoFailed'));
           return null;
         }
@@ -336,10 +352,33 @@ export default function App() {
         debugLog('③ 宿主頁沒給身分，落回自行登入');
       }
     }
-    if (!auth.isAuthenticated()) return null;
+    if (!auth.isAuthenticated()) return startGuest(epoch);
     const me = await auth.me();
     // 「現在是誰在用小幫手」的最終答案：面板所有權限判定都以這份為準。
     debugLog('⑤ 目前登入者（GET /api/auth/me）', me);
+    return identityEpochRef.current === epoch ? me : null;
+  }
+
+  /**
+   * 沒有登入身分時，租戶開放訪客就換一張訪客 Session（POST /api/auth/guest）。
+   * 未開放、換發失敗、或 SSO 換發剛失敗（要顯示錯誤畫面）一律回 null，落回帳密登入頁。
+   */
+  async function startGuest(epoch = identityEpochRef.current): Promise<Applicant | null> {
+    if (ssoFailedRef.current) return null;
+    const { guestAccess } = await fetchAppearance();
+    if (!guestAccess || identityEpochRef.current !== epoch) return null;
+    try {
+      await auth.guest();
+    } catch (err) {
+      debugLog('訪客 Session 換發失敗，落回帳密登入頁', err);
+      return null;
+    }
+    if (identityEpochRef.current !== epoch) {
+      auth.logout();
+      return null;
+    }
+    const me = await auth.me();
+    debugLog('以訪客身分進入（租戶開放訪客免登入）', me);
     return identityEpochRef.current === epoch ? me : null;
   }
 
@@ -348,6 +387,14 @@ export default function App() {
     // 登入後才發生的 401（且 refresh 也失敗）：多半是租戶金鑰(pk)不正確或伺服器無法連線。
     // 顯示整頁錯誤而非靜默掉回登入頁，避免「跳進聊天室又跳回登入頁」的閃爍。
     setUnauthorizedHandler(() => {
+      // 訪客 Session 到期（預設一小時）或被作廢：換一張新的訪客 Session 重新開始，不丟錯誤畫面。
+      // 新訪客是另一個身分，看不到前一段對話，所以畫面從問候語重來。
+      if (isGuestRef.current) {
+        resetSessionState();
+        setAuthUser(null);
+        void startGuest().then((user) => { if (user) handleLogin(user); }).catch(() => {});
+        return;
+      }
       setAuthUser(null);
       setAuthError(t('auth.sessionError'));
       resetSessionState();
@@ -405,7 +452,7 @@ export default function App() {
       void (async () => {
         debugLog('宿主頁要求重取身分（identity:refresh）→ 作廢舊 Session，重走握手');
         // 先作廢舊的再換新的：只換新的不作廢舊的，等於同一個瀏覽器同時有兩個人的票還活著。
-        handleLogout();
+        handleLogout({ fallbackToGuest: false });
         const epoch = identityEpochRef.current;
         let user: Applicant | null = null;
         try {
@@ -574,11 +621,12 @@ export default function App() {
   }
 
   function handleLogin(user: Applicant) {
+    setShowLogin(false);
     setAuthUser(user);
     setMessages([{ id: nextId(), role: 'agent', text: greetingText, greeting: true, at: Date.now() }]);
   }
 
-  function handleLogout() {
+  function handleLogout({ fallbackToGuest = true }: { fallbackToGuest?: boolean } = {}) {
     setView('chat');
     // 先遞增世代：還在路上的取票／換發恢復執行時會發現自己已經過期，不會把 Session 寫回來。
     identityEpochRef.current += 1;
@@ -586,6 +634,13 @@ export default function App() {
     setAuthUser(null);
     setBalances([]);
     resetSessionState();
+    setShowLogin(false);
+    if (!fallbackToGuest) return;
+    // 租戶開放訪客：員工登出後回到訪客聊天，而非登入頁
+    const epoch = identityEpochRef.current;
+    void startGuest(epoch)
+      .then((user) => { if (user && identityEpochRef.current === epoch) handleLogin(user); })
+      .catch(() => {});
   }
 
   // 錯誤畫面「重試」：清掉可能無效的 token，重載頁面重跑一次登入流程（嵌入時會重新嘗試 SSO）。
@@ -882,7 +937,15 @@ export default function App() {
   // 登入／連線失敗：整頁錯誤 + 重試（優先於登入頁，避免靜默掉回帳密登入）
   if (authError) return <AuthErrorView message={authError} onRetry={handleAuthRetry} />;
   // 未登入：擋住整個 App，只顯示登入頁
-  if (!authUser) return <LoginView onLogin={handleLogin} assistantName={aiName} />;
+  if (!authUser || showLogin) {
+    return (
+      <LoginView
+        onLogin={handleLogin}
+        assistantName={aiName}
+        onCancel={authUser ? () => setShowLogin(false) : undefined}
+      />
+    );
+  }
 
   // 標題列的組織資訊：SSO Assertion 的 hyagent:profile 或租戶人員目錄帶來的公司／部門／職稱。
   // 後端在查不到人時把部門填成 UNKNOWN_DEPARTMENT（'—'），那是「未建檔」的佔位符，
@@ -957,8 +1020,13 @@ export default function App() {
             onLanguageChange={changeLanguage}
             fontScale={fontScale}
             onFontScaleChange={setFontScale}
-            onLogout={handleLogout}
+            onLogout={isGuest ? undefined : () => handleLogout()}
           />
+          {isGuest && (
+            <button type="button" className="app-reset staff-login-btn" onClick={() => setShowLogin(true)}>
+              {t('auth.staffLogin')}
+            </button>
+          )}
         </div>
       </header>
       )}
@@ -996,6 +1064,11 @@ export default function App() {
                 </Badge>
                 <span className="app-meta-sep" aria-hidden="true" />
               </span>
+            )}
+            {isGuest && (
+              <button type="button" className="embed-btn embed-btn-wide staff-login-btn" onClick={() => setShowLogin(true)}>
+                <span className="embed-btn-text">{t('auth.staffLogin')}</span>
+              </button>
             )}
             <button
               type="button"

@@ -197,6 +197,8 @@ const zhHant = {
     loggingIn: "登入中…",
     loginFailed: "登入失敗",
     logout: "登出",
+    staffLogin: "員工登入",
+    continueAsGuest: "以訪客身分繼續",
     errorTitle: "無法登入",
     ssoFailed: "自動登入失敗，請確認網站金鑰（pk）與 SSO 設定是否正確，再重試。",
     sessionError: "連線失效：可能是網站金鑰（pk）不正確或伺服器無法連線。請重試或聯絡管理員。",
@@ -504,6 +506,8 @@ const en = {
     loggingIn: "Signing in…",
     loginFailed: "Sign-in failed",
     logout: "Sign out",
+    staffLogin: "Staff sign-in",
+    continueAsGuest: "Continue as guest",
     errorTitle: "Unable to sign in",
     ssoFailed:
       "Auto sign-in failed. Please verify the site key (pk) and SSO settings, then retry.",

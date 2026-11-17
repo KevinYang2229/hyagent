@@ -80,9 +80,19 @@ export interface WidgetConfig {
   knowledgeEnabled: boolean;
   /** 依各來源索引生成的推薦問句；未生成時為空陣列 */
   suggestedPrompts?: SuggestedPrompts[];
+  /** 租戶開放訪客免登入：沒有登入身分時直接以訪客身分進聊天，不顯示登入頁。無 key/失敗時 false */
+  guestAccess?: boolean;
 }
 
-export async function fetchAppearance(): Promise<WidgetConfig> {
+// 外觀套用與啟動登入流程都要讀這份設定：共用同一次請求，不重打
+let configRequest: Promise<WidgetConfig> | null = null;
+
+export function fetchAppearance(): Promise<WidgetConfig> {
+  configRequest ??= loadWidgetConfig();
+  return configRequest;
+}
+
+async function loadWidgetConfig(): Promise<WidgetConfig> {
   // 純外觀預覽（後台 AppearanceTab 的 iframe）不打後端：外觀一律由父視窗 postMessage 推入。
   // 這裡若照常讀租戶設定，回應會晚於父視窗載入時那一次推送而把它蓋掉，
   // 預覽就變成「重整後還原成已存的外觀」，跟後台畫面上的設定對不起來。
@@ -97,6 +107,7 @@ export async function fetchAppearance(): Promise<WidgetConfig> {
         appearance?: TenantAppearance;
         knowledgeEnabled?: boolean;
         suggestedPrompts?: SuggestedPrompts[];
+        guestAccess?: boolean;
       };
     };
     return {
@@ -105,6 +116,7 @@ export async function fetchAppearance(): Promise<WidgetConfig> {
       suggestedPrompts: Array.isArray(json.data?.suggestedPrompts)
         ? json.data.suggestedPrompts
         : undefined,
+      guestAccess: json.data?.guestAccess === true,
     };
   } catch {
     return { appearance: {}, knowledgeEnabled: true };

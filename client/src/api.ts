@@ -339,6 +339,17 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return unwrap<T>(res);
 }
 
+/** 通知後端作廢 Session（Session 是伺服器端有狀態的，只清瀏覽器等於留一張仍可用的票） */
+function revokeSession(token: string): void {
+  // keepalive：這支常緊接著 reload 或關閉分頁被呼叫，少了它請求會被瀏覽器當場取消，
+  // Session 就留在後端直到自然過期。回應內容不重要，失敗也不該擋住 UI。
+  void fetch(`${AUTH}/logout`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${token}`, ...apiKeyHeader() },
+    keepalive: true,
+  }).catch(() => {});
+}
+
 export const auth = {
   /** 目前是否已登入（有 access token） */
   isAuthenticated: (): boolean => !!sessionToken || !!accessToken,
@@ -351,8 +362,32 @@ export const auth = {
       body: JSON.stringify({ username, password }),
     });
     const data = await unwrap<LoginData>(res);
+    // 訪客改用員工登入：Session 優先於 JWT（withAuth），訪客那張票不丟掉的話，
+    // 登入後的請求仍以訪客身分送出。登入成功才丟——失敗時保留，讓人繼續以訪客身分提問。
+    const guestSession = sessionToken;
+    if (guestSession) {
+      sessionToken = null;
+      sessionExpiresAt = null;
+      sessionStorage.removeItem(SESSION_KEY);
+      sessionStorage.removeItem(SESSION_EXPIRES_KEY);
+      revokeSession(guestSession);
+    }
     setTokens(data.accessToken, data.refreshToken);
     return data.user;
+  },
+
+  /**
+   * 訪客 Session（租戶開放「允許訪客免登入」時）：以 pk_ 換一張訪客 Session，直接進聊天。
+   * 身分由後端隨機產生（guest_ 開頭），權限只有訪客部門那一份；租戶關閉訪客時後端回 403。
+   */
+  async guest(): Promise<void> {
+    const res = await fetch(`${AUTH}/guest`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...apiKeyHeader() },
+      body: '{}',
+    });
+    const data = await unwrap<{ sessionToken: string; expiresIn: number }>(res);
+    setSessionToken(data.sessionToken, data.expiresIn);
   },
 
   /**
@@ -402,14 +437,7 @@ export const auth = {
   logout(): void {
     const token = sessionToken;
     clearTokens();
-    if (!token) return;
-    // keepalive：這支常緊接著 reload 或關閉分頁被呼叫，少了它請求會被瀏覽器當場取消，
-    // Session 就留在後端直到自然過期。回應內容不重要，失敗也不該擋住 UI。
-    void fetch(`${AUTH}/logout`, {
-      method: 'POST',
-      headers: { authorization: `Bearer ${token}`, ...apiKeyHeader() },
-      keepalive: true,
-    }).catch(() => {});
+    if (token) revokeSession(token);
   },
 };
 

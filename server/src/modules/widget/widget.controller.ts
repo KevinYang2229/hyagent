@@ -6,6 +6,7 @@ import type { Request, Response } from 'express';
 import type { TenantAppearance } from '@hyagent/shared';
 import { resolveGuestScopes } from '@/modules/authz/resolve-scopes';
 import { publicSuggestedPrompts } from '@/modules/knowledge/prompt-feed';
+import { isGuestAccessEnabled } from '@/modules/auth/guest-session';
 
 const DEFAULT_APPEARANCE: Required<Pick<TenantAppearance, 'theme' | 'position'>> = {
   theme: 'light',
@@ -39,6 +40,8 @@ export const widgetController = {
     // （含索引狀態與 ACL 守門）；此處另守 knowledgeEnabled，避免內部文件生成的問句在服務
     // 關閉後仍透過這個免登入端點外洩。
     const suggestedPrompts = knowledgeEnabled && req.tenant ? publicSuggestedPrompts(req.tenant.id) : [];
-    res.status(200).json({ data: { appearance, knowledgeEnabled, suggestedPrompts } });
+    // 租戶開放訪客免登入時，前台不顯示登入頁、直接換發訪客 Session 進聊天（員工另有登入入口）
+    const guestAccess = isGuestAccessEnabled(req.tenant);
+    res.status(200).json({ data: { appearance, knowledgeEnabled, suggestedPrompts, guestAccess } });
   },
 };

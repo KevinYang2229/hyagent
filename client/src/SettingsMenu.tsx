@@ -70,7 +70,8 @@ interface Props {
   onLanguageChange: (lng: string) => void;
   fontScale: number;
   onFontScaleChange: (n: number) => void;
-  onLogout: () => void;
+  /** 未提供（訪客）時不顯示登出：訪客沒有可登出的帳號，改由標題列的「員工登入」切換 */
+  onLogout?: () => void;
 }
 
 /** 齒輪設定選單：外觀模式 / 系統字級 / 切換語言 / 登出 */
@@ -192,9 +193,10 @@ export default function SettingsMenu({
             </div>
           </section>
 
-          <div className="settings-divider" />
+          {onLogout && <div className="settings-divider" />}
 
           {/* 登出 */}
+          {onLogout && (
           <button
             type="button"
             className="settings-logout"
@@ -220,6 +222,7 @@ export default function SettingsMenu({
             </svg>
             {t('auth.logout')}
           </button>
+          )}
         </div>
       )}
     </div>
