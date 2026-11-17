@@ -3,6 +3,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import SettingsTab from './SettingsTab';
+import { GlobalSavingOverlay } from '../../components/SavingOverlay';
 import { api } from '../../api';
 
 const { auth } = vi.hoisted(() => ({ auth: { isSuper: false, ai: 'write' as 'hidden' | 'read' | 'write' } }));
@@ -90,7 +91,7 @@ it('儲存期間顯示全畫面遮罩並將 #root 設為 inert，完成後移除
   const root = document.createElement('div');
   root.id = 'root';
   document.body.appendChild(root);
-  render(<SettingsTab tenant={tenant} onSaved={vi.fn()} onError={vi.fn()} />, { container: root });
+  render(<><SettingsTab tenant={tenant} onSaved={vi.fn()} onError={vi.fn()} /><GlobalSavingOverlay /></>, { container: root });
   fireEvent.click(screen.getByRole('button', { name: '儲存設定' }));
   expect(await screen.findByRole('alert')).toHaveClass('saving-overlay');
   expect(root).toHaveAttribute('inert');

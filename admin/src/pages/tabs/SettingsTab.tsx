@@ -4,7 +4,7 @@ import { useAuth } from '../../auth';
 import { IconCopy, IconKey } from '../../components/icons';
 import { useUnsavedChanges } from '../../components/unsaved';
 import UnsavedBadge from '../../components/UnsavedBadge';
-import SavingOverlay from '../../components/SavingOverlay';
+import { useHoldSaving } from '../../savingStore';
 import { useConfirm } from '../../components/confirm';
 
 /**
@@ -46,6 +46,8 @@ export default function SettingsTab({
   const [anthropicKey, setAnthropicKey] = useState('');
   const [openaiKey, setOpenaiKey] = useState('');
   const [llmBusy, setLlmBusy] = useState(false);
+  // 整段儲存流程（含多個請求之間）都鎖住畫面
+  useHoldSaving(busy || llmBusy);
 
   useEffect(() => {
     // llm-config 屬於「AI 模型」分頁權限；基本設定頁用不到，也不該為它多打一個會被 403 的請求
@@ -147,7 +149,6 @@ export default function SettingsTab({
 
   return (
     <div className="settings-stack">
-      <SavingOverlay show={busy || llmBusy} />
       {section === 'basic' && <>
       <div className="card">
         <div className="card-head">

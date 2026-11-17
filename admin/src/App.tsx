@@ -4,6 +4,7 @@ import { ToastProvider } from '@hyagent/ui';
 import { AuthProvider, useAuth } from './auth';
 import { ConfirmProvider } from './components/confirm';
 import UnsavedGuard from './components/UnsavedGuard';
+import { GlobalSavingOverlay } from './components/SavingOverlay';
 import LoginPage from './pages/LoginPage';
 import TenantsPage from './pages/TenantsPage';
 import TenantDetailPage from './pages/TenantDetailPage';
@@ -63,6 +64,7 @@ export default function App() {
       <ToastProvider>
         <ConfirmProvider>
           <RouterProvider router={router} />
+          <GlobalSavingOverlay />
         </ConfirmProvider>
       </ToastProvider>
     </AuthProvider>

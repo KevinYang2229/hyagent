@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { useSaving } from '../savingStore';
 
 /**
  * 儲存中的全畫面遮罩：擋住滑鼠點擊側邊欄、分頁與其他按鈕，避免儲存途中切走或重複送出。
@@ -32,4 +33,10 @@ export default function SavingOverlay({ show, text = '儲存中…' }: { show: b
     </div>,
     document.body,
   );
+}
+
+/** 掛在 App 最外層一次：任何寫入後端的請求進行中都顯示遮罩（見 savingStore） */
+export function GlobalSavingOverlay() {
+  const show = useSaving();
+  return <SavingOverlay show={show} />;
 }

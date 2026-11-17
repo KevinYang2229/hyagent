@@ -1,5 +1,7 @@
 import type { AdminMe, AdminTabPermissions, AssistantPersona, Definition, KbRuleItem, KnowledgeAnswerRules, TenantAppearance } from '@hyagent/shared';
 
+import { shouldBlock, withSaving } from './savingStore';
+
 export type { Definition };
 
 export interface FormSummary {
@@ -258,6 +260,11 @@ export function errorMessage(json: ErrorBody, status: number): string {
 }
 
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
+  if (!shouldBlock(method, path)) return reqRaw<T>(method, path, body);
+  return withSaving(() => reqRaw<T>(method, path, body));
+}
+
+async function reqRaw<T>(method: string, path: string, body?: unknown): Promise<T> {
   const token = tokenStore.get();
   const res = await fetch(`${API_ORIGIN}/api${path}`, {
     method,
@@ -279,6 +286,10 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
 
 /** 上傳用：body 為 FormData，不可手動設 content-type（讓瀏覽器帶 multipart boundary） */
 async function reqUpload<T>(method: string, path: string, formData: FormData): Promise<T> {
+  return withSaving(() => reqUploadRaw<T>(method, path, formData));
+}
+
+async function reqUploadRaw<T>(method: string, path: string, formData: FormData): Promise<T> {
   const token = tokenStore.get();
   const res = await fetch(`${API_ORIGIN}/api${path}`, {
     method,
