@@ -32,7 +32,6 @@ import { pickKnowledgePrompts, resolveKnowledgeFeed, type KnowledgeFeed, type Su
 import { pickInitialFormId, shouldShowFormPicker } from './formPicker';
 import FormView from './FormView';
 import TaskCenter from './TaskCenter';
-import MySkills from './MySkills';
 import LoginView from './LoginView';
 import AuthErrorView from './AuthErrorView';
 import SettingsMenu, { FONT_MAX, FONT_MIN } from './SettingsMenu';
@@ -1112,7 +1111,6 @@ export default function App() {
         }}
       /> : <div className="app-body">
         <div className="chat-pane">
-          {!PREVIEW && <MySkills key={authUser.id} />}
           <div className="msg-list" ref={listRef}>
             {messages.map((m) =>
               m.role === 'sys' ? (

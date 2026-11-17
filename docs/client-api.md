@@ -50,7 +50,7 @@
 | 6 | 健康檢查 | GET | `/api/healthz` | 判斷後端是否在線 | 進入頁面 |
 | 7 | Widget 外觀設定 | GET | `/api/widget/config` | 取得租戶外觀、知識庫開關與訪客推薦問句 | 嵌入模式載入時 |
 | 8 | 登入者知識庫開場資料 | GET | `/api/knowledge/suggested-prompts` | 依本人權限覆蓋知識庫開關與推薦問句 | 登入後 |
-| 9 | 我的技能 | GET | `/api/skills` | 顯示本人角色與可用 Agent Skill | 開啟「我的技能」 |
+| 9 | 我的技能 | GET | `/api/skills` | 本人角色與可用 Agent Skill（官方前台已不呼叫，保留給自建前台） | 自建前台需要時 |
 | 10 | 可辦理表單清單 | GET | `/api/forms` | 表單選單與開場範例語句 | 登入後 |
 | 11 | 表單定義 | GET | `/api/forms/{formId}` | 取得欄位、驗證規則等完整定義，用來畫表單 | 對話進入某張表單時 |
 | 12 | 假別剩餘時數 | GET | `/api/leave/balances` | 顯示「今年度剩餘 N 小時」 | 請假表單顯示時 |
@@ -366,6 +366,8 @@ GET /api/knowledge/suggested-prompts
 ---
 
 ### API 9. 我的技能
+
+> 官方 widget 已移除「我的助理能力」區塊，不再呼叫此 API；API 仍保留，供自建前台使用。
 
 ```
 GET /api/skills

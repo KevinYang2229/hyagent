@@ -12,7 +12,6 @@ vi.mock('./api', async () => {
     auth: { ...actual.auth, isAuthenticated: () => true, me: async () => ({ id: 'tester', name: '測試者', department: '' }) },
     api: { ...actual.api, health: async () => true, listForms: async () => [], getLeaveBalances: async () => [],
       knowledgeFeed: async () => ({ knowledgeEnabled: false, suggestedPrompts: [] }),
-      mySkills: async () => ({ roles: [], skills: [] }),
       listNotifications: async () => ({ items: [], unreadCount: 0 }),
       start: vi.fn(), sendMessage: vi.fn(), stopQuery: vi.fn(async () => undefined) },
   };
@@ -68,4 +67,11 @@ it('停止造成的 AbortError 不顯示網路錯誤；卸載也會取消查詢'
   const signal = vi.mocked(api.start).mock.calls[1][3];
   unmount();
   expect(signal?.aborted).toBe(true);
+});
+
+it('前台不顯示「我的助理能力」區塊', async () => {
+  render(<App />);
+  await screen.findByRole('button', { name: '送出' });
+  expect(screen.queryByText('我的助理能力')).not.toBeInTheDocument();
+  expect(document.querySelector('.my-skills')).toBeNull();
 });

@@ -2,7 +2,6 @@
 import type { KnowledgeFeed } from './knowledgePrompt';
 import type {
   TaskCenterData,
-  MySkillsView,
   NotificationFeed,
   Applicant,
   Attachment,
@@ -415,7 +414,6 @@ export const auth = {
 };
 
 export const api = {
-  mySkills: () => request<MySkillsView>(`${API_ORIGIN}/api/skills`),
   /**
    * 登入者視角的知識庫開場資料（開關＋推薦句）。
    * 免登入的 /widget/config 只能用訪客部門判斷開關，指派給一般部門的授權它看不到；
