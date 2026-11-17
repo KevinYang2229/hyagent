@@ -318,3 +318,33 @@ describe('尚未進入填表流程時不點黏', () => {
     expect(r.serviceId).toBe('knowledge');
   });
 });
+
+describe('分類器不把使用者的話當成在問它自己', () => {
+  it('使用者的話包成「待分類的資料」送出，並說明訊息裡的「你」指 OA 助理', async () => {
+    mockCreate.mockResolvedValue({ text: '{"intent":"off-topic","confidence":0.95}', toolCalls: [], stopReason: 'end_turn' });
+    const r = await intentRouter.route(makeSession({ activeServiceId: undefined, formId: 'outing-registration' }), '你是什麼角色');
+    const params = mockCreate.mock.calls[0][0];
+    expect(params.messages[0].content[0].text).toBe('請分類這則使用者訊息：\n「你是什麼角色」');
+    expect(params.system).toContain('訊息中的「你」指的是 OA 助理，不是你這個分類器');
+    expect(r).toEqual({ serviceId: 'assistant', viaLLM: true });
+  });
+
+  it('非填表流程中分類失敗（模型沒輸出 JSON）→ 退回閒聊／守門，不是第一個註冊的 form', async () => {
+    // 實際案例：Haiku 回「我是這個 OA 對話系統的意圖分類器……」被截斷，解析不到 JSON
+    mockCreate.mockResolvedValue({ text: '我是這個 OA 對話系統的**意圖分類器**，負責判斷使用者訊息屬於哪一類需求，並以 JSON 格式輸出分類結果，例如 `', toolCalls: [], stopReason: 'max_tokens' });
+    const r = await intentRouter.route(makeSession({ activeServiceId: undefined, formId: 'outing-registration' }), '你是什麼角色');
+    expect(r).toEqual({ serviceId: 'assistant', viaLLM: true });
+  });
+
+  it('非填表流程中分類信心過低 → 同樣退回閒聊／守門', async () => {
+    mockCreate.mockResolvedValue({ text: '{"intent":"outing-registration.apply","confidence":0.3}', toolCalls: [], stopReason: 'end_turn' });
+    const r = await intentRouter.route(makeSession({ activeServiceId: undefined }), '嗯嗯');
+    expect(r.serviceId).toBe('assistant');
+  });
+
+  it('填表流程中分類失敗仍續留填表（不影響點黏）', async () => {
+    mockCreate.mockResolvedValue({ text: 'not json', toolCalls: [], stopReason: 'end_turn' });
+    const r = await intentRouter.route(makeSession({ activeServiceId: 'form', messages: MID_CONV_MSGS }), '請問這樣可以嗎');
+    expect(r.serviceId).toBe('form');
+  });
+});

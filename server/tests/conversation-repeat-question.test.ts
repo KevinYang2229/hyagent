@@ -71,7 +71,9 @@ describe('未進入填表流程時的重複提問', () => {
       name: 'mock',
       createMessage: jest.fn(async (params: { system: string }) =>
         params.system.includes('意圖分類器')
-          ? { text: '{"intent":"leave-request","confidence":0.9}', toolCalls: [], stopReason: 'end_turn' }
+          // 表單意圖的 id 是「<formId>.apply」；原本寫成 leave-request 對不到任何服務，
+          // 是靠「分類失敗退回第一個註冊服務（form）」才碰巧通過
+          ? { text: '{"intent":"leave-request.apply","confidence":0.9}', toolCalls: [], stopReason: 'end_turn' }
           : { text: '', toolCalls: [], stopReason: 'end_turn' },
       ),
     });
