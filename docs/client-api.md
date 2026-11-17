@@ -334,7 +334,7 @@ GET /api/widget/config?key=pk_live_8f3a2c
 }
 ```
 
-- `guestAccess`：租戶是否開放訪客免登入（後台「允許訪客免登入使用」）。為 `true` 且沒有登入身分（無既有憑證、宿主未提供 SSO）時，widget 直接呼叫 `POST /api/auth/guest` 以訪客身分進聊天，不顯示登入頁；員工可從標題列「員工登入」切換。為 `false` 時維持帳密登入頁。
+- `guestAccess`：租戶是否開放訪客免登入（後台「允許訪客免登入使用」）。為 `true` 且沒有登入身分（無既有憑證、宿主未提供 SSO）時，widget 直接呼叫 `POST /api/auth/guest` 以訪客身分進聊天，不顯示登入頁。為 `false` 時維持帳密登入頁。
 
 - `knowledgeEnabled` 依訪客權限判定；登入後改用 API 8 的結果覆蓋
 - 前台在請求失敗時改用內建預設外觀，不顯示錯誤

@@ -70,7 +70,7 @@ interface Props {
   onLanguageChange: (lng: string) => void;
   fontScale: number;
   onFontScaleChange: (n: number) => void;
-  /** 未提供（訪客）時不顯示登出：訪客沒有可登出的帳號，改由標題列的「員工登入」切換 */
+  /** 未提供（訪客）時不顯示登出：訪客沒有可登出的帳號 */
   onLogout?: () => void;
 }
 

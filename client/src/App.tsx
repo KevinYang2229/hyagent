@@ -171,17 +171,14 @@ export default function App() {
   const identityEpochRef = useRef(0);
   /** 嵌入 SSO 換發失敗：顯示錯誤畫面，不改走訪客（宿主網站要的是那個人，不是訪客） */
   const ssoFailedRef = useRef(false);
-  /**
-   * 訪客模式（租戶開放「允許訪客免登入」）：沒有登入身分時直接以訪客身分進聊天。
-   * 訪客要改用員工帳號時才顯示登入頁（showLogin），可隨時返回繼續以訪客身分提問。
-   */
-  const [showLogin, setShowLogin] = useState(false);
+  /** 訪客模式（租戶開放「允許訪客免登入」）：沒有登入身分時直接以訪客身分進聊天 */
   const isGuest = isGuestUser(authUser);
   const isGuestRef = useRef(false);
   isGuestRef.current = isGuest;
   const userId = authUser?.id ?? '';
   const [view, setView] = useState<'chat' | 'tasks' | 'notifications'>('chat');
-  const notifications = useNotifications(PREVIEW ? '' : userId);
+  // 訪客沒有任務與通知可看：不輪詢通知
+  const notifications = useNotifications(PREVIEW || isGuest ? '' : userId);
   const [taskTarget, setTaskTarget] = useState<{ category: keyof TaskCenterData; id: string } | undefined>();
   const [convId, setConvId] = useState<string | null>(null);
   const [status, setStatus] = useState<SessionStatus | null>(null);
@@ -621,7 +618,6 @@ export default function App() {
   }
 
   function handleLogin(user: Applicant) {
-    setShowLogin(false);
     setAuthUser(user);
     setMessages([{ id: nextId(), role: 'agent', text: greetingText, greeting: true, at: Date.now() }]);
   }
@@ -634,7 +630,6 @@ export default function App() {
     setAuthUser(null);
     setBalances([]);
     resetSessionState();
-    setShowLogin(false);
     if (!fallbackToGuest) return;
     // 租戶開放訪客：員工登出後回到訪客聊天，而非登入頁
     const epoch = identityEpochRef.current;
@@ -937,15 +932,7 @@ export default function App() {
   // 登入／連線失敗：整頁錯誤 + 重試（優先於登入頁，避免靜默掉回帳密登入）
   if (authError) return <AuthErrorView message={authError} onRetry={handleAuthRetry} />;
   // 未登入：擋住整個 App，只顯示登入頁
-  if (!authUser || showLogin) {
-    return (
-      <LoginView
-        onLogin={handleLogin}
-        assistantName={aiName}
-        onCancel={authUser ? () => setShowLogin(false) : undefined}
-      />
-    );
-  }
+  if (!authUser) return <LoginView onLogin={handleLogin} assistantName={aiName} />;
 
   // 標題列的組織資訊：SSO Assertion 的 hyagent:profile 或租戶人員目錄帶來的公司／部門／職稱。
   // 後端在查不到人時把部門填成 UNKNOWN_DEPARTMENT（'—'），那是「未建檔」的佔位符，
@@ -1022,11 +1009,7 @@ export default function App() {
             onFontScaleChange={setFontScale}
             onLogout={isGuest ? undefined : () => handleLogout()}
           />
-          {isGuest && (
-            <button type="button" className="app-reset staff-login-btn" onClick={() => setShowLogin(true)}>
-              {t('auth.staffLogin')}
-            </button>
-          )}
+
         </div>
       </header>
       )}
@@ -1064,11 +1047,6 @@ export default function App() {
                 </Badge>
                 <span className="app-meta-sep" aria-hidden="true" />
               </span>
-            )}
-            {isGuest && (
-              <button type="button" className="embed-btn embed-btn-wide staff-login-btn" onClick={() => setShowLogin(true)}>
-                <span className="embed-btn-text">{t('auth.staffLogin')}</span>
-              </button>
             )}
             <button
               type="button"
@@ -1161,7 +1139,8 @@ export default function App() {
         </header>
       )}
 
-      {!PREVIEW && <nav className="workspace-nav" aria-label={t('tasks.categories')}>
+      {/* 訪客只有對話視窗：不顯示「對話／我的任務／通知中心」切換列 */}
+      {!PREVIEW && !isGuest && <nav className="workspace-nav" aria-label={t('tasks.categories')}>
         <button type="button" aria-pressed={view === 'chat'} disabled={busy} onClick={() => setView('chat')}>{t('tasks.chat')}</button>
         <button type="button" aria-pressed={view === 'tasks'} disabled={busy || showForm} onClick={() => { setTaskTarget(undefined); setView('tasks'); }}>{t('tasks.title')}</button>
         <button type="button" aria-pressed={view === 'notifications'} disabled={busy || showForm} onClick={() => { setView('notifications'); void notifications.refresh(); }}>

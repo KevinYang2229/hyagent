@@ -61,10 +61,6 @@
   .login-hint {
     @apply rounded-md bg-[var(--bg-secondary)] px-3 py-2 text-xs text-[var(--text-secondary)];
   }
-  /* 訪客模式：從聊天切到員工登入後，返回繼續以訪客身分提問 */
-  .login-cancel {
-    @apply self-center text-sm text-[var(--text-secondary)] underline underline-offset-2 hover:text-[var(--text-primary)];
-  }
 
   /* ---- 版面 ---- */
   /* 100dvh：用動態視窗高度，手機瀏覽器網址列收合時底部輸入框仍穩定貼底 */

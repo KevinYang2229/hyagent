@@ -1,5 +1,5 @@
 /**
- * 租戶開放「允許訪客免登入」：widget 打開就以訪客身分進聊天，不顯示登入頁；員工另有登入入口。
+ * 租戶開放「允許訪客免登入」：widget 打開就以訪客身分進聊天，不顯示登入頁。
  * 先前前台沒有訪客模式，公開客服網站只能用員工帳號登入，看到的永遠是員工版回答。
  */
 import '@testing-library/jest-dom/vitest';
@@ -71,26 +71,14 @@ it('已有登入身分（例如員工 Session 還在）：不換發訪客 Sessio
   render(<App />);
   await screen.findByRole('button', { name: '送出' });
   expect(auth.guest).not.toHaveBeenCalled();
-  expect(screen.queryByRole('button', { name: '員工登入' })).not.toBeInTheDocument();
 });
 
-it('訪客可切到員工登入，也可以返回繼續以訪客身分提問', async () => {
+it('訪客畫面沒有員工登入或登出入口', async () => {
   config(true);
   render(<App />);
-  fireEvent.click(await screen.findByRole('button', { name: '員工登入' }));
-  expect(await screen.findByRole('button', { name: '登入' })).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: '以訪客身分繼續' }));
-  expect(await screen.findByRole('button', { name: '送出' })).toBeInTheDocument();
-});
-
-it('訪客改用員工登入後：員工登入入口消失', async () => {
-  config(true);
-  render(<App />);
-  fireEvent.click(await screen.findByRole('button', { name: '員工登入' }));
-  fireEvent.change(await screen.findByLabelText('密碼'), { target: { value: 'pw' } });
-  fireEvent.click(screen.getByRole('button', { name: '登入' }));
   await screen.findByRole('button', { name: '送出' });
-  await waitFor(() => expect(screen.queryByRole('button', { name: '員工登入' })).not.toBeInTheDocument());
+  expect(screen.queryByRole('button', { name: '員工登入' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: '登出' })).not.toBeInTheDocument();
 });
 
 it('員工登出後：租戶開放訪客時回到訪客聊天，而非登入頁', async () => {
@@ -102,5 +90,23 @@ it('員工登出後：租戶開放訪客時回到訪客聊天，而非登入頁'
   fireEvent.click(screen.getByRole('button', { name: '設定' }));
   fireEvent.click(await screen.findByRole('button', { name: '登出' }));
   await waitFor(() => expect(auth.guest).toHaveBeenCalledTimes(1));
-  expect(await screen.findByRole('button', { name: '員工登入' })).toBeInTheDocument();
+  expect(await screen.findByRole('button', { name: '送出' })).toBeInTheDocument();
+  expect(screen.queryByLabelText('密碼')).not.toBeInTheDocument();
+});
+
+it('訪客只有對話視窗：不顯示「對話／我的任務／通知中心」切換列', async () => {
+  config(true);
+  render(<App />);
+  await screen.findByRole('button', { name: '送出' });
+  expect(screen.queryByRole('button', { name: '我的任務' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /通知中心/ })).not.toBeInTheDocument();
+});
+
+it('登入員工仍有「我的任務」與「通知中心」', async () => {
+  config(true);
+  state.authed = true;
+  state.user = { id: 'HYW103', name: '王小明', department: '資訊部' };
+  render(<App />);
+  expect(await screen.findByRole('button', { name: '我的任務' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /通知中心/ })).toBeInTheDocument();
 });

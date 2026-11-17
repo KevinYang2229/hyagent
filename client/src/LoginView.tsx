@@ -7,11 +7,8 @@ import { auth, type Applicant } from "./api";
 export default function LoginView({
   onLogin,
   assistantName,
-  onCancel,
 }: {
   onLogin: (user: Applicant) => void;
-  /** 訪客模式下從聊天切過來時提供：返回繼續以訪客身分提問 */
-  onCancel?: () => void;
   /** 顯示用 AI 名稱（租戶自訂 / fallback 預設）；用於副標題 */
   assistantName: string;
 }) {
@@ -75,12 +72,6 @@ export default function LoginView({
         >
           {busy ? t("auth.loggingIn") : t("auth.login")}
         </Button>
-
-        {onCancel && (
-          <button type="button" className="login-cancel" onClick={onCancel}>
-            {t("auth.continueAsGuest")}
-          </button>
-        )}
 
         {/* <p className="login-hint">{t("auth.devHint")}</p> */}
       </form>
