@@ -49,4 +49,30 @@ describe('SafeMarkdown', () => {
     const { container } = render(<SafeMarkdown>{'| a | b |\n| - | - |\n| 1 | 2 |'}</SafeMarkdown>);
     expect(container.querySelector('table')).not.toBeNull();
   });
+
+  describe('自動轉成連結的網址不吃進結尾的全形標點', () => {
+    it.each([
+      ['請見https://www.hyread.com.tw/。', 'https://www.hyread.com.tw/', '。'],
+      ['網址：https://a.example/x，謝謝', 'https://a.example/x', '，謝謝'],
+      ['（https://a.example/x）', 'https://a.example/x', '）'],
+      ['參考「https://a.example/x」', 'https://a.example/x', '」'],
+      ['看這裡https://a.example/x！！', 'https://a.example/x', '！！'],
+    ])('%s', (text, href, after) => {
+      const { container } = render(<SafeMarkdown>{text}</SafeMarkdown>);
+      const link = screen.getByRole('link');
+      expect(link).toHaveAttribute('href', href);
+      expect(link).toHaveTextContent(href);
+      expect(container.textContent).toContain(href + after);
+    });
+
+    it('網址中間的中文字保留（例如中文條目網址）', () => {
+      render(<SafeMarkdown>{'https://zh.wikipedia.org/wiki/電子書 這是條目'}</SafeMarkdown>);
+      expect(decodeURI(screen.getByRole('link').getAttribute('href') ?? '')).toBe('https://zh.wikipedia.org/wiki/電子書');
+    });
+
+    it('作者明確寫的 [文字](網址) 不動', () => {
+      render(<SafeMarkdown>{'[官網](https://a.example/x)。'}</SafeMarkdown>);
+      expect(screen.getByRole('link', { name: '官網' })).toHaveAttribute('href', 'https://a.example/x');
+    });
+  });
 });
