@@ -196,3 +196,22 @@ it('登入員工／網站訪客切換：預設員工，切換只換顯示、不�
   expect(screen.queryByText('員工角色')).not.toBeInTheDocument();
   expect(vi.mocked(api.previewPersona).mock.calls.length).toBe(calls);
 });
+
+it('版面：先選預覽對象（登入員工／網站訪客），再選功能；功能下拉有可見標籤', async () => {
+  vi.mocked(api.previewPersona).mockResolvedValue({ member: [NAME], guest: [NAME], rules: RULES });
+  render(<PersonaPreview tenantId="t1" persona={{}} />);
+  const audience = screen.getByRole('group', { name: '預覽對象' });
+  const service = screen.getByLabelText('預覽功能');
+  // DOCUMENT_POSITION_FOLLOWING：功能下拉排在對象切換之後
+  expect(audience.compareDocumentPosition(service) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(screen.getByText('功能')).toBeInTheDocument();
+  expect(screen.queryByText('預覽（AI 實際收到的角色指示）')).not.toBeInTheDocument();
+});
+
+it('預覽暫時無法產生時，對象切換仍在', async () => {
+  vi.mocked(api.previewPersona).mockRejectedValue(new Error('x'));
+  render(<PersonaPreview tenantId="t1" persona={{}} />);
+  await flush();
+  expect(screen.getByText('預覽暫時無法產生')).toBeInTheDocument();
+  expect(screen.getByRole('group', { name: '預覽對象' })).toBeInTheDocument();
+});

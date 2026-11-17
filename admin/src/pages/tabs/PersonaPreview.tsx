@@ -60,14 +60,15 @@ export default function PersonaPreview({
 
   return (
     <div className="persona-preview-block" style={{ marginTop: 20 }}>
+      {/* 第一排：先選「給誰看」（對象），右側語言；第二排：選功能。對象是最常切換的維度，放最上面 */}
       <div className="persona-preview-head">
-        <div className="persona-preview-title">
-          <span className="field-label">預覽（AI 實際收到的角色指示）</span>
-          <select className="input" aria-label="預覽功能" value={service} onChange={(e) => setService(e.target.value as PersonaServiceKey)}>
-            {PERSONA_SERVICES.map((s) => (
-              <option key={s.key} value={s.key}>{s.label}</option>
-            ))}
-          </select>
+        <div className="seg-group" role="group" aria-label="預覽對象">
+          {([["member", "登入員工"], ["guest", "網站訪客"]] as const).map(([key, label]) => (
+            <button key={key} type="button" aria-pressed={side === key}
+              className={`btn btn-sm ${side === key ? "btn-primary" : "btn-ghost"}`} onClick={() => setSide(key)}>
+              {label}
+            </button>
+          ))}
         </div>
         <div className="seg-group" role="group" aria-label="預覽語言">
           {(["zh-Hant", "en"] as const).map((l) => (
@@ -83,19 +84,19 @@ export default function PersonaPreview({
           ))}
         </div>
       </div>
+      <div className="persona-preview-title" style={{ marginTop: 12 }}>
+        <label className="field-label" htmlFor="persona-preview-service">功能</label>
+        <select id="persona-preview-service" className="input" aria-label="預覽功能" value={service} onChange={(e) => setService(e.target.value as PersonaServiceKey)}>
+          {PERSONA_SERVICES.map((s) => (
+            <option key={s.key} value={s.key}>{s.label}</option>
+          ))}
+        </select>
+      </div>
       {failed ? (
         <p className="field-hint">預覽暫時無法產生</p>
       ) : (
         <>
           {/* 是否有角色看草稿本身、且依目前功能：有 AI 名稱時 server 每側都會回名稱句，不能用「有沒有行」判斷 */}
-          <div className="seg-group" role="group" aria-label="預覽對象" style={{ marginTop: 8 }}>
-            {([["member", "登入員工"], ["guest", "網站訪客"]] as const).map(([key, label]) => (
-              <button key={key} type="button" aria-pressed={side === key}
-                className={`btn btn-sm ${side === key ? "btn-primary" : "btn-ghost"}`} onClick={() => setSide(key)}>
-                {label}
-              </button>
-            ))}
-          </div>
           <PreviewBox
             key={side}
             lines={result?.[side]}
