@@ -221,6 +221,33 @@
   .msg-actions {
     display: contents;
   }
+  /* 送出鈕：主題色實心圓＋白色圖示，高度與輸入框（42px）一致；輸入框空白時淡化 */
+  .send-btn {
+    @apply inline-flex h-[42px] w-[42px] shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-[var(--primary-color)] p-0 text-white transition-[background-color,box-shadow,transform] duration-150;
+    box-shadow: 0 4px 12px -4px rgba(var(--primary-color-rgb), 0.55);
+  }
+  /* 紙飛機底寬尖窄，幾何置中時右側看起來比較空；往右挪 1.5px 才在視覺上置中 */
+  .send-btn svg {
+    transform: translateX(1.5px);
+  }
+  .send-btn:hover {
+    background: color-mix(in srgb, var(--primary-color) 88%, black);
+  }
+  .send-btn:active {
+    transform: scale(0.94);
+  }
+  .send-btn:focus-visible {
+    @apply outline-2 outline-offset-2 outline-[var(--primary-color)];
+  }
+  .send-btn.is-empty,
+  .send-btn:disabled {
+    background: rgba(var(--primary-color-rgb), 0.35);
+    box-shadow: none;
+  }
+  .send-btn:disabled {
+    @apply cursor-default;
+    transform: none;
+  }
   .msg-action {
     @apply inline-flex shrink-0 cursor-pointer items-center rounded p-0.5 text-[var(--text-secondary)] transition-opacity hover:text-[var(--text-primary)] disabled:cursor-default disabled:opacity-40;
   }

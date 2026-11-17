@@ -1389,7 +1389,7 @@ export default function App() {
                 variant="cancel"
                 size="md"
                 type="button"
-                className="!h-11 !w-11 !rounded-full !p-0"
+                className="!h-[42px] !w-[42px] !rounded-full !p-0"
                 aria-label={t('app.stopQuery')}
                 title={t('app.stopQuery')}
                 onClick={stopQuery}
@@ -1399,9 +1399,17 @@ export default function App() {
                 </svg>
               </Button>
             ) : (
-              <Button variant="confirm" size="md" type="submit" disabled={busy}>
-                {t('app.send')}
-              </Button>
+              <button
+                type="submit"
+                className={`send-btn${input.trim() ? '' : ' is-empty'}`}
+                aria-label={t('app.send')}
+                title={t('app.send')}
+                disabled={busy}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false">
+                  <path d="M3.4 20.4 20.85 12.92a1 1 0 0 0 0-1.84L3.4 3.6a.993.993 0 0 0-1.39.91L2 9.12c0 .5.37.93.87.99L17 12 2.87 13.88c-.5.07-.87.5-.87 1l.01 4.61c0 .71.73 1.2 1.39.91z" />
+                </svg>
+              </button>
             )}
           </form>
         </div>
