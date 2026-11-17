@@ -44,7 +44,7 @@ export default function KnowledgeRulesSection({
           </button>
         ))}
       </div>
-      <p className="field-hint">
+      <p className="field-hint persona-side-hint">
         {value[side] === null ? "目前使用內建規則；修改任何一條就會改為自訂。" : "已自訂；按「還原預設」可回到內建規則。"}
       </p>
 

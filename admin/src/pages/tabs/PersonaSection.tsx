@@ -42,7 +42,7 @@ export default function PersonaSection({
           </button>
         ))}
       </div>
-      <p className="field-hint">
+      <p className="field-hint persona-side-hint">
         {side === "member" ? "已登入的公司員工。" : "未登入的使用者都算訪客；訪客的回答不會附知識庫出處。"}
       </p>
 

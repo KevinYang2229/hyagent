@@ -1383,6 +1383,8 @@ li:not(.is-empty) > .feedback-bar { background: var(--bg-secondary); }
 /* AI 角色頁：緊鄰排列的切換鈕、規則列（不要用 .row，那是會左右撐開的清單列樣式） */
 .persona-tab > .kb-subtabs { margin-bottom: 12px; }
 .seg-group { display: inline-flex; gap: 4px; }
+/* AI 角色：員工／訪客切換鈕下的對象說明，與下方欄位標題拉開距離 */
+.persona-side-hint { margin: 6px 0 20px; }
 .kb-rule-item { display: flex; align-items: center; gap: 6px; }
 .kb-rule-add { display: flex; align-items: center; gap: 8px; }
 .persona-preview-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
