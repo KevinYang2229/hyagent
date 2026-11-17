@@ -9,8 +9,11 @@ import { getLLMProvider } from '@/lib/llm';
 import type { LLMProvider } from '@/lib/llm/types';
 import { logger } from '@/lib/logger';
 import { normalizeLocale } from '@/lib/locale';
+import { knowledgeAgentService } from '@/modules/knowledge/knowledge.agent-service';
+import { publicSuggestedPrompts } from '@/modules/knowledge/prompt-feed';
 import { tenantStore } from '@/modules/tenant/tenant.store';
 import { usageStore } from '@/modules/usage/usage.store';
+import { assistantAgentService } from './assistant.agent-service';
 import { conversationStore } from './conversation.store';
 import type { Session, TurnResult } from './conversation.types';
 import { intentRouter } from './intent-router';
@@ -25,22 +28,24 @@ export { isSubmitConfirmation } from './form.agent-service';
 function suggestSystem(locale?: string): string {
   if (normalizeLocale(locale) === 'en') {
     return [
-      'You generate "quick reply" suggestions for an OA chat UI. Respond entirely in English.',
-      "Based on the assistant's last message and the form state, produce the user's most likely, most helpful follow-up replies.",
+      'You generate "quick reply" suggestions for a chat assistant. Respond entirely in English.',
+      "Based on the user's question, the assistant's last message, and the form state, produce the user's most likely, most helpful follow-up replies.",
       'Rules:',
       '- Output 2-3 options; each a short imperative/answer phrase (no more than ~6 words).',
       '- Answer AS THE USER replying to the assistant, not restating the assistant; options must not overlap.',
       '- In the confirm stage include things like "Confirm & submit", "Edit details", "Cancel"; in the collecting stage match the field the assistant is asking about.',
+      '- Only use what appears in the conversation above. You do not know what the knowledge base or the company covers — never invent topics, policies, or documents (e.g. travel expenses, annual leave, employee handbook) that were not mentioned.',
       'Output ONLY a JSON string array, e.g. ["Confirm & submit","Change date"], with no extra text.',
     ].join('\n');
   }
   return [
-    '你是 OA 對話介面的「建議回覆」產生器，全程使用繁體中文。',
-    '根據「助理最後一則訊息」與表單狀態，產生使用者最可能、最有幫助的接續回覆。',
+    '你是對話助理的「建議回覆」產生器，全程使用繁體中文。',
+    '根據「使用者的提問」「助理最後一則訊息」與表單狀態，產生使用者最可能、最有幫助的接續回覆。',
     '規則：',
     '- 輸出 2-3 個選項；每個是簡短的祈使／回答短語（不超過 14 個字）。',
     '- 站在「使用者」立場回答助理，而非複述助理的話；選項之間語意不重複。',
     '- 確認階段可包含「確認送出」「修改內容」「取消」之類；收集階段則貼合助理正在詢問的欄位。',
+    '- 只能根據上面對話中出現過的內容提出追問或回答。你不知道知識庫或公司有哪些內容，不要自行假設或編造對話中沒出現的主題、制度或文件（例如差旅報帳、特休、員工手冊）。',
     '只輸出 JSON 字串陣列，例如 ["確認送出","修改日期"]，不要任何額外文字或說明。',
   ].join('\n');
 }
@@ -62,16 +67,27 @@ function parseSuggestions(text: string): string[] {
   }
 }
 
-/** 以一次獨立、輕量的 LLM 呼叫產生建議回覆；失敗不影響主流程 */
-async function generateSuggestions(
+/**
+ * 產生建議回覆（best-effort，失敗不影響主流程）。
+ * - 閒聊／守門（自我介紹、說明能力、婉拒離題）：直接用知識庫的開場推薦問句。產生器只看得到對話，
+ *   不知道租戶知識庫有什麼，會憑「公司 OA」的印象編出不相干的主題；開場推薦問句是從知識庫內容生成、
+ *   且只用訪客看得到的內容（publicSuggestedPrompts），拿來用不會洩漏可見範圍。
+ * - 其他回答（或沒有開場推薦問句時）：一次獨立、輕量的 LLM 呼叫，帶上使用者的提問，只能依對話內容建議。
+ */
+export async function generateSuggestions(
   llm: LLMProvider,
   session: Session,
   reply: string,
+  ctx: { serviceId: string; userText: string },
 ): Promise<string[]> {
   // 對話已結束（送出／取消／失敗）不需要建議；無回覆內容也略過
   if (!reply || ['submitted', 'cancelled', 'failed'].includes(session.status)) return [];
+  if (ctx.serviceId === assistantAgentService.id) {
+    const grounded = groundedOpeningPrompts(session);
+    if (grounded.length > 0) return grounded;
+  }
   try {
-    const userMsg = `助理最後一則訊息：\n「${reply}」\n\n目前表單狀態：${session.status}。\n請給建議回覆。`;
+    const userMsg = `使用者的提問：\n「${ctx.userText}」\n\n助理最後一則訊息：\n「${reply}」\n\n目前表單狀態：${session.status}。\n請給建議回覆。`;
     const result = await llm.createMessage({
       system: suggestSystem(session.locale),
       messages: [{ role: 'user', content: [{ type: 'text', text: userMsg }] }],
@@ -83,6 +99,19 @@ async function generateSuggestions(
     logger.warn({ err, sessionId: session.id }, 'generate suggestions failed');
     return [];
   }
+}
+
+/** 這位使用者有開通知識庫時，回傳依介面語言挑好的開場推薦問句；否則空陣列 */
+function groundedOpeningPrompts(session: Session): string[] {
+  const knowledgeOn = serviceRegistry
+    .enabledFor(session.tenantId, session.userId)
+    .some((svc) => svc.id === knowledgeAgentService.id);
+  if (!knowledgeOn) return [];
+  const lang = normalizeLocale(session.locale) === 'en' ? 'en' : 'zh-Hant';
+  return publicSuggestedPrompts(session.tenantId)
+    .map((p) => p[lang]?.trim())
+    .filter((t): t is string => !!t)
+    .slice(0, 3);
 }
 
 async function performTurn(session: Session, userText: string): Promise<TurnResult> {
@@ -115,7 +144,7 @@ async function performTurn(session: Session, userText: string): Promise<TurnResu
     'conversation turn routed',
   );
 
-  const suggestions = await generateSuggestions(llm, session, reply);
+  const suggestions = await generateSuggestions(llm, session, reply, { serviceId: service.id, userText });
   // 有回覆文字才可評價；報告 id 併進 trace，後台從回饋可追到那份報告。
   // 知識庫／代理自己回報 trace（知識庫查無資料時刻意不帶模型，不能拿改寫或重排的模型冒充）；
   // 沒有回報 trace 的服務才補上作答模型
