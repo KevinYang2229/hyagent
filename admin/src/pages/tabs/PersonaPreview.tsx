@@ -23,6 +23,8 @@ export default function PersonaPreview({
 }) {
   const [locale, setLocale] = useState<Locale>("zh-Hant");
   const [service, setService] = useState<PersonaServiceKey>("knowledge");
+  // 預覽對象：一次只顯示一側；API 一次回兩側，切換只換顯示、不重新取得
+  const [side, setSide] = useState<"member" | "guest">("member");
   const [result, setResult] = useState<Result | null>(null);
   const [failed, setFailed] = useState(false);
   // 遞增的請求序號：較早發出但較晚回來的回應直接丟棄，避免舊結果蓋掉新結果
@@ -86,8 +88,20 @@ export default function PersonaPreview({
       ) : (
         <>
           {/* 是否有角色看草稿本身、且依目前功能：有 AI 名稱時 server 每側都會回名稱句，不能用「有沒有行」判斷 */}
-          <PreviewBox title="登入員工" lines={result?.member} rules={service === "knowledge" ? result?.rules.member : null} hasRole={sideHasRole(patch.member, service)} />
-          <PreviewBox title="網站訪客" lines={result?.guest} rules={service === "knowledge" ? result?.rules.guest : null} hasRole={sideHasRole(patch.guest, service)} />
+          <div className="seg-group" role="group" aria-label="預覽對象" style={{ marginTop: 8 }}>
+            {([["member", "登入員工"], ["guest", "網站訪客"]] as const).map(([key, label]) => (
+              <button key={key} type="button" aria-pressed={side === key}
+                className={`btn btn-sm ${side === key ? "btn-primary" : "btn-ghost"}`} onClick={() => setSide(key)}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <PreviewBox
+            key={side}
+            lines={result?.[side]}
+            rules={service === "knowledge" ? result?.rules[side] : null}
+            hasRole={sideHasRole(patch[side], service)}
+          />
           {service === "knowledge" && <p className="field-hint">填表、代理等服務另有各自的規則。</p>}
         </>
       )}
@@ -95,10 +109,9 @@ export default function PersonaPreview({
   );
 }
 
-function PreviewBox({ title, lines, rules, hasRole }: { title: string; lines?: string[]; rules?: KbRuleItem[] | null; hasRole: boolean }) {
+function PreviewBox({ lines, rules, hasRole }: { lines?: string[]; rules?: KbRuleItem[] | null; hasRole: boolean }) {
   return (
     <div className="field" style={{ marginTop: 8 }}>
-      <div className="field-hint">{title}</div>
       {lines === undefined ? (
         <pre className="persona-preview">…</pre>
       ) : (

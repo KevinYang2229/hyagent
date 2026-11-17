@@ -25,6 +25,11 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+/** 預覽改成切換顯示：一次只有一側的框 */
+function showGuest() {
+  fireEvent.click(screen.getByRole('button', { name: '網站訪客' }));
+}
+
 /** 推進 debounce 並讓 promise 結算 */
 async function flush(ms = 400) {
   await act(async () => {
@@ -46,9 +51,12 @@ it('掛載 400ms 後呼叫一次，顯示每一行，兩側各有可展開的平
     service: 'knowledge',
   });
   expect(screen.getByText(/員工第一行/)).toHaveTextContent('員工第二行');
-  expect(screen.getByText(/訪客第一行/)).toBeInTheDocument();
-  expect(screen.getAllByText(SUMMARY)).toHaveLength(2);
+  expect(screen.queryByText(/訪客第一行/)).not.toBeInTheDocument();
+  expect(screen.getAllByText(SUMMARY)).toHaveLength(1);
   expect(screen.getByText(/- 員工規則/)).toBeInTheDocument();
+  showGuest();
+  expect(screen.getByText(/訪客第一行/)).toBeInTheDocument();
+  expect(screen.queryByText(/員工第一行/)).not.toBeInTheDocument();
   expect(screen.getByText(/- 訪客規則/)).toBeInTheDocument();
   expect(screen.getByText('填表、代理等服務另有各自的規則。')).toBeInTheDocument();
 });
@@ -58,7 +66,7 @@ it('平台規則預設收合', async () => {
   const { container } = render(<PersonaPreview tenantId="t1" persona={{}} />);
   await flush();
   const details = container.querySelectorAll('details');
-  expect(details).toHaveLength(2);
+  expect(details).toHaveLength(1);
   details.forEach((d) => expect(d).not.toHaveAttribute('open'));
 });
 
@@ -95,16 +103,21 @@ it('某側沒有角色設定時顯示「維持預設行為」，即使有 AI 名
   vi.mocked(api.previewPersona).mockResolvedValue({ member: [NAME], guest: [NAME, '線上客服描述'], rules: RULES });
   render(<PersonaPreview tenantId="t1" persona={{ member: null as never, guest: { preset: 'cs' } }} />);
   await flush();
-  expect(screen.getAllByText(EMPTY)).toHaveLength(1);
-  expect(screen.getAllByText(new RegExp(NAME))).toHaveLength(2);
-  expect(screen.getAllByText(SUMMARY)).toHaveLength(2);
+  // 員工側沒有角色：名稱句之外加上「維持預設行為」
+  expect(screen.getByText(EMPTY)).toBeInTheDocument();
+  expect(screen.getByText(new RegExp(NAME))).toBeInTheDocument();
+  showGuest();
+  expect(screen.queryByText(EMPTY)).not.toBeInTheDocument();
+  expect(screen.getByText(/線上客服描述/)).toBeInTheDocument();
 });
 
 it('預設角色但有補充說明，不算空', async () => {
   vi.mocked(api.previewPersona).mockResolvedValue({ member: ['補充'], guest: [], rules: RULES });
   render(<PersonaPreview tenantId="t1" persona={{ member: { preset: 'default', notes: '夥伴' } }} />);
   await flush();
-  expect(screen.getAllByText(EMPTY)).toHaveLength(1); // 只有訪客側
+  expect(screen.queryByText(EMPTY)).not.toBeInTheDocument();
+  showGuest();
+  expect(screen.getByText(EMPTY)).toBeInTheDocument();
 });
 
 it('切換 English 會以 en 重新取得', async () => {
@@ -147,23 +160,39 @@ it('功能選單：預設知識庫；切到填表以 service=form 呼叫，且�
   await flush();
   expect(vi.mocked(api.previewPersona).mock.calls.at(-1)?.[1].service).toBe('form');
   expect(screen.queryByText(SUMMARY)).not.toBeInTheDocument();
-  expect(screen.getAllByText('此功能的平台規則不在預覽範圍')).toHaveLength(2);
+  expect(screen.getAllByText('此功能的平台規則不在預覽範圍')).toHaveLength(1);
 });
 
 it('依目前功能判斷有沒有角色：只覆寫填表時，知識庫預覽顯示「維持預設行為」', async () => {
   vi.mocked(api.previewPersona).mockResolvedValue({ member: [], guest: [], rules: RULES });
   render(<PersonaPreview tenantId="t1" persona={{ member: { preset: 'default', services: { form: 'hr' } } }} />);
   await flush();
-  expect(screen.getAllByText(EMPTY)).toHaveLength(2); // 員工（知識庫沒覆寫）＋訪客
+  expect(screen.getByText(EMPTY)).toBeInTheDocument(); // 員工：知識庫沒覆寫
   vi.mocked(api.previewPersona).mockResolvedValue({ member: ['HR 描述'], guest: [], rules: RULES });
   fireEvent.change(screen.getByLabelText('預覽功能'), { target: { value: 'form' } });
   await flush();
-  expect(screen.getAllByText(EMPTY)).toHaveLength(1); // 只剩訪客
+  expect(screen.queryByText(EMPTY)).not.toBeInTheDocument(); // 員工：填表有覆寫
 });
 
 it('功能覆寫成預設且沒有補充說明時，該功能顯示「維持預設行為」', async () => {
   vi.mocked(api.previewPersona).mockResolvedValue({ member: [], guest: [], rules: RULES });
   render(<PersonaPreview tenantId="t1" persona={{ member: { preset: 'hr', services: { knowledge: 'default' } } }} />);
   await flush();
-  expect(screen.getAllByText(EMPTY)).toHaveLength(2);
+  expect(screen.getByText(EMPTY)).toBeInTheDocument();
+});
+
+it('登入員工／網站訪客切換：預設員工，切換只換顯示、不重新取得', async () => {
+  vi.mocked(api.previewPersona).mockResolvedValue({ member: ['員工角色'], guest: ['訪客角色'], rules: RULES });
+  render(<PersonaPreview tenantId="t1" persona={{}} />);
+  await flush();
+  expect(screen.getByRole('group', { name: '預覽對象' })).not.toHaveClass('row');
+  expect(screen.getByRole('button', { name: '登入員工' })).toHaveAttribute('aria-pressed', 'true');
+  expect(screen.getByText('員工角色')).toBeInTheDocument();
+  const calls = vi.mocked(api.previewPersona).mock.calls.length;
+  showGuest();
+  await flush();
+  expect(screen.getByRole('button', { name: '網站訪客' })).toHaveAttribute('aria-pressed', 'true');
+  expect(screen.getByText('訪客角色')).toBeInTheDocument();
+  expect(screen.queryByText('員工角色')).not.toBeInTheDocument();
+  expect(vi.mocked(api.previewPersona).mock.calls.length).toBe(calls);
 });
