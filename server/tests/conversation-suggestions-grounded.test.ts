@@ -101,3 +101,23 @@ describe('其他回答：產生器只能根據對話內容', () => {
     expect(createMessage.mock.calls[0][0].system).toContain('Only use what appears in the conversation above');
   });
 });
+
+describe('產生器的 prompt 同時要求「讓對話往前」，不要客套話', () => {
+  // 合併 fix/suggestions-no-acknowledgement 時，這兩條規則在解衝突時被漏掉；解析時的過濾還在，但少了事前的指示
+  it('中文規則：不要輸出「了解」「好的」「謝謝」這類短語', async () => {
+    const { llm, createMessage } = mockLLM();
+    await generateSuggestions(llm, session(tenantWithPrompts()), '殘影是電子紙特性', { serviceId: 'knowledge', userText: '有殘影正常嗎' });
+    const system = createMessage.mock.calls[0][0].system as string;
+    expect(system).toContain('每個選項都要讓對話往前');
+    expect(system).toContain('不要輸出「了解」「好的」「謝謝」「收到」「知道了」');
+    expect(system).toContain('只能根據上面對話中出現過的內容');
+  });
+
+  it('英文規則：Every option must move the conversation forward', async () => {
+    const { llm, createMessage } = mockLLM('["Tell me more"]');
+    await generateSuggestions(llm, session(tenantWithPrompts(), 'en'), 'Ghosting is normal', { serviceId: 'knowledge', userText: 'ghosting?' });
+    const system = createMessage.mock.calls[0][0].system as string;
+    expect(system).toContain('Every option must move the conversation forward');
+    expect(system).toContain('Only use what appears in the conversation above');
+  });
+});

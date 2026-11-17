@@ -34,6 +34,7 @@ function suggestSystem(locale?: string): string {
       '- Output 2-3 options; each a short imperative/answer phrase (no more than ~6 words).',
       '- Answer AS THE USER replying to the assistant, not restating the assistant; options must not overlap.',
       '- In the confirm stage include things like "Confirm & submit", "Edit details", "Cancel"; in the collecting stage match the field the assistant is asking about.',
+      '- Every option must move the conversation forward: a follow-up question, a concrete answer, or an action. Never output acknowledgements or courtesies such as "Got it", "OK", "Thanks", "Understood", and never begin or end an option with one (e.g. not "Change the date, thanks").',
       '- Only use what appears in the conversation above. You do not know what the knowledge base or the company covers — never invent topics, policies, or documents (e.g. travel expenses, annual leave, employee handbook) that were not mentioned.',
       'Output ONLY a JSON string array, e.g. ["Confirm & submit","Change date"], with no extra text.',
     ].join('\n');
@@ -45,6 +46,7 @@ function suggestSystem(locale?: string): string {
     '- 輸出 2-3 個選項；每個是簡短的祈使／回答短語（不超過 14 個字）。',
     '- 站在「使用者」立場回答助理，而非複述助理的話；選項之間語意不重複。',
     '- 確認階段可包含「確認送出」「修改內容」「取消」之類；收集階段則貼合助理正在詢問的欄位。',
+    '- 每個選項都要讓對話往前：接續提問、具體回答或操作。不要輸出「了解」「好的」「謝謝」「收到」「知道了」這類客套或表示收到的短語，選項開頭與結尾也不要加（例如不要「請幫我查詢，謝謝」）。',
     '- 只能根據上面對話中出現過的內容提出追問或回答。你不知道知識庫或公司有哪些內容，不要自行假設或編造對話中沒出現的主題、制度或文件（例如差旅報帳、特休、員工手冊）。',
     '只輸出 JSON 字串陣列，例如 ["確認送出","修改日期"]，不要任何額外文字或說明。',
   ].join('\n');
