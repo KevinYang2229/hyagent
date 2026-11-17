@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
 import type { RulesDraft, RulesInfo } from "./persona.util";
+import AudienceSwitch from "./AudienceSwitch";
 
 export type { RulesDraft, RulesInfo };
 
@@ -36,17 +37,12 @@ export default function KnowledgeRulesSection({
 
   return (
     <div className="kb-rules">
-      <div className="seg-group" role="group" aria-label="規則對象">
-        {([["member", "登入員工"], ["guest", "網站訪客"]] as const).map(([key, label]) => (
-          <button key={key} type="button" aria-pressed={side === key}
-            className={`btn btn-sm ${side === key ? "btn-primary" : "btn-ghost"}`} onClick={() => setSide(key)}>
-            {label}
-          </button>
-        ))}
-      </div>
-      <p className="field-hint persona-side-hint">
-        {value[side] === null ? "目前使用內建規則；修改任何一條就會改為自訂。" : "已自訂；按「還原預設」可回到內建規則。"}
-      </p>
+      <AudienceSwitch
+        label="規則對象"
+        value={side}
+        onChange={setSide}
+        hint={value[side] === null ? "目前使用內建規則；修改任何一條就會改為自訂。" : "已自訂；按「還原預設」可回到內建規則。"}
+      />
 
       <ol className="kb-rules-list">
         {list.map((text, i) => (

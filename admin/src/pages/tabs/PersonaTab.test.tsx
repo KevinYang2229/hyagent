@@ -149,3 +149,23 @@ it('「還原預設」與「儲存規則」在同一列', async () => {
   const save = await screen.findByRole('button', { name: '儲存規則' });
   expect(screen.getByRole('button', { name: '還原預設' }).parentElement).toBe(save.parentElement);
 });
+
+it('三個子頁的「登入員工／網站訪客」切換一致：同一個元件、放在卡片內容最上方', async () => {
+  vi.mocked(api.previewPersona).mockResolvedValue({ member: [], guest: [], rules: { member: [], guest: [] } });
+  render(<PersonaTab tenant={base} onSaved={vi.fn()} onError={vi.fn()} />);
+  await screen.findByLabelText('規則 1');
+  for (const sub of ['設定', '知識庫規則', '預覽']) {
+    fireEvent.click(screen.getByRole('tab', { name: sub }));
+    const panel = Array.from(document.querySelectorAll('.card-body > *')).find((el) => !(el as HTMLElement).hidden)!;
+    const first = panel.querySelector('.audience-switch');
+    expect(first, sub).not.toBeNull();
+    // 切換在最上方：其他標題、說明、輸入框都排在它後面
+    for (const el of Array.from(panel.querySelectorAll('.field-label, .field-hint, input, select, textarea'))) {
+      if (first!.contains(el)) continue;
+      expect(first!.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING, `${sub}: ${el.textContent}`).toBeTruthy();
+    }
+    expect(first!.querySelectorAll('button')).toHaveLength(sub === '預覽' ? 4 : 2);
+    expect(first!.textContent).toContain('登入員工');
+    expect(first!.textContent).toContain('網站訪客');
+  }
+});

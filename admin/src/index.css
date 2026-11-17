@@ -1383,12 +1383,11 @@ li:not(.is-empty) > .feedback-bar { background: var(--bg-secondary); }
 /* AI 角色頁：緊鄰排列的切換鈕、規則列（不要用 .row，那是會左右撐開的清單列樣式） */
 .persona-tab > .kb-subtabs { margin-bottom: 12px; }
 .seg-group { display: inline-flex; gap: 4px; }
-/* AI 角色：員工／訪客切換鈕下的對象說明，與下方欄位標題拉開距離 */
-.persona-side-hint { margin: 6px 0 20px; }
+/* AI 角色三個子頁共用的員工／訪客切換：切換鈕 → 說明 → 固定間距，才接下方標題 */
+.audience-switch { margin-bottom: 20px; }
+.audience-switch-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.audience-switch-hint { margin-top: 6px; }
 .kb-rule-item { display: flex; align-items: center; gap: 6px; }
 .kb-rule-add { display: flex; align-items: center; gap: 8px; }
-.persona-preview-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .persona-overrides-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; }
 .persona-override { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--text-secondary); }
-.persona-preview-title { display: flex; align-items: center; gap: 8px; }
-.persona-preview-title .input { width: auto; }

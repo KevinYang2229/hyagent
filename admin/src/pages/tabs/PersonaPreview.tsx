@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { PERSONA_SERVICES, type AssistantPersona, type KbRuleItem, type PersonaServiceKey } from "@hyagent/shared";
 import { api } from "../../api";
+import AudienceSwitch from "./AudienceSwitch";
 import { sideHasRole, toPersonaPatch, type RulesDraft } from "./persona.util";
 
 const DEBOUNCE_MS = 400;
@@ -15,11 +16,14 @@ export default function PersonaPreview({
   tenantId,
   persona,
   rules,
+  notice,
 }: {
   tenantId: string;
   persona: AssistantPersona;
   /** 知識庫規則草稿（尚未存檔）；不帶時 server 用已存的自訂 */
   rules?: RulesDraft;
+  /** 草稿尚未儲存時的提醒，取代對象說明顯示在切換鈕下方 */
+  notice?: string;
 }) {
   const [locale, setLocale] = useState<Locale>("zh-Hant");
   const [service, setService] = useState<PersonaServiceKey>("knowledge");
@@ -59,32 +63,30 @@ export default function PersonaPreview({
   }, [tenantId, patchKey, rulesKey, locale, service]);
 
   return (
-    <div className="persona-preview-block" style={{ marginTop: 20 }}>
-      {/* 第一排：先選「給誰看」（對象），右側語言；第二排：選功能。對象是最常切換的維度，放最上面 */}
-      <div className="persona-preview-head">
-        <div className="seg-group" role="group" aria-label="預覽對象">
-          {([["member", "登入員工"], ["guest", "網站訪客"]] as const).map(([key, label]) => (
-            <button key={key} type="button" aria-pressed={side === key}
-              className={`btn btn-sm ${side === key ? "btn-primary" : "btn-ghost"}`} onClick={() => setSide(key)}>
-              {label}
-            </button>
-          ))}
-        </div>
-        <div className="seg-group" role="group" aria-label="預覽語言">
-          {(["zh-Hant", "en"] as const).map((l) => (
-            <button
-              key={l}
-              type="button"
-              className={`btn btn-sm ${locale === l ? "btn-primary" : "btn-ghost"}`}
-              aria-pressed={locale === l}
-              onClick={() => setLocale(l)}
-            >
-              {l === "en" ? "English" : "中文"}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="persona-preview-title" style={{ marginTop: 12 }}>
+    <div className="persona-preview-block">
+      {/* 與「設定」「知識庫規則」同一套：切換在最上方（右側語言），下面依序是功能、預覽內容、規則 */}
+      <AudienceSwitch
+        label="預覽對象"
+        value={side}
+        onChange={setSide}
+        hint={notice ?? (side === "member" ? "已登入的公司員工會收到的指示。" : "未登入的訪客會收到的指示；不附知識庫出處。")}
+        extra={
+          <div className="seg-group" role="group" aria-label="預覽語言">
+            {(["zh-Hant", "en"] as const).map((l) => (
+              <button
+                key={l}
+                type="button"
+                className={`btn btn-sm ${locale === l ? "btn-primary" : "btn-ghost"}`}
+                aria-pressed={locale === l}
+                onClick={() => setLocale(l)}
+              >
+                {l === "en" ? "English" : "中文"}
+              </button>
+            ))}
+          </div>
+        }
+      />
+      <div className="field">
         <label className="field-label" htmlFor="persona-preview-service">功能</label>
         <select id="persona-preview-service" className="input" aria-label="預覽功能" value={service} onChange={(e) => setService(e.target.value as PersonaServiceKey)}>
           {PERSONA_SERVICES.map((s) => (
@@ -95,16 +97,13 @@ export default function PersonaPreview({
       {failed ? (
         <p className="field-hint">預覽暫時無法產生</p>
       ) : (
-        <>
-          {/* 是否有角色看草稿本身、且依目前功能：有 AI 名稱時 server 每側都會回名稱句，不能用「有沒有行」判斷 */}
-          <PreviewBox
-            key={side}
-            lines={result?.[side]}
-            rules={service === "knowledge" ? result?.rules[side] : null}
-            hasRole={sideHasRole(patch[side], service)}
-          />
-          {service === "knowledge" && <p className="field-hint">填表、代理等服務另有各自的規則。</p>}
-        </>
+        // 是否有角色看草稿本身、且依目前功能：有 AI 名稱時 server 每側都會回名稱句，不能用「有沒有行」判斷
+        <PreviewBox
+          key={side}
+          lines={result?.[side]}
+          rules={service === "knowledge" ? result?.rules[side] : null}
+          hasRole={sideHasRole(patch[side], service)}
+        />
       )}
     </div>
   );
@@ -112,32 +111,39 @@ export default function PersonaPreview({
 
 function PreviewBox({ lines, rules, hasRole }: { lines?: string[]; rules?: KbRuleItem[] | null; hasRole: boolean }) {
   return (
-    <div className="field" style={{ marginTop: 8 }}>
-      {lines === undefined ? (
-        <pre className="persona-preview">…</pre>
-      ) : (
-        <>
-          {lines.length > 0 && <pre className="persona-preview">{lines.join("\n")}</pre>}
-          {/* 沒選角色時：有 AI 名稱句就說明「只帶入名稱」，否則寫「維持預設行為」會跟上面那行看起來矛盾 */}
-          {!hasRole && (
-            <pre className="persona-preview">
-              {lines.length > 0 ? "未選擇角色：只帶入 AI 名稱，不加角色描述" : "維持預設行為，不加角色指示"}
-            </pre>
-          )}
+    <>
+      <div className="field">
+        <span className="field-label">AI 收到的角色指示</span>
+        {lines === undefined ? (
+          <pre className="persona-preview">…</pre>
+        ) : (
+          <>
+            {lines.length > 0 && <pre className="persona-preview">{lines.join("\n")}</pre>}
+            {/* 沒選角色時：有 AI 名稱句就說明「只帶入名稱」，否則寫「維持預設行為」會跟上面那行看起來矛盾 */}
+            {!hasRole && (
+              <pre className="persona-preview">
+                {lines.length > 0 ? "未選擇角色：只帶入 AI 名稱，不加角色描述" : "維持預設行為，不加角色指示"}
+              </pre>
+            )}
+          </>
+        )}
+      </div>
+      {lines !== undefined && (
+        <div className="field">
           {rules === null ? (
-            <div className="field-hint">此功能的平台規則不在預覽範圍</div>
+            <span className="field-hint">此功能的平台規則不在預覽範圍；填表、代理等服務另有各自的規則。</span>
           ) : (
-          <details className="persona-rules">
-            <summary>展開平台規則（知識庫問答，不可修改）</summary>
-            <ul className="persona-preview persona-rules-list">
-              {(rules ?? []).map((r, i) => (
-                <li key={i}>{r.locked ? `🔒 ${r.text}` : r.text}</li>
-              ))}
-            </ul>
-          </details>
+            <details className="persona-rules">
+              <summary>展開知識庫規則（🔒 為不可修改的防護規則）</summary>
+              <ul className="persona-preview persona-rules-list">
+                {(rules ?? []).map((r, i) => (
+                  <li key={i}>{r.locked ? `🔒 ${r.text}` : r.text}</li>
+                ))}
+              </ul>
+            </details>
           )}
-        </>
+        </div>
       )}
-    </div>
+    </>
   );
 }

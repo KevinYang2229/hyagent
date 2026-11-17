@@ -9,6 +9,7 @@ import {
   type GuestPersonaPresetId,
   type MemberPersonaPresetId,
 } from "@hyagent/shared";
+import AudienceSwitch from "./AudienceSwitch";
 
 const NOTES_MAX = 500;
 const CONTACT_MAX = 200;
@@ -34,17 +35,12 @@ export default function PersonaSection({
 
   return (
     <div className="persona-section">
-      <div className="seg-group" role="group" aria-label="角色對象">
-        {([["member", "登入員工"], ["guest", "網站訪客"]] as const).map(([key, label]) => (
-          <button key={key} type="button" aria-pressed={side === key}
-            className={`btn btn-sm ${side === key ? "btn-primary" : "btn-ghost"}`} onClick={() => setSide(key)}>
-            {label}
-          </button>
-        ))}
-      </div>
-      <p className="field-hint persona-side-hint">
-        {side === "member" ? "已登入的公司員工。" : "未登入的使用者都算訪客；訪客的回答不會附知識庫出處。"}
-      </p>
+      <AudienceSwitch
+        label="角色對象"
+        value={side}
+        onChange={setSide}
+        hint={side === "member" ? "已登入的公司員工。" : "未登入的使用者都算訪客；訪客的回答不會附知識庫出處。"}
+      />
 
       {side === "member" && (<>
       <div className="field">

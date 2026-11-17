@@ -11,7 +11,7 @@ vi.mock('../../api', () => ({ api: { previewPersona: vi.fn() } }));
 const EMPTY = '維持預設行為，不加角色指示';
 /** 有 AI 名稱句但沒選角色：寫「維持預設行為」會跟上面那行名稱句看起來矛盾 */
 const NAME_ONLY = '未選擇角色：只帶入 AI 名稱，不加角色描述';
-const SUMMARY = '展開平台規則（知識庫問答，不可修改）';
+const SUMMARY = '展開知識庫規則（🔒 為不可修改的防護規則）';
 const RULES = {
   member: [{ text: '- 員工規則', locked: false }, { text: '- 員工防護', locked: true }],
   guest: [{ text: '- 訪客規則', locked: false }],
@@ -60,7 +60,6 @@ it('掛載 400ms 後呼叫一次，顯示每一行，兩側各有可展開的平
   expect(screen.getByText(/訪客第一行/)).toBeInTheDocument();
   expect(screen.queryByText(/員工第一行/)).not.toBeInTheDocument();
   expect(screen.getByText(/- 訪客規則/)).toBeInTheDocument();
-  expect(screen.getByText('填表、代理等服務另有各自的規則。')).toBeInTheDocument();
 });
 
 it('平台規則預設收合', async () => {
@@ -162,7 +161,7 @@ it('功能選單：預設知識庫；切到填表以 service=form 呼叫，且�
   await flush();
   expect(vi.mocked(api.previewPersona).mock.calls.at(-1)?.[1].service).toBe('form');
   expect(screen.queryByText(SUMMARY)).not.toBeInTheDocument();
-  expect(screen.getAllByText('此功能的平台規則不在預覽範圍')).toHaveLength(1);
+  expect(screen.getAllByText('此功能的平台規則不在預覽範圍；填表、代理等服務另有各自的規則。')).toHaveLength(1);
 });
 
 it('依目前功能判斷有沒有角色：只覆寫填表時，知識庫預覽顯示「維持預設行為」', async () => {
@@ -207,6 +206,7 @@ it('版面：先選預覽對象（登入員工／網站訪客），再選功能�
   // DOCUMENT_POSITION_FOLLOWING：功能下拉排在對象切換之後
   expect(audience.compareDocumentPosition(service) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(screen.getByText('功能')).toBeInTheDocument();
+  expect(screen.getByText('AI 收到的角色指示')).toBeInTheDocument();
   expect(screen.queryByText('預覽（AI 實際收到的角色指示）')).not.toBeInTheDocument();
 });
 

@@ -144,12 +144,12 @@ export default function PersonaTab({
             )}
           </div>
           {sub === "preview" && (
-            <>
-              {(dirty || rulesDirty) && (
-                <p className="field-hint">預覽的是尚未儲存的內容，回到對應的子頁按儲存後才會生效。</p>
-              )}
-              <PersonaPreview tenantId={tenant.id} persona={persona} rules={rulesInfo ? toRulesPatch(rulesDraft, rulesInfo) : undefined} />
-            </>
+            <PersonaPreview
+              tenantId={tenant.id}
+              persona={persona}
+              rules={rulesInfo ? toRulesPatch(rulesDraft, rulesInfo) : undefined}
+              notice={dirty || rulesDirty ? "預覽的是尚未儲存的內容，回到對應的子頁按儲存後才會生效。" : undefined}
+            />
           )}
         </div>
       </div>
