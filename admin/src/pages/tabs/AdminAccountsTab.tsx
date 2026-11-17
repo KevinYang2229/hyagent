@@ -146,7 +146,7 @@ export default function AdminAccountsTab({ tenantId, onError }: { tenantId: stri
       </div>
 
       <div className="card-body" style={{ borderBottom: '1px solid var(--border-color)' }}>
-        <div className="toolbar">
+        <div className="inline-form">
           <label className="field">
             <span className="field-label">帳號</span>
             <input className="input" value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="off" placeholder="例如 alice01" />

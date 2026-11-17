@@ -707,6 +707,20 @@ li:not(.is-empty) > .feedback-bar { background: var(--bg-secondary); }
 .toolbar {
   @apply flex flex-wrap items-center gap-2;
 }
+/* 單列表單（數個欄位＋送出鈕）：欄位等寬、標題與輸入框對齊，按鈕貼齊輸入框底部 */
+.inline-form {
+  @apply flex flex-wrap items-end gap-3;
+}
+.inline-form > .field {
+  @apply mt-0 min-w-[160px] flex-[1_1_0];
+}
+.inline-form > .field > .input,
+.inline-form > .field > .select {
+  @apply h-[38px];
+}
+.inline-form > .btn {
+  @apply shrink-0;
+}
 .spacer {
   @apply flex-1;
 }
@@ -902,7 +916,8 @@ li:not(.is-empty) > .feedback-bar { background: var(--bg-secondary); }
   background: linear-gradient(180deg, #5048d8, var(--accent-hover)) !important;
 }
 .login-err {
-  color: var(--danger);
+  /* --danger 只在登入卡片內定義；後台頁面用 fallback，錯誤提示一律紅字 */
+  color: var(--danger, var(--status-danger));
   font-size: 13px;
   margin-top: 10px;
 }
