@@ -336,9 +336,6 @@
   .md-body li > ol {
     @apply my-0.5;
   }
-  .md-body a {
-    @apply text-[var(--primary-color)] underline underline-offset-2;
-  }
   /* 回覆中的圖片不載入（見 SafeMarkdown.tsx），以 alt 文字代替 */
   .md-body .md-img-alt {
     @apply italic opacity-70;
@@ -595,9 +592,6 @@
   .form-field-help {
     @apply mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-normal text-[var(--text-secondary)];
   }
-  .form-field-help a {
-    @apply font-medium text-[var(--primary-color)] underline underline-offset-2;
-  }
   .form-error {
     @apply mb-3 rounded-md bg-[var(--badge-danger-bg)] px-3 py-2 text-sm text-[var(--badge-danger-text)];
   }
@@ -794,3 +788,37 @@
 .confirm-table input[type='number'] { width: 5.5rem; }
 .confirm-table tr[data-removed] td { opacity: 0.45; }
 .confirm-unit { margin-left: 0.35rem; opacity: 0.7; }
+
+/*
+ * 連結：刻意寫在所有 @layer 之外。
+ * @hyagent/ui/index.css 有未分層的全域 `a { color: inherit; text-decoration: none }`，
+ * 未分層樣式永遠勝過 @layer 內的樣式（不看選擇器權重）；寫進 @layer components 會被蓋成普通文字，
+ * AI 回覆裡的網址就看不出可以點（見 linkStyles.test.ts）。
+ */
+.md-body a {
+  color: var(--primary-color);
+  font-weight: 500;
+  text-decoration-line: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere; /* 長網址在窄氣泡裡換行，不撐破版面 */
+  cursor: pointer;
+}
+.md-body a:hover,
+.md-body a:focus-visible {
+  color: color-mix(in srgb, var(--primary-color) 80%, black);
+  /* ui 的 a:hover 會拿掉底線，權重與 .md-body a 相同；明寫保留，不靠先後順序 */
+  text-decoration-line: underline;
+  text-decoration-thickness: 2px;
+}
+.md-body a:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+.form-field-help a {
+  color: var(--primary-color);
+  font-weight: 500;
+  text-decoration-line: underline;
+  text-underline-offset: 2px;
+}
