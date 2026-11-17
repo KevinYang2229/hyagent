@@ -9,6 +9,8 @@ import { api } from '../../api';
 vi.mock('../../api', () => ({ api: { previewPersona: vi.fn() } }));
 
 const EMPTY = '維持預設行為，不加角色指示';
+/** 有 AI 名稱句但沒選角色：寫「維持預設行為」會跟上面那行名稱句看起來矛盾 */
+const NAME_ONLY = '未選擇角色：只帶入 AI 名稱，不加角色描述';
 const SUMMARY = '展開平台規則（知識庫問答，不可修改）';
 const RULES = {
   member: [{ text: '- 員工規則', locked: false }, { text: '- 員工防護', locked: true }],
@@ -99,15 +101,15 @@ it('先發的請求較晚回來時，不會蓋掉後發請求的結果', async (
   expect(screen.getByText('新的結果')).toBeInTheDocument();
 });
 
-it('某側沒有角色設定時顯示「維持預設行為」，即使有 AI 名稱句', async () => {
+it('某側沒有角色設定但有 AI 名稱句：說明只帶入名稱，不寫「維持預設行為」', async () => {
   vi.mocked(api.previewPersona).mockResolvedValue({ member: [NAME], guest: [NAME, '線上客服描述'], rules: RULES });
   render(<PersonaPreview tenantId="t1" persona={{ member: null as never, guest: { preset: 'cs' } }} />);
   await flush();
-  // 員工側沒有角色：名稱句之外加上「維持預設行為」
-  expect(screen.getByText(EMPTY)).toBeInTheDocument();
+  expect(screen.getByText(NAME_ONLY)).toBeInTheDocument();
+  expect(screen.queryByText(EMPTY)).not.toBeInTheDocument();
   expect(screen.getByText(new RegExp(NAME))).toBeInTheDocument();
   showGuest();
-  expect(screen.queryByText(EMPTY)).not.toBeInTheDocument();
+  expect(screen.queryByText(NAME_ONLY)).not.toBeInTheDocument();
   expect(screen.getByText(/線上客服描述/)).toBeInTheDocument();
 });
 

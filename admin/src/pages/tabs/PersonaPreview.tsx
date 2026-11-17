@@ -118,7 +118,12 @@ function PreviewBox({ lines, rules, hasRole }: { lines?: string[]; rules?: KbRul
       ) : (
         <>
           {lines.length > 0 && <pre className="persona-preview">{lines.join("\n")}</pre>}
-          {!hasRole && <pre className="persona-preview">維持預設行為，不加角色指示</pre>}
+          {/* 沒選角色時：有 AI 名稱句就說明「只帶入名稱」，否則寫「維持預設行為」會跟上面那行看起來矛盾 */}
+          {!hasRole && (
+            <pre className="persona-preview">
+              {lines.length > 0 ? "未選擇角色：只帶入 AI 名稱，不加角色描述" : "維持預設行為，不加角色指示"}
+            </pre>
+          )}
           {rules === null ? (
             <div className="field-hint">此功能的平台規則不在預覽範圍</div>
           ) : (
