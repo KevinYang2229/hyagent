@@ -125,7 +125,7 @@ export default function SessionsPanel({
       </div>
       <div className="card-body">
         <div className="field">
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <div className="filter-bar">
             <input
               className="input"
               style={{ flex: '1 1 220px' }}
@@ -182,64 +182,66 @@ export default function SessionsPanel({
           </div>
         ) : (
           <>
-            <table style={{ width: '100%', fontSize: 13 }}>
-              <thead>
-                <tr style={{ textAlign: 'left' }}>
-                  <th>使用者</th>
-                  <th>建立於</th>
-                  <th>到期</th>
-                  <th>公鑰</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {shown.map((s) => (
-                  <tr key={s.id}>
-                    <td>
-                      {displayName(s)}
-                      {!s.name && (
-                        <span className="field-hint" style={{ marginLeft: 6 }}>
-                          （客戶未提供姓名）
-                        </span>
-                      )}
-                    </td>
-                    <td style={{ whiteSpace: 'nowrap' }}>
-                      {new Date(s.createdAt).toLocaleString()}
-                    </td>
-                    <td style={{ whiteSpace: 'nowrap' }} title={new Date(s.expiresAt).toLocaleString()}>
-                      {remaining(s.expiresAt)}
-                    </td>
-                    <td style={{ fontFamily: 'monospace' }} title={s.kid}>
-                      {s.kid.slice(0, 8)}…
-                    </td>
-                    <td style={{ whiteSpace: 'nowrap' }}>
-                      <button className="btn" disabled={readonly || busy} onClick={() => revokeOne(s)}>
-                        作廢
-                      </button>
-                      <button className="btn" disabled={readonly || busy} onClick={() => revokeAllOf(s)}>
-                        作廢此人全部
-                      </button>
-                    </td>
+            <div className="table-scroll">
+              <table className="data-table">
+                <thead>
+                  <tr style={{ textAlign: 'left' }}>
+                    <th>使用者</th>
+                    <th>建立於</th>
+                    <th>到期</th>
+                    <th>公鑰</th>
+                    <th />
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {shown.map((s) => (
+                    <tr key={s.id}>
+                      <td>
+                        {displayName(s)}
+                        {!s.name && (
+                          <span className="field-hint" style={{ marginLeft: 6 }}>
+                            （客戶未提供姓名）
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        {new Date(s.createdAt).toLocaleString()}
+                      </td>
+                      <td style={{ whiteSpace: 'nowrap' }} title={new Date(s.expiresAt).toLocaleString()}>
+                        {remaining(s.expiresAt)}
+                      </td>
+                      <td style={{ fontFamily: 'monospace' }} title={s.kid}>
+                        {s.kid.slice(0, 8)}…
+                      </td>
+                      <td className="cell-actions">
+                        <div className="cell-actions-btns">
+                          <button className="btn btn-ghost btn-sm" disabled={readonly || busy} onClick={() => revokeOne(s)}>
+                            作廢
+                          </button>
+                          <button className="btn btn-danger btn-sm" disabled={readonly || busy} onClick={() => revokeAllOf(s)}>
+                            作廢此人全部
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
 
-            <div
-              style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'flex-end' }}
-            >
+            <div className="pager">
               <span className="field-hint">
                 {offset + 1}–{offset + shown.length} / 共 {total} 個
               </span>
               <button
-                className="btn"
+                className="btn btn-ghost btn-sm"
                 disabled={busy || offset === 0}
                 onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
               >
                 上一頁
               </button>
               <button
-                className="btn"
+                className="btn btn-ghost btn-sm"
                 disabled={busy || offset + shown.length >= total}
                 onClick={() => setOffset(offset + PAGE_SIZE)}
               >
@@ -249,7 +251,7 @@ export default function SessionsPanel({
           </>
         )}
 
-        {notice && <p className="field-hint" role="status">{notice}</p>}
+        {notice && <p className="field-hint" role="status" style={{ marginTop: 12 }}>{notice}</p>}
       </div>
     </div>
   );

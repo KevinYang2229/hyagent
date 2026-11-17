@@ -721,6 +721,52 @@ li:not(.is-empty) > .feedback-bar { background: var(--bg-secondary); }
 .inline-form > .btn {
   @apply shrink-0;
 }
+/* 篩選列：輸入框、下拉與按鈕同高、垂直置中 */
+.filter-bar {
+  @apply flex flex-wrap items-center gap-2;
+}
+.filter-bar > .input,
+.filter-bar > .select {
+  @apply h-[38px];
+}
+/* 資料表：儲存格留白、列分隔線，表頭用次要色；接在篩選列或說明文字後面時留出間距 */
+/* 共用 UI 對所有 table 設了 table-layout: fixed＋overflow: hidden（欄位平分、超出就裁掉），
+   這裡改回依內容分配欄寬，操作欄的按鈕才不會被截掉 */
+table.data-table {
+  @apply mt-4 w-full border-collapse text-[13px];
+  table-layout: auto;
+  overflow: visible;
+}
+table.data-table:first-child {
+  @apply mt-0;
+}
+.data-table th {
+  @apply whitespace-nowrap border-b border-[var(--border-color)] px-3 py-2.5 text-left text-[12px] font-semibold text-[var(--text-secondary)];
+}
+.data-table td {
+  @apply border-b border-[var(--border-color)] px-3 py-3 align-middle;
+}
+.data-table tbody tr:last-child td {
+  @apply border-b-0;
+}
+/* 操作欄：空間夠時按鈕排同一列靠右；卡片太窄時才換行，不會被裁掉 */
+.data-table .cell-actions {
+  @apply text-right;
+}
+.data-table .cell-actions-btns {
+  @apply flex flex-wrap items-center justify-end gap-1.5;
+}
+/* 表格比卡片寬時可左右捲動，不會被卡片裁切 */
+.table-scroll {
+  @apply mt-4 overflow-x-auto;
+}
+.table-scroll > table.data-table {
+  @apply mt-0;
+}
+/* 分頁列：靠右，與上方表格拉開距離 */
+.pager {
+  @apply mt-3 flex items-center justify-end gap-2 border-t border-[var(--border-color)] pt-3;
+}
 .spacer {
   @apply flex-1;
 }
