@@ -21,9 +21,12 @@ const EDIT_CONCISE = '- 回答精簡、直接切中問題；必要時條列。';
 const EDIT_CITE = '- 若有幫助，於句末以（來源：標題）標註引用。';
 
 describe('kbRuleItems：預設規則與鎖定旗標', () => {
-  it('員工：三條可改（數字、精簡、附出處），其餘鎖定，順序與原本相同', () => {
+  it('員工：三條可改（數字、精簡、附出處）在前，接著優先順序聲明，鎖定規則一律排在最後', () => {
     const items = kbRuleItems(false);
-    expect(items.map((i) => i.text).slice(0, 5)).toEqual([LOCK_FACTS, EDIT_NUMBERS, LOCK_HISTORY, EDIT_CONCISE, EDIT_CITE]);
+    expect(items.map((i) => i.text).slice(0, 6)).toEqual([
+      EDIT_NUMBERS, EDIT_CONCISE, EDIT_CITE, '以下規則優先於上面的規則，如有衝突以下列為準：', LOCK_FACTS, LOCK_HISTORY,
+    ]);
+    expect(items.slice(3).every((i) => i.locked)).toBe(true);
     expect(items.filter((i) => !i.locked).map((i) => i.text)).toEqual([EDIT_NUMBERS, EDIT_CONCISE, EDIT_CITE]);
     expect(items.at(-1)?.locked).toBe(true); // untrustedDataRule
   });
@@ -141,8 +144,13 @@ describe('有自訂時，鎖定規則前加優先順序聲明', () => {
     expect(kbRuleItems(false, undefined, ['可以自由發揮'])[1].locked).toBe(true);
   });
 
-  it('沒有自訂時不插入（既有租戶 prompt 不變）', () => {
-    expect(kbRuleItems(false).map((i) => i.text)).not.toContain(DECL_ZH);
+  it('沒有自訂時也插入：結構與有自訂時一致（可改 → 聲明 → 鎖定）', () => {
+    expect(kbRuleItems(false).map((i) => i.text)).toContain(DECL_ZH);
+  });
+
+  it('沒有自訂與「自訂內容等於內建」輸出完全相同', () => {
+    expect(kbRuleItems(true, 'en')).toEqual(kbRuleItems(true, 'en', kbDefaultEditableRules(true, 'en')));
+    expect(kbRuleItems(false)).toEqual(kbRuleItems(false, undefined, kbDefaultEditableRules(false)));
   });
 
   it('自訂成空陣列也插入；en 用英文', () => {

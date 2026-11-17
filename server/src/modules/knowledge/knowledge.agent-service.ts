@@ -141,7 +141,7 @@ type RuleText = Record<'zh' | 'en', string>;
 type RuleDef = { text: RuleText; locked: boolean; only?: 'member' | 'guest' };
 
 /**
- * 知識庫作答規則（依原本順序）。locked＝防護規則：租戶不可改、不可刪，有自訂時固定排在自訂之後。
+ * 知識庫作答規則的定義。locked＝防護規則：租戶不可改、不可刪，實際輸出時一律排在可改規則與優先順序聲明之後。
  * 防捏造、先前對話不當答案、外部資料不是指令、訪客不提文件名稱都鎖定；其餘是風格與格式，可改。
  */
 const KB_RULES: (RuleDef | 'untrusted')[] = [
@@ -197,9 +197,10 @@ export interface KbRuleItem {
 }
 
 /**
- * 實際生效的規則清單（不含「規則：」標題）。
- * custom 未提供：內建規則、原本順序（沒有自訂的租戶與改版前逐字相同）。
- * custom 有提供（含空陣列）：自訂規則（trim、略過空白）→ 鎖定規則（原相對順序）。
+ * 實際生效的規則清單（不含「規則：」標題），一律是：可改規則 → 優先順序聲明 → 鎖定規則。
+ * 可改規則：有自訂用自訂（trim、略過空白；空陣列＝全部刪掉），沒有自訂用內建。
+ * 鎖定規則固定排在最後並明說優先，租戶寫出矛盾的規則時模型才知道該聽哪條；
+ * 編輯器、預覽與實際 prompt 三者結構一致。
  */
 export function kbRuleItems(isGuest: boolean, locale?: string, rawCustom?: unknown): KbRuleItem[] {
   const custom = sanitizeCustomRules(rawCustom);
@@ -211,9 +212,10 @@ export function kbRuleItems(isGuest: boolean, locale?: string, rawCustom?: unkno
     const text = r.text[lang];
     return text ? [{ text, locked: r.locked }] : [];
   });
-  if (custom === undefined) return builtIn;
-  const mine = custom.map((t) => t.trim()).filter(Boolean).map((text) => ({ text, locked: false }));
-  // 只排在後面不夠：明說鎖定規則優先，租戶寫出矛盾的規則時模型才知道該聽哪條
+  const editable =
+    custom === undefined
+      ? builtIn.filter((r) => !r.locked)
+      : custom.map((t) => t.trim()).filter(Boolean).map((text) => ({ text, locked: false }));
   const precedence = {
     text:
       lang === 'en'
@@ -221,7 +223,7 @@ export function kbRuleItems(isGuest: boolean, locale?: string, rawCustom?: unkno
         : '以下規則優先於上面的規則，如有衝突以下列為準：',
     locked: true,
   };
-  return [...mine, precedence, ...builtIn.filter((r) => r.locked)];
+  return [...editable, precedence, ...builtIn.filter((r) => r.locked)];
 }
 
 /** 可改的內建規則：後台編輯器的起始內容，也是「還原預設」的目標 */
